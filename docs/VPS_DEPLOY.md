@@ -23,9 +23,9 @@ The app listens on **3030**, published to `127.0.0.1:3030` — it never clashes 
 ## 1. One-time: DuckDNS subdomain
 
 1. Sign in at <https://www.duckdns.org> (same account as `safestrike`).
-2. Add a new subdomain, e.g. **`javahub`** → it becomes `javahub.duckdns.org`.
+2. Add a new subdomain, e.g. **`javazerotoall`** → it becomes `javazerotoall.duckdns.org`.
 3. Copy your **token** (top of the page).
-4. The dockerised `jih-duckdns` service will keep `javahub.duckdns.org` pointed at the VPS IP automatically (you set the token in `deploy/.env`). No cron needed.
+4. The dockerised `jih-duckdns` service will keep `javazerotoall.duckdns.org` pointed at the VPS IP automatically (you set the token in `deploy/.env`). No cron needed.
    - Bare-metal alternative: `deploy/duckdns-update.sh` + a crontab entry (see that file's header).
 
 ---
@@ -46,8 +46,8 @@ nano deploy/.env          # set DOMAIN, DUCKDNS_SUBDOMAINS, DUCKDNS_TOKEN
 
 `deploy/.env`:
 ```env
-DOMAIN=javahub.duckdns.org
-DUCKDNS_SUBDOMAINS=javahub
+DOMAIN=javazerotoall.duckdns.org
+DUCKDNS_SUBDOMAINS=javazerotoall
 DUCKDNS_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 EXEC_PROVIDER=wandbox
 ```
@@ -63,7 +63,7 @@ Use when ports 80/443 are free (a fresh box, or you point a different IP here).
 cd /root/java-interview-hub
 chmod +x deploy/*.sh
 STANDALONE=1 ./deploy/redeploy.sh
-# -> app + duckdns + caddy. Visit https://javahub.duckdns.org
+# -> app + duckdns + caddy. Visit https://javazerotoall.duckdns.org
 ```
 
 ### Mode B — Shared VPS (SafeStrike's Caddy already owns 80/443)  ← most likely
@@ -78,7 +78,7 @@ chmod +x deploy/*.sh
 Then add this block to SafeStrike's `deploy/Caddyfile` (the app is reachable on the host loopback):
 
 ```caddyfile
-javahub.duckdns.org {
+javazerotoall.duckdns.org {
     encode gzip
     reverse_proxy 172.17.0.1:3030
 }
@@ -105,7 +105,7 @@ In the repo: **Settings → Secrets and variables → Actions → New repository
 | `VPS_SSH_KEY` | the **private** SSH key that can log into the VPS (the matching public key is in `~/.ssh/authorized_keys` on the VPS) |
 | `VPS_SSH_PORT` | *(optional)* `22` |
 | `DEPLOY_STANDALONE` | *(optional)* `1` for Mode A; omit/`0` for Mode B |
-| `HEALTH_URL` | *(optional)* `https://javahub.duckdns.org/health` to verify after deploy |
+| `HEALTH_URL` | *(optional)* `https://javazerotoall.duckdns.org/health` to verify after deploy |
 
 You can reuse the same `VPS_SSH_KEY` you set up for SafeStrike.
 
@@ -136,9 +136,9 @@ docker logs -f jih-app
 ## 6. Verify
 
 ```bash
-curl -s https://javahub.duckdns.org/health        # {"status":"ok","provider":"wandbox"}
+curl -s https://javazerotoall.duckdns.org/health        # {"status":"ok","provider":"wandbox"}
 ```
-Open `https://javahub.duckdns.org`, pick **2.4 Virtual Threads**, hit **Run** on the code sample — it compiles on a real JDK and prints output.
+Open `https://javazerotoall.duckdns.org`, pick **2.4 Virtual Threads**, hit **Run** on the code sample — it compiles on a real JDK and prints output.
 
 ---
 
