@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Java Backend Interview Hub</title>
+  <meta name="description" content="Senior Java Backend Engineer interview study hub — deep-dive notes, runnable code sandbox, flashcards and progress tracking." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: { 950: '#0a0e1a' },
+            brand:   { DEFAULT: '#8b5cf6', dark: '#7c3aed' },
+            success: '#10b981',
+            warning: '#f59e0b',
+            info:    '#38bdf8',
+          },
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <!-- Markdown + syntax highlighting -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css" />
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+  <!-- Monaco editor (code sandbox) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body class="bg-slate-950 text-slate-200 font-sans antialiased">
+
+  <!-- App shell -->
+  <div id="app" class="flex h-screen overflow-hidden">
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar flex flex-col w-80 shrink-0 border-r border-slate-800 bg-slate-900/60 backdrop-blur">
+      <div class="flex items-center gap-3 px-5 h-16 border-b border-slate-800 shrink-0">
+        <div class="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand to-indigo-600 shadow-lg shadow-brand/30">
+          <i data-lucide="coffee" class="w-5 h-5 text-white"></i>
+        </div>
+        <div class="leading-tight">
+          <h1 class="text-sm font-bold text-white">Java Interview Hub</h1>
+          <p class="text-[11px] text-slate-400">Senior Backend · EU Sponsorship</p>
+        </div>
+        <button id="sidebar-close" class="ml-auto lg:hidden text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Global progress -->
+      <div class="px-5 py-4 border-b border-slate-800 shrink-0">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-medium text-slate-400">Overall Progress</span>
+          <span id="global-pct" class="text-xs font-bold text-brand">0%</span>
+        </div>
+        <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
+          <div id="global-bar" class="h-full bg-gradient-to-r from-brand to-indigo-400 transition-all duration-500" style="width:0%"></div>
+        </div>
+        <div class="flex items-center justify-between mt-2 text-[11px] text-slate-500">
+          <span id="global-hours">0 / 0 hrs</span>
+          <span id="global-modules">0 / 0 modules</span>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="px-4 py-3 shrink-0">
+        <div class="relative">
+          <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
+          <input id="search" type="text" placeholder="Search modules…"
+            class="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-slate-800/70 border border-slate-700 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand placeholder:text-slate-500" />
+        </div>
+      </div>
+
+      <!-- Phase / module nav -->
+      <nav id="nav" class="flex-1 overflow-y-auto px-3 pb-6 space-y-1 custom-scroll"></nav>
+
+      <div class="px-4 py-3 border-t border-slate-800 shrink-0 flex items-center gap-2">
+        <button id="dashboard-btn" class="flex-1 flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 transition">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
+        </button>
+        <button id="reset-btn" title="Reset all progress" class="grid place-items-center w-9 h-9 rounded-lg bg-slate-800 hover:bg-red-900/60 text-slate-400 hover:text-red-300 transition">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+      <!-- Topbar (mobile) -->
+      <header class="lg:hidden flex items-center gap-3 h-14 px-4 border-b border-slate-800 bg-slate-900/60 shrink-0">
+        <button id="sidebar-open" class="text-slate-300 hover:text-white">
+          <i data-lucide="menu" class="w-6 h-6"></i>
+        </button>
+        <span class="font-semibold text-white">Java Interview Hub</span>
+      </header>
+
+      <div id="content" class="flex-1 overflow-y-auto custom-scroll"></div>
+    </main>
+  </div>
+
+  <!-- Mobile sidebar backdrop -->
+  <div id="backdrop" class="fixed inset-0 bg-black/60 z-30 hidden lg:hidden"></div>
+
+  <script src="/js/curriculum.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
