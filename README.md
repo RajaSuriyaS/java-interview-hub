@@ -94,3 +94,5 @@ docker run -d -p 3030:3030 --restart unless-stopped --name jih java-interview-hu
 ## 📋 License
 
 MIT — personal study project. Content is original study material for interview preparation.
+
+<!-- deploy pipeline verified: auto-deploy timer live on VPS 2026-06-23 -->
