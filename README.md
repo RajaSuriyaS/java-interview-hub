@@ -9,7 +9,7 @@ A self-hosted, interactive **Senior Java Backend Engineer interview study hub** 
 ## ✨ Features
 
 - **10 phases · 33 modules · ~123 study hours** of structured, senior-level content.
-- **Live code sandbox** — edit and **Run** Java, Python &amp; Bash on a real compiler (via the [Piston](https://github.com/engineer-man/piston) execution API, proxied by the backend). Powered by the **Monaco editor** (the VS Code engine).
+- **Live code sandbox** — edit and **Run** Java on a real JDK compiler (via the [Wandbox](https://wandbox.org) execution API, proxied by the backend; self-hosted [Piston](https://github.com/engineer-man/piston) also supported). Powered by the **Monaco editor** (the VS Code engine).
 - **Deep-dive study guides** — markdown-typeset notes with **callout blocks** for European-interview tips, warnings, and "strong answer" cues.
 - **147 active-recall flashcards** — click to flip; "flip all" for rapid drills.
 - **Per-module progress** — cycle *Not Started → In Progress → Completed*; progress rings per phase and an overall readiness %.
@@ -44,7 +44,9 @@ npm start
 # open http://localhost:3030
 ```
 
-> The "Run" button calls `POST /api/execute`, which the Node server proxies to the public Piston API. Outbound HTTPS to `emkc.org` is required for live execution; everything else works offline.
+See **[docs/LOCAL_DEV.md](./docs/LOCAL_DEV.md)** for the full local-development guide (ports, live execution, troubleshooting).
+
+> The "Run" button calls `POST /api/execute`, which the Node server proxies to the public **Wandbox** API. Outbound HTTPS to `wandbox.org` is required for live execution; notes, flashcards and progress all work offline.
 
 ## 🏗️ Architecture
 
@@ -58,7 +60,7 @@ Browser (vanilla JS SPA)
         │  fetch /api/execute
         ▼
 Node + Express (server.js)
-  └─ /api/execute  ──proxy──▶  Piston public API (real Java/Python/Bash runtime)
+  └─ /api/execute  ──proxy──▶  Wandbox public API (real JDK / Python runtime)
 ```
 
 - `public/js/curriculum.js` — **all content** (phases, modules, notes, code, flashcards). This is the file to extend.
@@ -84,7 +86,8 @@ Then `node --check public/js/curriculum.js` to validate. No build step.
 
 ## 🐳 Deployment
 
-See [`DEPLOY.md`](./DEPLOY.md) for Docker and reverse-proxy (Caddy/Nginx) instructions to host it on a VPS.
+- **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** — full VPS guide: DuckDNS, Caddy auto-HTTPS, and **push-to-deploy** (a systemd timer redeploys on every push to `main`; a GitHub Actions workflow is included too).
+- **[DEPLOY.md](./DEPLOY.md)** — quick Docker / reverse-proxy reference.
 
 ```bash
 docker build -t java-interview-hub .
@@ -94,5 +97,3 @@ docker run -d -p 3030:3030 --restart unless-stopped --name jih java-interview-hu
 ## 📋 License
 
 MIT — personal study project. Content is original study material for interview preparation.
-
-<!-- deploy pipeline verified: auto-deploy timer live on VPS 2026-06-23 -->
