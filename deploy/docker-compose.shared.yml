@@ -1,0 +1,17 @@
+# Override for SHARED-VPS mode: attaches the app to SafeStrike's Caddy network
+# so the existing Caddy can reach it as http://jih-app:3030.
+#
+# Usage (handled automatically by redeploy.sh when STANDALONE != 1):
+#   docker compose -f docker-compose.yml -f docker-compose.shared.yml --env-file .env up -d --build
+#
+# CADDY_NETWORK defaults to deploy_default (SafeStrike's compose network).
+services:
+  app:
+    networks:
+      - jihnet
+      - caddy
+
+networks:
+  caddy:
+    external: true
+    name: ${CADDY_NETWORK:-deploy_default}

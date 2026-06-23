@@ -1,0 +1,12 @@
+[Unit]
+Description=Java Interview Hub — auto-deploy (git poll + redeploy)
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# STANDALONE=1 also (re)starts the bundled Caddy. On a shared VPS leave it 0.
+Environment=STANDALONE=0
+Environment=REPO=/root/java-interview-hub
+ExecStart=/root/java-interview-hub/deploy/auto-pull.sh

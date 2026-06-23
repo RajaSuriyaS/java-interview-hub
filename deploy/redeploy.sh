@@ -33,15 +33,19 @@ git reset --hard origin/main
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 
+SHARED_OVERRIDE="$REPO/deploy/docker-compose.shared.yml"
+COMPOSE_ARGS=(-f "$COMPOSE")
 PROFILE_ARGS=()
 if [ "${STANDALONE:-0}" = "1" ]; then
   PROFILE_ARGS=(--profile standalone)
   echo "Mode: STANDALONE (app + caddy + duckdns)"
 else
-  echo "Mode: SHARED (app + duckdns; external Caddy serves TLS)"
+  # Attach the app to the existing Caddy network so the shared Caddy reaches jih-app:3030
+  COMPOSE_ARGS+=(-f "$SHARED_OVERRIDE")
+  echo "Mode: SHARED (app + duckdns; external Caddy '${CADDY_NETWORK:-deploy_default}' serves TLS)"
 fi
 
-docker compose -f "$COMPOSE" --env-file "$ENV_FILE" "${PROFILE_ARGS[@]}" up -d --build
+docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" "${PROFILE_ARGS[@]}" up -d --build
 
 # Recreate Caddy in standalone mode so a changed Caddyfile (new inode after git) is picked up
 if [ "${STANDALONE:-0}" = "1" ]; then
