@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Lint, syntax-check & docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci || npm install
+
+      - name: Syntax-check all JS
+        run: |
+          node --check server.js
+          node --check public/js/curriculum.js
+          node --check public/js/app.js
+
+      - name: Validate curriculum data shape
+        run: |
+          node -e "
+            const fs=require('fs');
+            const src=fs.readFileSync('public/js/curriculum.js','utf8').replace('const CURRICULUM','global.CURRICULUM');
+            eval(src);
+            let bad=[];
+            CURRICULUM.forEach(p=>{
+              if(!p.id||!p.title||!Array.isArray(p.modules)) bad.push('phase '+p.id);
+              p.modules.forEach(m=>{
+                if(!m.id||!m.title||typeof m.hours!=='number') bad.push('module '+m.id);
+                (m.flashcards||[]).forEach(f=>{ if(!f.q||!f.a) bad.push('card '+m.id); });
+              });
+            });
+            const ids=CURRICULUM.flatMap(p=>p.modules.map(m=>m.id));
+            const dupes=ids.filter((x,i)=>ids.indexOf(x)!==i);
+            if(bad.length||dupes.length){ console.error('FAIL', {bad, dupes}); process.exit(1); }
+            console.log('OK:', CURRICULUM.length, 'phases,', ids.length, 'modules');
+          "
+
+      - name: Boot smoke test
+        run: |
+          PORT=3099 node server.js &
+          PID=$!
+          sleep 2
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3099/health)
+          kill $PID
+          [ "$code" = "200" ] || { echo "health check failed: $code"; exit 1; }
+          echo "health OK"
+
+      - name: Docker build
+        run: docker build -t java-interview-hub:ci .

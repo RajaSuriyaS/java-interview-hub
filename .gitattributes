@@ -1,0 +1,14 @@
+# Force LF for files that run on Linux (CRLF breaks shell scripts on the VPS).
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+Caddyfile   text eol=lf
+deploy/.env.example text eol=lf
+
+# Normalize the rest
+*.js        text
+*.css       text
+*.html      text
+*.md        text
+*.json      text

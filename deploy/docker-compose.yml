@@ -1,0 +1,78 @@
+# ============================================================
+#  Java Interview Hub — VPS stack
+#
+#  Services:
+#    app      — the Node/Express study hub (port 3030, internal)
+#    caddy    — auto-HTTPS reverse proxy (profile: standalone)
+#    duckdns  — keeps the DuckDNS subdomain pointed at this VPS
+#
+#  Two ways to run (see docs/VPS_DEPLOY.md):
+#    A) Standalone (fresh VPS, this app owns 80/443):
+#         docker compose --env-file .env --profile standalone up -d --build
+#    B) Shared VPS (SafeStrike's Caddy already owns 80/443):
+#         docker compose --env-file .env up -d --build      # app + duckdns only
+#       then add a reverse_proxy block to the existing Caddyfile.
+# ============================================================
+name: java-interview-hub
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: java-interview-hub:latest
+    container_name: jih-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3030
+      - EXEC_PROVIDER=${EXEC_PROVIDER:-wandbox}
+      - PISTON_URL=${PISTON_URL:-http://piston:2000}
+    # Published on loopback so a shared host-Caddy can reach it at 127.0.0.1:3030,
+    # while inside this compose network other services reach it as http://app:3030.
+    ports:
+      - "127.0.0.1:3030:3030"
+    networks: [jihnet]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3030/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: jih-caddy
+    restart: unless-stopped
+    profiles: ["standalone"]      # only starts with --profile standalone
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+    networks: [jihnet]
+
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:latest
+    container_name: jih-duckdns
+    restart: unless-stopped
+    environment:
+      - SUBDOMAINS=${DUCKDNS_SUBDOMAINS}
+      - TOKEN=${DUCKDNS_TOKEN}
+      - UPDATE_IP=ipv4
+      - LOG_FILE=false
+    networks: [jihnet]
+
+networks:
+  jihnet:
+    name: jihnet
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

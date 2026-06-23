@@ -1,0 +1,13 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
+# {$DOMAIN} is injected from deploy/.env (e.g. javahub.duckdns.org).
+#
+# Caddy obtains and renews the TLS cert automatically as long as the DuckDNS
+# A-record points at this server's public IP and ports 80/443 are open.
+#
+# Used only in STANDALONE mode (docker compose --profile standalone).
+# On a shared VPS, add the inner block to your existing Caddyfile instead.
+
+{$DOMAIN} {
+    encode gzip
+    reverse_proxy app:3030
+}
