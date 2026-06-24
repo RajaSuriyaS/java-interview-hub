@@ -3756,44 +3756,303 @@ int days = switch (month) {
       title: 'IoC, DI & Bean Lifecycle',
       hours: 4,
       notes: `
-# Inversion of Control & Dependency Injection
+# IoC, Dependency Injection & Bean Lifecycle — From Zero to Senior Level
 
-Spring's core is an **IoC container** (the \`ApplicationContext\`) that creates objects (**beans**), wires their dependencies, and manages their lifecycle — so your classes declare *what* they need, not *how* to build it.
+## The Problem: Tight Coupling
 
-## Why DI
+Imagine a checkout service that needs to charge a credit card:
 
-- **Testability** — inject mocks/fakes instead of \`new\`-ing collaborators.
-- **Loose coupling** — depend on interfaces; swap implementations via config.
-- **Single responsibility** — wiring lives in the container, not in business code.
+\`\`\`java
+// ❌ Tightly coupled — hard to test, hard to change
+class CheckoutService {
+    private StripeGateway gateway = new StripeGateway(); // hardcoded!
 
-## Injection styles
+    void checkout(Order order) {
+        gateway.charge(order.total());
+    }
+}
+\`\`\`
 
-| Style | Recommendation |
-|-------|----------------|
-| **Constructor** | ✅ Preferred — immutable, final fields, fails fast, easy to test, no reflection magic |
-| **Setter** | optional/changeable dependencies |
-| **Field (\`@Autowired\` on field)** | ❌ Avoid — hides dependencies, can't be final, hard to test without container |
+Problems:
+- To test, you must hit Stripe's real API (slow, costs money, flaky)
+- Changing from Stripe to Adyen requires modifying CheckoutService
+- Can't test different scenarios (payment fails, timeout, etc.)
 
-> [!TIP]
-> With a single constructor, Spring auto-wires it — no \`@Autowired\` needed. Combine with Lombok \`@RequiredArgsConstructor\` + \`final\` fields for clean, immutable beans.
+**Inversion of Control (IoC)** flips this: instead of CheckoutService creating its dependency, something *outside* creates and *provides* it.
 
-## Bean scopes
+\`\`\`java
+// ✅ Loosely coupled — testable, flexible
+class CheckoutService {
+    private final PaymentGateway gateway; // interface, not impl
 
-\`singleton\` (default, one per container), \`prototype\` (new each request), and web scopes \`request\`/\`session\`/\`application\`.
+    CheckoutService(PaymentGateway gateway) { // INJECTED
+        this.gateway = gateway;
+    }
+}
+// In production: inject StripeGateway
+// In tests: inject MockGateway
+\`\`\`
 
-> [!WARNING]
-> Injecting a **prototype** bean into a **singleton** captures one instance forever. Use \`ObjectProvider\`, \`@Lookup\`, or a \`Provider<T>\` to get a fresh instance per use.
+**Dependency Injection (DI)** is the technique. **Spring's IoC container** (ApplicationContext) is the automated DI framework — it creates all your beans, resolves their dependencies, and wires everything together.
 
-## Lifecycle hooks
+---
 
-\`@PostConstruct\` → after dependencies injected; \`@PreDestroy\` → before container shutdown. Or implement \`InitializingBean\`/\`DisposableBean\`, or define \`@Bean(initMethod, destroyMethod)\`.
+## How Spring's ApplicationContext Works
 
-## Bean creation order & cycles
+When your Spring Boot app starts:
 
-Spring resolves the dependency graph topologically. **Circular constructor dependencies** fail at startup — a design smell. Fixes: refactor the shared logic into a third bean, use setter injection, or (last resort) \`@Lazy\`.
+1. \`@SpringBootApplication\` triggers component scanning
+2. Spring scans your packages for \`@Component\`, \`@Service\`, \`@Repository\`, \`@Controller\`, \`@RestController\`, \`@Configuration\`
+3. For each found class, Spring creates a **bean** (by default, a singleton)
+4. Spring analyzes each bean's constructor/setters/fields to find dependencies
+5. Spring resolves the dependency graph (topological sort)
+6. Spring creates beans in dependency order and injects them
+7. \`@PostConstruct\` methods run
+8. Application is ready to serve requests
+
+\`\`\`
+@SpringBootApplication
+       ↓
+ApplicationContext created
+       ↓
+Component scan: finds @Service, @Repository, @RestController...
+       ↓
+Build dependency graph:
+  CheckoutService needs PaymentGateway
+  PaymentGateway is StripeGateway (only implementation)
+  StripeGateway needs StripeConfig
+  StripeConfig needs application.yml values
+       ↓
+Create in order: StripeConfig → StripeGateway → CheckoutService
+       ↓
+@PostConstruct methods run (e.g. cache warm-up)
+       ↓
+Ready
+\`\`\`
+
+---
+
+## Three Ways to Define Beans
+
+### 1. @Component and specialisations (most common)
+\`\`\`java
+@Component          // generic bean
+@Service            // business logic layer (same as @Component, semantic)
+@Repository         // data access layer (+ exception translation)
+@RestController     // HTTP handler (= @Controller + @ResponseBody)
+\`\`\`
+
+### 2. @Bean in @Configuration class (for third-party classes you don't own)
+\`\`\`java
+@Configuration
+public class AppConfig {
+    @Bean
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(WRITE_DATES_AS_TIMESTAMPS);
+    }
+
+    @Bean
+    public RestTemplate restTemplate(RestTemplateBuilder builder) {
+        return builder
+            .connectTimeout(Duration.ofSeconds(5))
+            .readTimeout(Duration.ofSeconds(30))
+            .build();
+    }
+}
+\`\`\`
+
+### 3. @Import, @ImportResource for XML/legacy configs (rare in new code)
+
+---
+
+## Injection Styles: Which to Use and Why
+
+### Constructor Injection (✅ Always Prefer)
+\`\`\`java
+@Service
+public class OrderService {
+    private final PaymentGateway gateway;
+    private final OrderRepository repo;
+    private final EventPublisher events;
+
+    // Spring auto-wires if there's only one constructor (no @Autowired needed)
+    public OrderService(PaymentGateway gateway, OrderRepository repo, EventPublisher events) {
+        this.gateway = gateway;
+        this.repo = repo;
+        this.events = events;
+    }
+}
+\`\`\`
+
+**Why constructor injection wins:**
+- Fields are \`final\` — object is immutable once created
+- Dependencies are explicit — you can see what the class needs just by reading its constructor
+- Fails at startup if a dependency is missing — no surprise NullPointerExceptions later
+- Works without Spring — test with \`new OrderService(mockGateway, mockRepo, mockEvents)\`
+- No reflection magic — just regular Java
+
+**With Lombok (cleanest):**
+\`\`\`java
+@Service
+@RequiredArgsConstructor  // generates constructor for all 'final' fields
+public class OrderService {
+    private final PaymentGateway gateway;
+    private final OrderRepository repo;
+    private final EventPublisher events;
+}
+\`\`\`
+
+### Setter Injection (for optional dependencies)
+\`\`\`java
+@Service
+public class NotificationService {
+    private EmailSender emailSender;  // optional
+
+    @Autowired(required = false)
+    public void setEmailSender(EmailSender emailSender) {
+        this.emailSender = emailSender;
+    }
+}
+\`\`\`
+
+Use when the dependency is optional or when you need to allow reconfiguration after construction.
+
+### Field Injection (❌ Avoid)
+\`\`\`java
+@Service
+public class BadService {
+    @Autowired
+    private PaymentGateway gateway;  // ← DON'T DO THIS
+}
+\`\`\`
+
+Why it's bad:
+- Can't be \`final\` — object is mutable
+- Dependencies hidden — can't tell what this class needs without reading all fields
+- Can't test without Spring container (need \`@ExtendWith(SpringExtension.class)\` or reflection hacks)
+- NullPointerException if used before injection completes
+- Circular dependencies silently "work" (via proxy) and hide design problems
+
+---
+
+## Bean Scopes
+
+| Scope | Instances | Created when | Destroyed when |
+|-------|-----------|--------------|----------------|
+| **singleton** (default) | 1 per container | Container starts | Container closes |
+| **prototype** | New each time | Every \`getBean()\` / injection | Caller's responsibility |
+| **request** (web) | 1 per HTTP request | Request starts | Request ends |
+| **session** (web) | 1 per HTTP session | Session created | Session invalidated |
+| **application** (web) | 1 per ServletContext | App starts | App stops |
+
+\`\`\`java
+@Component
+@Scope("prototype")   // or Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+public class ReportBuilder {
+    // new instance for each injection point
+}
+\`\`\`
+
+### The Singleton-Prototype Injection Trap
+
+\`\`\`java
+@Service  // singleton
+public class ReportService {
+    @Autowired
+    private ReportBuilder builder;  // prototype — injected ONCE at startup
+
+    void generateReport() {
+        // BUG: always uses the SAME builder instance (captured at startup)
+        // despite prototype scope
+        builder.build();
+    }
+}
+\`\`\`
+
+Fix with \`ObjectProvider\` (Spring's way to get fresh instances):
+\`\`\`java
+@Service
+public class ReportService {
+    private final ObjectProvider<ReportBuilder> builderProvider;
+
+    public ReportService(ObjectProvider<ReportBuilder> builderProvider) {
+        this.builderProvider = builderProvider;
+    }
+
+    void generateReport() {
+        ReportBuilder builder = builderProvider.getObject(); // fresh instance each time
+        builder.build();
+    }
+}
+\`\`\`
+
+---
+
+## Bean Lifecycle Hooks
+
+\`\`\`
+Constructor called
+       ↓
+Dependencies injected (fields, setters)
+       ↓
+@PostConstruct method runs  ← your init code here (can use injected deps)
+       ↓
+Bean is in use (serving requests)
+       ↓
+Container shutdown triggered
+       ↓
+@PreDestroy method runs  ← cleanup: close connections, flush buffers
+       ↓
+Bean destroyed
+\`\`\`
+
+\`\`\`java
+@Component
+public class ConnectionPool {
+    private final DataSource ds;
+    private List<Connection> pool;
+
+    public ConnectionPool(DataSource ds) { this.ds = ds; }
+
+    @PostConstruct
+    void init() {
+        // Constructor finished, ds is injected — safe to use it now
+        pool = new ArrayList<>();
+        for (int i = 0; i < 10; i++) pool.add(ds.getConnection());
+        log.info("Pool initialised with {} connections", pool.size());
+    }
+
+    @PreDestroy
+    void shutdown() {
+        pool.forEach(Connection::close);
+        log.info("Pool closed");
+    }
+}
+\`\`\`
+
+---
+
+## Circular Dependencies and How to Detect Them
+
+\`\`\`
+ServiceA needs ServiceB
+ServiceB needs ServiceA
+→ Spring can't create either one first!
+\`\`\`
+
+Constructor injection: **fails fast at startup** with \`BeanCurrentlyInCreationException\`. This is the correct behavior — it surfaces a design problem.
+
+Field/setter injection: Spring works around it with proxy magic — the circular dependency "works" but you now have a design smell silently hidden.
+
+**How to fix circular dependencies:**
+1. Extract the shared logic into a third service (best fix — usually the design is wrong)
+2. Use an event (\`ApplicationEventPublisher\`) instead of direct dependency
+3. Make one dependency \`@Lazy\` — defers creation until first use (last resort)
 
 > [!EU]
-> Expect: *"Field vs constructor injection — which and why?"* Answer constructor (immutability, explicit deps, testability, fail-fast). And *"singleton bean with mutable state — what's the risk?"* → it's shared across threads; keep beans stateless or guard state.
+> The two most-asked Spring IoC questions: (1) *"Constructor vs field injection — which and why?"* Answer: constructor — immutable fields, explicit dependencies, testable without container, fails fast. (2) *"Singleton bean with mutable state — what's the risk?"* → shared across all HTTP request threads simultaneously → race conditions. Keep Spring beans **stateless**: no instance fields that hold per-request data. Use \`@RequestScope\` or method parameters for per-request state.
 `,
       code: [
         {
@@ -3849,36 +4108,290 @@ public class DiDemo {
       title: 'Spring Boot Auto-Configuration',
       hours: 3,
       notes: `
-# Spring Boot Auto-Configuration
+# Spring Boot Auto-Configuration — From Zero to Senior Level
 
-Boot's "convention over configuration" magic is **conditional bean registration** driven by what's on the classpath and your properties.
+## The Problem Boot Solves
 
-## How it works
+Before Spring Boot, setting up a Spring web application required:
+- \`web.xml\` for the servlet container
+- \`applicationContext.xml\` or Java config for Spring beans
+- Manually declaring a \`DispatcherServlet\`, \`ViewResolver\`, \`DataSource\`, \`TransactionManager\`...
+- Manually managing compatible library versions (Jackson 2.x vs 1.x, Hibernate 5 vs 6...)
 
-1. \`@SpringBootApplication\` = \`@Configuration\` + \`@ComponentScan\` + **\`@EnableAutoConfiguration\`**.
-2. \`@EnableAutoConfiguration\` loads auto-config classes listed in \`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports\` (was \`spring.factories\` pre-2.7).
-3. Each auto-config class is gated by **\`@Conditional\`** annotations:
-   - \`@ConditionalOnClass\` — a type is on the classpath (e.g. \`DataSource\`).
-   - \`@ConditionalOnMissingBean\` — you haven't defined your own → Boot backs off.
-   - \`@ConditionalOnProperty\` — a property toggles it.
+A simple CRUD app needed 200+ lines of configuration before writing business logic.
 
-> [!TIP]
-> The golden rule: **define your own bean and Boot's auto-config backs off** (\`@ConditionalOnMissingBean\`). That's how you override defaults — just declare the bean.
+Spring Boot's answer: **auto-configuration** — sensible defaults based on what's on the classpath, with easy override when you need something different.
 
-## Diagnosing it
+---
 
-Run with \`--debug\` to print the **Condition Evaluation Report**: which auto-configs matched, which didn't, and why. Indispensable for "why isn't my bean created?".
+## How Auto-Configuration Works (Deep Dive)
 
-## Starters & properties
+### Step 1: @SpringBootApplication
 
-- **Starters** (\`spring-boot-starter-web\`) are curated dependency bundles — no version juggling.
-- **\`application.yml\`/\`.properties\`** → bound to \`@ConfigurationProperties\` POJOs (type-safe config). Profiles (\`application-prod.yml\`) layer environment-specific overrides.
+\`\`\`java
+@SpringBootApplication
+public class MyApp {
+    public static void main(String[] args) { SpringApplication.run(MyApp.class, args); }
+}
+\`\`\`
 
-> [!WARNING]
-> The **actuator** (\`/actuator\`) exposes health, metrics, env, and more. In production, secure it and expose only \`health\`/\`info\` over the web; never leak \`/env\` or \`/heapdump\` publicly.
+\`@SpringBootApplication\` is a composite of three annotations:
+\`\`\`java
+@SpringBootConfiguration   // = @Configuration: this class defines beans
+@EnableAutoConfiguration   // ← the magic
+@ComponentScan             // scan this package and sub-packages for @Component etc.
+\`\`\`
+
+### Step 2: @EnableAutoConfiguration loads candidates
+
+\`@EnableAutoConfiguration\` triggers \`AutoConfigurationImportSelector\`, which reads:
+\`\`\`
+META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports
+\`\`\`
+(before Boot 2.7: \`META-INF/spring.factories\`)
+
+This file lists ~150 auto-configuration classes like:
+\`\`\`
+org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration
+org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
+org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration
+org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+\`\`\`
+
+### Step 3: @Conditional gates each auto-config
+
+Each auto-configuration class is annotated with conditions. Spring evaluates them and only applies the config if ALL conditions pass:
+
+\`\`\`java
+// Simplified DataSourceAutoConfiguration:
+@AutoConfiguration
+@ConditionalOnClass({ DataSource.class, EmbeddedDatabaseType.class })  // jdbc on classpath?
+@ConditionalOnMissingBean(DataSource.class)                             // user didn't define one?
+@EnableConfigurationProperties(DataSourceProperties.class)
+public class DataSourceAutoConfiguration {
+
+    @Bean
+    @ConditionalOnProperty(name="spring.datasource.url")
+    public DataSource dataSource(DataSourceProperties props) {
+        return props.initializeDataSourceBuilder().build();
+    }
+}
+\`\`\`
+
+**The key conditions to memorise:**
+
+| Condition | Meaning |
+|-----------|---------|
+| \`@ConditionalOnClass(Foo.class)\` | \`Foo\` must be on the classpath |
+| \`@ConditionalOnMissingClass\` | class must NOT be present |
+| \`@ConditionalOnBean(Foo.class)\` | a \`Foo\` bean must already exist |
+| \`@ConditionalOnMissingBean\` | no bean of this type defined → Boot creates one |
+| \`@ConditionalOnProperty("x.y")\` | property must be set (and optionally = value) |
+| \`@ConditionalOnWebApplication\` | running as a web app |
+| \`@ConditionalOnExpression("...")\` | SpEL expression evaluates to true |
+
+### The Golden Rule: Define Your Own Bean → Boot Backs Off
+
+\`@ConditionalOnMissingBean\` is what makes Boot's defaults easy to override:
+
+\`\`\`java
+// Boot's default ObjectMapper (simplified):
+@Bean
+@ConditionalOnMissingBean(ObjectMapper.class)  // ← only if YOU haven't defined one
+public ObjectMapper jacksonObjectMapper() {
+    return new ObjectMapper();
+}
+
+// YOU override it by defining your own:
+@Configuration
+public class JacksonConfig {
+    @Bean
+    public ObjectMapper objectMapper() {      // your bean exists → Boot's backs off
+        return new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .setSerializationInclusion(NON_NULL);
+    }
+}
+\`\`\`
+
+---
+
+## Diagnosing Auto-Configuration
+
+### The Condition Evaluation Report
+Run with \`--debug\` flag or set \`logging.level.org.springframework.boot.autoconfigure=DEBUG\`:
+
+\`\`\`
+CONDITIONS EVALUATION REPORT
+============================
+
+Positive matches:
+-----------------
+   DataSourceAutoConfiguration matched:
+      - @ConditionalOnClass found required classes 'DataSource', 'EmbeddedDatabaseType' (OnClassCondition)
+      - @ConditionalOnMissingBean (types: javax.sql.DataSource) did not find any beans (OnBeanCondition)
+
+Negative matches:
+-----------------
+   MongoDataAutoConfiguration:
+      - @ConditionalOnClass did not find required class 'com.mongodb.client.MongoClient' (OnClassCondition)
+\`\`\`
+
+This is invaluable for "why isn't my bean created?" or "why is this bean created when I don't want it?"
+
+### Actuator: /actuator/conditions endpoint
+In a running app, \`GET /actuator/conditions\` shows the same report live.
+
+---
+
+## Configuration Properties: Type-Safe Config
+
+Instead of \`@Value("\${app.timeout}")\`, bind entire config sections to POJOs:
+
+\`\`\`java
+@ConfigurationProperties(prefix = "app.payment")
+@Validated
+public record PaymentProperties(
+    @NotBlank String apiKey,
+    @NotNull @Min(1) Integer timeoutSeconds,
+    @NotBlank String baseUrl,
+    boolean sandboxMode
+) {}
+\`\`\`
+
+\`\`\`yaml
+# application.yml
+app:
+  payment:
+    api-key: sk_live_xxx        # kebab-case auto-maps to camelCase
+    timeout-seconds: 30
+    base-url: https://api.stripe.com
+    sandbox-mode: false
+\`\`\`
+
+\`\`\`java
+@Service
+@RequiredArgsConstructor
+public class PaymentService {
+    private final PaymentProperties config;
+
+    void charge() {
+        if (config.sandboxMode()) { /* use test endpoint */ }
+        // config.timeoutSeconds(), config.baseUrl(), etc.
+    }
+}
+\`\`\`
+
+Benefits over \`@Value\`:
+- Type conversion (String → Integer, Duration, List, Map)
+- Validation with Bean Validation annotations (\`@NotNull\`, \`@Min\`)
+- IDE autocompletion in \`application.yml\`
+- Grouped — all payment config in one place
+- Testable — just construct the record in tests
+
+---
+
+## Profiles: Environment-Specific Configuration
+
+\`\`\`yaml
+# application.yml (base — all environments)
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb     # fallback for local dev
+
+app:
+  feature-x: false
+
+---
+# application-local.yml (override for local dev)
+spring:
+  datasource:
+    url: jdbc:h2:mem:localdb
+logging:
+  level:
+    com.myapp: DEBUG
+
+---
+# application-prod.yml (override for production)
+spring:
+  datasource:
+    url: jdbc:postgresql://prod-db:5432/myapp
+    username: \${DB_USER}          # from environment variable
+    password: \${DB_PASSWORD}      # from environment variable — NEVER hardcode
+app:
+  feature-x: true
+\`\`\`
+
+Activate a profile:
+\`\`\`bash
+SPRING_PROFILES_ACTIVE=prod java -jar app.jar
+# or
+java -jar app.jar --spring.profiles.active=prod
+\`\`\`
+
+Profile-specific beans:
+\`\`\`java
+@Service
+@Profile("prod")          // only created when 'prod' profile is active
+public class RealEmailService implements EmailService { ... }
+
+@Service
+@Profile("!prod")         // all profiles EXCEPT prod
+public class LoggingEmailService implements EmailService { ... }
+\`\`\`
+
+---
+
+## Starters: Curated Dependency Bundles
+
+\`spring-boot-starter-web\` pulls in:
+- Spring MVC (DispatcherServlet, etc.)
+- Embedded Tomcat (no need to deploy a WAR)
+- Jackson (JSON serialization)
+- Spring Boot auto-configuration for all of the above
+
+Versions are managed by \`spring-boot-starter-parent\` BOM — no version conflicts.
+
+Common starters:
+
+| Starter | What it gives you |
+|---------|-------------------|
+| \`spring-boot-starter-web\` | Spring MVC + Tomcat + Jackson |
+| \`spring-boot-starter-data-jpa\` | Hibernate + Spring Data JPA + HikariCP |
+| \`spring-boot-starter-security\` | Spring Security filter chain |
+| \`spring-boot-starter-actuator\` | /health, /metrics, /info endpoints |
+| \`spring-boot-starter-test\` | JUnit 5, Mockito, AssertJ, MockMvc |
+| \`spring-boot-starter-validation\` | Bean Validation (Hibernate Validator) |
+
+---
+
+## Actuator: Production Observability
+
+\`\`\`yaml
+# application.yml — expose only safe endpoints over web
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics  # NEVER expose env, heapdump, shutdown
+  endpoint:
+    health:
+      show-details: when-authorized     # hide internals from unauthenticated users
+\`\`\`
+
+Key endpoints:
+- \`/actuator/health\` — UP/DOWN + component health (DB, disk, external services)
+- \`/actuator/metrics\` — micrometer metrics (request counts, latencies, JVM stats)
+- \`/actuator/info\` — build info, git commit
+- \`/actuator/conditions\` — which auto-configs applied (dev only)
+- \`/actuator/beans\` — all beans in the context (dev only)
+
+> [!DANGER]
+> Never expose \`/actuator/env\` (leaks all config including passwords), \`/actuator/heapdump\` (entire heap = all data in memory), or \`/actuator/shutdown\` publicly. Secure actuator behind authentication and only expose \`health\` + \`info\` to the web. Everything else on internal management port only (\`management.server.port=8081\`).
 
 > [!EU]
-> Be ready for *"What is auto-configuration and how would you override a default DataSource?"* and *"How do you provide environment-specific config?"* (profiles + externalised config + secrets via env/Vault, never committed).
+> Expect: *"Walk me through what happens when a Spring Boot app starts."* Strong answer: \`main()\` → \`SpringApplication.run()\` → creates ApplicationContext → component scan → \`@EnableAutoConfiguration\` loads candidates → conditionals evaluated → matching beans created → \`@PostConstruct\` runs → embedded Tomcat starts → app ready. Then: "How would you override Boot's default Jackson config?" → define your own \`ObjectMapper\` bean — \`@ConditionalOnMissingBean\` makes Boot back off.
 `,
       code: [
         {
@@ -3926,42 +4439,269 @@ public class AutoConfigDemo {
       title: 'Transactions, AOP & @Transactional',
       hours: 4,
       notes: `
-# Transactions & AOP
+# Transactions, AOP & @Transactional — From Zero to Senior Level
 
-\`@Transactional\` is the most misunderstood Spring annotation. Knowing *how* it works (proxies) explains its sharp edges.
+## What Is a Transaction?
 
-## It's a proxy
+A **database transaction** is a group of operations that execute as a single unit. Either ALL succeed (commit) or ALL fail (rollback). No partial state.
 
-Spring wraps your bean in a **proxy** (JDK dynamic proxy for interfaces, CGLIB subclass otherwise). The proxy opens a transaction before the method and commits/rolls back after. This has consequences:
+Classic example — transferring €100 from Alice to Bob:
+\`\`\`sql
+BEGIN;
+UPDATE account SET balance = balance - 100 WHERE id = 'alice';
+UPDATE account SET balance = balance + 100 WHERE id = 'bob';
+COMMIT;   -- both updates visible atomically
+-- If anything fails between BEGIN and COMMIT → ROLLBACK → neither update happens
+\`\`\`
 
-> [!WARNING]
-> **Self-invocation doesn't work.** Calling a \`@Transactional\` method from *another method in the same class* bypasses the proxy → no transaction. Fix: move the method to another bean, or self-inject the proxy.
+Without a transaction: if the process crashes after debiting Alice but before crediting Bob, €100 disappears. With a transaction: the rollback restores Alice's balance.
 
-> [!WARNING]
-> \`@Transactional\` on \`private\`/\`final\` methods is ignored — the proxy can't intercept them. Use \`public\` methods.
+---
 
-## Rollback rules
+## AOP: How Spring Applies @Transactional
 
-By default Spring rolls back on **unchecked** exceptions (\`RuntimeException\`, \`Error\`) but **commits on checked exceptions**. Override with \`@Transactional(rollbackFor = Exception.class)\`.
+Spring's transactions use **AOP (Aspect-Oriented Programming)**. AOP lets you add cross-cutting behaviour (logging, security, transactions) to methods without modifying their code.
 
-## Propagation
+### The Proxy Mechanism
 
-| Propagation | Behaviour |
-|-------------|-----------|
-| \`REQUIRED\` (default) | join existing tx or create one |
-| \`REQUIRES_NEW\` | suspend current, start independent tx (e.g. audit log that must persist even if outer rolls back) |
-| \`NESTED\` | savepoint within current tx |
-| \`SUPPORTS\` / \`NOT_SUPPORTED\` / \`MANDATORY\` / \`NEVER\` | situational |
+When Spring sees \`@Transactional\` on a bean, it doesn't modify your class. Instead it wraps it in a **proxy object**:
 
-## Isolation
+\`\`\`
+Client code          Proxy (Spring-generated)        Your actual bean
+    │                        │                              │
+    │  orderService.place()  │                              │
+    ├───────────────────────►│                              │
+    │                        │  BEGIN TRANSACTION           │
+    │                        │  target.place()              │
+    │                        ├─────────────────────────────►│
+    │                        │                              │  business logic
+    │                        │◄─────────────────────────────┤
+    │                        │  COMMIT (or ROLLBACK)        │
+    │◄───────────────────────┤                              │
+\`\`\`
 
-Maps to DB isolation levels (READ_COMMITTED default in most DBs) — see DB phase for anomalies.
+Spring generates the proxy in two ways:
+- **JDK Dynamic Proxy**: if your bean implements an interface → proxy implements the same interface
+- **CGLIB**: if no interface → proxy subclasses your class (byte-code generation)
 
-> [!TIP]
-> Keep transactions **short**. Never do remote/HTTP calls or long computations inside a transaction — you hold DB connections/locks the whole time. Load data, close the tx, then call out.
+This proxy mechanism has critical consequences — it explains ALL @Transactional gotchas.
+
+---
+
+## The #1 Gotcha: Self-Invocation Bypasses the Proxy
+
+\`\`\`java
+@Service
+public class OrderService {
+
+    @Transactional
+    public void placeOrder(Order order) {
+        saveOrder(order);
+        chargePayment(order);   // ← calls chargePayment DIRECTLY on 'this'
+    }
+
+    @Transactional(propagation = REQUIRES_NEW)  // ← IGNORED!
+    public void chargePayment(Order order) {
+        // This DOES NOT run in a new transaction
+        // because the call bypassed the proxy!
+        paymentGateway.charge(order.total());
+    }
+}
+\`\`\`
+
+When \`placeOrder\` calls \`chargePayment\` via \`this.chargePayment()\`, it goes directly to the real object — bypassing the proxy entirely. The \`@Transactional\` on \`chargePayment\` is never seen.
+
+**Fixes:**
+
+**Fix 1: Extract to a separate bean (best — fixes the design too)**
+\`\`\`java
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+    private final PaymentService paymentService;  // separate bean = goes through proxy
+
+    @Transactional
+    public void placeOrder(Order order) {
+        saveOrder(order);
+        paymentService.chargePayment(order);  // ← through proxy → works!
+    }
+}
+\`\`\`
+
+**Fix 2: Self-inject via ApplicationContext (hack — use only if refactoring is hard)**
+\`\`\`java
+@Service
+public class OrderService {
+    @Autowired
+    private OrderService self;  // Spring injects the PROXY, not 'this'
+
+    public void placeOrder(Order order) {
+        self.chargePayment(order);  // goes through the proxy
+    }
+}
+\`\`\`
+
+---
+
+## @Transactional Rules Every Senior Must Know
+
+### Rule 1: Only public methods work
+\`\`\`java
+@Transactional
+private void doSomething() { ... }   // ❌ IGNORED — proxy can't override private
+
+@Transactional
+public void doSomething() { ... }    // ✅ works
+\`\`\`
+CGLIB proxies can't override private/final methods. Spring simply ignores \`@Transactional\` on them with no warning.
+
+### Rule 2: Rollback behaviour — checked vs unchecked
+
+\`\`\`java
+// Default behaviour:
+@Transactional
+public void save(Entity e) throws IOException {
+    repo.save(e);
+    riskyOp();  // throws IOException (checked) → COMMITS! (surprise!)
+    riskyOp2(); // throws RuntimeException (unchecked) → ROLLBACK ✓
+}
+
+// Fix: explicitly declare what to rollback for
+@Transactional(rollbackFor = Exception.class)  // rollback for ANY exception
+public void save(Entity e) throws IOException { ... }
+
+@Transactional(noRollbackFor = OptimisticLockException.class)  // commit even if this
+public void save(Entity e) { ... }
+\`\`\`
+
+### Rule 3: Keep transactions SHORT
+
+Every second a transaction is open, it holds:
+- A database connection (from a limited pool — HikariCP default 10)
+- Row locks (for writes) — blocking other transactions
+- Potentially a whole table lock
+
+\`\`\`java
+// ❌ DANGEROUS: external HTTP call inside a transaction
+@Transactional
+public void processOrder(Order order) {
+    repo.save(order);           // holds connection...
+    emailService.send(order);   // HTTP call — can take seconds!
+    // DB connection held for seconds → pool exhausted under load → timeouts
+}
+
+// ✅ CORRECT: do I/O outside the transaction
+public void processOrder(Order order) {
+    doInTransaction(order);         // short transaction: just DB work
+    emailService.send(order);       // I/O after transaction commits
+}
+
+@Transactional
+private void doInTransaction(Order order) {
+    repo.save(order);               // transaction commits here
+}
+\`\`\`
+
+---
+
+## Transaction Propagation: What Happens When Transactional Methods Call Each Other
+
+\`\`\`java
+@Transactional(propagation = Propagation.REQUIRED)     // default
+// If caller has a tx → join it. If not → create a new one.
+// Most common — use for normal business operations.
+
+@Transactional(propagation = Propagation.REQUIRES_NEW)
+// ALWAYS create a new independent tx. Suspend caller's tx.
+// Use for: audit logging that must persist even if outer tx rolls back.
+// e.g. log "attempted to place order" even if order creation fails
+
+@Transactional(propagation = Propagation.NESTED)
+// Savepoint within the current tx. Can rollback to the savepoint.
+// Outer tx can still commit. Database must support savepoints.
+
+@Transactional(propagation = Propagation.MANDATORY)
+// Must be called within an existing tx — throws if no tx active.
+// Use for internal methods that must only be called from @Transactional code.
+
+@Transactional(propagation = Propagation.NEVER)
+// Must NOT be called within a tx — throws if a tx is active.
+
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+// Suspend current tx if any, run without tx.
+\`\`\`
+
+**Real-world REQUIRES_NEW example:**
+\`\`\`java
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+    private final AuditService auditService;
+
+    @Transactional  // REQUIRED
+    public void placeOrder(Order order) {
+        try {
+            repo.save(order);
+            paymentGateway.charge(order);
+        } catch (Exception e) {
+            // outer transaction WILL roll back
+            // but we still want the audit log to persist!
+            auditService.logFailure(order, e);  // runs in its own tx
+            throw e;
+        }
+    }
+}
+
+@Service
+public class AuditService {
+    @Transactional(propagation = REQUIRES_NEW)  // independent tx
+    public void logFailure(Order order, Exception e) {
+        auditRepo.save(new AuditEntry(order.id(), "FAILED", e.getMessage()));
+        // this commits even when placeOrder rolls back
+    }
+}
+\`\`\`
+
+---
+
+## AOP Beyond Transactions: @Aspect
+
+Spring AOP lets you write cross-cutting concerns once and apply them everywhere:
+
+\`\`\`java
+@Aspect
+@Component
+public class PerformanceMonitor {
+
+    // Pointcut: match any public method in the service package
+    @Around("execution(public * com.myapp.service.*.*(..))")
+    public Object measureTime(ProceedingJoinPoint pjp) throws Throwable {
+        long start = System.currentTimeMillis();
+        String method = pjp.getSignature().toShortString();
+        try {
+            Object result = pjp.proceed();  // call the actual method
+            long ms = System.currentTimeMillis() - start;
+            if (ms > 500) log.warn("SLOW: {} took {}ms", method, ms);
+            return result;
+        } catch (Throwable t) {
+            log.error("FAILED: {} after {}ms", method, System.currentTimeMillis() - start);
+            throw t;
+        }
+    }
+}
+
+// Advice types:
+// @Before    — runs before the method
+// @After     — runs after (always, like finally)
+// @AfterReturning — runs after successful return
+// @AfterThrowing  — runs if exception thrown
+// @Around    — wraps the method (most powerful — you control proceed())
+\`\`\`
+
+Common AOP use cases: logging, metrics, security checks, rate limiting, caching, retry logic.
 
 > [!EU]
-> Killer question: *"Why didn't my @Transactional roll back / why is it ignored?"* Strong answers: self-invocation bypasses the proxy; checked exception committed (need rollbackFor); method not public; or no transaction manager. Demonstrating the **proxy mental model** marks a senior.
+> The killer question: *"Why didn't my @Transactional work?"* Walk through the diagnostic checklist: (1) self-invocation? → no proxy involved; (2) method public? → private/final is ignored; (3) checked exception? → default only rolls back unchecked; (4) correct proxy type? → interface vs CGLIB. Showing this structured diagnosis is exactly what a senior engineer does. Then add: "And I always keep transactions short — no HTTP calls inside a @Transactional method."
 `,
       code: [
         {
@@ -4020,38 +4760,296 @@ public class TxProxyDemo {
       title: 'Spring Data JPA in Practice',
       hours: 3,
       notes: `
-# Spring Data JPA
+# Spring Data JPA in Practice — From Zero to Senior Level
 
-Repositories give you CRUD + query derivation for free, but the abstraction hides performance traps.
+## What Is JPA and Why Use It?
 
-## Repository tiers
+Writing SQL by hand is tedious and error-prone. **JPA (Java Persistence API)** is a specification for mapping Java objects to database tables — no SQL needed for basic operations.
 
-\`Repository\` → \`CrudRepository\` → \`PagingAndSortingRepository\` → \`JpaRepository\`. Declare an interface; Spring generates the implementation.
+**Hibernate** is the most popular JPA implementation. **Spring Data JPA** sits on top of Hibernate and eliminates even more boilerplate.
 
-- **Derived queries**: \`findByEmailAndActiveTrue(...)\` parsed from the method name.
-- **\`@Query\`**: JPQL or native SQL for complex cases.
-- **Projections**: interface/DTO projections to fetch only needed columns.
+\`\`\`
+Your Java code
+      ↓
+Spring Data JPA (repository interfaces)
+      ↓
+JPA (EntityManager API)
+      ↓
+Hibernate (generates and runs SQL)
+      ↓
+JDBC (sends SQL to database)
+      ↓
+Database (PostgreSQL, MySQL, H2...)
+\`\`\`
 
-## The N+1 problem (must-know)
+---
 
-Loading N parents then lazily fetching each one's children issues **1 + N** queries.
+## Entity Mapping: Java Class → Database Table
+
+\`\`\`java
+@Entity
+@Table(name = "orders")       // maps to 'orders' table (default: class name)
+public class Order {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)  // auto-increment
+    private Long id;
+
+    @Column(name = "total_cents", nullable = false)
+    private int totalCents;
+
+    @Column(unique = true)
+    private String referenceCode;
+
+    @Enumerated(EnumType.STRING)   // store "PENDING" not "0"
+    private OrderStatus status;
+
+    @CreationTimestamp             // Hibernate sets on insert
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp               // Hibernate sets on update
+    private LocalDateTime updatedAt;
+
+    // Relationship: one order has many items
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("createdAt ASC")
+    private List<OrderItem> items = new ArrayList<>();
+
+    // Relationship: many orders belong to one customer
+    @ManyToOne(fetch = FetchType.LAZY)   // LAZY = don't load customer until accessed
+    @JoinColumn(name = "customer_id")
+    private Customer customer;
+}
+\`\`\`
+
+### Key JPA Annotations
+| Annotation | Purpose |
+|-----------|---------|
+| \`@Entity\` | marks class as JPA-managed |
+| \`@Table(name)\` | override table name |
+| \`@Id\` | primary key field |
+| \`@GeneratedValue\` | auto-generate PK (IDENTITY, SEQUENCE, AUTO) |
+| \`@Column\` | column mapping, nullability, uniqueness |
+| \`@OneToMany\`, \`@ManyToOne\` | relationship mapping |
+| \`@Enumerated(STRING)\` | store enum as string (not ordinal!) |
+| \`@Transient\` | field not persisted to DB |
+| \`@Embedded\`, \`@Embeddable\` | embed value object as columns |
+
+---
+
+## Spring Data Repositories
+
+Declare an interface — Spring generates the implementation:
+
+\`\`\`java
+// Repository hierarchy (choose the right level):
+Repository<T, ID>              // root interface — no methods
+CrudRepository<T, ID>          // save, findById, findAll, delete, count
+PagingAndSortingRepository     // + findAll(Pageable), findAll(Sort)
+JpaRepository<T, ID>           // + flush, saveAndFlush, deleteInBatch, getOne
+
+// Your repo:
+@Repository
+public interface OrderRepository extends JpaRepository<Order, Long> {
+
+    // 1. DERIVED QUERIES — Spring parses the method name into SQL
+    List<Order> findByStatus(OrderStatus status);
+    List<Order> findByCustomerIdAndStatusOrderByCreatedAtDesc(Long customerId, OrderStatus status);
+    Optional<Order> findByReferenceCode(String ref);
+    boolean existsByReferenceCode(String ref);
+    long countByStatus(OrderStatus status);
+    void deleteByStatusAndCreatedAtBefore(OrderStatus status, LocalDateTime cutoff);
+
+    // 2. @Query — JPQL for complex queries
+    @Query("SELECT o FROM Order o WHERE o.totalCents > :min AND o.status = :status")
+    List<Order> findHighValueOrders(@Param("min") int minCents, @Param("status") OrderStatus status);
+
+    // 3. Native SQL when JPQL can't express it
+    @Query(value = "SELECT * FROM orders WHERE total_cents > ? AND status = ?",
+           nativeQuery = true)
+    List<Order> findHighValueNative(int minCents, String status);
+
+    // 4. Modifying queries (UPDATE/DELETE)
+    @Modifying
+    @Transactional
+    @Query("UPDATE Order o SET o.status = :newStatus WHERE o.id IN :ids")
+    int bulkUpdateStatus(@Param("ids") List<Long> ids, @Param("newStatus") OrderStatus newStatus);
+}
+\`\`\`
+
+### Derived Query Keywords
+\`\`\`
+findBy / getBy / readBy / queryBy / countBy / existsBy / deleteBy
+
+Comparisons:   Equals, Not, LessThan, GreaterThan, Between, Like, In, NotIn
+Logical:       And, Or
+Null checks:   IsNull, IsNotNull
+Bool:          IsTrue, IsFalse
+String:        StartingWith, EndingWith, Containing, IgnoreCase
+Sorting:       OrderBy + Asc/Desc
+\`\`\`
+
+---
+
+## The N+1 Problem — The #1 JPA Performance Bug
+
+This is virtually guaranteed to appear in every interview.
+
+\`\`\`java
+// Service code that looks innocent:
+List<Author> authors = authorRepo.findAll();  // Query 1: SELECT * FROM author
+for (Author a : authors) {
+    System.out.println(a.getBooks().size());  // Query 2,3,4...N: SELECT * FROM book WHERE author_id=?
+}
+// If there are 100 authors: 1 + 100 = 101 queries!
+// If there are 1000 authors: 1001 queries!
+\`\`\`
+
+**Why does this happen?** Collections default to \`FetchType.LAZY\`. Hibernate loads them on first access, one by one.
+
+### Fix 1: JOIN FETCH (best for most cases)
+\`\`\`java
+@Query("SELECT a FROM Author a JOIN FETCH a.books WHERE a.active = true")
+List<Author> findActiveAuthorsWithBooks();
+// Generates: SELECT a.*, b.* FROM author a JOIN book b ON b.author_id = a.id WHERE a.active = true
+// 1 query total
+\`\`\`
+
+### Fix 2: @EntityGraph (annotation-based, less SQL knowledge needed)
+\`\`\`java
+@EntityGraph(attributePaths = {"books", "books.reviews"})  // eager-load these associations
+List<Author> findByActive(boolean active);
+// Spring generates the JOIN FETCH automatically
+\`\`\`
+
+### Fix 3: Batch Fetching (global setting, works for nested loads)
+\`\`\`yaml
+spring:
+  jpa:
+    properties:
+      hibernate:
+        default_batch_fetch_size: 20   # load books in batches of 20
+\`\`\`
+Instead of N queries, Hibernate generates: \`SELECT * FROM book WHERE author_id IN (1,2,3,...,20)\`
+
+### Detecting N+1 in Development
+\`\`\`yaml
+spring:
+  jpa:
+    show-sql: true          # prints all SQL (noisy, dev only)
+    properties:
+      hibernate:
+        format_sql: true
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE  # shows bind parameters
+\`\`\`
+
+Or use **datasource-proxy** / **p6spy** to count queries per request:
+\`\`\`
+Request /api/orders → 47 SQL queries executed   ← N+1 detected!
+Request /api/orders → 2 SQL queries executed    ← fixed!
+\`\`\`
+
+---
+
+## LAZY vs EAGER Fetching
+
+\`\`\`java
+@ManyToOne(fetch = FetchType.EAGER)   // default for @ManyToOne, @OneToOne
+@ManyToOne(fetch = FetchType.LAZY)    // ✅ recommended
+
+@OneToMany(fetch = FetchType.LAZY)    // default for @OneToMany, @ManyToMany ✅
+@OneToMany(fetch = FetchType.EAGER)   // ❌ dangerous
+\`\`\`
+
+**The rule:** make EVERYTHING lazy, fetch explicitly where needed.
+
+EAGER means: every time you load an \`Order\`, it ALWAYS also loads the \`Customer\`, even if you only need the order's total. With 10 associations marked EAGER, one \`findById\` generates 10 joins.
+
+### LazyInitializationException — The Classic Pitfall
+
+\`\`\`java
+// Controller (outside the transaction):
+@GetMapping("/orders/{id}")
+OrderDto getOrder(@PathVariable Long id) {
+    Order order = orderService.findById(id);  // transaction ends here
+    return new OrderDto(
+        order.getId(),
+        order.getItems().size()   // ← LazyInitializationException!
+        // Hibernate session closed, can't load items lazily
+    );
+}
+\`\`\`
+
+**Wrong fix:** \`spring.jpa.open-in-view=true\` (default true in Boot!) — keeps the DB connection open for the entire HTTP request including the view layer. This is a huge anti-pattern: DB connections held open while rendering HTML/JSON.
+
+**Right fix:** fetch everything you need inside the \`@Transactional\` service method, and map to a DTO before returning:
+\`\`\`java
+@Service
+public class OrderService {
+    @Transactional(readOnly = true)   // read-only: performance hint to Hibernate
+    public OrderDto getOrder(Long id) {
+        Order order = repo.findByIdWithItems(id)  // JOIN FETCH items inside transaction
+            .orElseThrow(() -> new NotFoundException(id));
+        return toDto(order);   // map to DTO while session is still open
+        // transaction ends, session closes — but DTO has no lazy associations
+    }
+}
+\`\`\`
+
+---
+
+## Pagination
+
+\`\`\`java
+@GetMapping("/orders")
+Page<OrderDto> getOrders(@RequestParam int page, @RequestParam int size) {
+    Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+    Page<Order> orderPage = repo.findByStatus(PENDING, pageable);
+
+    return orderPage.map(this::toDto);  // Page.map() preserves pagination metadata
+}
+// Returns: { content: [...], totalElements: 450, totalPages: 45, number: 0, size: 10 }
+\`\`\`
 
 > [!WARNING]
-> **N+1 selects** is the #1 JPA performance bug. Fix with \`JOIN FETCH\` (JPQL), an \`@EntityGraph\`, or batch fetching (\`@BatchSize\` / \`hibernate.default_batch_fetch_size\`). Always check the SQL log (\`spring.jpa.show-sql\` / datasource-proxy) — the ORM hides query counts.
+> Avoid \`findAll()\` on large tables — it loads everything into memory. Always use \`Pageable\` or stream the results.
 
-## LAZY vs EAGER
+---
 
-Default LAZY for collections, EAGER for \`@ManyToOne\`. Prefer **LAZY everywhere** and fetch explicitly when needed. EAGER causes surprise joins and N+1.
+## Optimistic vs Pessimistic Locking
 
-> [!WARNING]
-> \`LazyInitializationException\` — accessing a lazy association after the persistence context (session) closed, e.g. in the controller/view. Fix by fetching within the transaction (JOIN FETCH/entity graph) or mapping to a DTO inside the service — **not** by enabling open-session-in-view.
+**Optimistic locking** (no DB locks, conflict detected on commit):
+\`\`\`java
+@Entity
+public class Product {
+    @Version           // Hibernate manages this column
+    private int version;
+    private int stock;
+}
 
-## Pagination & locking
+// Thread A reads product (version=5, stock=10)
+// Thread B reads product (version=5, stock=10)
+// Thread A updates: stock=9, version becomes 6 → OK
+// Thread B updates: WHERE version=5 → no rows matched! → OptimisticLockException
+// Thread B must retry
+\`\`\`
+Use for: low-contention scenarios (most web apps). No DB locks held between read and write.
 
-\`Pageable\` for paging; \`@Lock(PESSIMISTIC_WRITE)\` or \`@Version\` (optimistic locking) for concurrency.
+**Pessimistic locking** (holds a DB row lock):
+\`\`\`java
+@Lock(LockModeType.PESSIMISTIC_WRITE)
+@Query("SELECT p FROM Product p WHERE p.id = :id")
+Optional<Product> findByIdForUpdate(@Param("id") Long id);
+// Generates: SELECT * FROM product WHERE id=? FOR UPDATE
+// Other transactions block until this transaction commits
+\`\`\`
+Use for: high-contention (inventory updates, financial transfers). Guaranteed no conflicts but reduces concurrency.
 
 > [!EU]
-> Almost guaranteed: *"What is the N+1 problem and how do you solve it?"* and *"LAZY vs EAGER — what would you default to?"* Show you read the SQL logs and think in queries-per-request.
+> The near-certain questions: *"What is N+1 and how do you fix it?"* (JOIN FETCH / @EntityGraph / batch size — show you always check the SQL log); *"Why LAZY over EAGER?"* (avoid surprise joins, fetch explicitly where needed); *"What causes LazyInitializationException?"* (lazy load after session closed, fix by mapping to DTO inside @Transactional, not open-session-in-view). These three topics catch more candidates than any other Spring question.
 `,
       code: [
         {
