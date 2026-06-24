@@ -4303,7 +4303,7 @@ core ← broker ← engine ← web ← app (runnable jar)
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-dependencies</artifactId>
-      <version>${spring-boot.version}</version>
+      <version>\${spring-boot.version}</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -4696,10 +4696,10 @@ services:
       - pgdata:/var/lib/postgresql/data   # persist across container restarts!
     environment:
       POSTGRES_DB: myapp
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: \${DB_USER}
+      POSTGRES_PASSWORD: \${DB_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d myapp"]
+      test: ["CMD-SHELL", "pg_isready -U \${DB_USER} -d myapp"]
       interval: 10s
       retries: 5
     ports:
@@ -4968,8 +4968,8 @@ spring:
       client:
         registration:
           google:
-            client-id: ${GOOGLE_CLIENT_ID}
-            client-secret: ${GOOGLE_CLIENT_SECRET}
+            client-id: \${GOOGLE_CLIENT_ID}
+            client-secret: \${GOOGLE_CLIENT_SECRET}
             scope: openid, email, profile
 \`\`\`
 
