@@ -1612,460 +1612,916 @@ public class ClassLoaderLeakFixDemo {
     },
 
     {
-      id: '1.3',
-      title: 'Java Memory Model & Safe Publication',
-      hours: 4,
-      notes: `
-# Java Memory Model (JMM) — From Zero to Senior Level
-
-## The Problem: Why Do We Need a Memory Model?
-
-In a single-threaded program, instructions execute in order and everything is predictable. But in a multi-threaded program, **three things conspire to make shared memory dangerous:**
-
-### Problem 1: CPU Caches (Visibility)
-Modern CPUs don't read directly from RAM — they have L1/L2/L3 caches. When thread A writes a value, it goes into A's CPU cache. Thread B on a different CPU core reads from ITS cache, which may still have the old stale value.
-
-\`\`\`
-CPU Core 1 (Thread A)          CPU Core 2 (Thread B)
-  L1 Cache: running = true        L1 Cache: running = true (STALE!)
-     ↕                                ↕
-  L2/L3 Cache                    L2/L3 Cache
-     ↕                                ↕
-                    RAM: running = false   ← A wrote this
-\`\`\`
-
-Thread B may never see the update! This is a **visibility** problem.
-
-### Problem 2: Compiler & CPU Reordering (Ordering)
-Both the Java compiler (JIT) and the CPU reorder instructions for performance — as long as the reordering doesn't change the result **within a single thread**. But this can break multi-threaded code.
-
-\`\`\`java
-// Single-threaded: these two lines can be reordered (same result)
-x = 1;          // ← compiler may execute this second
-ready = true;   // ← compiler may execute this first
-
-// Multi-threaded: if another thread reads 'ready' and then 'x',
-// it might see ready=true but x=0 (old value) — broken!
-\`\`\`
-
-### Problem 3: Non-Atomic Compound Operations (Atomicity)
-Some operations look atomic but aren't:
-\`\`\`java
-count++;   // This is actually THREE operations:
-           // 1. READ count from memory
-           // 2. ADD 1
-           // 3. WRITE result back
-// If two threads do this simultaneously, you can lose increments
-\`\`\`
-
-**The JMM (Java Memory Model)** solves all three by defining exactly what guarantees the language provides and what programmers must do to achieve them.
-
----
-
-## The Happens-Before Relationship
-
-The JMM uses the concept of **happens-before** to describe visibility guarantees formally.
-
-> If action A **happens-before** action B, then all effects of A are **visible** to B.
-
-This is NOT about time (A doesn't necessarily execute before B in wall-clock time). It's about **guaranteed visibility**: if happens-before exists, B is guaranteed to see A's effects.
-
-### The Six Happens-Before Rules (Memorise These)
-
-**1. Program Order Rule**
-Within a single thread, every action happens-before the next action in program order.
-(Trivial — a thread always sees its own writes)
-
-**2. Monitor Lock Rule**
-An **unlock** of a \`synchronized\` block happens-before every subsequent **lock** of the same monitor.
-\`\`\`java
-synchronized (lock) {
-    x = 42;
-}  // ← unlock here
-
-// Later in another thread:
-synchronized (lock) {
-    // ← lock here. Guaranteed to see x = 42
-    System.out.println(x);
-}
-\`\`\`
-
-**3. Volatile Variable Rule**
-A **write** to a \`volatile\` field happens-before every subsequent **read** of that field.
-\`\`\`java
-volatile boolean ready = false;
-volatile int data = 0;
-
-// Thread A:
-data = 42;        // ← happens-before the volatile write below
-ready = true;     // ← volatile WRITE
-
-// Thread B:
-while (!ready) {} // ← volatile READ (sees ready=true)
-System.out.println(data); // ← guaranteed to see data=42 (because of HB chain)
-\`\`\`
-
-**4. Thread Start Rule**
-\`Thread.start()\` happens-before all actions in the started thread.
-(The new thread sees everything the starting thread did before calling \`start()\`)
-
-**5. Thread Termination Rule**
-All actions in a thread happen-before another thread's \`thread.join()\` returns.
-(After \`join()\` returns, you can safely read results the other thread wrote)
-
-**6. Final Field Rule**
-All writes to \`final\` fields in a constructor happen-before any thread reads those fields (as long as \`this\` doesn't escape the constructor).
-\`\`\`java
-class SafePoint {
-    final int x, y;  // final fields are safely published
-    SafePoint(int x, int y) { this.x = x; this.y = y; }
-}
-// Even without synchronisation, x and y are guaranteed correct once
-// another thread has a reference to the SafePoint object
-\`\`\`
-
----
-
-## volatile: What It Actually Guarantees (Critical Interview Topic)
-
-\`volatile\` provides TWO guarantees:
-
-### Guarantee 1: Visibility
-A volatile write is immediately flushed to main memory (or at least made visible to all other CPU caches). A volatile read always reads the latest written value — bypasses the CPU cache.
-
-### Guarantee 2: Ordering (Memory Barriers)
-A volatile write acts like a **store fence**: all writes before it cannot be reordered to after it.
-A volatile read acts like a **load fence**: all reads after it cannot be reordered to before it.
-
-\`\`\`
-Before volatile write: all preceding writes are committed first
-volatile WRITE
-After volatile write: subsequent operations see the committed state
-\`\`\`
-
-### What volatile Does NOT Guarantee: Atomicity
-
-\`\`\`java
-volatile int counter = 0;
-
-// Thread A and Thread B both do:
-counter++;  // ← NOT atomic! Still three ops: read, increment, write
-\`\`\`
-
-Two threads can both read \`0\`, both increment to \`1\`, both write \`1\`. You lose one increment. Use \`AtomicInteger\` or \`synchronized\` for compound operations.
-
-> [!WARNING]
-> The #1 volatile mistake: thinking \`volatile\` makes a variable "thread-safe". It only makes SINGLE READ/WRITE operations atomic (for primitive types up to 32 bits; 64-bit longs/doubles need volatile too). For compound operations (\`++\`, check-then-act, read-modify-write), you need atomics or locks.
-
----
-
-## synchronized: The Complete Tool
-
-\`synchronized\` gives you ALL THREE guarantees: visibility, ordering, AND atomicity.
-
-\`\`\`java
-class Counter {
-    private int count = 0;
-
-    synchronized void increment() {  // acquires monitor lock on 'this'
-        count++;  // now atomic — no other thread can enter while we hold the lock
-    }            // releases lock — happens-before next lock acquisition
-
-    synchronized int get() {
-        return count;  // guaranteed to see the latest value written by increment()
+        id: '1.3',
+        title: 'Java Memory Model & Safe Publication',
+        hours: 4,
+        notes: `
+    # Java Memory Model (JMM) — From Zero to Senior Level
+    
+    ## The Problem: Why Do We Need a Memory Model?
+    
+    In a single-threaded program, instructions execute in order and everything is predictable. But in a multi-threaded program, **three things conspire to make shared memory dangerous:**
+    
+    ### Problem 1: CPU Caches (Visibility)
+    Modern CPUs don't read directly from RAM — they have L1/L2/L3 caches. When thread A writes a value, it goes into A's CPU cache. Thread B on a different CPU core reads from ITS cache, which may still have the old stale value.
+    
+    \`\`\`
+    CPU Core 1 (Thread A)          CPU Core 2 (Thread B)
+      L1 Cache: running = true        L1 Cache: running = true (STALE!)
+         ↕                                ↕
+      L2/L3 Cache                    L2/L3 Cache
+         ↕                                ↕
+                        RAM: running = false   ← A wrote this
+    \`\`\`
+    
+    Thread B may never see the update! This is a **visibility** problem.
+    
+    ### Problem 2: Compiler & CPU Reordering (Ordering)
+    Both the Java compiler (JIT) and the CPU reorder instructions for performance — as long as the reordering doesn't change the result **within a single thread**. But this can break multi-threaded code.
+    
+    \`\`\`java
+    // Single-threaded: these two lines can be reordered (same result)
+    x = 1;          // ← compiler may execute this second
+    ready = true;   // ← compiler may execute this first
+    
+    // Multi-threaded: if another thread reads 'ready' and then 'x',
+    // it might see ready=true but x=0 (old value) — broken!
+    \`\`\`
+    
+    ### Problem 3: Non-Atomic Compound Operations (Atomicity)
+    Some operations look atomic but aren't:
+    \`\`\`java
+    count++;   // This is actually THREE operations:
+               // 1. READ count from memory
+               // 2. ADD 1
+               // 3. WRITE result back
+    // If two threads do this simultaneously, you can lose increments
+    \`\`\`
+    
+    **The JMM (Java Memory Model)** solves all three by defining exactly what guarantees the language provides and what programmers must do to achieve them.
+    
+    ---
+    
+    ## The Happens-Before Relationship
+    
+    The JMM uses the concept of **happens-before** to describe visibility guarantees formally.
+    
+    > If action A **happens-before** action B, then all effects of A are **visible** to B.
+    
+    This is NOT about time (A doesn't necessarily execute before B in wall-clock time). It's about **guaranteed visibility**: if happens-before exists, B is guaranteed to see A's effects.
+    
+    ### The Six Happens-Before Rules (Memorise These)
+    
+    **1. Program Order Rule**
+    Within a single thread, every action happens-before the next action in program order.
+    (Trivial — a thread always sees its own writes)
+    
+    **2. Monitor Lock Rule**
+    An **unlock** of a \`synchronized\` block happens-before every subsequent **lock** of the same monitor.
+    \`\`\`java
+    synchronized (lock) {
+        x = 42;
+    }  // ← unlock here
+    
+    // Later in another thread:
+    synchronized (lock) {
+        // ← lock here. Guaranteed to see x = 42
+        System.out.println(x);
     }
-}
-\`\`\`
-
-**synchronized** is the heavy option. It's correct but:
-- Can block threads (contention → threads wait)
-- Cannot be acquired in a non-blocking way (no tryLock)
-- Not always needed — use the lighter tools when appropriate
-
----
-
-## Safe Publication: Handing Objects Between Threads
-
-**Safe publication** means making an object available to other threads in a state where they'll see it fully initialised.
-
-**Unsafe publication:**
-\`\`\`java
-class UnsafeHolder {
-    Object obj;
+    \`\`\`
+    
+    **3. Volatile Variable Rule**
+    A **write** to a \`volatile\` field happens-before every subsequent **read** of that field.
+    \`\`\`java
+    volatile boolean ready = false;
+    volatile int data = 0;
+    
     // Thread A:
-    holder.obj = new Object();   // the reference write and constructor
-                                 // can be reordered — B might see non-null
-                                 // but partially constructed object!
+    data = 42;        // ← happens-before the volatile write below
+    ready = true;     // ← volatile WRITE
+    
     // Thread B:
-    if (holder.obj != null) holder.obj.doSomething(); // NPE or stale state
-}
-\`\`\`
-
-**Safe publication methods:**
-1. Store in a **\`volatile\`** field (volatile write happens-before volatile read)
-2. Store in an **\`AtomicReference\`**
-3. Store in a **\`final\`** field set in the constructor
-4. Store while **holding a lock** (and reader holds the same lock)
-5. Put in a **\`ConcurrentHashMap\`**, \`BlockingQueue\`, or other concurrent collection
-
----
-
-## False Sharing: The Hidden Performance Killer
-
-Modern CPUs move memory in **cache lines** (typically 64 bytes). If two threads write to different variables that happen to be in the same cache line, they compete — each write invalidates the other thread's cache line.
-
-\`\`\`
-Cache line (64 bytes):
-┌────────────────────────────────────────────────────────────────┐
-│  counter1 (8 bytes) │ counter2 (8 bytes) │  padding (48 bytes) │
-└────────────────────────────────────────────────────────────────┘
-Thread A writes counter1 → invalidates entire cache line
-Thread B (different core) must reload the cache line → now reads counter2
-Thread B writes counter2 → invalidates the line again
-→ Thread A must reload...
-→ This ping-pong effect can be 10x SLOWER than uncontended access!
-\`\`\`
-
-**Fix: pad to different cache lines**
-\`\`\`java
-// JDK 8+ annotation (requires -XX:-RestrictContended in some JVMs)
-@sun.misc.Contended
-class PaddedCounter {
-    volatile long value;
-    // @Contended adds 128 bytes of padding around the field
-    // ensuring it occupies its own cache line
-}
-\`\`\`
-
-Or manually pad with dummy fields to push variables apart in memory.
-
-> [!TIP]
-> \`LongAdder\` (Java 8+) is faster than \`AtomicLong\` for high-contention counters precisely because it uses an array of cells (spread across cache lines) and only sums them on \`sum()\`. Use \`LongAdder\` for counters, \`AtomicLong\` when you need compare-and-swap.
-
----
-
-## The Singleton Pattern: A JMM Case Study
-
-This is the most-asked JMM interview question. There are four common implementations, only some are correct:
-
-**1. Eager initialisation (always safe, often best):**
-\`\`\`java
-class Singleton {
-    // Class initialisation is thread-safe — JVM guarantees it runs once
-    private static final Singleton INSTANCE = new Singleton();
-    public static Singleton getInstance() { return INSTANCE; }
-}
-\`\`\`
-
-**2. Broken lazy double-checked locking (do NOT use):**
-\`\`\`java
-private static Singleton instance;  // NOT volatile
-public static Singleton getInstance() {
-    if (instance == null) {          // check 1 (no lock)
-        synchronized (Singleton.class) {
-            if (instance == null) {  // check 2 (with lock)
-                instance = new Singleton(); // BROKEN: write of reference can be
-            }                              // reordered before constructor finishes
+    while (!ready) {} // ← volatile READ (sees ready=true)
+    System.out.println(data); // ← guaranteed to see data=42 (because of HB chain)
+    \`\`\`
+    
+    **4. Thread Start Rule**
+    \`Thread.start()\` happens-before all actions in the started thread.
+    (The new thread sees everything the starting thread did before calling \`start()\`)
+    
+    **5. Thread Termination Rule**
+    All actions in a thread happen-before another thread's \`thread.join()\` returns.
+    (After \`join()\` returns, you can safely read results the other thread wrote)
+    
+    **6. Final Field Rule**
+    All writes to \`final\` fields in a constructor happen-before any thread reads those fields (as long as \`this\` doesn't escape the constructor).
+    \`\`\`java
+    class SafePoint {
+        final int x, y;  // final fields are safely published
+        SafePoint(int x, int y) { this.x = x; this.y = y; }
+    }
+    // Even without synchronisation, x and y are guaranteed correct once
+    // another thread has a reference to the SafePoint object
+    \`\`\`
+    
+    ---
+    
+    ## volatile: What It Actually Guarantees (Critical Interview Topic)
+    
+    \`volatile\` provides TWO guarantees:
+    
+    ### Guarantee 1: Visibility
+    A volatile write is immediately flushed to main memory (or at least made visible to all other CPU caches). A volatile read always reads the latest written value — bypasses the CPU cache.
+    
+    ### Guarantee 2: Ordering (Memory Barriers)
+    A volatile write acts like a **store fence**: all writes before it cannot be reordered to after it.
+    A volatile read acts like a **load fence**: all reads after it cannot be reordered to before it.
+    
+    \`\`\`
+    Before volatile write: all preceding writes are committed first
+    volatile WRITE
+    After volatile write: subsequent operations see the committed state
+    \`\`\`
+    
+    ### What volatile Does NOT Guarantee: Atomicity
+    
+    \`\`\`java
+    volatile int counter = 0;
+    
+    // Thread A and Thread B both do:
+    counter++;  // ← NOT atomic! Still three ops: read, increment, write
+    \`\`\`
+    
+    Two threads can both read \`0\`, both increment to \`1\`, both write \`1\`. You lose one increment. Use \`AtomicInteger\` or \`synchronized\` for compound operations.
+    
+    > [!WARNING]
+    > The #1 volatile mistake: thinking \`volatile\` makes a variable "thread-safe". It only makes SINGLE READ/WRITE operations atomic (for primitive types up to 32 bits; 64-bit longs/doubles need volatile too). For compound operations (\`++\`, check-then-act, read-modify-write), you need atomics or locks.
+    
+    ---
+    
+    ## synchronized: The Complete Tool
+    
+    \`synchronized\` gives you ALL THREE guarantees: visibility, ordering, AND atomicity.
+    
+    \`\`\`java
+    class Counter {
+        private int count = 0;
+    
+        synchronized void increment() {  // acquires monitor lock on 'this'
+            count++;  // now atomic — no other thread can enter while we hold the lock
+        }            // releases lock — happens-before next lock acquisition
+    
+        synchronized int get() {
+            return count;  // guaranteed to see the latest value written by increment()
         }
     }
-    return instance;  // reader might see non-null but uninitialised!
-}
-\`\`\`
-
-**3. Correct double-checked locking (volatile required):**
-\`\`\`java
-private static volatile Singleton instance;  // volatile fixes the reordering
-public static Singleton getInstance() {
-    if (instance == null) {
-        synchronized (Singleton.class) {
-            if (instance == null) instance = new Singleton();
+    \`\`\`
+    
+    **synchronized** is the heavy option. It's correct but:
+    - Can block threads (contention → threads wait)
+    - Cannot be acquired in a non-blocking way (no tryLock)
+    - Not always needed — use the lighter tools when appropriate
+    
+    ---
+    
+    ## Safe Publication: Handing Objects Between Threads
+    
+    **Safe publication** means making an object available to other threads in a state where they'll see it fully initialised.
+    
+    **Unsafe publication:**
+    \`\`\`java
+    class UnsafeHolder {
+        Object obj;
+        // Thread A:
+        holder.obj = new Object();   // the reference write and constructor
+                                     // can be reordered — B might see non-null
+                                     // but partially constructed object!
+        // Thread B:
+        if (holder.obj != null) holder.obj.doSomething(); // NPE or stale state
+    }
+    \`\`\`
+    
+    **Safe publication methods:**
+    1. Store in a **\`volatile\`** field (volatile write happens-before volatile read)
+    2. Store in an **\`AtomicReference\`**
+    3. Store in a **\`final\`** field set in the constructor
+    4. Store while **holding a lock** (and reader holds the same lock)
+    5. Put in a **\`ConcurrentHashMap\`**, \`BlockingQueue\`, or other concurrent collection
+    
+    ---
+    
+    ## False Sharing: The Hidden Performance Killer
+    
+    Modern CPUs move memory in **cache lines** (typically 64 bytes). If two threads write to different variables that happen to be in the same cache line, they compete — each write invalidates the other thread's cache line.
+    
+    \`\`\`
+    Cache line (64 bytes):
+    ┌────────────────────────────────────────────────────────────────┐
+    │  counter1 (8 bytes) │ counter2 (8 bytes) │  padding (48 bytes) │
+    └────────────────────────────────────────────────────────────────┘
+    Thread A writes counter1 → invalidates entire cache line
+    Thread B (different core) must reload the cache line → now reads counter2
+    Thread B writes counter2 → invalidates the line again
+    → Thread A must reload...
+    → This ping-pong effect can be 10x SLOWER than uncontended access!
+    \`\`\`
+    
+    **Fix: pad to different cache lines**
+    \`\`\`java
+    // JDK 8+ annotation (requires -XX:-RestrictContended in some JVMs)
+    @sun.misc.Contended
+    class PaddedCounter {
+        volatile long value;
+        // @Contended adds 128 bytes of padding around the field
+        // ensuring it occupies its own cache line
+    }
+    \`\`\`
+    
+    Or manually pad with dummy fields to push variables apart in memory.
+    
+    > [!TIP]
+    > \`LongAdder\` (Java 8+) is faster than \`AtomicLong\` for high-contention counters precisely because it uses an array of cells (spread across cache lines) and only sums them on \`sum()\`. Use \`LongAdder\` for counters, \`AtomicLong\` when you need compare-and-swap.
+    
+    ---
+    
+    ## The Singleton Pattern: A JMM Case Study
+    
+    This is the most-asked JMM interview question. There are four common implementations, only some are correct:
+    
+    **1. Eager initialisation (always safe, often best):**
+    \`\`\`java
+    class Singleton {
+        // Class initialisation is thread-safe — JVM guarantees it runs once
+        private static final Singleton INSTANCE = new Singleton();
+        public static Singleton getInstance() { return INSTANCE; }
+    }
+    \`\`\`
+    
+    **2. Broken lazy double-checked locking (do NOT use):**
+    \`\`\`java
+    private static Singleton instance;  // NOT volatile
+    public static Singleton getInstance() {
+        if (instance == null) {          // check 1 (no lock)
+            synchronized (Singleton.class) {
+                if (instance == null) {  // check 2 (with lock)
+                    instance = new Singleton(); // BROKEN: write of reference can be
+                }                              // reordered before constructor finishes
+            }
         }
+        return instance;  // reader might see non-null but uninitialised!
     }
-    return instance;
-}
-\`\`\`
-
-**4. Initialisation-on-demand holder (elegant, always correct):**
-\`\`\`java
-class Singleton {
-    private static class Holder {
-        static final Singleton INSTANCE = new Singleton(); // class init = thread safe
+    \`\`\`
+    
+    **3. Correct double-checked locking (volatile required):**
+    \`\`\`java
+    private static volatile Singleton instance;  // volatile fixes the reordering
+    public static Singleton getInstance() {
+        if (instance == null) {
+            synchronized (Singleton.class) {
+                if (instance == null) instance = new Singleton();
+            }
+        }
+        return instance;
     }
-    public static Singleton getInstance() { return Holder.INSTANCE; }
-    // Holder class is not loaded until getInstance() is first called -> lazy
-    // No synchronisation needed — JVM class initialisation handles it
-}
-\`\`\`
-
-> [!EU]
-> When asked "what does \`volatile\` guarantee?", give the three-part answer: (1) **Visibility** — reads always see the latest write; (2) **Ordering** — memory barriers prevent harmful reordering; (3) NOT atomicity — compound operations still need locks or atomics. Then mention the double-checked locking example to prove you understand why. This answer alone separates senior candidates from mid-level.
-`,
-      code: [
-        {
-          lang: 'java',
-          title: 'Visibility bug vs volatile fix',
-          code: `import java.util.concurrent.TimeUnit;
-
-public class VisibilityDemo {
-    // Try removing 'volatile' and the worker may loop forever on some JVMs/CPUs
-    private static volatile boolean running = true;
-
-    public static void main(String[] args) throws InterruptedException {
-        Thread worker = new Thread(() -> {
-            long count = 0;
-            while (running) { count++; }      // reads 'running' each iteration
-            System.out.println("Worker stopped after " + count + " iterations");
-        });
-        worker.start();
-
-        TimeUnit.MILLISECONDS.sleep(50);
-        running = false;                       // volatile write -> visible to worker
-        System.out.println("main set running=false");
-        worker.join(1000);
-        System.out.println("Done. Worker alive? " + worker.isAlive());
+    \`\`\`
+    
+    **4. Initialisation-on-demand holder (elegant, always correct):**
+    \`\`\`java
+    class Singleton {
+        private static class Holder {
+            static final Singleton INSTANCE = new Singleton(); // class init = thread safe
+        }
+        public static Singleton getInstance() { return Holder.INSTANCE; }
+        // Holder class is not loaded until getInstance() is first called -> lazy
+        // No synchronisation needed — JVM class initialisation handles it
     }
-}`
-        },
-        {
-          lang: 'java',
-          title: 'Double-checked locking: broken vs correct singleton',
-          code: `// The classic broken DCL vs the correct volatile version — a JMM favourite.
-public class DoubleCheckedLocking {
-
-    // ❌ BROKEN: without volatile, another thread can see non-null but uninitialised instance.
-    // The JVM/CPU can reorder: 1) allocate memory, 2) assign reference, 3) run constructor.
-    // Another thread reading after step 2 sees non-null but step 3 hasn't happened yet!
-    static class BrokenSingleton {
-        private static BrokenSingleton instance; // NOT volatile
-        private final String config;
-        private BrokenSingleton() { this.config = "loaded"; }
-        static BrokenSingleton getInstance() {
-            if (instance == null) {                    // first check (no lock)
-                synchronized (BrokenSingleton.class) {
-                    if (instance == null) {             // second check (with lock)
-                        instance = new BrokenSingleton(); // reordering can leak partial object!
+    \`\`\`
+    
+    > [!EU]
+    > When asked "what does \`volatile\` guarantee?", give the three-part answer: (1) **Visibility** — reads always see the latest write; (2) **Ordering** — memory barriers prevent harmful reordering; (3) NOT atomicity — compound operations still need locks or atomics. Then mention the double-checked locking example to prove you understand why. This answer alone separates senior candidates from mid-level.
+    `,
+        code: [
+          {
+            lang: 'java',
+            title: 'Visibility bug vs volatile fix',
+            code: `import java.util.concurrent.TimeUnit;
+    
+    public class VisibilityDemo {
+        // Try removing 'volatile' and the worker may loop forever on some JVMs/CPUs
+        private static volatile boolean running = true;
+    
+        public static void main(String[] args) throws InterruptedException {
+            Thread worker = new Thread(() -> {
+                long count = 0;
+                while (running) { count++; }      // reads 'running' each iteration
+                System.out.println("Worker stopped after " + count + " iterations");
+            });
+            worker.start();
+    
+            TimeUnit.MILLISECONDS.sleep(50);
+            running = false;                       // volatile write -> visible to worker
+            System.out.println("main set running=false");
+            worker.join(1000);
+            System.out.println("Done. Worker alive? " + worker.isAlive());
+        }
+    }`
+          },
+          {
+            lang: 'java',
+            title: 'Double-checked locking: broken vs correct singleton',
+            code: `// The classic broken DCL vs the correct volatile version — a JMM favourite.
+    public class DoubleCheckedLocking {
+    
+        // ❌ BROKEN: without volatile, another thread can see non-null but uninitialised instance.
+        // The JVM/CPU can reorder: 1) allocate memory, 2) assign reference, 3) run constructor.
+        // Another thread reading after step 2 sees non-null but step 3 hasn't happened yet!
+        static class BrokenSingleton {
+            private static BrokenSingleton instance; // NOT volatile
+            private final String config;
+            private BrokenSingleton() { this.config = "loaded"; }
+            static BrokenSingleton getInstance() {
+                if (instance == null) {                    // first check (no lock)
+                    synchronized (BrokenSingleton.class) {
+                        if (instance == null) {             // second check (with lock)
+                            instance = new BrokenSingleton(); // reordering can leak partial object!
+                        }
                     }
                 }
+                return instance;
             }
-            return instance;
         }
-    }
-
-    // ✅ CORRECT: volatile prevents the constructor/reference-write reordering.
-    static class CorrectSingleton {
-        private static volatile CorrectSingleton instance; // volatile = happens-before guarantee
-        private final String config;
-        private CorrectSingleton() { this.config = "loaded"; }
-        static CorrectSingleton getInstance() {
+    
+        // ✅ CORRECT: volatile prevents the constructor/reference-write reordering.
+        static class CorrectSingleton {
+            private static volatile CorrectSingleton instance; // volatile = happens-before guarantee
+            private final String config;
+            private CorrectSingleton() { this.config = "loaded"; }
+            static CorrectSingleton getInstance() {
+                if (instance == null) {
+                    synchronized (CorrectSingleton.class) {
+                        if (instance == null) {
+                            instance = new CorrectSingleton(); // safe: volatile write happens-after constructor
+                        }
+                    }
+                }
+                return instance;
+            }
+            public String getConfig() { return config; }
+        }
+    
+        // ✅ BEST: Initialization-on-demand holder — zero synchronization overhead, lazy, correct.
+        // The JVM guarantees class initialisation is atomic (single-threaded by the ClassLoader).
+        static class HolderSingleton {
+            private final String config = "loaded";
+            private static class Holder { static final HolderSingleton INSTANCE = new HolderSingleton(); }
+            static HolderSingleton getInstance() { return Holder.INSTANCE; }
+            // Holder class is loaded lazily when getInstance() is first called.
+            // Class loading is synchronised by the JVM — no explicit locking needed.
+        }
+    
+        // ✅ SIMPLEST: enum (Josh Bloch Item 3) — serialization-safe, reflection-safe
+        enum EnumSingleton { INSTANCE;
+            public String getConfig() { return "loaded"; }
+        }
+    
+        public static void main(String[] args) {
+            System.out.println(CorrectSingleton.getInstance().getConfig());
+            System.out.println(HolderSingleton.getInstance().config);
+            System.out.println(EnumSingleton.INSTANCE.getConfig());
+            System.out.println("\\nFor interview: prefer Initialization-on-demand holder or enum.");
+            System.out.println("If asked about DCL, explain the volatile requirement and WHY.");
+        }
+    }`
+          },
+          {
+            lang: 'java',
+            title: 'False sharing and @Contended — cache-line performance trap',
+            code: `import java.util.concurrent.CountDownLatch;
+    import java.lang.annotation.*;
+    
+    // False sharing: two variables on the SAME CPU cache line (64 bytes) are written
+    // by different threads. Each write invalidates the other thread's cache line,
+    // causing bouncing between CPU caches — massive throughput loss.
+    public class FalseSharingDemo {
+    
+        // ❌ False sharing: x and y likely share a cache line
+        static class Shared {
+            volatile long x = 0;
+            volatile long y = 0; // probably within 64 bytes of x -> false sharing!
+        }
+    
+        // ✅ Padded: force x and y onto separate cache lines (each field + 7 longs = 64 bytes)
+        // In production use: @jdk.internal.vm.annotation.Contended (JDK internal, needs --add-opens)
+        // or simply structure your data so hot fields are in separate objects.
+        static class Padded {
+            volatile long x = 0; long p1,p2,p3,p4,p5,p6,p7;  // padding
+            volatile long y = 0; long q1,q2,q3,q4,q5,q6,q7;  // separate cache line
+        }
+    
+        static final int ITERATIONS = 50_000_000;
+    
+        static long benchmark(boolean padded) throws InterruptedException {
+            Object obj = padded ? new Padded() : new Shared();
+            CountDownLatch start = new CountDownLatch(1);
+            CountDownLatch done  = new CountDownLatch(2);
+    
+            Thread t1 = new Thread(() -> {
+                try { start.await(); } catch (InterruptedException e) { return; }
+                if (padded) { Padded p = (Padded) obj; for (int i=0;i<ITERATIONS;i++) p.x++; }
+                else        { Shared s = (Shared) obj; for (int i=0;i<ITERATIONS;i++) s.x++; }
+                done.countDown();
+            });
+            Thread t2 = new Thread(() -> {
+                try { start.await(); } catch (InterruptedException e) { return; }
+                if (padded) { Padded p = (Padded) obj; for (int i=0;i<ITERATIONS;i++) p.y++; }
+                else        { Shared s = (Shared) obj; for (int i=0;i<ITERATIONS;i++) s.y++; }
+                done.countDown();
+            });
+            t1.start(); t2.start();
+            long t = System.nanoTime();
+            start.countDown();
+            done.await();
+            return System.nanoTime() - t;
+        }
+    
+        public static void main(String[] args) throws InterruptedException {
+            long shared = benchmark(false);
+            long padded  = benchmark(true);
+            System.out.printf("Shared  (false sharing): %,d ms%n", shared  / 1_000_000);
+            System.out.printf("Padded  (no false share): %,d ms%n", padded  / 1_000_000);
+            System.out.println("Padded can be 3-10x faster for write-heavy shared counters.");
+            System.out.println("java.util.concurrent.atomic.LongAdder uses this technique internally.");
+            System.out.println("@jdk.internal.vm.annotation.Contended pads automatically.");
+        }
+    }`
+          }
+        ],
+        flashcards: [
+          { q: 'What does volatile guarantee and what does it NOT?', a: 'Guarantees visibility (no stale reads) and ordering (happens-before across the volatile access). Does NOT guarantee atomicity of compound operations like x++.' },
+          { q: 'Define the happens-before relationship.', a: 'A partial ordering: if A happens-before B, A\'s memory effects are visible to B. Edges include program order, unlock→lock on same monitor, volatile write→read, Thread.start, and Thread.join.' },
+          { q: 'Why must the double-checked-locking singleton field be volatile?', a: 'Without volatile, the JVM/CPU can reorder the constructor execution and the reference assignment, so another thread may observe a non-null but partially constructed instance. volatile ensures the constructor happens-before the reference write.' },
+          { q: 'List safe publication mechanisms.', a: 'Store the reference in a volatile field or AtomicReference, initialise it as a final field in the constructor, guard it with a lock, or place it in a thread-safe/concurrent collection.' },
+          { q: 'What is false sharing and how does it degrade performance?', a: 'When two variables on the same 64-byte CPU cache line are written by different threads, each write invalidates the other\'s cached line, causing constant cache coherence traffic. The fix is padding to force hot fields onto separate cache lines. LongAdder uses this internally.' },
+          { q: 'What is the initialization-on-demand holder singleton pattern and why is it safe without synchronisation?', a: 'A private static inner class holds the singleton instance as a static final field. The JVM guarantees class initialisation is single-threaded (done by the ClassLoader under synchronisation) so the instance is created safely and lazily on first access — zero explicit locking overhead.' },
+          { q: 'What happens-before edges does Thread.start() and Thread.join() establish?', a: 'Thread.start(): all actions before start() happen-before any action in the started thread. Thread.join(): all actions in the joined thread happen-before Thread.join() returns to the joining thread. These allow safe publication of data to new threads.' }
+        ],
+        sections: [
+          {
+            title: 'The Visibility Problem & CPU Caches',
+            notes: `
+    ### Why Threads Can See Stale Data
+    
+    Modern CPUs are incredibly fast, much faster than main memory (RAM). To bridge this gap, each CPU core has its own **cache hierarchy** (L1, L2, and sometimes a shared L3 cache). When a thread writes a value to a variable, it doesn't write directly to RAM. Instead, it writes to the L1 cache or a **write buffer**. 
+    
+    \`\`\`text
+         CPU Core 1                        CPU Core 2
+    ┌──────────────────┐              ┌──────────────────┐
+    │ L1 Cache (local) │              │ L1 Cache (local) │
+    └──────────────────┘              └──────────────────┘
+             ↓                                 ↓
+    ┌────────────────────────────────────────────────────┐
+    │                  L3 Cache (Shared)                 │
+    └────────────────────────────────────────────────────┘
+             ↓                                 ↓
+    ┌────────────────────────────────────────────────────┐
+    │                    Main Memory                     │
+    └────────────────────────────────────────────────────┘
+    \`\`\`
+    
+    If Thread A running on Core 1 updates a variable, Thread B running on Core 2 might still read the old value from its own L1 cache. This is known as the **visibility problem**. 
+    
+    > [!WARNING]
+    > Stale data is arguably the most insidious bug in concurrent programming because it may not crash your app immediately, but rather corrupt your state silently over time.
+    
+    ### Write Buffers and Store-Load Reordering
+    
+    CPUs use **write buffers** to hold updates before flushing them to cache. This introduces **store-load reordering**. If a thread stores a value and immediately loads another, the CPU might execute the load *before* the store is visible to other cores. 
+    
+    ### What the JMM Actually Specifies
+    
+    The **Java Memory Model (JMM)** does not define how your code maps to specific CPU architectures. It is an **abstract model**. It specifies under what conditions a thread is guaranteed to see the effects of another thread's actions. It provides a formal contract (via *happens-before*) that all Java implementations must obey, shielding you from differences between x86, ARM, and other architectures.
+    
+    ### The Double-Checked Locking Bug
+    
+    The classic double-checked locking singleton relies on checking if an instance is null before acquiring a lock. Without \`volatile\`, the JVM or CPU might reorder the instantiation.
+    
+    | Without JMM Guarantees | Potential Consequence |
+    | ---------------------- | --------------------- |
+    | Stale Cache Reads | Thread processes outdated state indefinitely. |
+    | Store-Load Reordering | Thread sees partially-constructed objects. |
+    | Unordered Writes | Lock-free structures become wildly inconsistent. |
+    
+    > [!EU]
+    > The JMM was heavily revised in Java 5 (JSR-133) because the original model was broken. It didn't provide strong enough guarantees for final fields, allowing threads to see uninitialised states of ostensibly immutable objects.
+            `,
+            code: [
+              {
+                lang: 'java',
+                title: 'Visibility Problem in Action',
+                code: `public class VisibilityProblem {
+        private static boolean stopRequested = false;
+    
+        public static void main(String[] args) throws InterruptedException {
+            Thread backgroundThread = new Thread(() -> {
+                int i = 0;
+                // Without volatile, this thread may never see stopRequested = true
+                while (!stopRequested) {
+                    i++;
+                }
+                System.out.println("Background thread terminated.");
+            });
+            
+            backgroundThread.start();
+            Thread.sleep(1000);
+            
+            stopRequested = true; 
+            System.out.println("Main thread set stopRequested to true.");
+        }
+    }`
+              },
+              {
+                lang: 'java',
+                title: 'Classic Double-Checked Locking Bug',
+                code: `public class BrokenSingleton {
+        private static BrokenSingleton instance; // NO VOLATILE
+    
+        private BrokenSingleton() {}
+    
+        public static BrokenSingleton getInstance() {
             if (instance == null) {
-                synchronized (CorrectSingleton.class) {
+                synchronized (BrokenSingleton.class) {
                     if (instance == null) {
-                        instance = new CorrectSingleton(); // safe: volatile write happens-after constructor
+                        // This write can be reordered!
+                        // Another thread might see a non-null 'instance' 
+                        // before the constructor has fully finished executing.
+                        instance = new BrokenSingleton(); 
                     }
                 }
             }
             return instance;
         }
-        public String getConfig() { return config; }
+    }`
+              }
+            ],
+            flashcards: [
+              { q: 'Why do threads see stale data in a multi-threaded program?', a: 'Modern CPUs use local L1/L2 caches and write buffers. A thread on Core A may write to its cache, while a thread on Core B reads from its own cache, never seeing Core A\'s update.' },
+              { q: 'What is store-load reordering?', a: 'An optimisation where a CPU executes a load operation before a preceding store operation becomes visible to other cores, often due to write buffers.' },
+              { q: 'Does the JMM dictate how specific CPU architectures handle memory?', a: 'No, the JMM is an abstract model. It provides a platform-independent contract defining when memory effects are guaranteed to be visible across threads.' },
+              { q: 'What was the primary issue with the pre-Java 5 memory model?', a: 'It was broken regarding \'final\' fields, allowing threads to potentially see the default values of final fields even after the constructor had finished.' },
+              { q: 'Why does double-checked locking fail without volatile?', a: 'Because the instantiation of the object and the assignment of the reference to the variable can be reordered. Another thread might see a non-null reference to an incompletely constructed object.' },
+              { q: 'What is the JVM specification that overhauled the JMM?', a: 'JSR-133, introduced in Java 5.' },
+              { q: 'What are the two main consequences of not having JMM guarantees?', a: 'Stale cache reads (visibility issues) and instruction reordering (ordering issues), leading to inconsistent state.' },
+              { q: 'Can a thread crash from reading a partially constructed object?', a: 'Yes, reading a partially constructed object can lead to NullPointerExceptions or unexpected application logic errors since the object\'s invariants are not yet established.' }
+            ]
+          },
+          {
+            title: 'Happens-Before & volatile',
+            notes: `
+    ### Happens-Before (HB) Definition
+    
+    The **happens-before** relationship is the foundation of the JMM. If action A *happens-before* action B, then the effects of A are guaranteed to be **visible** to B, and A is ordered before B. 
+    
+    > [!TIP]
+    > Happens-before is a formal guarantee about visibility and ordering, not necessarily wall-clock time. If there is no happens-before relationship, the JVM is free to reorder instructions.
+    
+    ### The Essential Happens-Before Rules
+    
+    | Rule | Description |
+    | ---- | ----------- |
+    | **Program Order** | Within a thread, an action happens-before the next action in the source code. |
+    | **Monitor Lock** | An unlock on a monitor happens-before every subsequent lock on that same monitor. |
+    | **Volatile** | A write to a \`volatile\` field happens-before every subsequent read of that same field. |
+    | **Thread Start** | A call to \`Thread.start()\` happens-before any action in the started thread. |
+    | **Thread Join** | Any action in a thread happens-before any other thread successfully returns from a \`join()\` on that thread. |
+    | **Finalizer** | The end of an object's constructor happens-before the start of its \`finalize()\` method. |
+    
+    ### Volatile Internals: Memory Barriers
+    
+    When you declare a variable as \`volatile\`, the JVM inserts **memory barriers** (or memory fences) around the variable at the CPU level.
+    - **Store Barrier**: Ensures that all writes before the volatile write are committed to memory first.
+    - **Load Barrier**: Ensures that all reads after the volatile read load fresh data from main memory.
+    
+    \`\`\`text
+    [All preceding writes committed]
+          ↓
+    (Store Barrier)
+    VOLATILE WRITE
+          ↓
+    (Load Barrier)
+    [All subsequent reads see fresh data]
+    \`\`\`
+    
+    ### Limitations of volatile
+    
+    \`volatile\` guarantees visibility and ordering, but **not atomicity** for compound actions.
+    
+    > [!WARNING]
+    > Operations like \`counter++\` are actually read-modify-write sequences. If multiple threads perform \`counter++\` on a volatile variable, updates can still be lost because the entire sequence is not atomic.
+    
+    ### Usage Patterns
+    
+    **Correct:** State flags (e.g., stopping a loop), double-checked locking (singleton).
+    **Incorrect:** Counters, accumulators, or any state that depends on its previous value.
+            `,
+            code: [
+              {
+                lang: 'java',
+                title: 'Volatile Write-Read establishing Happens-Before',
+                code: `public class VolatileHappensBefore {
+        int a = 0;
+        volatile boolean flag = false;
+    
+        public void writer() {
+            a = 1;          // Step 1: Normal write
+            flag = true;    // Step 2: Volatile write (Store barrier placed before this)
+        }
+    
+        public void reader() {
+            if (flag) {     // Step 3: Volatile read (Load barrier placed after this)
+                // Guaranteed to see a = 1 because Step 1 happens-before Step 2, 
+                // Step 2 happens-before Step 3, and HB is transitive!
+                System.out.println("a is: " + a);
+            }
+        }
+    }`
+              },
+              {
+                lang: 'java',
+                title: 'Volatile Limitation: Lost Updates',
+                code: `public class VolatileLimitation {
+        private static volatile int count = 0;
+    
+        public static void main(String[] args) throws InterruptedException {
+            Runnable task = () -> {
+                for (int i = 0; i < 10000; i++) {
+                    count++; // NOT ATOMIC! Read-modify-write
+                }
+            };
+    
+            Thread t1 = new Thread(task);
+            Thread t2 = new Thread(task);
+    
+            t1.start(); t2.start();
+            t1.join(); t2.join();
+    
+            // Likely less than 20000 due to race conditions
+            System.out.println("Final count: " + count); 
+        }
+    }`
+              }
+            ],
+            flashcards: [
+              { q: 'What does the happens-before relationship guarantee?', a: 'It guarantees that the memory effects of the first action will be visible to the second action, and the first action is ordered before the second.' },
+              { q: 'State the Monitor Lock Rule.', a: 'An unlock on a monitor happens-before every subsequent lock on that exact same monitor.' },
+              { q: 'State the Volatile Variable Rule.', a: 'A write to a volatile variable happens-before every subsequent read of that exact same volatile variable.' },
+              { q: 'How does the JVM enforce volatile semantics at the hardware level?', a: 'By inserting memory barriers (fences) that prevent the CPU from reordering instructions and force caches to flush/invalidate.' },
+              { q: 'Is volatile sufficient for a shared counter?', a: 'No. Volatile does not provide atomicity for compound actions like incrementing (read-modify-write). You need atomics or synchronization.' },
+              { q: 'What is the Thread Start Rule?', a: 'A call to Thread.start() happens-before any action executed within the newly started thread.' },
+              { q: 'What is the transitive property of happens-before?', a: 'If A happens-before B, and B happens-before C, then A happens-before C. This is crucial for reasoning about visibility chains.' },
+              { q: 'Can a volatile variable act as a memory fence for other variables?', a: 'Yes. A volatile write prevents preceding writes from being reordered after it, ensuring their visibility to any thread that subsequently reads the volatile variable.' }
+            ]
+          },
+          {
+            title: 'synchronized, Locks & Atomics',
+            notes: `
+    ### Synchronized Intrinsic Locks
+    
+    Every object in Java has an intrinsic lock (a monitor). Using \`synchronized\` guarantees visibility, ordering, and atomicity. You can synchronize an entire method or a specific block.
+    
+    > [!SUCCESS]
+    > **Historical Context:** In early Java, \`synchronized\` was slow. Modern JVMs use techniques like **lock coarsening** (merging adjacent locks) and **biased locking** (optimizing for the case where only one thread acquires the lock repeatedly) to make it highly performant.
+    
+    ### ReentrantLock vs synchronized
+    
+    \`java.util.concurrent.locks.ReentrantLock\` implements the same semantics as \`synchronized\` but offers advanced features:
+    
+    | Mechanism | Reentrant | Interruptible | Condition support | When to prefer |
+    | --------- | --------- | ------------- | ----------------- | -------------- |
+    | **synchronized** | Yes | No | Single (wait/notify) | Default choice, simple scopes |
+    | **ReentrantLock** | Yes | Yes (\`lockInterruptibly\`) | Multiple (\`newCondition\`) | Timeout (\`tryLock\`), fairness, advanced signaling |
+    
+    ### ReadWriteLock & StampedLock
+    
+    For read-heavy workloads, a \`ReentrantReadWriteLock\` allows multiple readers concurrently but exclusive access for writers.
+    Java 8 introduced \`StampedLock\`, which provides **optimistic reads**. You grab a stamp, read data, and then validate the stamp. If a writer intervened, you fall back to a full read lock.
+    
+    ### java.util.concurrent.atomic
+    
+    The \`java.util.concurrent.atomic\` package (e.g., \`AtomicInteger\`, \`AtomicReference\`) provides lock-free, thread-safe operations on single variables.
+    
+    ### CAS (Compare-And-Swap) Internals
+    
+    Atomics are powered by **CAS (Compare-And-Swap)**, a hardware-level instruction.
+    A CAS operation takes three operands: a memory location, an expected old value, and a new value. It atomically updates the memory location to the new value *only if* the current value matches the expected old value.
+    
+    > [!WARNING]
+    > **The ABA Problem:** A thread reads value 'A', another thread changes it to 'B', then back to 'A'. The first thread's CAS succeeds, unaware of the intermediate changes. Use \`AtomicStampedReference\` to attach a version number and prevent this.
+            `,
+            code: [
+              {
+                lang: 'java',
+                title: 'CAS Loop with AtomicReference',
+                code: `import java.util.concurrent.atomic.AtomicReference;
+    
+    public class LockFreeStack<T> {
+        private static class Node<T> {
+            final T value;
+            Node<T> next;
+            Node(T value) { this.value = value; }
+        }
+    
+        private final AtomicReference<Node<T>> head = new AtomicReference<>();
+    
+        public void push(T value) {
+            Node<T> newHead = new Node<>(value);
+            Node<T> oldHead;
+            do {
+                oldHead = head.get();
+                newHead.next = oldHead;
+                // Atomically update head to newHead IF it is still oldHead
+            } while (!head.compareAndSet(oldHead, newHead));
+        }
+    }`
+              },
+              {
+                lang: 'java',
+                title: 'ReentrantLock with tryLock',
+                code: `import java.util.concurrent.locks.ReentrantLock;
+    import java.util.concurrent.TimeUnit;
+    
+    public class LockTimeoutDemo {
+        private final ReentrantLock lock = new ReentrantLock();
+    
+        public void doWork() {
+            try {
+                // Attempt to acquire lock for 2 seconds
+                if (lock.tryLock(2, TimeUnit.SECONDS)) {
+                    try {
+                        System.out.println("Lock acquired, doing work...");
+                    } finally {
+                        lock.unlock();
+                    }
+                } else {
+                    System.out.println("Could not acquire lock, timing out...");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }`
+              }
+            ],
+            flashcards: [
+              { q: 'What three guarantees does synchronized provide?', a: 'Visibility, ordering, and atomicity.' },
+              { q: 'What is lock coarsening?', a: 'A JVM optimization where multiple adjacent synchronized blocks using the same lock are merged into a single block to reduce locking overhead.' },
+              { q: 'What is biased locking?', a: 'A JVM optimization that heavily optimizes the acquisition of a lock by the same thread repeatedly, assuming contention is rare.' },
+              { q: 'Name three features of ReentrantLock not found in synchronized.', a: 'Interruptible lock acquisition (lockInterruptibly), timed lock acquisition (tryLock with timeout), and fairness (granting locks to the longest-waiting thread).' },
+              { q: 'When should you use a ReadWriteLock?', a: 'In scenarios where data is read frequently but modified infrequently, allowing multiple concurrent readers to improve throughput.' },
+              { q: 'What is optimistic reading in StampedLock?', a: 'Reading data without acquiring a full lock, then validating a stamp afterward. If validation fails (a write occurred), it falls back to a pessimistic lock.' },
+              { q: 'Explain how Compare-And-Swap (CAS) works.', a: 'It is a hardware instruction that updates a memory location to a new value only if the current value matches the expected old value, doing so atomically.' },
+              { q: 'What is the ABA problem and how is it solved?', a: 'It occurs when a value changes from A to B and back to A, tricking a CAS operation into succeeding. Solved using AtomicStampedReference, which pairs the reference with an integer version stamp.' }
+            ]
+          },
+          {
+            title: 'Safe Publication & Immutability',
+            notes: `
+    ### What is Safe Publication?
+    
+    **Safe publication** is the act of making an object visible to other threads in a way that guarantees they see the object in a fully initialized, consistent state. 
+    
+    ### Four Ways to Safely Publish
+    
+    | Publication Mechanism | Guarantee | Caveat |
+    | --------------------- | --------- | ------ |
+    | **\`volatile\` Field** | HB edge from write to read | Object must be effectively immutable |
+    | **Static Initializer** | JVM class loading is thread-safe | Done once at class loading |
+    | **\`final\` Field** | Guarantee of visibility after constructor | \`this\` must not escape constructor |
+    | **Concurrent Collection** | e.g., \`ConcurrentHashMap\` handles HB | Collection overhead |
+    
+    ### The Final Field Guarantee
+    
+    The JMM provides a special guarantee for \`final\` fields: once a constructor completes, any thread that acquires a reference to the newly created object is guaranteed to see the correctly initialized values of its \`final\` fields.
+    
+    > [!EU]
+    > The final field guarantee is what makes immutability so powerful in Java. An immutable object is inherently thread-safe and requires no synchronization to be shared across threads.
+    
+    ### Immutability Recipe
+    
+    To create a truly immutable object:
+    1. Make all fields \`final\` and \`private\`.
+    2. Do not provide setter methods.
+    3. If fields are mutable objects, make **defensive copies** in the constructor and getters.
+    4. Ensure the class itself is \`final\` so it cannot be overridden.
+    5. **Do not leak \`this\` during construction.**
+    
+    ### The this-escape Anti-pattern
+    
+    A **this-escape** occurs when an object makes its \`this\` reference available to another thread before its constructor has finished.
+    
+    > [!WARNING]
+    > Common culprits include starting a thread inside a constructor or registering an event listener inside a constructor. The escaping thread might see the object in an inconsistent, partially constructed state.
+    
+    ### String Immutability and Intern Pool
+    
+    \`java.lang.String\` is the quintessential immutable class. Because it is immutable, it can be safely shared across threads. This immutability also enables the **String Intern Pool**, where the JVM stores a single copy of identical string literals to save memory.
+            `,
+            code: [
+              {
+                lang: 'java',
+                title: 'The this-escape Bug and Fix',
+                code: `import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
+
+public class ThisEscapeDemo {
+    interface EventSource {
+        void registerListener(Consumer<String> listener);
+        void fire(String event);
     }
 
-    // ✅ BEST: Initialization-on-demand holder — zero synchronization overhead, lazy, correct.
-    // The JVM guarantees class initialisation is atomic (single-threaded by the ClassLoader).
-    static class HolderSingleton {
-        private final String config = "loaded";
-        private static class Holder { static final HolderSingleton INSTANCE = new HolderSingleton(); }
-        static HolderSingleton getInstance() { return Holder.INSTANCE; }
-        // Holder class is loaded lazily when getInstance() is first called.
-        // Class loading is synchronised by the JVM — no explicit locking needed.
+    static class SimpleEventSource implements EventSource {
+        private final List<Consumer<String>> listeners = new ArrayList<>();
+
+        @Override
+        public void registerListener(Consumer<String> listener) {
+            listeners.add(listener);
+        }
+
+        @Override
+        public void fire(String event) {
+            listeners.forEach(listener -> listener.accept(event));
+        }
     }
 
-    // ✅ SIMPLEST: enum (Josh Bloch Item 3) — serialization-safe, reflection-safe
-    enum EnumSingleton { INSTANCE;
-        public String getConfig() { return "loaded"; }
+    static class UnsafeEscape {
+        private int value;
+
+        UnsafeEscape(EventSource source) {
+            source.registerListener(event -> System.out.println("unsafe value=" + this.value));
+            this.value = 42;
+        }
+    }
+
+    static class SafePublication {
+        private final int value;
+
+        private SafePublication() {
+            this.value = 42;
+        }
+
+        static SafePublication createAndRegister(EventSource source) {
+            SafePublication instance = new SafePublication();
+            source.registerListener(event -> System.out.println("safe value=" + instance.value));
+            return instance;
+        }
     }
 
     public static void main(String[] args) {
-        System.out.println(CorrectSingleton.getInstance().getConfig());
-        System.out.println(HolderSingleton.getInstance().config);
-        System.out.println(EnumSingleton.INSTANCE.getConfig());
-        System.out.println("\\nFor interview: prefer Initialization-on-demand holder or enum.");
-        System.out.println("If asked about DCL, explain the volatile requirement and WHY.");
+        SimpleEventSource source = new SimpleEventSource();
+        new UnsafeEscape(source);
+        SafePublication.createAndRegister(source);
+        source.fire("created");
     }
 }`
-        },
-        {
-          lang: 'java',
-          title: 'False sharing and @Contended — cache-line performance trap',
-          code: `import java.util.concurrent.CountDownLatch;
-import java.lang.annotation.*;
+              },
+              {
+                lang: 'java',
+                title: 'Creating an Immutable Object',
+                code: `import java.util.Date;
 
-// False sharing: two variables on the SAME CPU cache line (64 bytes) are written
-// by different threads. Each write invalidates the other thread's cache line,
-// causing bouncing between CPU caches — massive throughput loss.
-public class FalseSharingDemo {
+public final class ImmutablePerson {
+    private final String name;
+    private final Date birthDate; // Date is mutable!
 
-    // ❌ False sharing: x and y likely share a cache line
-    static class Shared {
-        volatile long x = 0;
-        volatile long y = 0; // probably within 64 bytes of x -> false sharing!
+    public ImmutablePerson(String name, Date birthDate) {
+        this.name = name;
+        this.birthDate = new Date(birthDate.getTime());
     }
 
-    // ✅ Padded: force x and y onto separate cache lines (each field + 7 longs = 64 bytes)
-    // In production use: @jdk.internal.vm.annotation.Contended (JDK internal, needs --add-opens)
-    // or simply structure your data so hot fields are in separate objects.
-    static class Padded {
-        volatile long x = 0; long p1,p2,p3,p4,p5,p6,p7;  // padding
-        volatile long y = 0; long q1,q2,q3,q4,q5,q6,q7;  // separate cache line
+    public String getName() {
+        return name;
     }
 
-    static final int ITERATIONS = 50_000_000;
-
-    static long benchmark(boolean padded) throws InterruptedException {
-        Object obj = padded ? new Padded() : new Shared();
-        CountDownLatch start = new CountDownLatch(1);
-        CountDownLatch done  = new CountDownLatch(2);
-
-        Thread t1 = new Thread(() -> {
-            try { start.await(); } catch (InterruptedException e) { return; }
-            if (padded) { Padded p = (Padded) obj; for (int i=0;i<ITERATIONS;i++) p.x++; }
-            else        { Shared s = (Shared) obj; for (int i=0;i<ITERATIONS;i++) s.x++; }
-            done.countDown();
-        });
-        Thread t2 = new Thread(() -> {
-            try { start.await(); } catch (InterruptedException e) { return; }
-            if (padded) { Padded p = (Padded) obj; for (int i=0;i<ITERATIONS;i++) p.y++; }
-            else        { Shared s = (Shared) obj; for (int i=0;i<ITERATIONS;i++) s.y++; }
-            done.countDown();
-        });
-        t1.start(); t2.start();
-        long t = System.nanoTime();
-        start.countDown();
-        done.await();
-        return System.nanoTime() - t;
-    }
-
-    public static void main(String[] args) throws InterruptedException {
-        long shared = benchmark(false);
-        long padded  = benchmark(true);
-        System.out.printf("Shared  (false sharing): %,d ms%n", shared  / 1_000_000);
-        System.out.printf("Padded  (no false share): %,d ms%n", padded  / 1_000_000);
-        System.out.println("Padded can be 3-10x faster for write-heavy shared counters.");
-        System.out.println("java.util.concurrent.atomic.LongAdder uses this technique internally.");
-        System.out.println("@jdk.internal.vm.annotation.Contended pads automatically.");
+    public Date getBirthDate() {
+        return new Date(birthDate.getTime());
     }
 }`
-        }
-      ],
-      flashcards: [
-        { q: 'What does volatile guarantee and what does it NOT?', a: 'Guarantees visibility (no stale reads) and ordering (happens-before across the volatile access). Does NOT guarantee atomicity of compound operations like x++.' },
-        { q: 'Define the happens-before relationship.', a: 'A partial ordering: if A happens-before B, A\'s memory effects are visible to B. Edges include program order, unlock→lock on same monitor, volatile write→read, Thread.start, and Thread.join.' },
-        { q: 'Why must the double-checked-locking singleton field be volatile?', a: 'Without volatile, the JVM/CPU can reorder the constructor execution and the reference assignment, so another thread may observe a non-null but partially constructed instance. volatile ensures the constructor happens-before the reference write.' },
-        { q: 'List safe publication mechanisms.', a: 'Store the reference in a volatile field or AtomicReference, initialise it as a final field in the constructor, guard it with a lock, or place it in a thread-safe/concurrent collection.' },
-        { q: 'What is false sharing and how does it degrade performance?', a: 'When two variables on the same 64-byte CPU cache line are written by different threads, each write invalidates the other\'s cached line, causing constant cache coherence traffic. The fix is padding to force hot fields onto separate cache lines. LongAdder uses this internally.' },
-        { q: 'What is the initialization-on-demand holder singleton pattern and why is it safe without synchronisation?', a: 'A private static inner class holds the singleton instance as a static final field. The JVM guarantees class initialisation is single-threaded (done by the ClassLoader under synchronisation) so the instance is created safely and lazily on first access — zero explicit locking overhead.' },
-        { q: 'What happens-before edges does Thread.start() and Thread.join() establish?', a: 'Thread.start(): all actions before start() happen-before any action in the started thread. Thread.join(): all actions in the joined thread happen-before Thread.join() returns to the joining thread. These allow safe publication of data to new threads.' }
-      ]
-    },
+              }
+            ],
+            flashcards: [
+              { q: 'What does safe publication mean?', a: 'Making an object reference visible to other threads such that they are guaranteed to see the object in its fully initialized state.' },
+              { q: 'How does the JVM treat final fields regarding visibility?', a: 'The JMM guarantees that once a constructor finishes, any thread that sees the object will see the initialized values of its final fields.' },
+              { q: 'What is a "this-escape"?', a: 'It occurs when a constructor exposes the "this" reference to another thread before the constructor has fully completed execution.' },
+              { q: 'Why is starting a Thread inside a constructor dangerous?', a: 'It can cause a this-escape. The new thread might start executing and accessing the object\'s fields before the constructor finishes initializing them.' },
+              { q: 'What is the recommended fix for a this-escape caused by an event listener in a constructor?', a: 'Make the constructor private and use a public static factory method to first instantiate the object, and then register the listener.' },
+              { q: 'Why do you need defensive copies for mutable fields in an immutable object?', a: 'Because if you return a direct reference to a mutable field (like a Date or an array), the caller can modify the internal state of your ostensibly immutable object.' },
+              { q: 'Why must an immutable class be declared final?', a: 'To prevent subclasses from overriding methods and returning different values or exposing internal state, which would break the immutability contract.' },
+              { q: 'How does String immutability benefit memory usage?', a: 'It enables the String Intern Pool. Because Strings cannot change, the JVM can safely cache and reuse identical string literals across the entire application.' },
+              { q: 'Name four ways to safely publish an object.', a: '1. Store in a volatile field. 2. Store in an AtomicReference. 3. Initialize as a final field in the constructor. 4. Use a concurrent collection (like ConcurrentHashMap).' }
+            ]
+          }
+        ]
+      },
 
     {
       id: '1.4',
