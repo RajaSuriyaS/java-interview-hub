@@ -2668,33 +2668,251 @@ public class StampedLockDemo {
       title: 'Streams, Lambdas & Functional Java',
       hours: 3,
       notes: `
-# Streams, Lambdas & Functional Java
+# Streams, Lambdas & Functional Java — From Zero to Senior Level
 
-Java 8 streams express **what** to compute, not **how** to loop — declarative, composable, and parallelisable.
+## What Problem Do Streams Solve?
 
-## Anatomy of a stream
+Before Java 8, processing a list meant imperative loops:
+\`\`\`java
+// Find names of employees in ENG dept earning > 80000, sorted:
+List<String> result = new ArrayList<>();
+for (Employee e : employees) {
+    if ("ENG".equals(e.dept()) && e.salary() > 80000) {
+        result.add(e.name());
+    }
+}
+Collections.sort(result);
+\`\`\`
 
-\`source → intermediate ops (lazy) → terminal op (eager)\`
+With streams:
+\`\`\`java
+List<String> result = employees.stream()
+    .filter(e -> "ENG".equals(e.dept()) && e.salary() > 80000)
+    .map(Employee::name)
+    .sorted()
+    .toList();
+\`\`\`
 
-- **Intermediate** (\`map\`, \`filter\`, \`sorted\`, \`distinct\`, \`flatMap\`) return a new stream and are **lazy** — nothing runs until a terminal op.
-- **Terminal** (\`collect\`, \`reduce\`, \`forEach\`, \`count\`, \`findFirst\`) trigger execution and consume the stream (single-use).
+Streams express **what** you want, not **how** to loop. They're:
+- **Declarative** — describe the transformation, not the iteration
+- **Composable** — chain operations into pipelines
+- **Lazy** — no work happens until a terminal operation triggers it
+- **Potentially parallel** — \`.parallel()\` distributes work across ForkJoinPool
 
-## Collectors you should know
+---
 
-\`groupingBy\`, \`partitioningBy\`, \`toMap\`, \`joining\`, \`counting\`, \`summingInt\`, \`mapping\`, and downstream collectors for multi-level grouping.
+## The Stream Pipeline
 
-> [!TIP]
-> \`Optional\` models "maybe a value" — use \`map\`/\`flatMap\`/\`orElseGet\`/\`orElseThrow\`, never \`Optional.get()\` without \`isPresent()\`. Don't use \`Optional\` for fields or method parameters; it's a **return type** tool.
+Every stream pipeline has three parts:
+
+\`\`\`
+Source → [Intermediate ops...] → Terminal op
+  ↓              ↓                    ↓
+creates        lazy (build          eager (triggers
+the stream     the pipeline)        execution)
+\`\`\`
+
+**Sources:**
+\`\`\`java
+list.stream()                          // from Collection
+Arrays.stream(array)                   // from array
+Stream.of("a", "b", "c")              // from values
+Stream.iterate(0, n -> n + 1)         // infinite: 0, 1, 2, 3...
+Stream.generate(Math::random)          // infinite: random doubles
+IntStream.range(0, 10)                 // 0 to 9 (primitive stream)
+IntStream.rangeClosed(1, 10)           // 1 to 10
+Files.lines(Path.of("data.txt"))       // lines from file (lazy!)
+\`\`\`
+
+**Intermediate operations (lazy — return a new stream):**
+\`\`\`java
+.filter(pred)          // keep elements matching predicate
+.map(fn)               // transform each element (1-to-1)
+.flatMap(fn)           // transform and flatten (1-to-N) — e.g. List<List<T>> → flat stream
+.distinct()            // remove duplicates (uses equals/hashCode)
+.sorted()              // natural order; or .sorted(comparator)
+.limit(n)              // take first N elements
+.skip(n)               // skip first N elements
+.peek(consumer)        // debug: see elements without consuming the stream
+.mapToInt/Long/Double  // convert to primitive stream (no boxing overhead)
+\`\`\`
+
+**Terminal operations (eager — trigger execution, consume the stream):**
+\`\`\`java
+.collect(collector)    // gather into a collection/map/string
+.toList()              // Java 16+: collect to unmodifiable List
+.forEach(consumer)     // iterate (no return value)
+.count()               // count elements
+.findFirst()           // first element → Optional
+.findAny()             // any element (faster in parallel) → Optional
+.anyMatch(pred)        // true if any element matches
+.allMatch(pred)        // true if all elements match
+.noneMatch(pred)       // true if no elements match
+.min(comparator)       // Optional<T> minimum
+.max(comparator)       // Optional<T> maximum
+.reduce(identity, op)  // fold: accumulate into single value
+\`\`\`
 
 > [!WARNING]
-> **Parallel streams** use the common ForkJoinPool and only help for large, CPU-bound, splittable, side-effect-free work. They hurt for small data, I/O, or ordered/stateful operations, and one slow task can starve the shared pool. Measure; don't sprinkle \`.parallel()\`.
+> A stream can only be consumed ONCE. After a terminal operation, the stream is closed. Using it again throws \`IllegalStateException\`. If you need to iterate the same data twice, get a new stream each time.
 
-## Functional interfaces
+---
 
-\`Function\`, \`BiFunction\`, \`Predicate\`, \`Consumer\`, \`Supplier\`, \`UnaryOperator\` — plus method references (\`String::length\`, \`this::handle\`, \`Type::new\`).
+## Laziness: Why It Matters
+
+Intermediate operations don't execute until a terminal op is called. This enables **short-circuit evaluation**:
+
+\`\`\`java
+// Finding the first match in a list of 1 million employees:
+employees.stream()
+    .filter(e -> e.salary() > 100000)
+    .map(Employee::name)
+    .findFirst();   // ← stops after first match found, doesn't process the rest
+\`\`\`
+
+Without streams, you'd need to manually break out of loops. The pipeline only processes as many elements as needed.
+
+---
+
+## Collectors: The Most Powerful Terminal Operation
+
+\`Collectors\` produces rich results from streams. Know these by heart:
+
+\`\`\`java
+import static java.util.stream.Collectors.*;
+
+// Group by a field → Map<Key, List<Value>>
+Map<String, List<Employee>> byDept = employees.stream()
+    .collect(groupingBy(Employee::dept));
+
+// Group + downstream collector (average salary per dept)
+Map<String, Double> avgSalary = employees.stream()
+    .collect(groupingBy(Employee::dept, averagingInt(Employee::salary)));
+
+// Group + count per group
+Map<String, Long> countByDept = employees.stream()
+    .collect(groupingBy(Employee::dept, counting()));
+
+// Multi-level grouping (dept → manager → employees)
+Map<String, Map<String, List<Employee>>> nested = employees.stream()
+    .collect(groupingBy(Employee::dept, groupingBy(Employee::manager)));
+
+// Partition into two groups (true/false)
+Map<Boolean, List<Employee>> seniorJunior = employees.stream()
+    .collect(partitioningBy(e -> e.salary() >= 100000));
+
+// Join strings
+String names = employees.stream()
+    .map(Employee::name)
+    .collect(joining(", ", "[", "]"));  // [Alice, Bob, Charlie]
+
+// Convert to map (watch for duplicate key exception!)
+Map<String, Integer> nameSalary = employees.stream()
+    .collect(toMap(Employee::name, Employee::salary,
+                   (existing, dupe) -> existing)); // merge function for duplicates
+
+// Summarising statistics (count, sum, min, max, avg in one pass)
+IntSummaryStatistics stats = employees.stream()
+    .collect(summarizingInt(Employee::salary));
+System.out.println("Max: " + stats.getMax() + ", Avg: " + stats.getAverage());
+\`\`\`
+
+---
+
+## flatMap: One-to-Many Transformations
+
+\`flatMap\` transforms each element into a stream, then flattens all streams into one:
+
+\`\`\`java
+// Each order has multiple items — get all items across all orders:
+List<Item> allItems = orders.stream()
+    .flatMap(order -> order.items().stream())  // Order → Stream<Item>
+    .toList();
+
+// Split sentences into words:
+List<String> words = List.of("hello world", "foo bar").stream()
+    .flatMap(sentence -> Arrays.stream(sentence.split(" ")))
+    .toList();  // [hello, world, foo, bar]
+
+// Generate pairs:
+List<String> pairs = Stream.of("A", "B", "C").stream()
+    .flatMap(a -> Stream.of("1","2").map(b -> a + b))
+    .toList();  // [A1, A2, B1, B2, C1, C2]
+\`\`\`
+
+---
+
+## Optional: Null-Safe Value Handling
+
+\`Optional<T>\` is a container that either holds a value or is empty. It forces you to think about the absent case.
+
+\`\`\`java
+// Creating:
+Optional<String> opt = Optional.of("value");       // throws if null
+Optional<String> maybe = Optional.ofNullable(str); // empty if null
+Optional<String> empty = Optional.empty();
+
+// Using correctly:
+String result = opt
+    .filter(s -> s.length() > 3)
+    .map(String::toUpperCase)
+    .orElse("default");            // return "default" if empty
+
+opt.orElseGet(() -> computeDefault());  // lazy — only called if empty
+opt.orElseThrow(() -> new RuntimeException("missing")); // throw if empty
+opt.ifPresent(s -> System.out.println(s));  // run only if present
+opt.ifPresentOrElse(s -> use(s), () -> handleAbsent()); // Java 9+
+
+// Chaining Optionals that return Optional (flatMap, NOT map):
+Optional<String> city = findUser(id)
+    .flatMap(user -> findAddress(user))   // user → Optional<Address>
+    .map(addr -> addr.city());            // Address → String
+\`\`\`
+
+> [!WARNING]
+> Never call \`Optional.get()\` without checking \`isPresent()\` first — defeats the whole point. Never use Optional as a method parameter or field (use overloading or null instead). Optional is a **return type** for methods that might not produce a result.
+
+---
+
+## Parallel Streams: When to Use (and Not Use)
+
+\`\`\`java
+// Enable parallel processing:
+list.parallelStream().filter(...).map(...).collect(toList());
+// or: stream().parallel()
+\`\`\`
+
+Parallel streams split the work across \`ForkJoinPool.commonPool()\` (fixed at cores - 1 threads).
+
+**Parallel helps when ALL are true:**
+- Large data (usually >10,000 elements to overcome overhead)
+- CPU-bound work (not I/O — I/O blocks the shared pool)
+- Splittable source (ArrayList splits easily; LinkedList doesn't)
+- No shared mutable state
+- Order doesn't matter (or you use \`forEachOrdered\`)
+
+**Parallel hurts for:**
+- Small collections (overhead > benefit)
+- I/O operations (blocks the shared pool, starves other tasks)
+- Sequential/stateful operations (\`distinct\`, \`sorted\` need coordination)
+- Operations with locks (contention defeats parallelism)
+
+\`\`\`java
+// Dangerous: shared mutable state in parallel stream
+List<String> results = new ArrayList<>();  // NOT thread-safe!
+list.parallelStream().forEach(results::add);  // race condition!
+
+// Safe: collect to thread-safe result
+List<String> results = list.parallelStream().collect(toList());
+\`\`\`
 
 > [!EU]
-> A common live-coding task: *"Given a list of \`Employee\`, group by department and compute average salary."* One \`groupingBy(Employee::dept, averagingDouble(Employee::salary))\` shows fluency. Then discuss when an imperative loop is clearer or faster.
+> Live coding: *"Group employees by department and find the highest-paid in each."* Answer:
+> \`\`\`java
+> Map<String, Optional<Employee>> topByDept = employees.stream()
+>     .collect(groupingBy(Employee::dept, maxBy(Comparator.comparingInt(Employee::salary))));
+> \`\`\`
+> Then discuss: "I'd only use \`.parallel()\` here if the list were very large and I'd profiled it. The common pool has limited threads and I/O in the stream would block it."
 `,
       code: [
         {
@@ -2894,69 +3112,235 @@ public class StreamPerformanceDemo {
       title: 'Virtual Threads & Structured Concurrency',
       hours: 5,
       notes: `
-# Virtual Threads (Project Loom, JDK 21)
+# Virtual Threads & Structured Concurrency — From Zero to Senior Level
 
-**Virtual threads** are lightweight threads managed by the JVM, not the OS. You can run **millions** of them. They make the simple "thread-per-request" blocking style scale like async/reactive code — without the callback complexity.
+## The Problem: Why Traditional Threads Don't Scale
 
-## The problem they solve
+Imagine a web server handling 10,000 simultaneous requests. Each request:
+1. Receives HTTP request (fast)
+2. Queries the database (slow — 50ms wait)
+3. Calls an external API (slow — 100ms wait)
+4. Returns response (fast)
 
-A platform (OS) thread costs ~1 MB of stack and a kernel scheduling slot, so a server caps at a few thousand. To scale I/O-bound services we resorted to **reactive** programming (WebFlux, callbacks) — fast, but hard to read, debug, and profile.
+With **platform threads** (one-per-request model):
+- Each OS thread costs ~1MB of stack + kernel scheduling overhead
+- 10,000 threads = 10GB of RAM just for stacks
+- OS scheduler can't efficiently manage 10,000 threads
+- **Result: you can only handle ~1,000–2,000 concurrent requests practically**
 
-Virtual threads give you **synchronous, blocking code that scales**: when a virtual thread blocks on I/O, the JVM **unmounts** it from its carrier (platform) thread, freeing the carrier to run another virtual thread.
+The solution the industry adopted: **reactive/async programming** (WebFlux, CompletableFuture callbacks, RxJava). Instead of blocking threads, use callbacks — when I/O completes, continue processing.
 
-## Mounting & carriers
+**But reactive has a massive cost:**
+\`\`\`java
+// Readable blocking code (can't scale):
+User user = db.findUser(id);             // blocks here
+Order order = api.fetchOrder(user);      // blocks here
+return new Response(user, order);
+
+// Reactive equivalent (scales, but painful):
+return db.findUser(id)
+    .flatMap(user -> api.fetchOrder(user)
+        .map(order -> new Response(user, order))
+        .onErrorResume(e -> Mono.error(new ServiceException(e))))
+    .subscribeOn(Schedulers.boundedElastic())
+    .doOnError(log::error);
+\`\`\`
+
+Stack traces become useless, debugging is hard, every library must be reactive-aware.
+
+---
+
+## Virtual Threads: The Solution (Java 21, JEP 444)
+
+Virtual threads are **JVM-managed threads** that are NOT backed 1:1 by OS threads. Instead:
 
 \`\`\`
-Millions of virtual threads
-        |  mount/unmount on block
-        v
-Small pool of carrier (platform) threads  (≈ #CPU cores, a ForkJoinPool)
-        v
-            OS threads
+Your application creates MILLIONS of virtual threads:
+VT1  VT2  VT3  VT4  ... VT1,000,000
+
+The JVM multiplexes them onto a SMALL pool of platform threads (carriers):
+PT1  PT2  PT3  PT4  (≈ number of CPU cores, e.g. 8)
+
+Each platform thread is backed by ONE OS thread:
+OS1  OS2  OS3  OS4  OS5  OS6  OS7  OS8
 \`\`\`
 
-A blocking call (\`socket.read()\`, \`Thread.sleep\`, JDBC on a Loom-ready driver) **parks** the virtual thread and its stack is stored on the heap; the carrier moves on. When I/O completes, the virtual thread is rescheduled onto any free carrier.
-
-## Creating them
+**The magic: when a virtual thread blocks on I/O, it UNMOUNTS from its carrier**
 
 \`\`\`
-Thread.startVirtualThread(() -> handle(request));
-
-try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-    IntStream.range(0, 1_000_000)
-             .forEach(i -> executor.submit(() -> callService(i)));
-} // closes & joins all
+VT1 calls database query (blocking I/O):
+  1. VT1's stack is saved to HEAP (cheap — just memory copy)
+  2. VT1 is unmounted from PT1 (the carrier thread is free!)
+  3. PT1 immediately picks up VT2 and runs it
+  4. Database responds 50ms later
+  5. VT1 is rescheduled onto any free carrier (PT3, say)
+  6. VT1 resumes exactly where it left off
 \`\`\`
 
-> [!WARNING]
-> **Pinning.** A virtual thread cannot unmount while inside a \`synchronized\` block/method *if it blocks there*, or during a native (JNI) call — it stays **pinned** to its carrier, hurting scalability. Fix: replace \`synchronized\` guarding I/O with \`ReentrantLock\`. Diagnose with \`-Djdk.tracePinnedThreads=full\`. (JDK 24 removes most synchronized pinning, but interviewers still ask.)
+This means 1 platform thread can handle thousands of virtual threads that are mostly waiting on I/O. You get the scalability of reactive with the readability of blocking code.
 
-> [!TIP]
-> **Don't pool virtual threads.** They're cheap and disposable — create one per task. Pooling exists to amortise *expensive* platform threads; that rationale disappears. Likewise, don't cache them in \`ThreadLocal\` heavily (millions × ThreadLocal = memory blow-up). Loom adds **scoped values** as the replacement.
+---
 
-## Structured concurrency (preview)
+## Creating Virtual Threads
 
-\`StructuredTaskScope\` ties the lifetime of concurrent subtasks to a code block: if one fails, siblings are cancelled; the parent waits for all. This makes concurrent code as reasoned-about as sequential code (no leaked threads).
+\`\`\`java
+// Option 1: Direct creation (for single tasks)
+Thread.startVirtualThread(() -> handleRequest(req));
 
+// Option 2: Builder API (control name, daemon status)
+Thread vt = Thread.ofVirtual()
+    .name("request-handler-", 0)  // auto-numbered
+    .start(() -> handleRequest(req));
+
+// Option 3: Executor (most common in frameworks)
+try (ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor()) {
+    for (Request req : requests) {
+        exec.submit(() -> handleRequest(req));  // one VT per task
+    }
+}  // try-with-resources: waits for all tasks to complete
 \`\`\`
-try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
-    var user  = scope.fork(() -> fetchUser(id));
-    var order = scope.fork(() -> fetchOrder(id));
-    scope.join().throwIfFailed();          // wait, propagate first error
-    return new Response(user.get(), order.get());
+
+**Spring Boot 3.2+ enables virtual threads with one line:**
+\`\`\`yaml
+spring:
+  threads:
+    virtual:
+      enabled: true
+\`\`\`
+Every HTTP request then runs on a virtual thread. Zero code changes needed.
+
+---
+
+## Virtual Threads vs Platform Threads: Full Comparison
+
+| Aspect | Platform Thread | Virtual Thread |
+|--------|----------------|----------------|
+| Creation | Expensive (~1ms, OS call) | Cheap (~1μs, JVM heap alloc) |
+| Stack size | Fixed ~1MB (OS) | Grows/shrinks dynamically (heap) |
+| Max practical count | ~10,000 per JVM | Millions per JVM |
+| Blocking on I/O | Blocks OS thread | Unmounts, OS thread freed |
+| CPU-bound work | Good | Same — no benefit |
+| ThreadLocal | Safe | Works, but memory risk at scale |
+| Scheduling | OS preemptive | JVM cooperative (FIFO ForkJoinPool) |
+| Stack traces | Clean | Clean (same as blocking code) |
+| Debugging | Normal | Normal (same tools) |
+
+---
+
+## Pinning: The Critical Gotcha
+
+A virtual thread **cannot unmount** in two situations:
+1. Inside a \`synchronized\` block/method that blocks (calls I/O, sleep, etc.)
+2. During a native (JNI) method call
+
+When pinned, the virtual thread stays on its carrier platform thread, blocking it — just like an old platform thread. If all carriers are pinned, your server stalls.
+
+\`\`\`java
+// PINNING HAZARD: synchronized + blocking I/O
+synchronized (dbLock) {
+    result = db.query(sql);  // ← VT is PINNED here, carrier blocked for 50ms
+}
+
+// FIX: replace synchronized with ReentrantLock
+ReentrantLock dbLock = new ReentrantLock();
+dbLock.lock();
+try {
+    result = db.query(sql);  // ← VT unmounts here, carrier is FREE
+} finally {
+    dbLock.unlock();
 }
 \`\`\`
 
-## When NOT to use virtual threads
+**Diagnosing pinning:**
+\`\`\`
+-Djdk.tracePinnedThreads=full
+\`\`\`
+Logs a stack trace whenever a virtual thread is pinned. Fix each pinning site before going to production.
 
-- **CPU-bound** work — no I/O to unmount on; a bounded platform pool is correct.
-- Tasks that hold \`synchronized\` across blocking calls until you fix pinning.
+> [!TIP]
+> JDK 24 (2025) largely eliminates synchronized pinning at the JVM level. But until you upgrade, and for libraries that use \`synchronized\` internally (many JDBC drivers, some Kafka clients), pinning is still a real concern to monitor.
+
+---
+
+## Structured Concurrency (Java 21+ Preview, JEP 453)
+
+When you run multiple concurrent tasks, errors and cancellations become messy:
+\`\`\`java
+// Unstructured concurrency (old way) — leaks and races:
+Future<User> userFuture = exec.submit(() -> fetchUser(id));
+Future<Order> orderFuture = exec.submit(() -> fetchOrder(id));
+User user = userFuture.get();    // if this throws, orderFuture still runs!
+Order order = orderFuture.get(); // timeout, memory leak, zombie threads
+\`\`\`
+
+**Structured concurrency** ties task lifetimes to a scope block — like structured programming ties control flow to blocks:
+
+\`\`\`java
+// ShutdownOnFailure: if any subtask fails, cancel siblings
+try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    Subtask<User>  userTask  = scope.fork(() -> fetchUser(id));
+    Subtask<Order> orderTask = scope.fork(() -> fetchOrder(id));
+
+    scope.join()           // wait for both to complete OR any to fail
+         .throwIfFailed(); // rethrow first exception
+
+    // Both succeeded:
+    return new Response(userTask.get(), orderTask.get());
+}
+// scope closes: all subtasks guaranteed done, resources cleaned up
+
+// ShutdownOnSuccess: return first result, cancel the rest (fastest-wins):
+try (var scope = new StructuredTaskScope.ShutdownOnSuccess<String>()) {
+    scope.fork(() -> fetchFromPrimary());
+    scope.fork(() -> fetchFromReplica());
+    scope.join();
+    return scope.result();  // whichever returned first
+}
+\`\`\`
+
+Benefits:
+- No leaked threads — scope close guarantees all subtasks done
+- Clear cancellation — scope cancels all subtasks if any fails
+- Clean stack traces — subtask failures attributed to the parent scope
+- Readable — looks like sequential code, is concurrent
+
+---
+
+## Scoped Values: ThreadLocal Replacement for Virtual Threads
+
+With millions of virtual threads, \`ThreadLocal\` has a problem: if each VT stores a large object, you get millions of copies on the heap.
+
+**Scoped Values** (JDK 20+ preview, JEP 446) are an immutable, inheritable alternative:
+\`\`\`java
+// Declare:
+static final ScopedValue<User> CURRENT_USER = ScopedValue.newInstance();
+
+// Bind for a scope:
+ScopedValue.where(CURRENT_USER, authenticatedUser)
+           .run(() -> processRequest());  // user available within this scope
+
+// Read anywhere in the call tree:
+User user = CURRENT_USER.get();
+\`\`\`
+
+Unlike ThreadLocal: immutable (no accidental mutation), inheritable by child scopes, automatically cleaned up when scope exits, no remove() needed.
+
+---
+
+## When to Use Virtual Threads (and When Not To)
+
+**USE virtual threads for:**
+- I/O-bound work: HTTP calls, database queries, file I/O
+- Thread-per-request servers (Spring MVC, Servlet-based)
+- Any code that blocks and waits
+
+**DON'T use virtual threads for:**
+- CPU-bound work (pure computation, no I/O) — no benefit, just overhead
+- Code that holds \`synchronized\` locks across blocking calls (until fixed)
+- Work that uses ThreadLocal heavily (use Scoped Values instead)
 
 > [!EU]
-> **The 2024-2025 flagship topic.** Expect: *"What are virtual threads, how do they differ from platform threads, and what is pinning?"* Strong answer: lightweight JVM-scheduled threads that unmount on blocking I/O onto a small carrier pool, enabling millions of cheap thread-per-task units; pinning occurs in synchronized/native sections and is fixed with ReentrantLock. Then contrast with reactive: *"Loom gives reactive-like scalability with imperative readability."* This signals you track the modern JVM.
-
-> [!SUCCESS]
-> **Migration story interviewers love:** "We had a WebFlux service that was hard to debug. With JDK 21 we moved hot paths to virtual threads + plain blocking JDBC, kept p99 latency, and halved the code/onboarding cost." Concrete trade-off thinking wins offers.
+> The 2024–2025 flagship Java topic. Expect: *"What are virtual threads and how do they differ from platform threads?"* Strong answer: VTs are JVM-scheduled, unmount on blocking I/O (freeing the carrier), enabling millions of thread-per-task units with blocking code. Contrast: platform threads are OS-scheduled, 1MB stack, ~1ms creation, max ~10k. Then cover pinning (synchronized + I/O = blocked carrier, fix with ReentrantLock) and structured concurrency (scope ties task lifetimes, prevents leaks). Finally pivot: "Spring Boot 3.2 enables VTs with one config line — our team moved from WebFlux to plain @RestController and code readability improved dramatically with the same throughput."
 `,
       code: [
         {
@@ -3040,43 +3424,273 @@ public class StructuredDemo {
       title: 'Records, Sealed Types & Pattern Matching',
       hours: 3,
       notes: `
-# Records, Sealed Classes & Pattern Matching
+# Records, Sealed Types & Pattern Matching — From Zero to Senior Level
 
-Modern Java (16–21) adds **algebraic-data-type**-style modelling: immutable data carriers, closed hierarchies, and exhaustive pattern matching — making domain code safer and terser.
+## The Problem: Verbose, Error-Prone Data Classes
 
-## Records (16)
-
-Immutable, transparent data carriers. The compiler generates the canonical constructor, private final fields, accessors, \`equals\`, \`hashCode\`, \`toString\`.
-
-\`\`\`
-record Money(long minor, String currency) {
-    Money {                              // compact constructor: validation
-        if (minor < 0) throw new IllegalArgumentException("negative");
+Before Java 16, a simple data class required enormous boilerplate:
+\`\`\`java
+public final class Point {
+    private final int x;
+    private final int y;
+    public Point(int x, int y) { this.x = x; this.y = y; }
+    public int x() { return x; }
+    public int y() { return y; }
+    @Override public boolean equals(Object o) {
+        if (!(o instanceof Point)) return false;
+        Point p = (Point) o;
+        return x == p.x && y == p.y;
     }
+    @Override public int hashCode() { return Objects.hash(x, y); }
+    @Override public String toString() { return "Point[x=" + x + ", y=" + y + "]"; }
 }
 \`\`\`
 
-## Sealed classes/interfaces (17)
-
-Restrict **who** can implement/extend a type, giving the compiler a *closed* set for exhaustiveness.
-
+With **records** (Java 16):
+\`\`\`java
+record Point(int x, int y) {}  // ALL of the above, in one line
 \`\`\`
+
+---
+
+## Records: Deep Dive
+
+A record is an immutable, transparent data carrier. The compiler auto-generates:
+- Private \`final\` fields for each component
+- A **canonical constructor** with all components as parameters
+- Public **accessor methods** (named after components — \`x()\`, not \`getX()\`)
+- \`equals\` — compares all components
+- \`hashCode\` — based on all components
+- \`toString\` — \`Point[x=1, y=2]\` format
+
+\`\`\`java
+record Employee(String name, String dept, int salary) {}
+
+Employee e = new Employee("Alice", "ENG", 95000);
+e.name();    // "Alice" (accessor — no 'get' prefix)
+e.dept();    // "ENG"
+e.salary();  // 95000
+
+// equals/hashCode work correctly:
+new Employee("Alice", "ENG", 95000).equals(e);  // true
+Set<Employee> set = new HashSet<>();
+set.add(e);
+set.contains(new Employee("Alice", "ENG", 95000));  // true
+\`\`\`
+
+### Customising Records
+
+\`\`\`java
+record Money(long amount, String currency) {
+
+    // Compact constructor: runs before the auto-generated one (for validation)
+    Money {
+        if (amount < 0) throw new IllegalArgumentException("negative amount");
+        currency = currency.toUpperCase();  // can normalise in compact constructor
+    }
+
+    // Custom constructor (delegates to canonical):
+    Money(long amount) {
+        this(amount, "EUR");
+    }
+
+    // Additional methods are fine:
+    Money add(Money other) {
+        if (!currency.equals(other.currency)) throw new IllegalStateException("currency mismatch");
+        return new Money(amount + other.amount, currency);
+    }
+
+    // Static factory:
+    static Money euros(long cents) { return new Money(cents, "EUR"); }
+}
+\`\`\`
+
+### What Records CANNOT Do
+
+\`\`\`java
+// Records cannot:
+// 1. Extend another class (implicitly extend Record)
+// 2. Have mutable (non-final) fields
+// 3. Declare instance fields outside the record header
+// 4. Have an abstract modifier
+
+// Records CAN:
+// 1. Implement interfaces
+// 2. Have static fields and methods
+// 3. Have custom constructors (must delegate to canonical)
+// 4. Override accessor methods (e.g. to add defensive copying)
+// 5. Be generic: record Pair<A, B>(A first, B second) {}
+\`\`\`
+
+### Records as Map Keys and in Sets
+
+Because records auto-generate correct \`equals\`/\`hashCode\` from all components, they're perfect immutable map keys:
+
+\`\`\`java
+record CacheKey(String userId, String resource) {}
+Map<CacheKey, Data> cache = new HashMap<>();
+cache.put(new CacheKey("u1", "orders"), data);
+cache.get(new CacheKey("u1", "orders"));  // works perfectly — equal keys
+\`\`\`
+
+---
+
+## Sealed Classes and Interfaces: Closed Hierarchies
+
+A **sealed type** restricts which classes/interfaces can extend or implement it:
+
+\`\`\`java
+// Only Circle, Square, Rectangle can implement Shape
 sealed interface Shape permits Circle, Square, Rectangle {}
-record Circle(double r) implements Shape {}
+
+// Each permitted subtype must be one of:
+// - final (can't be extended further)
+// - sealed (further restricted)
+// - non-sealed (open to anyone — escape hatch)
+record Circle(double radius) implements Shape {}          // implicit final (records)
 record Square(double side) implements Shape {}
-record Rectangle(double w, double h) implements Shape {}
+non-sealed class Rectangle implements Shape {            // open — anyone can extend
+    final double width, height;
+    Rectangle(double w, double h) { width = w; height = h; }
+}
 \`\`\`
 
-## Pattern matching (16–21)
+**Why sealed types matter:** the compiler knows the **complete set** of subtypes at compile time. This enables **exhaustiveness checking** in switch expressions.
 
-- **\`instanceof\` patterns** — \`if (o instanceof String s) use(s);\` (no cast).
-- **Switch patterns + records deconstruction (21)** — match on type *and* destructure components, with **exhaustiveness** checked by the compiler when the type is sealed.
+### Modelling Domain Results with Sealed Types
 
-> [!TIP]
-> Sealed + records + switch patterns = **exhaustive, refactor-safe domain logic**. Add a new \`permits\` subtype and every non-exhaustive switch fails to compile — the compiler becomes your checklist. This is the idiomatic replacement for the Visitor pattern.
+This is the killer use case — a type-safe \`Result\` type (success OR failure):
+
+\`\`\`java
+sealed interface Result<T> permits Success, Failure {
+    record Success<T>(T value) implements Result<T> {}
+    record Failure<T>(String error, Throwable cause) implements Result<T> {}
+}
+
+// Usage:
+Result<Order> result = orderService.placeOrder(request);
+String message = switch (result) {
+    case Result.Success<Order>(Order o)  -> "Order " + o.id() + " placed";
+    case Result.Failure<Order>(String e, Throwable t) -> "Failed: " + e;
+    // NO default needed — compiler knows all cases are covered
+};
+\`\`\`
+
+---
+
+## Pattern Matching: Evolution from instanceof to switch
+
+### instanceof Pattern (Java 16)
+\`\`\`java
+// Old way:
+if (obj instanceof String) {
+    String s = (String) obj;  // redundant cast
+    doSomething(s);
+}
+
+// New way (Java 16+):
+if (obj instanceof String s) {  // binding variable 's' in scope
+    doSomething(s);             // no cast needed
+}
+
+// With guard (Java 21+):
+if (obj instanceof String s && s.length() > 5) {
+    System.out.println("Long string: " + s);
+}
+\`\`\`
+
+### Switch Patterns (Java 21, JEP 441)
+
+\`\`\`java
+// Old switch: only works on int, String, enum
+// New switch: works on ANY type with pattern matching
+
+static String describe(Object obj) {
+    return switch (obj) {
+        case Integer i when i < 0 -> "negative int: " + i;     // guarded pattern
+        case Integer i            -> "positive int: " + i;
+        case String s when s.isEmpty() -> "empty string";
+        case String s             -> "string of length " + s.length();
+        case null                 -> "null";                    // explicit null handling
+        default                   -> "something else: " + obj;
+    };
+}
+
+// Area calculator with sealed type (NO default needed):
+static double area(Shape s) {
+    return switch (s) {
+        case Circle(double r)          -> Math.PI * r * r;
+        case Square(double side)       -> side * side;
+        case Rectangle r               -> r.width * r.height;  // bind whole record
+        // Exhaustive — compiler verified. Adding a new Shape subtype
+        // causes a COMPILE ERROR here until you add the case. Safe refactoring!
+    };
+}
+\`\`\`
+
+### Record Deconstruction Patterns (Java 21)
+\`\`\`java
+record Point(int x, int y) {}
+record Line(Point start, Point end) {}
+
+Object obj = new Line(new Point(0, 0), new Point(3, 4));
+
+// Nested deconstruction:
+if (obj instanceof Line(Point(int x1, int y1), Point(int x2, int y2))) {
+    double length = Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+    System.out.println("Length: " + length);
+}
+\`\`\`
+
+---
+
+## Text Blocks (Java 15+)
+
+Multi-line string literals with automatic indentation stripping:
+
+\`\`\`java
+// Old way:
+String json = "{\\n" +
+    "  \\"name\\": \\"Alice\\",\\n" +
+    "  \\"age\\": 30\\n" +
+    "}";
+
+// Text block:
+String json = """
+    {
+      "name": "Alice",
+      "age": 30
+    }
+    """;  // trailing """ determines indentation to strip
+\`\`\`
+
+Perfect for SQL queries, JSON templates, HTML, multi-line strings. The indentation of the closing \`"""\` controls how much whitespace is stripped from each line.
+
+---
+
+## Enhanced Switch Expressions (Java 14+)
+
+\`\`\`java
+// Old switch (statement, fall-through bugs, verbose):
+int days;
+switch (month) {
+    case JANUARY: case MARCH: case MAY:
+        days = 31;
+        break;  // ← forget break → bug!
+    ...
+}
+
+// New switch expression (no fall-through, returns value):
+int days = switch (month) {
+    case JANUARY, MARCH, MAY, JULY, AUGUST, OCTOBER, DECEMBER -> 31;
+    case APRIL, JUNE, SEPTEMBER, NOVEMBER -> 30;
+    case FEBRUARY -> year % 4 == 0 ? 29 : 28;
+    // Exhaustive over enum — compiler checked
+};
+\`\`\`
 
 > [!EU]
-> Demonstrate you model domains with **immutability and closed hierarchies**, not anaemic mutable beans. Show a sealed \`Result\`/\`Either\` or a \`Shape\` area calculator with switch patterns. European product teams value type-safety and maintainability.
+> Model your domain with **records + sealed interfaces + switch patterns** to show you write modern, type-safe Java. A common senior question: "Show me how you'd model an HTTP response that's either a success with data or an error with a code and message." The \`sealed interface Result<T> permits Success<T>, Failure\` pattern with exhaustive switch is the modern Java answer — it's compile-time safe (no unchecked casts), no Visitor boilerplate, and the compiler enforces completeness.
 `,
       code: [
         {
