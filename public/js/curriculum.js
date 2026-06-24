@@ -856,6 +856,758 @@ public class GcTuningDemo {
         { q: 'Why set -Xms equal to -Xmx in production?', a: 'If Xms < Xmx, the JVM starts with a small heap and grows it on demand. Heap growth triggers a Full GC (to copy/compact) — an avoidable pause. Setting them equal allocates the full heap at startup, trading startup memory for stable, predictable runtime behaviour.' },
         { q: 'What is a "humongous object" in G1 GC?', a: 'An object that is 50%+ of a G1 region size (default ~1-32MB depending on heap). G1 allocates these directly in the old generation (Humongous regions), bypassing Eden. They can trigger mixed GCs early — if you see many humongous allocations, increase G1HeapRegionSize or redesign the allocation.' },
         { q: 'Name the four classic Java memory leak patterns.', a: '1) Unbounded static caches/collections that grow without eviction. 2) Listeners/observers registered but never deregistered. 3) ThreadLocals not cleared in thread-pool threads (pool threads are reused, values accumulate). 4) Inner classes/lambdas that capture references to large outer objects submitted to long-lived executors.' }
+      ],
+      sections: [
+        {
+          title: 'GC Fundamentals & Object Reachability',
+          notes: `
+### Why Garbage Collection Exists
+
+Garbage collection exists to separate **object lifetime** from **programmer memory bookkeeping**. Java code still allocates memory explicitly with \`new\`, but it does not explicitly release heap objects. The JVM watches the object graph, determines which objects can still affect the program, and reuses memory occupied by objects that can no longer be reached.
+
+Manual memory management fails in two opposite ways: freeing too late causes leaks, freeing too early causes use-after-free bugs. Java chooses a different contract: as long as an object is reachable through ordinary Java execution, it remains valid; once it is unreachable, the runtime may reclaim it at any later GC cycle.
+
+> [!TIP]
+> GC does not mean memory is infinite. It means unreachable memory is reclaimed automatically. Reachable-but-unused objects are still leaks.
+
+### Reference Counting vs Tracing
+
+Reference counting stores a counter on each object. Assigning a reference increments the counter; overwriting or clearing it decrements the counter. When the counter reaches zero, the object is immediately reclaimable. The model is simple, but it has two hard problems: it adds overhead to every reference update and it cannot reclaim cycles by itself.
+
+Tracing GC, used by modern JVM collectors, starts from a known set of always-live references called **GC roots** and follows references outward. Anything reached by this graph walk is live. Anything not reached is garbage, even if it is part of a cycle.
+
+\`\`\`
+GC Roots
+  |
+  +-- Thread stack local: orderService
+  |       |
+  |       +-- OrderService
+  |              |
+  |              +-- Repository
+  |                     |
+  |                     +-- ConnectionPool
+  |
+  +-- Static field: AppConfig.INSTANCE
+  |       |
+  |       +-- AppConfig
+  |
+  +-- JNI global reference
+          |
+          +-- NativeHandle
+
+Unreachable island:
+  CustomerDraft <----> AddressDraft
+       ^                    |
+       +--------------------+
+
+The island has references inside itself, but no path from a GC root.
+It is garbage.
+\`\`\`
+
+> [!SUCCESS]
+> The interview phrase is: **Java uses tracing reachability, not simple reference counting.** That is why cycles are collectible.
+
+### GC Roots
+
+GC roots are entry points into the heap. The exact implementation is JVM-specific, but common root categories are stable:
+
+- Local variables and operand stack values in active Java stack frames.
+- Static fields of loaded classes.
+- Active Java threads and objects used by JVM internals.
+- JNI local and global references held by native code.
+- Some monitor and synchronization structures while they are active.
+
+Because stack frames change constantly, a local variable can accidentally keep an object alive longer than expected. In tight memory demos you may see people set a large local variable to \`null\`; in production, better scoping and letting methods return is usually cleaner.
+
+### Strong, Soft, Weak, and Phantom Reachability
+
+Java exposes several reference strengths in \`java.lang.ref\`. They do not replace normal references; they let you express how aggressively the GC may clear a reference.
+
+| Reference Type | When collected | Java API | Use case |
+|----------------|----------------|----------|----------|
+| Strong | Not collected while reachable through a strong path | Ordinary object reference | Normal application ownership |
+| Soft | May be cleared under memory pressure after no strong path remains | \`java.lang.ref.SoftReference\` | Memory-sensitive caches, though Caffeine is usually better |
+| Weak | Cleared at the next suitable GC after no strong/soft path remains | \`java.lang.ref.WeakReference\`, \`WeakHashMap\` | Canonical maps, metadata keyed by object identity |
+| Phantom | Enqueued after final reachability is lost and finalization is complete | \`java.lang.ref.PhantomReference\` | Post-mortem cleanup of off-heap/native resources |
+
+> [!WARNING]
+> Soft references are not a high-quality cache policy. They are controlled by GC heuristics, not product requirements. Prefer bounded caches with size and time eviction.
+
+### Object Lifecycle
+
+An object usually follows this path:
+
+1. Allocation request reaches the JVM.
+2. Memory is reserved, often by a fast pointer bump in a thread-local allocation buffer.
+3. The object header and fields are initialized.
+4. Constructor code runs.
+5. The object becomes reachable from some variable, field, array slot, or collection.
+6. Later, references are overwritten, scopes exit, collections remove entries, or owners are collected.
+7. Once no GC-root path reaches it, the object is eligible for collection.
+8. A future GC reclaims or evacuates memory.
+
+Eligibility is not collection. \`System.gc()\` is only a request, and modern production JVMs may ignore or delay it depending on flags and collector.
+
+### Minor, Major, and Full GC
+
+A **Minor GC** usually collects the young generation. It is frequent and normally short because most new objects die quickly.
+
+A **Major GC** is commonly used to mean a collection involving the old generation. The phrase is less precise across collectors and log formats than developers think.
+
+A **Full GC** means a broad stop-the-world collection across the heap and often class metadata. Full GCs are expensive because they tend to inspect and compact a large live set.
+
+> [!EU]
+> A common European interview prompt is: "If two objects reference each other, can Java collect them?" The senior answer is yes, if neither is reachable from a GC root. Reachability, not reference count, decides liveness.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Reachability and Cycles',
+              code: `public class ReachabilityCycleDemo {
+    static class Node {
+        final String name;
+        Node next;
+
+        Node(String name) {
+            this.name = name;
+        }
+
+        @Override
+        protected void finalize() throws Throwable {
+            System.out.println("Collected " + name);
+        }
+    }
+
+    private static void createUnreachableCycle() {
+        Node a = new Node("A");
+        Node b = new Node("B");
+        a.next = b;
+        b.next = a;
+        System.out.println("Created cycle: " + a.name + " <-> " + b.name);
+    }
+
+    public static void main(String[] args) throws Exception {
+        createUnreachableCycle();
+
+        for (int i = 0; i < 5; i++) {
+            byte[] pressure = new byte[4 * 1024 * 1024];
+            pressure[0] = 1;
+            System.gc();
+            Thread.sleep(200);
+        }
+
+        System.out.println("Cycle had internal references, but no root path.");
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'WeakReference and ReferenceQueue',
+              code: `import java.lang.ref.ReferenceQueue;
+import java.lang.ref.WeakReference;
+
+public class WeakReferenceQueueDemo {
+    static class BigObject {
+        private final byte[] data = new byte[8 * 1024 * 1024];
+        private final String id;
+
+        BigObject(String id) {
+            this.id = id;
+        }
+
+        @Override
+        public String toString() {
+            return id + " bytes=" + data.length;
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        ReferenceQueue<BigObject> queue = new ReferenceQueue<>();
+        BigObject strong = new BigObject("payload-1");
+        WeakReference<BigObject> weak = new WeakReference<>(strong, queue);
+
+        System.out.println("Before clearing strong ref: " + weak.get());
+        strong = null;
+
+        while (weak.get() != null) {
+            byte[] pressure = new byte[2 * 1024 * 1024];
+            pressure[0] = 7;
+            System.gc();
+            Thread.sleep(100);
+        }
+
+        System.out.println("Weak reference cleared: " + (weak.get() == null));
+        System.out.println("Reference enqueued: " + (queue.remove(1000) == weak));
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What makes an object live in Java?', a: 'An object is live if it is reachable by following references from at least one GC root.' },
+            { q: 'Why does tracing GC collect cycles?', a: 'It marks objects reachable from roots. A cycle with no root path is unmarked and therefore collectible.' },
+            { q: 'Name four common GC root categories.', a: 'Thread stack locals, static fields of loaded classes, JNI references, and active threads/JVM internal references.' },
+            { q: 'What is the difference between eligible for GC and collected?', a: 'Eligible means unreachable. Collected means a later GC cycle actually reclaimed or moved the memory.' },
+            { q: 'When is a weak reference cleared?', a: 'After the referent has no strong or soft path, a suitable GC may clear the weak reference and enqueue it if a queue was supplied.' },
+            { q: 'What is a phantom reference for?', a: 'It supports cleanup after an object is no longer reachable, commonly for native or off-heap resources.' },
+            { q: 'Why are soft references risky for caches?', a: 'They are cleared according to GC memory-pressure heuristics, not predictable business eviction rules.' },
+            { q: 'What is usually collected by a Minor GC?', a: 'The young generation: Eden and one survivor space, depending on collector implementation.' },
+            { q: 'What makes Full GC dangerous for latency?', a: 'It is usually stop-the-world and may inspect, compact, and update references across a large heap.' },
+            { q: 'What is the key weakness of reference counting?', a: 'It cannot reclaim isolated cycles without extra cycle detection and adds overhead to reference updates.' }
+          ]
+        },
+        {
+          title: 'Generational GC & Collection Mechanics',
+          notes: `
+### Weak Generational Hypothesis
+
+The weak generational hypothesis says **most objects die young**. Web requests, JSON parsing, validation objects, temporary collections, builders, streams, and logging strings often live for milliseconds. A much smaller set, such as caches, Spring singletons, connection pools, and session state, survives for a long time.
+
+Generational collectors exploit that shape by collecting young memory often and old memory less often. Young collections are cheap because the collector copies the few survivors instead of processing every dead temporary object individually.
+
+### Heap Generations
+
+Classic generational layouts split the heap into Eden, two survivor spaces, and Old/Tenured. New objects usually start in Eden. Live objects bounce between survivor spaces and age. Objects that survive enough young collections, or do not fit in survivor space, are promoted to Old.
+
+\`\`\`
+                         promotion
+                            |
+                            v
+┌────────────────────────────────────────────────────────────────┐
+│                         JAVA HEAP                              │
+│                                                                │
+│  Young Generation                                              │
+│  ┌──────────────────┐   Young GC   ┌────────┐   age++          │
+│  │ Eden             │ -----------> │  S0    │ <------┐         │
+│  │ new objects      │              └────────┘        │         │
+│  └──────────────────┘                  |             │         │
+│                                        v             │         │
+│                                    ┌────────┐ -------┘         │
+│                                    │  S1    │                  │
+│                                    └────────┘                  │
+│                                        |                       │
+│                                        | age threshold / space  │
+│                                        v                       │
+│  Old Generation / Tenured          ┌───────────────────────┐   │
+│  long-lived objects                │ promoted objects      │   │
+│                                    └───────────────────────┘   │
+└────────────────────────────────────────────────────────────────┘
+\`\`\`
+
+> [!TIP]
+> Survivor spaces are not both active in the same way during a young collection. One is the source, one is the destination, and then they swap roles.
+
+### Promotion Lifecycle
+
+The happy path is:
+
+1. Thread allocates in Eden.
+2. Eden fills.
+3. Young GC pauses application threads.
+4. GC scans roots plus old-to-young references.
+5. Live young objects are copied into the empty survivor space.
+6. Their age is incremented.
+7. Objects above the tenuring threshold, or objects that cannot fit in survivor space, move to Old.
+8. Eden and the old survivor space become empty allocation space.
+
+This copying design makes young GC fast when mortality is high. The cost is proportional to live young objects, not total young garbage.
+
+### Card Tables and Remembered Sets
+
+A young GC cannot scan the entire old generation every time just to find references into young objects. That would destroy the benefit of generations. Instead, JVMs use write barriers and metadata structures.
+
+A **card table** divides the heap into small cards, often a few hundred bytes. When application code stores a reference into an object field, a write barrier marks the corresponding card dirty. During young GC, the collector scans only dirty cards that might contain Old-to-Young references.
+
+G1 generalizes this idea with **remembered sets** per region. Each region tracks which other regions may contain references into it. This lets G1 collect selected regions without scanning the whole heap.
+
+> [!WARNING]
+> Old-to-young references are why write barriers exist. The JVM adds a tiny cost to reference writes so young GC can remain fast.
+
+### Allocation Fast Path: TLAB
+
+Most Java allocations do not call a slow allocator. Each thread gets a **Thread-Local Allocation Buffer** (TLAB), a small private chunk of Eden. Allocation is usually a pointer bump:
+
+1. Check whether enough bytes remain in the thread's TLAB.
+2. Reserve bytes by moving the TLAB pointer.
+3. Initialize object header and fields.
+
+No lock is needed on the fast path because the TLAB belongs to one thread. When the TLAB is full, the thread asks the JVM for another chunk or triggers allocation slow-path logic.
+
+### Promotion Failure and Full GC
+
+Promotion fails when live young objects need to move to Old but Old has insufficient contiguous or available space. Depending on collector and JVM version, this can trigger a costly fallback, often a Full GC.
+
+Common causes:
+
+- Old generation is too small for the live data set.
+- Allocation rate is high and objects survive longer than expected.
+- Survivor spaces are too small, causing premature promotion.
+- Humongous or large objects fragment old regions.
+- A real memory leak keeps old objects reachable.
+
+| GC event | What is collected | Thread pause | Typical frequency |
+|----------|-------------------|--------------|-------------------|
+| Young / Minor GC | Eden plus one survivor space; live objects copied to survivor or old | Stop-the-world, usually short | Frequent |
+| Mixed GC in G1 | Young regions plus selected old regions with high garbage | Stop-the-world evacuation pause | Periodic after concurrent marking |
+| Major GC | Old generation involvement; meaning varies by collector/logs | Often stop-the-world or partly concurrent | Less frequent |
+| Full GC | Whole heap and often class metadata | Stop-the-world, usually longest | Rare; a warning sign in services |
+
+> [!SUCCESS]
+> For interviews, connect mechanics to cost: young GC is cheap because dead objects cost almost nothing; old/full GC is expensive because live objects dominate the work.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Allocation Pressure and Young GC',
+              code: `import java.util.ArrayList;
+import java.util.List;
+
+public class YoungGcPressureDemo {
+    public static void main(String[] args) {
+        List<byte[]> survivors = new ArrayList<>();
+
+        for (int i = 1; i <= 10_000; i++) {
+            byte[] requestBuffer = new byte[32 * 1024];
+            requestBuffer[0] = (byte) i;
+
+            if (i % 250 == 0) {
+                survivors.add(new byte[128 * 1024]);
+            }
+
+            if (survivors.size() > 20) {
+                survivors.subList(0, 5).clear();
+            }
+        }
+
+        System.out.println("Survivor objects retained: " + survivors.size());
+        System.out.println("Run with: -Xms64m -Xmx64m -Xlog:gc*");
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Old-to-Young Reference Shape',
+              code: `import java.util.ArrayList;
+import java.util.List;
+
+public class OldToYoungReferenceDemo {
+    static final class Registry {
+        private final List<byte[]> recentPayloads = new ArrayList<>();
+
+        void remember(byte[] payload) {
+            recentPayloads.add(payload);
+            if (recentPayloads.size() > 100) {
+                recentPayloads.remove(0);
+            }
+        }
+
+        int size() {
+            return recentPayloads.size();
+        }
+    }
+
+    private static final Registry LONG_LIVED_REGISTRY = new Registry();
+
+    public static void main(String[] args) {
+        for (int i = 0; i < 50_000; i++) {
+            byte[] youngObject = new byte[8 * 1024];
+            LONG_LIVED_REGISTRY.remember(youngObject);
+        }
+
+        System.out.println("Long-lived registry points to young payloads.");
+        System.out.println("Registry size: " + LONG_LIVED_REGISTRY.size());
+        System.out.println("A JVM write barrier tracks these old-to-young stores.");
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What does the weak generational hypothesis say?', a: 'Most allocated objects become unreachable quickly, so young memory should be collected frequently and cheaply.' },
+            { q: 'Where do most new Java objects start?', a: 'In Eden, usually inside the allocating thread\'s TLAB.' },
+            { q: 'What happens to objects that survive young GC repeatedly?', a: 'They age in survivor spaces and are eventually promoted to the old generation.' },
+            { q: 'Why are two survivor spaces used?', a: 'Copying collectors move live objects from one survivor space to the other, then clear the source space.' },
+            { q: 'What is a TLAB?', a: 'A Thread-Local Allocation Buffer: a private Eden chunk that lets a thread allocate with a fast pointer bump.' },
+            { q: 'Why does young GC need remembered sets or card tables?', a: 'To find old-generation objects that reference young objects without scanning the entire old generation.' },
+            { q: 'What is a write barrier?', a: 'Small JVM-inserted code that records reference writes, such as marking a card dirty.' },
+            { q: 'What is promotion failure?', a: 'A young GC has live objects to move to Old, but Old does not have enough suitable space.' },
+            { q: 'Why can survivor spaces being too small hurt performance?', a: 'Objects may promote prematurely, increasing old-generation pressure and Full GC risk.' },
+            { q: 'What usually makes a Full GC appear in a healthy service?', a: 'It should be rare; if frequent, suspect old-gen pressure, allocation bursts, fragmentation, or a memory leak.' }
+          ]
+        },
+        {
+          title: 'Modern GC Algorithms: G1, ZGC, Shenandoah',
+          notes: `
+### Serial and Parallel GC
+
+Serial GC is simple: one GC thread performs collection work, and application threads stop during collection. It is still relevant for tiny heaps, command-line tools, small containers with one CPU, and teaching.
+
+Parallel GC uses multiple GC threads and optimizes throughput. It can still produce long stop-the-world pauses, but it is excellent when total work completed matters more than tail latency: batch processing, ETL, simulations, and offline jobs.
+
+### G1 GC
+
+G1, the default collector since Java 9, divides the heap into equal-sized regions. A region can be Eden, Survivor, Old, or Humongous. G1 tracks remembered sets for regions and uses concurrent marking to estimate where garbage is concentrated. It then performs evacuation pauses that collect young regions and, after marking, selected old regions. Those old-region evacuations are called mixed collections.
+
+\`\`\`
+G1 region grid
+
+┌────┬────┬────┬────┬────┬────┐
+│ E  │ E  │ S  │ O  │ O  │ H  │
+├────┼────┼────┼────┼────┼────┤
+│ E  │ O  │ O  │ E  │ S  │ O  │
+├────┼────┼────┼────┼────┼────┤
+│ H  │ H  │ O  │ E  │ O  │ F  │
+└────┴────┴────┴────┴────┴────┘
+
+E = Eden, S = Survivor, O = Old, H = Humongous, F = Free
+
+Young pause: evacuate E/S regions
+Mixed pause: evacuate E/S plus selected O regions with high garbage
+\`\`\`
+
+\`-XX:MaxGCPauseMillis=200\` gives G1 a pause target. It is not a promise. G1 uses it to decide how much collection work to attempt per pause. Lower targets usually mean smaller, more frequent pauses and potentially lower throughput.
+
+### ZGC
+
+ZGC is designed for very low latency. It performs marking, relocation, and reference remapping concurrently with the application. Pauses are mostly for root processing and coordination, so pause time is designed to stay tiny even when heaps are very large.
+
+Key ideas:
+
+- **Colored pointers** store GC state in unused pointer bits.
+- **Load barriers** run when application code loads object references.
+- **Concurrent relocation** moves objects while application threads continue.
+
+> [!TIP]
+> ZGC trades some CPU and memory overhead for dramatically lower pause times. It is a latency choice, not a magic throughput booster.
+
+### Shenandoah
+
+Shenandoah has similar latency goals to ZGC: concurrent marking and concurrent compaction. It uses forwarding metadata, commonly explained through Brooks forwarding pointers, so references can be resolved correctly while objects are being moved.
+
+Shenandoah is attractive when you want low pauses in OpenJDK distributions that include it and you are comfortable validating collector behavior for your workload.
+
+### Epsilon GC
+
+Epsilon is the no-op collector. It allocates memory but never reclaims it. When the heap is full, the JVM exits with \`OutOfMemoryError\`.
+
+Why use it?
+
+- Allocation benchmarking without GC noise.
+- Short-lived jobs where the process ends before memory fills.
+- Testing application behavior on OOM.
+
+> [!WARNING]
+> Epsilon is not for normal services. It is a measurement and testing tool.
+
+### Collector Comparison
+
+| Algorithm | Stop-the-world | Heap size sweet spot | Java version | Enable flag | Best for |
+|-----------|----------------|----------------------|--------------|-------------|----------|
+| Serial GC | Yes, single-threaded | Tiny heaps, single CPU | All modern Java | \`-XX:+UseSerialGC\` | CLI tools, small containers, demos |
+| Parallel GC | Yes, parallel workers | Small to large throughput heaps | All modern Java | \`-XX:+UseParallelGC\` | Batch jobs and throughput-first workloads |
+| G1 GC | Short evacuation pauses plus concurrent marking | Medium to large heaps, commonly 4GB-64GB | Default since Java 9 | \`-XX:+UseG1GC\` | General services needing balanced latency |
+| ZGC | Very short pauses; most work concurrent | Large heaps and low-latency services | Production since Java 15 | \`-XX:+UseZGC\` | Tail-latency-sensitive APIs, large live sets |
+| Shenandoah | Very short pauses; most work concurrent | Medium to large heaps | Production in many OpenJDK builds since Java 15 era | \`-XX:+UseShenandoahGC\` | Low-latency OpenJDK workloads |
+| Epsilon | No collection pauses because it never collects | Must fit entire run in heap | Java 11+ | \`-XX:+UnlockExperimentalVMOptions -XX:+UseEpsilonGC\` | Allocation tests, OOM behavior tests |
+
+> [!EU]
+> If asked "Which collector should we use?", start with requirements: pause SLO, heap size, allocation rate, CPU budget, Java version, and observability. Collector choice is an engineering trade, not a badge.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Collector and Heap Introspection',
+              code: `import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryPoolMXBean;
+
+public class GcIntrospectionDemo {
+    public static void main(String[] args) {
+        System.out.println("Garbage collectors:");
+        for (GarbageCollectorMXBean bean : ManagementFactory.getGarbageCollectorMXBeans()) {
+            System.out.println("  " + bean.getName());
+            System.out.println("    collections: " + bean.getCollectionCount());
+            System.out.println("    time ms:     " + bean.getCollectionTime());
+        }
+
+        System.out.println();
+        System.out.println("Memory pools:");
+        for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+            System.out.println("  " + pool.getName() + " -> " + pool.getType());
+        }
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Latency Probe for Collector Experiments',
+              code: `import java.util.ArrayList;
+import java.util.List;
+
+public class CollectorLatencyProbe {
+    public static void main(String[] args) {
+        List<byte[]> retained = new ArrayList<>();
+        long worstMicros = 0;
+
+        for (int i = 0; i < 200_000; i++) {
+            long before = System.nanoTime();
+
+            byte[] data = new byte[4 * 1024];
+            data[0] = (byte) i;
+            if (i % 500 == 0) {
+                retained.add(new byte[128 * 1024]);
+            }
+            if (retained.size() > 200) {
+                retained.subList(0, 50).clear();
+            }
+
+            long elapsedMicros = (System.nanoTime() - before) / 1_000;
+            worstMicros = Math.max(worstMicros, elapsedMicros);
+        }
+
+        System.out.println("Retained chunks: " + retained.size());
+        System.out.println("Worst loop latency in microseconds: " + worstMicros);
+        System.out.println("Compare runs with G1, ZGC, Shenandoah, or Parallel GC plus -Xlog:gc*.");
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'When is Serial GC still reasonable?', a: 'Tiny heaps, single-CPU environments, short CLI tools, and educational demos.' },
+            { q: 'What is Parallel GC optimized for?', a: 'Throughput: minimizing total time spent in GC rather than minimizing individual pause latency.' },
+            { q: 'How is G1 heap layout different from classic generations?', a: 'G1 uses many equal-sized regions dynamically labeled Eden, Survivor, Old, Humongous, or Free.' },
+            { q: 'What is a G1 mixed collection?', a: 'A pause that collects young regions plus selected old regions with high reclaimable garbage.' },
+            { q: 'What does -XX:MaxGCPauseMillis do for G1?', a: 'It gives G1 a pause-time goal used to size collection work; it is not a hard guarantee.' },
+            { q: 'How does ZGC keep pauses very small?', a: 'It performs most marking, relocation, and remapping concurrently using colored pointers and load barriers.' },
+            { q: 'What is a load barrier?', a: 'JIT-inserted logic that runs when reading references, allowing a concurrent collector to fix or validate references.' },
+            { q: 'How does Shenandoah compact concurrently?', a: 'It uses forwarding metadata/read barriers so objects can move while application threads continue.' },
+            { q: 'What is Epsilon GC?', a: 'A no-op collector that never reclaims memory and fails with OOM when the heap fills.' },
+            { q: 'What should drive GC collector selection?', a: 'Latency SLO, heap size, live set, allocation rate, CPU budget, Java version, and operational tooling.' }
+          ]
+        },
+        {
+          title: 'GC Tuning & Diagnosing Leaks',
+          notes: `
+### Enable and Read GC Logs
+
+Modern Java uses unified logging. A strong default for production investigation is:
+
+\`\`\`
+-Xlog:gc*:file=gc.log:time,uptime,level,tags:filecount=5,filesize=20m
+\`\`\`
+
+Read logs for patterns, not isolated lines:
+
+- Are pauses correlated with latency spikes?
+- Are young collections too frequent?
+- Is old occupancy climbing after each cycle?
+- Do Full GCs appear?
+- Is G1 reporting evacuation failure, humongous allocations, or to-space exhaustion?
+
+> [!TIP]
+> Always align GC log timestamps with application latency graphs. The best GC diagnosis starts by proving whether GC and the user-visible symptom happen at the same time.
+
+### Key Metrics
+
+Pause time is the wall-clock time application threads are stopped. Throughput is the percentage of total time not spent in GC. Allocation rate measures how quickly the app creates objects. Promotion rate measures how quickly young survivors move to Old.
+
+A service can have short pauses but terrible throughput if it collects constantly. Another service can have excellent throughput but unacceptable p99.9 latency because of rare long pauses.
+
+### Tools
+
+- **GCViewer**: local visual inspection of GC logs.
+- **GCEasy**: hosted GC log analysis with useful summaries.
+- **VisualVM**: heap, sampler, thread, and heap-dump inspection.
+- **JFR/JMC**: production-safe events, allocation profiling, pauses, safepoints.
+- **MAT**: strong heap-dump dominator tree and leak-suspects reports.
+
+### Diagnosing Memory Leaks
+
+Java leaks are usually reachable-but-dead-to-the-business objects. The workflow is:
+
+1. Enable GC logs and confirm old generation grows over time.
+2. Capture a heap dump near high occupancy:
+   \`jmap -dump:format=b,file=heap.hprof <pid>\`
+3. Open the dump in MAT or VisualVM.
+4. Sort by retained size in the dominator tree.
+5. Follow the reference chain back to a GC root.
+6. Fix the owner that keeps stale objects reachable.
+
+> [!WARNING]
+> Heap dumps can contain customer data, tokens, passwords, and payloads. Treat them as production secrets.
+
+### Common Leak Patterns
+
+Static collections leak when they grow without eviction. Listeners leak when registered observers are never removed. ThreadLocal leaks happen in pools because the thread outlives the request. Classloader leaks happen when a parent or global object keeps a reference to a class, object, thread, ThreadLocal, or static field from an application classloader.
+
+### G1 Tuning
+
+Start with sizing and evidence:
+
+- Set \`-Xms\` and \`-Xmx\` equal for stable services.
+- Choose a heap large enough for live data plus allocation headroom.
+- Use \`-XX:MaxGCPauseMillis\` as a goal, not a command.
+- Avoid over-tuning young generation unless logs show a clear reason.
+- Watch humongous allocations; adjust region size or allocation shape if needed.
+
+| Flag | Description | Example value |
+|------|-------------|---------------|
+| \`-Xms\` | Initial heap size | \`-Xms4g\` |
+| \`-Xmx\` | Maximum heap size | \`-Xmx4g\` |
+| \`-XX:+UseG1GC\` | Enables G1 explicitly | \`-XX:+UseG1GC\` |
+| \`-XX:MaxGCPauseMillis\` | Target pause goal for G1 | \`-XX:MaxGCPauseMillis=150\` |
+| \`-XX:G1HeapRegionSize\` | G1 region size; useful for humongous allocation tuning | \`-XX:G1HeapRegionSize=8m\` |
+| \`-XX:InitiatingHeapOccupancyPercent\` | Old occupancy percent that starts concurrent marking | \`-XX:InitiatingHeapOccupancyPercent=30\` |
+| \`-XX:ConcGCThreads\` | Threads for concurrent GC phases | \`-XX:ConcGCThreads=4\` |
+| \`-XX:ParallelGCThreads\` | Worker threads for parallel pause phases | \`-XX:ParallelGCThreads=8\` |
+| \`-XX:+HeapDumpOnOutOfMemoryError\` | Writes heap dump automatically on OOM | \`-XX:+HeapDumpOnOutOfMemoryError\` |
+| \`-XX:HeapDumpPath\` | Heap dump output path | \`-XX:HeapDumpPath=/var/log/app/heap.hprof\` |
+
+> [!SUCCESS]
+> A senior tuning answer is measurement-first: logs, live-set estimate, allocation profile, heap dump if old gen grows, then small flag changes with before/after evidence.
+
+### Classloader Leak and Fix
+
+Classloader leaks are common in app servers, plugin systems, test frameworks, and hot-reload tooling. The leak shape is: a long-lived parent classloader object stores something loaded by a short-lived child classloader. That child cannot be unloaded, so its classes, static fields, and metadata remain alive.
+
+In the code examples below, a global registry simulates a parent-level singleton. The leak stores plugin objects and their classloaders forever. The fix removes registrations and closes the loader during undeploy.
+
+> [!EU]
+> Interviewers like classloader leaks because they test whether you understand that classes themselves are garbage-collected only when their defining classloader becomes unreachable.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Classloader Leak',
+              code: `import javax.tools.JavaCompiler;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+
+public class ClassLoaderLeakDemo {
+    private static final List<Object> GLOBAL_REGISTRY = new ArrayList<>();
+
+    public static void main(String[] args) throws Exception {
+        Path dir = Files.createTempDirectory("plugin");
+        compilePlugin(dir);
+
+        URLClassLoader pluginLoader = new URLClassLoader(new URL[]{dir.toUri().toURL()}, null);
+        Class<?> pluginClass = Class.forName("Plugin", true, pluginLoader);
+        Object plugin = pluginClass.getConstructor().newInstance();
+
+        GLOBAL_REGISTRY.add(plugin);
+
+        plugin = null;
+        pluginClass = null;
+        pluginLoader = null;
+        System.gc();
+
+        System.out.println("Registry size: " + GLOBAL_REGISTRY.size());
+        System.out.println("The plugin object is still reachable from GLOBAL_REGISTRY.");
+        System.out.println("Therefore its defining classloader cannot be collected.");
+    }
+
+    private static void compilePlugin(Path dir) throws Exception {
+        String source = "public class Plugin { private final byte[] data = new byte[1024 * 1024]; }";
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) {
+            throw new IllegalStateException("Run with a JDK, not a JRE.");
+        }
+        SimpleJavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Plugin.java"), javax.tools.JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return source;
+            }
+        };
+        int exit = compiler.getTask(null, null, null, List.of("-d", dir.toString()), null, List.of(file)).call() ? 0 : 1;
+        if (exit != 0) {
+            throw new IllegalStateException("Compilation failed");
+        }
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Classloader Leak Fix',
+              code: `import javax.tools.JavaCompiler;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import java.lang.ref.WeakReference;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class ClassLoaderLeakFixDemo {
+    private static final Map<String, Object> GLOBAL_REGISTRY = new ConcurrentHashMap<>();
+
+    public static void main(String[] args) throws Exception {
+        Path dir = Files.createTempDirectory("plugin");
+        compilePlugin(dir);
+
+        URLClassLoader loader = new URLClassLoader(new URL[]{dir.toUri().toURL()}, null);
+        Object plugin = Class.forName("Plugin", true, loader).getConstructor().newInstance();
+        WeakReference<ClassLoader> loaderRef = new WeakReference<>(loader);
+
+        GLOBAL_REGISTRY.put("plugin-1", plugin);
+
+        GLOBAL_REGISTRY.remove("plugin-1");
+        plugin = null;
+        loader.close();
+        loader = null;
+
+        for (int i = 0; i < 10 && loaderRef.get() != null; i++) {
+            byte[] pressure = new byte[2 * 1024 * 1024];
+            pressure[0] = 1;
+            System.gc();
+            Thread.sleep(100);
+        }
+
+        System.out.println("Registry size after undeploy: " + GLOBAL_REGISTRY.size());
+        System.out.println("Loader collected or ready for collection: " + (loaderRef.get() == null));
+    }
+
+    private static void compilePlugin(Path dir) throws Exception {
+        String source = "public class Plugin { private final byte[] data = new byte[1024 * 1024]; }";
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) {
+            throw new IllegalStateException("Run with a JDK, not a JRE.");
+        }
+        SimpleJavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Plugin.java"), javax.tools.JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return source;
+            }
+        };
+        boolean ok = compiler.getTask(null, null, null, List.of("-d", dir.toString()), null, List.of(file)).call();
+        if (!ok) {
+            throw new IllegalStateException("Compilation failed");
+        }
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What JVM flag enables detailed modern GC logging?', a: '-Xlog:gc*; commonly with file rotation: -Xlog:gc*:file=gc.log:time,uptime,level,tags:filecount=5,filesize=20m.' },
+            { q: 'Which GC metrics matter most?', a: 'Pause time, throughput, allocation rate, promotion rate, old-gen occupancy, and Full GC frequency.' },
+            { q: 'What tool is commonly used for heap-dump dominator analysis?', a: 'Eclipse MAT, especially the dominator tree and leak suspects report.' },
+            { q: 'How do you capture a heap dump from a running JVM?', a: 'Use jmap -dump:format=b,file=heap.hprof <pid>, or configure HeapDumpOnOutOfMemoryError for OOM cases.' },
+            { q: 'Why can static collections leak?', a: 'Static fields are reachable through loaded classes, so entries remain live until removed or the classloader unloads.' },
+            { q: 'Why are ThreadLocals risky in thread pools?', a: 'Pool threads are long-lived, so ThreadLocal values can survive across requests unless remove() is called.' },
+            { q: 'What is a classloader leak?', a: 'A long-lived reference keeps a child classloader or its classes/objects reachable, preventing class unloading and metadata cleanup.' },
+            { q: 'Why set -Xms equal to -Xmx?', a: 'It avoids runtime heap resizing and makes GC behavior more predictable in stable production services.' },
+            { q: 'What does InitiatingHeapOccupancyPercent tune for G1?', a: 'The old-generation occupancy threshold at which G1 starts concurrent marking.' },
+            { q: 'What is the safest GC tuning workflow?', a: 'Measure with logs/JFR, identify the bottleneck, change one thing, then compare before and after under realistic load.' }
+          ]
+        }
       ]
     },
 
