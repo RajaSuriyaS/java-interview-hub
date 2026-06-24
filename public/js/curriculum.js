@@ -14,19 +14,18 @@ const CURRICULUM = [
   icon: 'cpu',
   blurb: 'How the JVM loads, runs, optimises and reclaims memory for your code.',
   modules: [
-{
+    {
       id: '1.1',
       title: 'JVM Architecture',
       hours: 4,
-      sections: [
-        {
-          title: 'JVM Overview & Bytecode',
-          notes: `
-## What Is the JVM?
+      notes: `
+# JVM Architecture — From Zero to Senior Level
+
+## What is the JVM? (Start Here)
 
 Imagine you write a recipe in English. A French chef can't follow it directly — they need a translator. The **JVM (Java Virtual Machine)** is that universal translator for Java programs.
 
-When you write Java code and compile it with \`javac\`, you don't get machine code (the 0s and 1s your CPU understands). You get **bytecode** — a middle language that NO real CPU understands natively. The JVM reads this bytecode and translates it to whatever the real machine needs. That's why Java is "write once, run anywhere": the bytecode is the same everywhere; only the JVM is different per OS.
+When you write Java code and compile it with \`javac\`, you don't get machine code (the 0s and 1s your CPU understands). You get **bytecode** — a middle language that NO real CPU understands natively. The JVM reads this bytecode and translates it to whatever the real machine needs. That's why Java is "write once, run anywhere": the bytecode is the same everywhere, only the JVM is different per OS.
 
 \`\`\`
 You write:   HelloWorld.java
@@ -35,22 +34,26 @@ JVM reads:   HelloWorld.class  → translates → real CPU instructions
 \`\`\`
 
 > [!TIP]
-> The JVM is a **specification**, not a product. OpenJDK, Oracle JDK, Amazon Corretto, Eclipse Temurin, GraalVM — these are all different *implementations* of the same spec. They all run the same \`.class\` files identically.
+> The JVM is a **specification**, not a product. OpenJDK (free, open source), Oracle JDK, Amazon Corretto, Eclipse Temurin, GraalVM — these are all different *implementations* of the same spec. They all run the same \`.class\` files identically.
 
-## The Three Subsystems
+---
 
-Every JVM has three major subsystems — think of them as three departments in a company:
+## The Big Picture: Three Subsystems
+
+Every JVM has three major subsystems. Think of them as three departments in a company:
 
 \`\`\`
 ┌─────────────────────────────────────────────────────┐
 │                    JVM Process                      │
+│                                                     │
 │  1. CLASS LOADER       2. RUNTIME DATA AREAS        │
 │  ┌─────────────┐       ┌─────────────────────────┐  │
 │  │ Bootstrap   │       │ Heap (all threads share) │  │
 │  │ Platform    │──────▶│ Metaspace (class meta)   │  │
 │  │ Application │       │ Stack (per thread)       │  │
 │  │ Custom      │       │ PC Register (per thread) │  │
-│  └─────────────┘       └─────────────────────────┘  │
+│  └─────────────┘       │ Native Stack (per thread)│  │
+│                        └─────────────────────────┘  │
 │  3. EXECUTION ENGINE                                │
 │  ┌───────────────────────────────────────────────┐  │
 │  │  Interpreter → JIT Compiler (C1+C2) → GC      │  │
@@ -58,27 +61,226 @@ Every JVM has three major subsystems — think of them as three departments in a
 └─────────────────────────────────────────────────────┘
 \`\`\`
 
-**Why this matters at interview:** when asked "what happens when you run \`java HelloWorld\`?" walk through all three subsystems in order — class loader finds and prepares the class, runtime data areas hold heap/stack/metaspace, execution engine interprets then JIT-compiles hot paths.
+---
 
-## The Full Journey: \`java HelloWorld\`
+## Subsystem 1: Class Loader — "The Librarian"
 
-1. OS launches the JVM process — allocates heap, creates main thread
-2. Bootstrap ClassLoader initialises — loads \`java.lang.Object\`, \`java.lang.String\`
-3. Application ClassLoader finds \`HelloWorld.class\` on the classpath
-4. Loading → Linking → Initialisation (see ClassLoader section)
-5. Main thread stack created; \`main()\` frame pushed
-6. Interpreter starts reading bytecode; JIT compiles hot paths
-7. GC runs periodically; \`main()\` returns; JVM exits
+The class loader finds your \`.class\` files and prepares them for execution. This is a three-phase process:
+
+### Phase 1: Loading
+- Finds the binary representation of the class (from classpath, jar, network, etc.)
+- Creates a \`java.lang.Class\` object in the **heap** representing that class
+- Triggered the first time you reference a class — lazy by default
+
+### Phase 2: Linking (3 sub-steps)
+
+**a) Verification** — the JVM checks the bytecode is safe. Is it well-formed? Does it try to call methods that don't exist? Does it mix incompatible types? If verification fails → \`VerifyError\`. This is a security step — it prevents malicious bytecode from crashing the VM.
+
+**b) Preparation** — allocates memory for **static fields** and sets them to their **default values** (0, null, false). NOT your declared values yet — just defaults.
+\`\`\`java
+static int count = 42;   // after prepare: count = 0 (not 42 yet!)
+\`\`\`
+
+**c) Resolution** — replaces symbolic references (class names as strings) with direct references (actual memory pointers). E.g. the string \`"java/lang/String"\` in bytecode becomes a pointer to the loaded String class.
+
+### Phase 3: Initialisation
+- Runs **static initialiser blocks** and **static field assignments** in the order they appear in source code
+- Now \`count = 42\` actually happens
+- Guaranteed to run **at most once** per class, and **thread-safe** (the JVM serialises it)
+
+> [!WARNING]
+> **Class initialisation order trap** — a common interview gotcha:
+> \`\`\`java
+> class A { static int x = B.y + 1; }   // depends on B
+> class B { static int y = A.x + 1; }   // depends on A — circular!
+> \`\`\`
+> Circular dependencies between static initialisers produce surprising results. One class's statics will still be at default values (0) when the other reads them. Always keep static initialisers simple.
+
+### The Parent Delegation Model (Critical Concept)
+
+There are four built-in class loaders forming a hierarchy. When any loader is asked to load a class:
+1. **Ask parent first** — delegate upward
+2. Only if parent fails (class not found) → load it yourself
+
+\`\`\`
+Bootstrap ClassLoader  (built into JVM, loads java.*, javax.*, sun.*)
+       ↑ parent of
+Platform ClassLoader   (loads java.se.* module classes, formerly Extension)
+       ↑ parent of
+Application ClassLoader (loads YOUR classes from -classpath / module-path)
+       ↑ parent of
+Custom ClassLoaders    (you write these for plugins, hot-reload, OSGi)
+\`\`\`
+
+**Why does delegation matter?**
+- Security: you cannot replace \`java.lang.String\` with your own — Bootstrap loads it first, always wins
+- Consistency: \`String\` loaded by Bootstrap == \`String\` loaded by Bootstrap, no matter who asks. Two classes are the same type only if same name AND same class loader.
+
+> [!WARNING]
+> **Class identity crisis**: if two different classloaders both load \`com.example.Foo\`, you get TWO distinct \`Class\` objects. A \`Foo\` from loader A **cannot be cast** to a \`Foo\` from loader B — you get \`ClassCastException\` even though the name looks identical. Tomcat, OSGi, and Spring Boot fat-jars all use child-first loading and can trigger this.
+
+**When frameworks BREAK delegation on purpose:**
+- Tomcat gives each web app its own classloader (child-first) so different apps can use different versions of the same library
+- Spring Boot fat-jars use a custom \`LaunchedURLClassLoader\` to load classes from nested jars
+- OSGi creates a classloader per bundle for complete isolation
+
+---
+
+## Subsystem 2: Runtime Data Areas — "The Memory Rooms"
+
+### The Heap — Shared, Biggest, Most Important
+
+Every object you create with \`new\` lives here. All threads share the same heap. The GC manages it.
+
+The heap is divided into **generations** (in traditional GC designs):
+\`\`\`
+HEAP
+├── Young Generation (new objects born here)
+│   ├── Eden Space          (most new objects allocated here)
+│   ├── Survivor Space S0   (survivors of one GC cycle)
+│   └── Survivor Space S1   (survivors of another cycle)
+└── Old Generation (Tenured)  (objects that survived many GC cycles)
+\`\`\`
+
+Why generations? Because most objects die young (the **Weak Generational Hypothesis**). Collecting only young gen (Minor GC) is fast. Collecting everything (Full GC) is slow and rare.
+
+**What causes \`OutOfMemoryError: Java heap space\`?**
+- You created more objects than the heap can hold AND GC couldn't free enough
+- Tune with: \`-Xms512m\` (initial heap) \`-Xmx2g\` (max heap)
+
+### Metaspace — Where Classes Live (Java 8+)
+
+Before Java 8 there was **PermGen** (Permanent Generation) — a fixed-size heap region holding class metadata. It caused the dreaded \`OutOfMemoryError: PermGen space\` whenever you deployed too many classes (common in app servers).
+
+Java 8 replaced PermGen with **Metaspace** which:
+- Lives in **native memory** (outside the Java heap)
+- Grows dynamically (no fixed size by default)
+- Still can OOM if you have a classloader leak (e.g. hot-deploying web apps without unloading old classloaders)
+- Cap it with: \`-XX:MaxMetaspaceSize=256m\`
+
+Metaspace holds:
+- Class structures (field names, method signatures, bytecode)
+- Runtime constant pool (string and numeric literals)
+- Static field **references** (the actual object the static points to lives in the heap)
+
+> [!TIP]
+> Static fields themselves (references) live in the Class object on the heap in Java 8+. The Metaspace holds the class *structure*, not the object *values*.
+
+### JVM Stack — Per Thread, Last-In-First-Out
+
+Each thread gets its own stack. When you call a method, a **stack frame** is pushed. When the method returns, it's popped.
+
+Each stack frame contains:
+- **Local variable array** — \`this\`, method parameters, declared local variables
+- **Operand stack** — scratch pad for calculations (like a calculator's temporary memory)
+- **Frame data** — reference to the constant pool, return address
+
+\`\`\`
+Thread stack (top = currently executing):
+┌──────────────────────────┐
+│  Frame: doWork()         │ ← currently running
+│    locals: [this, x, y]  │
+│    operand stack: [42]   │
+├──────────────────────────┤
+│  Frame: process()        │ ← called doWork()
+│    locals: [this, list]  │
+├──────────────────────────┤
+│  Frame: main()           │ ← called process()
+└──────────────────────────┘
+\`\`\`
+
+**What causes \`StackOverflowError\`?**
+- Too many frames — infinite recursion is the classic cause
+- Each frame takes memory. Default stack size is 512KB–1MB. Tune with: \`-Xss2m\`
+
+> [!TIP]
+> Local variables in the stack are NOT garbage-collected — they disappear automatically when the frame is popped. Only objects on the **heap** need GC.
+
+### PC Register — The Bookmark
+
+Each thread has a Program Counter (PC) register that holds the address of the bytecode instruction currently being executed. When you context-switch between threads, the CPU saves/restores each thread's PC so execution can resume where it left off. For native methods, the PC is undefined.
+
+### Native Method Stack
+
+When Java calls a C/C++ function through **JNI (Java Native Interface)**, a native method stack frame is created here. Usually you never think about this unless you're writing JNI code.
+
+---
+
+## Subsystem 3: Execution Engine — "How Code Actually Runs"
+
+### Step 1: Interpretation (Slow but Instant Start)
+
+When a method is first called, the JVM **interprets** bytecode — reading each instruction one by one and executing it. This is slow (10-100x slower than native code) but starts immediately.
+
+### Step 2: Profiling
+
+While interpreting, the JVM **profiles** which methods are "hot" (called frequently). The threshold is configurable but roughly 10,000 invocations.
+
+### Step 3: JIT Compilation (The Speed Magic)
+
+Hot methods get compiled by the **JIT (Just-In-Time) compiler** to native machine code. Two compilers work together:
+
+| Compiler | Level | Speed | Quality | Use case |
+|----------|-------|-------|---------|----------|
+| **C1** (Client) | 1-3 | Fast | Lower | Methods hot quickly, needs code soon |
+| **C2** (Server) | 4 | Slow | Highest | Very hot methods, maximum optimization |
+
+This is called **Tiered Compilation** (default since Java 7). A method moves through tiers 0→1→2→3→4 as it gets hotter.
+
+**What optimisations does JIT apply?**
+- **Inlining**: replaces a method call with the method's body — eliminates call overhead
+- **Escape analysis**: if an object never escapes the method, allocate it on the stack (not heap!) — no GC needed
+- **Dead code elimination**: removes code that can never execute
+- **Loop unrolling**: replaces short loops with repeated statements
+- **Devirtualization**: if a virtual call always goes to the same implementation, compile it as a direct call
+
+> [!TIP]
+> This is why Java benchmarks must **warm up** before measuring. Cold (interpreted) performance is 10-100x slower than warm (JIT-compiled) performance. A benchmark that measures cold startup is not measuring Java's production performance. Use **JMH** for correct benchmarks.
+
+---
+
+## What Happens When You Run \`java HelloWorld\`? (The Full Journey)
+
+This is the most common senior interview question on JVM. Walk through it step by step:
+
+1. **OS launches the JVM process** — the JVM binary starts, allocates heap, creates the main thread
+2. **Bootstrap ClassLoader initialises** — loads core classes like \`java.lang.Object\`, \`java.lang.String\`
+3. **Application ClassLoader finds** \`HelloWorld.class\` on the classpath
+4. **Loading** — \`HelloWorld.class\` binary read into memory, \`Class\` object created in heap
+5. **Linking** — bytecode verified, statics prepared (set to defaults), symbolic refs resolved
+6. **Initialisation** — static initialisers run, static fields get their declared values
+7. **Main thread stack created** — a new JVM stack is allocated for the main thread
+8. **\`main()\` frame pushed** onto the stack — parameters (\`String[] args\`) in local variable slot 0
+9. **Interpreter starts** — reads bytecode instructions one by one
+10. **JIT kicks in** — as methods get hot, C1 then C2 compile them to native code
+11. **GC runs** — periodically frees unreachable heap objects
+12. **\`main()\` returns** — frame popped, main thread exits, JVM shuts down (if no non-daemon threads remain)
 
 > [!EU]
-> At Adyen, N26, or Zalando: narrate all steps including Metaspace vs PermGen, tiered JIT, and daemon threads. Most candidates stop at step 4. Reaching step 7 puts you in the top 5%.
+> At Adyen, N26, Zalando, or SAP: narrate all 12 steps above when asked "what happens when you run a Java program?" Most candidates stop at step 4. Getting to step 12 — especially mentioning Metaspace vs PermGen, tiered JIT, and daemon threads — puts you in the top 5% of candidates.
+
+---
+
+## Common Interview Questions & Strong Answers
+
+**Q: What's the difference between heap and stack?**
+A: Heap is shared across all threads and holds objects (managed by GC). Stack is per-thread, holds method frames (local variables + operand stack), and is automatically reclaimed when frames pop. Stack is faster (no GC), smaller, and LIFO-ordered. Objects that escape a method must go on the heap; purely local temporaries can stay on the stack (JIT escape analysis does this automatically).
+
+**Q: What replaced PermGen and why?**
+A: Metaspace (Java 8+). PermGen was a fixed-size heap region — easy to overflow when loading many classes. Metaspace lives in native memory and grows dynamically, eliminating most PermGen OOM errors. The risk now is native memory exhaustion from classloader leaks, controlled by \`-XX:MaxMetaspaceSize\`.
+
+**Q: Why is parent delegation important?**
+A: Three reasons — (1) Security: core classes like \`String\` always loaded by Bootstrap, can't be overridden. (2) Consistency: same class name + same loader = same Class object, enabling safe casting. (3) Avoid duplication: class loaded once by parent, not re-loaded by each child.
+
+**Q: When would you write a custom ClassLoader?**
+A: Plugin systems (load user-provided jars at runtime), hot-reload (reload changed classes without restarting), application isolation (multiple versions of same library in one JVM — like Tomcat does per web app), loading classes from non-standard sources (database, network, encrypted jar).
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Inspect the running JVM & class loaders',
-              code: `public class JvmIntro {
-    static int counter = 42; // static field: reference in Metaspace, value in heap
+      code: [
+        {
+          lang: 'java',
+          title: 'Inspect the running JVM & class loaders',
+          code: `public class JvmIntro {
+    static int counter = 42; // lives in Metaspace (static), value prepared then initialised
 
     public static void main(String[] args) {
         Runtime rt = Runtime.getRuntime();
@@ -95,86 +297,62 @@ Every JVM has three major subsystems — think of them as three departments in a
             System.out.println("  -> " + cl);
             cl = cl.getParent();
         }
-        System.out.println("  -> Bootstrap (null — it's native C++)");
+        // Bootstrap loader is native -> shows as null
+        System.out.println("  -> Bootstrap (null)");
         System.out.println("\\nString loaded by  : " + String.class.getClassLoader());
         System.out.println("counter           : " + counter);
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is bytecode and why does it make Java "write once, run anywhere"?', a: 'Bytecode is a platform-neutral intermediate instruction set produced by javac. No real CPU executes it natively — the JVM translates it to the host machine\'s native code at runtime, so the same .class file runs on any OS that has a JVM implementation.' },
-            { q: 'Name the three major JVM subsystems and their roles.', a: '1) Class Loader — finds, loads, links, and initialises .class files. 2) Runtime Data Areas — manages memory (Heap, Metaspace, per-thread Stacks, PC Registers). 3) Execution Engine — interprets bytecode, JIT-compiles hot methods, and drives GC.' },
-            { q: 'The JVM is a specification — what does that mean in practice?', a: 'Multiple vendors ship conforming implementations (OpenJDK, Oracle JDK, Amazon Corretto, GraalVM) that all run the same .class files identically. Choosing a JVM is an operational decision (startup speed, GC flavour, support), not a compatibility concern.' },
-            { q: 'What is the difference between javac and the JVM?', a: 'javac is the Java compiler — a static ahead-of-time tool that turns .java source into .class bytecode. The JVM is the runtime that reads .class files and executes them, optionally JIT-compiling hot methods to native code during execution.' }
-          ]
         },
         {
-          title: 'ClassLoader Lifecycle',
-          notes: `
-## Loading → Linking → Initialisation
+          lang: 'java',
+          title: 'Stack frames, StackOverflow, and tail-call insight',
+          code: `public class StackFrameDemo {
+    // Each call to recurse() pushes a new STACK FRAME onto the thread's JVM stack.
+    // Frame contains: local variables, operand stack, reference back to constant pool.
+    // Default stack size ~512KB-1MB per thread. Deep recursion overflows it.
+    static long recurse(int n, long acc) {
+        if (n <= 0) return acc;
+        // This call creates a new frame. JVM does NOT do tail-call elimination
+        // (unlike Scala/Haskell), so even though this IS tail-recursive, it will overflow.
+        return recurse(n - 1, acc + n);
+    }
 
-The class loader prepares a \`.class\` file for execution in three phases.
+    // Safe iterative version — O(1) stack space
+    static long iterate(int n) {
+        long sum = 0;
+        for (int i = 1; i <= n; i++) sum += i;
+        return sum;
+    }
 
-### Phase 1: Loading
-- Finds the binary representation of the class (classpath, jar, network, etc.)
-- Creates a \`java.lang.Class\` object in the **heap** representing that class
-- Triggered the first time you reference a class — lazy by default
+    public static void main(String[] args) {
+        // How deep can we go? (varies by JVM/-Xss setting)
+        int depth = 0;
+        try {
+            recurse(100_000, 0);    // likely StackOverflowError
+            System.out.println("100k calls completed (uncommon without -Xss)");
+        } catch (StackOverflowError e) {
+            System.out.println("StackOverflowError hit (stack full of frames)");
+        }
 
-### Phase 2: Linking (three sub-steps)
+        // Iterative is always safe and avoids frame allocation overhead
+        System.out.println("Iterative sum 1..1M = " + iterate(1_000_000));
 
-**a) Verification** — checks the bytecode is safe and well-formed. If verification fails → \`VerifyError\`. This is a security step that prevents malicious bytecode from crashing the VM.
-
-**b) Preparation** — allocates memory for static fields and sets them to **default values** (0, null, false). NOT your declared values yet — just defaults:
-\`\`\`java
-static int count = 42;   // after prepare: count = 0 (not 42 yet!)
-\`\`\`
-
-**c) Resolution** — replaces symbolic references (class names as strings) with direct memory pointers. The string \`"java/lang/String"\` in bytecode becomes a pointer to the loaded String class.
-
-### Phase 3: Initialisation
-- Runs **static initialiser blocks** and static field assignments in source order
-- Now \`count = 42\` actually happens
-- Guaranteed to run **at most once** per class, and **thread-safe** (the JVM serialises it)
-
-> [!WARNING]
-> **Circular static initialiser trap** — a common interview gotcha:
-> \`\`\`java
-> class A { static int x = B.y + 1; }   // depends on B
-> class B { static int y = A.x + 1; }   // depends on A — circular!
-> \`\`\`
-> One class's statics will still be at default (0) when the other reads them. Keep static initialisers simple.
-
-## Parent Delegation Model
-
-Four built-in loaders form a hierarchy. When any loader is asked to load a class it **delegates to its parent first** — only loads the class itself if the parent fails (class not found):
-
-\`\`\`
-Bootstrap ClassLoader  (loads java.*, javax.*, sun.*)
-       ↑ parent of
-Platform ClassLoader   (loads java.se.* module classes)
-       ↑ parent of
-Application ClassLoader (loads YOUR classes from classpath)
-       ↑ parent of
-Custom ClassLoaders    (plugins, hot-reload, OSGi)
-\`\`\`
-
-**Why delegation matters:**
-- **Security:** you cannot replace \`java.lang.String\` — Bootstrap loads it first, always wins
-- **Consistency:** same name + same loader = same \`Class\` object, enabling safe casting
-
-> [!WARNING]
-> **Class identity crisis:** if two different classloaders both load \`com.example.Foo\`, you get TWO distinct \`Class\` objects. A \`Foo\` from loader A **cannot be cast** to a \`Foo\` from loader B — \`ClassCastException\` even though the names look identical. Tomcat and OSGi exploit this deliberately.
-
-**When frameworks break delegation intentionally:** Tomcat gives each web app its own child-first classloader for library version isolation. Spring Boot fat-jars use \`LaunchedURLClassLoader\` to load from nested jars.
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'Custom ClassLoader: load a class from bytes at runtime',
-              code: `// Custom ClassLoaders power OSGi, plugin systems, hot-reload, and Spring Boot fat-jars.
+        System.out.println("\\nStack size tuning: -Xss512k (smaller, more threads) or -Xss2m (deeper recursion)");
+        System.out.println("Thread count × stack size = OS memory committed for stacks.");
+        System.out.println("Virtual threads (JDK 21) use heap-allocated stacks -> millions possible.");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'Custom ClassLoader: load a class from bytes at runtime',
+          code: `// Custom ClassLoaders power OSGi, plugin systems, hot-reload, and Spring Boot fat-jars.
+// They break parent delegation (child-first) to isolate different versions of the same library.
 public class ClassLoaderDemo {
 
+    // A classloader that loads a class from a raw byte array (e.g. from a DB or network).
+    // In real frameworks this would load from a JAR stream.
     static class ByteArrayClassLoader extends ClassLoader {
         private final String className;
         private final byte[] bytecode;
@@ -195,226 +373,52 @@ public class ClassLoaderDemo {
         }
     }
 
+    // Minimal valid .class bytecode for: public class Hello { public static String greet() { return "Hi!"; } }
+    // Generated with: javac Hello.java && xxd -i Hello.class
+    // (Using a tiny pre-built bytecode array for this demo)
+    static final byte[] HELLO_CLASS_BYTECODE = buildTinyClass();
+
+    static byte[] buildTinyClass() {
+        // A real example would load bytes from a file/DB/network.
+        // Here we just return the bytes of a class we ALREADY have (to show the mechanism).
+        // In practice: return Files.readAllBytes(Path.of("plugins/MyPlugin.class"));
+        try {
+            return ClassLoaderDemo.class.getResourceAsStream(
+                "ClassLoaderDemo.class") != null
+                ? ClassLoaderDemo.class.getResourceAsStream("ClassLoaderDemo.class").readAllBytes()
+                : new byte[0];
+        } catch (Exception e) { return new byte[0]; }
+    }
+
     public static void main(String[] args) throws Exception {
-        // Two separate classloaders — even with identical bytecode, the loaded classes
-        // are DIFFERENT types. This is how Tomcat isolates web apps.
+        // Demonstrate isolation: same class name, different loaders = different Class objects
         ClassLoader loaderA = new ByteArrayClassLoader("Isolated", new byte[0]);
         ClassLoader loaderB = new ByteArrayClassLoader("Isolated", new byte[0]);
 
-        System.out.println("loaderA == loaderB? " + (loaderA == loaderB));
+        System.out.println("loaderA == loaderB? " + (loaderA == loaderB));  // false
         System.out.println("Parent of loaderA: " + loaderA.getParent());
 
+        // Key insight: Class identity = class name + ClassLoader
+        // Two classes with identical bytecode loaded by different ClassLoaders are NOT the same type.
+        // This is how Tomcat isolates web apps: each app has its own ClassLoader.
         System.out.println("\\nParent-delegation in action:");
         System.out.println("  String class loader: " + String.class.getClassLoader()); // null = Bootstrap
         System.out.println("  This class loader:   " + ClassLoaderDemo.class.getClassLoader());
         System.out.println("  Bootstrap is null because it's native (C++), not a Java object.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What are the three phases of class linking?', a: 'Verify (bytecode integrity & safety check), Prepare (allocate static fields with default values — 0/null/false), Resolve (replace symbolic references with direct memory pointers).' },
-            { q: 'When does class initialisation run and what does it do?', a: 'On first active use of the class. It runs static initialiser blocks and assigns declared static field values in source order. The JVM guarantees it runs at most once and is thread-safe.' },
-            { q: 'Explain the parent-delegation model and why it exists.', a: 'A class loader delegates to its parent before attempting to load a class itself (Bootstrap → Platform → Application → custom). This guarantees core classes like java.lang.String cannot be spoofed, and avoids duplicate class definitions.' },
-            { q: 'What defines class identity in Java?', a: 'Both the fully-qualified class name AND the ClassLoader that loaded it. Two classes with identical bytecode loaded by different ClassLoaders are different types — they cannot be cast to each other.' },
-            { q: 'Why would you write a custom ClassLoader?', a: 'Plugin systems (load user jars at runtime), hot-reload (reload changed classes without restart), application isolation (multiple versions of the same library in one JVM — like Tomcat per web app), or loading classes from non-standard sources (database, network, encrypted jar).' }
-          ]
-        },
-        {
-          title: 'Runtime Memory Areas',
-          notes: `
-## The Heap — Shared, Biggest, Most Important
-
-Every object you create with \`new\` lives here. All threads share the same heap; the GC manages it.
-
-The heap is divided into **generations** (in traditional GC designs):
-\`\`\`
-HEAP
-├── Young Generation (new objects born here)
-│   ├── Eden Space          (most new objects allocated here)
-│   ├── Survivor Space S0   (survivors of one GC cycle)
-│   └── Survivor Space S1   (survivors of another cycle)
-└── Old Generation (Tenured) (objects surviving many GC cycles)
-\`\`\`
-
-Tune with: \`-Xms512m\` (initial heap) \`-Xmx2g\` (max heap)
-
-**What causes \`OutOfMemoryError: Java heap space\`?** More objects created than the heap can hold and GC couldn't free enough.
-
-## Metaspace — Where Classes Live (Java 8+)
-
-Before Java 8 there was **PermGen** — a fixed-size heap region holding class metadata. It caused the dreaded \`OutOfMemoryError: PermGen space\` whenever too many classes were deployed.
-
-Java 8 replaced PermGen with **Metaspace**:
-- Lives in **native memory** (outside the Java heap)
-- Grows dynamically — no fixed size by default
-- Cap it with: \`-XX:MaxMetaspaceSize=256m\`
-- Can still OOM if you have a classloader leak (hot-deploying web apps without unloading old classloaders)
-
-Metaspace holds: class structures, method signatures, bytecode, runtime constant pool.
-
-> [!TIP]
-> Static fields themselves (references) live in the Class object on the heap in Java 8+. Metaspace holds the class *structure*, not the object *values*.
-
-## JVM Stack — Per Thread, LIFO
-
-Each thread gets its own stack. A **stack frame** is pushed on every method call and popped on return. Each frame contains:
-- **Local variable array** — \`this\`, parameters, declared locals
-- **Operand stack** — scratch pad for bytecode calculations
-- **Frame data** — reference to the constant pool, return address
-
-\`\`\`
-Thread stack (top = currently executing):
-┌──────────────────────────┐
-│  Frame: doWork()         │ ← currently running
-│    locals: [this, x, y]  │
-│    operand stack: [42]   │
-├──────────────────────────┤
-│  Frame: process()        │
-│    locals: [this, list]  │
-├──────────────────────────┤
-│  Frame: main()           │
-└──────────────────────────┘
-\`\`\`
-
-**What causes \`StackOverflowError\`?** Too many frames — infinite recursion is the classic cause. Tune with: \`-Xss2m\`
-
-> [!TIP]
-> Local variables in stack frames are NOT garbage-collected — they disappear automatically when the frame is popped. Only objects on the **heap** need GC.
-
-## PC Register & Native Method Stack
-
-Each thread has a **Program Counter (PC)** register holding the address of the bytecode instruction currently executing. When context-switching, the CPU saves/restores each thread's PC.
-
-The **Native Method Stack** is used when Java calls C/C++ through JNI. Normally you never think about it unless writing JNI code.
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'Stack frames, StackOverflow, and tail-call insight',
-              code: `public class StackFrameDemo {
-    // Each call pushes a new STACK FRAME. JVM does NOT do tail-call elimination,
-    // so even tail-recursive methods overflow the stack.
-    static long recurse(int n, long acc) {
-        if (n <= 0) return acc;
-        return recurse(n - 1, acc + n); // new frame every call
-    }
-
-    // Safe iterative version — O(1) stack space
-    static long iterate(int n) {
-        long sum = 0;
-        for (int i = 1; i <= n; i++) sum += i;
-        return sum;
-    }
-
-    public static void main(String[] args) {
-        try {
-            recurse(100_000, 0);
-            System.out.println("100k calls completed");
-        } catch (StackOverflowError e) {
-            System.out.println("StackOverflowError — stack full of frames");
         }
-
-        System.out.println("Iterative sum 1..1M = " + iterate(1_000_000));
-
-        System.out.println("\\nStack size tuning: -Xss512k (smaller, more threads) or -Xss2m (deeper recursion)");
-        System.out.println("Virtual threads (JDK 21) use heap-allocated stacks -> millions possible.");
-    }
-}`
-            }
-          ],
-          flashcards: [
-            { q: 'Which runtime data areas are shared across all threads vs per-thread?', a: 'Shared: Heap and Metaspace (class metadata, constant pool). Per-thread: JVM Stack, PC Register, and Native Method Stack.' },
-            { q: 'What replaced PermGen in Java 8 and why does it matter?', a: 'Metaspace, which lives in native memory and grows dynamically (bounded by -XX:MaxMetaspaceSize). It removed fixed PermGen sizing and the classic "PermGen space" OOM, though classloader leaks can still exhaust native memory.' },
-            { q: 'What constitutes a JVM stack frame?', a: 'Each method invocation creates a frame containing: local variable array (this, parameters, locals), operand stack (where bytecode instructions push/pop values), and a reference to the runtime constant pool.' },
-            { q: 'Why does the JVM throw StackOverflowError instead of OutOfMemoryError for deep recursion?', a: 'The JVM stack is a fixed-size per-thread structure (tuned with -Xss). When recursion exhausts space for new frames, the JVM throws StackOverflowError — distinct from heap OOM. Fix: convert to iteration or increase -Xss.' },
-            { q: 'Where do static field values live in Java 8+?', a: 'Static field references live in the Class object on the heap. Metaspace holds the class structure (field names, method signatures, bytecode) — not the field values themselves.' }
-          ]
-        },
-        {
-          title: 'Execution Engine & JIT',
-          notes: `
-## How Code Actually Runs: Three Steps
-
-### Step 1: Interpretation (Slow but Instant Start)
-When a method is first called, the JVM **interprets** bytecode — reading each instruction one by one. This is slow (~10-100× slower than native code) but starts immediately with no compilation overhead.
-
-### Step 2: Profiling
-While interpreting, the JVM **profiles** which methods are "hot" (called frequently). Invocation count thresholds (~10,000 calls or loop back-edges) trigger promotion to JIT compilation.
-
-### Step 3: Tiered JIT Compilation
-
-| Compiler | Levels | Speed | Quality | Use case |
-|----------|--------|-------|---------|----------|
-| **C1** (Client) | 1–3 | Fast compile | Lower | Methods hot quickly, needs code soon |
-| **C2** (Server) | 4 | Slow compile | Highest | Very hot methods, maximum optimisation |
-
-A method moves through tiers 0 → 1 → 2 → 3 → 4 as it gets hotter. This is called **Tiered Compilation** (default since Java 7).
-
-## Key JIT Optimisations
-
-**Inlining** — replaces a method call with the method's body. Eliminates call overhead and enables further optimisations by exposing more code at once. Most impactful single JIT optimisation.
-
-**Escape analysis** — if an object never escapes the method (not stored in a field, not returned, not passed to another thread), the JIT can:
-- **Scalar replace** it — decompose into individual fields in CPU registers (no heap allocation, no GC)
-- **Elide locks** — remove \`synchronized\` blocks on non-escaping objects entirely
-
-**Dead code elimination** — removes branches that can never execute:
-\`\`\`java
-boolean DEBUG = false;
-if (DEBUG) { expensiveLogging(); }  // JIT removes this entirely
-\`\`\`
-
-**Devirtualisation** — if a virtual call site always resolves to the same implementation (monomorphic), compile it as a direct call (as fast as non-virtual). Reverts (deoptimises) if a new subclass appears.
-
-**Loop unrolling** — executes the loop body multiple times per iteration to reduce branch overhead. The JIT also applies SIMD vectorisation on modern CPUs.
-
-> [!WARNING]
-> JIT makes **speculative** optimisations. If an assumption becomes invalid at runtime, the JIT **deoptimises** — discards the compiled code and falls back to the interpreter. This is rare but has overhead. \`-XX:+PrintDeoptimization\` shows when it happens.
-
-## Why Benchmarks Must Warm Up
-
-> [!TIP]
-> Cold (interpreted) performance is 10-100× slower than warm (JIT-compiled) performance. A benchmark measuring cold iterations is not measuring Java's production performance. Always warm up, and use **JMH** for correct microbenchmarks.
-
-Use \`-XX:+PrintCompilation\` to watch compilation events as methods graduate through tiers.
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'Escape analysis & JIT warm-up effect',
-              code: `public class JitDemo {
-    // This object does not escape -> JIT may scalar-replace it (no heap alloc)
-    static long distanceSquared(int x, int y) {
-        int[] point = new int[] { x, y };  // candidate for scalar replacement
-        return (long) point[0] * point[0] + (long) point[1] * point[1];
-    }
-
-    public static void main(String[] args) {
-        long sink = 0;
-        // Warm-up: let the method get hot and JIT-compile
-        for (int i = 0; i < 100_000; i++) sink += distanceSquared(i, i + 1);
-
-        long start = System.nanoTime();
-        for (int i = 0; i < 10_000_000; i++) sink += distanceSquared(i, i + 1);
-        long ns = System.nanoTime() - start;
-
-        System.out.println("sink = " + sink);
-        System.out.printf("10M hot calls took %.2f ms%n", ns / 1_000_000.0);
-        System.out.println("Run with -XX:+PrintCompilation to watch tiers.");
-        System.out.println("Run with -XX:-DoEscapeAnalysis to disable scalar replacement and see the difference.");
-    }
-}`
-            }
-          ],
-          flashcards: [
-            { q: 'How does the JVM decide to JIT-compile a method?', a: 'It interprets bytecode first and profiles invocation/loop counts. Methods crossing a threshold (~10,000 invocations or back-edges) are compiled by the JIT. Tiered compilation uses C1 for quick early compilation and C2 for aggressive profile-guided optimisation.' },
-            { q: 'What is escape analysis and what does it enable?', a: 'Analysis that determines whether an object escapes its creating method/thread. If it does not escape, the JIT can scalar-replace it (avoid heap allocation entirely), elide locks on it, and eliminate GC pressure for that allocation.' },
-            { q: 'What is method inlining and why is it the most important JIT optimisation?', a: 'Inlining copies a called method\'s body into the call site, eliminating call overhead. More importantly, it exposes the combined code to further optimisations (escape analysis, constant folding, dead-code elimination) that only work when the compiler can see the full picture.' },
-            { q: 'What is deoptimisation and when does it happen?', a: 'The JIT makes speculative optimisations (e.g. assuming a call site is always the same type). If an assumption is violated at runtime, the JIT deoptimises — discards the compiled code and falls back to the interpreter for that path, then recompiles with updated information.' },
-            { q: 'Why must Java benchmarks include a warmup phase?', a: 'Cold code runs interpreted, which is 10-100× slower than JIT-compiled code. Benchmarks that measure cold iterations report interpreted performance, not production performance. Warmup lets the JIT compile hot methods before measurements begin.' }
-          ]
-        }
+      ],
+      flashcards: [
+        { q: 'Which runtime data areas are shared across all threads vs per-thread?', a: 'Shared: Heap and Method Area/Metaspace (class metadata, statics, constant pool). Per-thread: JVM Stack, PC Register, and Native Method Stack.' },
+        { q: 'What replaced PermGen in Java 8 and why does it matter?', a: 'Metaspace, which lives in native memory and grows dynamically (bounded by -XX:MaxMetaspaceSize). It removed fixed PermGen sizing and the classic "PermGen space" OOM, but class-loader leaks can still exhaust native memory.' },
+        { q: 'Explain the parent-delegation model and why it exists.', a: 'A class loader delegates to its parent before attempting to load a class itself (Bootstrap → Platform → Application → custom). It guarantees core classes (java.lang.String) can\'t be spoofed and avoids duplicate class definitions.' },
+        { q: 'What are the three phases of linking?', a: 'Verify (bytecode integrity & safety), Prepare (allocate static fields with default values), Resolve (replace symbolic references with direct references).' },
+        { q: 'How does the JVM decide to JIT-compile a method?', a: 'It interprets bytecode first and profiles invocation/loop counts. "Hot" methods crossing a threshold are compiled by the JIT (tiered: C1 client for quick compiles, C2 server for aggressive optimisation).' },
+        { q: 'What constitutes a JVM stack frame?', a: 'Each method invocation creates a frame containing: local variable array, operand stack (where bytecode instructions push/pop values), and a reference to the runtime constant pool of the current class.' },
+        { q: 'Why does the JVM throw StackOverflowError instead of OutOfMemoryError for deep recursion?', a: 'The JVM stack is a fixed-size per-thread structure (tuned with -Xss). When recursion exhausts the space for new frames, the JVM throws StackOverflowError — distinct from heap OOM. Fix: convert to iteration or increase -Xss (but more threads × larger stack = more native memory).' },
+        { q: 'What is the class identity contract in Java?', a: 'A class\'s identity is defined by BOTH its fully-qualified name AND the ClassLoader that loaded it. Two classes with the same bytecode loaded by different ClassLoaders are different types and cannot be cast to each other — this enables web app isolation in Tomcat/OSGi.' },
+        { q: 'How does Spring Boot\'s fat-jar ClassLoader differ from standard parent delegation?', a: 'Spring Boot\'s LaunchedURLClassLoader loads nested JARs inside the fat-jar (BOOT-INF/lib/) using a custom protocol handler. It loads application classes first (child-first), overriding standard parent delegation, to isolate the app\'s dependencies from the host JVM\'s classpath.' }
       ]
     },
 
@@ -422,61 +426,275 @@ Use \`-XX:+PrintCompilation\` to watch compilation events as methods graduate th
       id: '1.2',
       title: 'Garbage Collection Internals',
       hours: 5,
-      sections: [
-        {
-          title: 'GC Fundamentals & Object Reachability',
-          notes: `
-## What Is Garbage Collection?
+      notes: `
+# Garbage Collection Internals — From Zero to Senior Level
 
-In C/C++, you manually \`malloc\` memory and \`free\` it when done. Forget to free it → **memory leak**. Free it too early → **dangling pointer** crash. Java's **Garbage Collector (GC)** does this automatically — you never call \`free()\`.
+## What Is Garbage Collection? (Start Here)
 
-**The key question:** how does the GC know when you're done with an object?
+In C/C++, you manually \`malloc\` memory and \`free\` it when done. Forget to free it → **memory leak**. Free it too early → **dangling pointer** crash. This is a huge source of bugs.
 
-Answer: **reachability**. If you can reach an object by following references from a **GC root**, it's alive. If not, it's garbage.
+Java's **Garbage Collector (GC)** does this automatically. You create objects with \`new\`; the GC figures out when you're done with them and reclaims the memory. You never call \`free()\`.
+
+**The key question:** how does the GC know when you're "done" with an object?
+
+Answer: **reachability**. If you can reach an object by following references from a GC root, it's alive. If not, it's garbage.
 
 \`\`\`
-GC Roots (always considered alive):
+GC Roots (always alive):
   - Local variables in any thread's stack frame
   - Static fields of loaded classes
   - Active Java threads themselves
   - JNI references
 
-Object reachable from root → ALIVE (GC will not collect it)
-Object not reachable from any root → GARBAGE (GC may reclaim it)
+If object A is reachable from a root → A is ALIVE
+If object B is NOT reachable from any root → B is GARBAGE → GC can free it
 \`\`\`
 
 > [!TIP]
 > GC handles **circular references** correctly. If A references B and B references A, but nothing else references either — both are unreachable and both get collected. Reference-counting (like Python uses) would fail here; tracing GC does not.
 
-## Mark-Sweep-Compact
+---
+
+## Why Generations? The Weak Generational Hypothesis
+
+Researchers observed: **most objects die young**. In a typical web server:
+- A request comes in → dozens of temporary objects are created (Strings, DTOs, etc.)
+- Request completes in 50ms → all those objects are immediately garbage
+- A few objects (caches, connection pools, user sessions) live for hours
+
+This observation — "most objects die young" — is called the **Weak Generational Hypothesis**. It leads to a key design: split the heap into **generations** and collect them separately.
+
+\`\`\`
+JAVA HEAP
+┌─────────────────────────────────────────────────────────┐
+│  YOUNG GENERATION (~25% of heap)                        │
+│  ┌──────────────┬──────────────┬────────────────────┐   │
+│  │  Eden Space  │ Survivor S0  │   Survivor S1      │   │
+│  │  (new objs)  │  (age 1-N)   │   (bounce here)    │   │
+│  └──────────────┴──────────────┴────────────────────┘   │
+│                                                         │
+│  OLD GENERATION / TENURED (~75% of heap)                │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │  Long-lived objects (survived enough minor GCs) │    │
+│  └─────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────┘
+\`\`\`
+
+### How Object Lifecycle Works
+
+1. New object created → goes to **Eden** space
+2. Eden fills up → triggers a **Minor GC** (also called Young GC)
+3. Minor GC scans Eden + one Survivor space
+4. Live objects copied to the other Survivor space, age incremented by 1
+5. Objects with age ≥ 15 (default, tune with \`-XX:MaxTenuringThreshold\`) → **promoted to Old Gen**
+6. Eden and the from-Survivor space are cleared (just a pointer reset — instant!)
+7. When Old Gen fills up → **Major GC** or **Full GC** (much more expensive)
+
+**Why is Minor GC cheap?** Because most objects in Eden are dead. You only copy the few survivors. Clearing Eden is just resetting a pointer to the start of the region — O(1).
+
+**Why is Major GC expensive?** Old gen is large, mostly full of live objects, needs to compact everything, and pauses ALL application threads (stop-the-world).
+
+---
+
+## How Marking Works: Mark-Sweep-Compact
 
 Most collectors use a three-phase algorithm:
 
-**Phase 1: Mark** — starting from GC roots, traverse all reachable objects (DFS/BFS graph traversal) and mark them live. Everything unmarked is garbage.
+### Phase 1: Mark
+Starting from GC roots, traverse ALL reachable objects and mark them as live. This is like a graph traversal (DFS/BFS). Everything unmarked at the end is garbage.
 
-**Phase 2: Sweep** — scan the heap and reclaim memory from unmarked (dead) objects. Leaves free holes scattered throughout — **fragmentation**.
+### Phase 2: Sweep
+Scan the heap and reclaim memory occupied by unmarked (dead) objects. Now you have free holes scattered throughout the heap — **fragmentation**.
 
-**Phase 3: Compact** (optional, expensive) — slide all live objects together to eliminate fragmentation. Makes future allocation fast (pointer bump) but requires pausing all threads.
+### Phase 3: Compact (optional, expensive)
+Slide all live objects together to eliminate fragmentation, update all references to point to new locations. Makes future allocation fast (pointer bump) but requires pausing all threads.
 
 \`\`\`
-Before GC:    [LIVE][dead][LIVE][dead][dead][LIVE][dead][LIVE]
-After sweep:  [LIVE][    ][LIVE][              ][LIVE][    ][LIVE]
-After compact:[LIVE][LIVE][LIVE][LIVE][          free          ]
+Before GC:  [LIVE][dead][LIVE][dead][dead][LIVE][dead][LIVE]
+After sweep: [LIVE][    ][LIVE][              ][LIVE][    ][LIVE]
+After compact: [LIVE][LIVE][LIVE][LIVE][          free          ]
 \`\`\`
 
-## Stop-The-World (STW) Pauses
+---
 
-A **safepoint** is a moment when all application threads are in a safe state (between bytecode instructions). The JVM can only inspect the heap at safepoints.
+## The Five Collectors You Must Know
 
-For any GC phase requiring the world to stop: JVM signals all threads → threads park at their next safepoint → GC works → threads resume. The pause = safepoint sync time + GC work time.
+### 1. Serial GC (\`-XX:+UseSerialGC\`)
+- Single-threaded for both Minor and Major GC
+- **Stop-the-world**: pauses ALL application threads during collection
+- Only makes sense for tiny heaps (<100MB) or single-CPU containers
+- Never use in production web services
 
-Long STW pauses cause latency spikes. A 2-second Full GC means your service was completely unresponsive for 2 seconds — all HTTP requests time out.
+### 2. Parallel GC (\`-XX:+UseParallelGC\`) — "Throughput Collector"
+- Multiple GC threads working in parallel → faster collection
+- Still stop-the-world, but shorter pauses than Serial
+- Optimised for **maximum throughput** — minimise total GC time, not individual pauses
+- Good for: batch jobs, data pipelines, scientific computing
+- Bad for: low-latency web services (pauses can be 500ms–5s on large heaps)
+
+### 3. G1 GC (\`-XX:+UseG1GC\`) — Default since Java 9
+
+G1 (Garbage-First) is a fundamentally different design. Instead of fixed-size Eden/Old regions, it divides the heap into **~2048 equal-sized regions** (typically 1MB-32MB each). Each region is labelled dynamically as Eden, Survivor, Old, or Humongous (for objects > half region size).
+
+\`\`\`
+G1 Heap = grid of regions, each ~2MB:
+┌──┬──┬──┬──┬──┬──┬──┬──┐
+│E │E │S │O │O │H │E │O │  E=Eden, S=Survivor
+├──┼──┼──┼──┼──┼──┼──┼──┤  O=Old,  H=Humongous
+│O │E │O │O │E │O │S │E │
+├──┼──┼──┼──┼──┼──┼──┼──┤
+│O │O │E │H │H │O │O │E │
+└──┴──┴──┴──┴──┴──┴──┴──┘
+\`\`\`
+
+**Why "Garbage First"?** G1 tracks how much garbage is in each region. It collects the regions with the MOST garbage first — maximising reclaimed memory per pause time.
+
+**Key G1 feature: Pause Target**
+\`-XX:MaxGCPauseMillis=200\` (default 200ms)
+G1 tries to stay within this target by choosing how many regions to collect per cycle. It's a *goal*, not a guarantee, but G1 usually hits it on reasonably-sized heaps.
+
+G1 also does **concurrent marking** — it marks live objects concurrently with your application running, so the stop-the-world phase only needs to do the final snapshot.
+
+**G1 tuning tips:**
+- \`-Xms = -Xmx\` (same initial and max heap) prevents resize overhead
+- \`-XX:MaxGCPauseMillis=100\` for stricter latency needs
+- \`-XX:G1HeapRegionSize=4m\` if you have many large objects
+- Watch for "to-space exhaustion" — G1 falls back to a full STW Full GC
+
+### 4. ZGC (\`-XX:+UseZGC\`) — Java 11+, production-ready Java 15+
+
+ZGC targets **sub-millisecond pauses** even on multi-terabyte heaps. It achieves this by doing almost everything **concurrently** — while your application threads keep running.
+
+How? ZGC uses:
+- **Coloured pointers** — stores GC metadata in unused bits of 64-bit pointers
+- **Load barriers** — tiny code snippets injected by JIT at every object reference read; they fix up stale pointers in-flight
+- **Concurrent relocation** — moves objects while the app runs (other GCs must stop for this)
+
+**Pauses in ZGC:** only ~1ms for root scanning + safepoint sync, regardless of heap size. ZGC was designed for low-latency services (financial trading, real-time gaming, ML inference).
+
+**Trade-offs:** uses ~15% more CPU (for load barriers and concurrent work) and more memory footprint than G1. Don't use it for CPU-bound batch jobs.
+
+### 5. Shenandoah (\`-XX:+UseShenandoahGC\`) — OpenJDK only
+
+Similar goals to ZGC but different implementation. Also concurrent, also sub-millisecond pauses. Uses **Brooks pointers** (forwarding pointers in object header) instead of coloured pointers. Available in OpenJDK, NOT Oracle JDK.
+
+| | G1 | ZGC | Shenandoah |
+|---|---|---|---|
+| Pause goal | ≤200ms | <1ms | <10ms |
+| Concurrent marking | ✅ | ✅ | ✅ |
+| Concurrent compaction | ❌ (STW) | ✅ | ✅ |
+| Heap size sweet spot | 4GB–16GB | Any (TB scale) | Any |
+| CPU overhead | Low | ~15% | ~10% |
+| Default | Java 9+ | No | No |
+
+---
+
+## Stop-The-World (STW): Why Pauses Happen
+
+A **safepoint** is a moment when all application threads have reached a safe state (e.g. between bytecode instructions, not in the middle of updating a data structure). The JVM can only safely inspect the heap at safepoints.
+
+When a GC phase needs the world to stop:
+1. JVM signals all threads to stop at their next safepoint
+2. Threads finish their current instruction and park
+3. GC thread does its work
+4. Threads resume
+
+The pause = time to reach safepoints + time to do GC work
+
+Long STW pauses cause latency spikes in your service. A 2-second Full GC means your service was completely unresponsive for 2 seconds — all HTTP requests timeout.
+
+---
+
+## Memory Leaks in Java — Yes, They Happen
+
+Common misconception: "Java has GC so there are no memory leaks." Wrong. Memory leaks in Java mean objects that are **reachable but unused** — GC can't collect them because you still hold a reference.
+
+**The five patterns:**
+
+**1. Static collections that grow forever**
+\`\`\`java
+static Map<String, Object> cache = new HashMap<>();
+// If you put() but never evict, this grows unbounded
+\`\`\`
+
+**2. Event listeners never removed**
+\`\`\`java
+button.addActionListener(this);  // holds reference to 'this'
+// If button outlives 'this' and you never removeActionListener(), leak
+\`\`\`
+
+**3. ThreadLocal not cleaned up**
+\`\`\`java
+ThreadLocal<HeavyObject> tl = new ThreadLocal<>();
+tl.set(new HeavyObject());
+// In a thread pool, threads are reused — ThreadLocal survives!
+// Must call tl.remove() in a finally block
+\`\`\`
+
+**4. Inner classes holding outer reference**
+\`\`\`java
+class Outer {
+    class Inner { }  // Inner holds implicit reference to Outer
+    // If Inner escapes (e.g. registered as listener), Outer can't be GC'd
+    // Fix: use static nested class instead
+}
+\`\`\`
+
+**5. Unclosed resources**
+\`\`\`java
+Connection conn = dataSource.getConnection();
+// If you forget conn.close() and there's an exception path, connection leaks
+// Fix: always use try-with-resources
+\`\`\`
+
+**How to diagnose a memory leak:**
+1. Take a heap dump: \`jmap -dump:format=b,file=heap.hprof <pid>\`
+2. Open in **Eclipse Memory Analyzer (MAT)**
+3. Look at the **Dominator Tree** — which objects retain the most memory?
+4. Follow the reference chain back to the GC root — that's your leak
+
+---
+
+## GC Tuning Workflow (Production)
+
+> [!DANGER]
+> Never tune GC without measurements. Premature tuning based on guessing GC flags makes things worse.
+
+**Step 1: Enable GC logging**
+\`\`\`
+-Xlog:gc*:file=gc.log:time,uptime,level,tags:filecount=5,filesize=20m
+\`\`\`
+
+**Step 2: Identify the problem**
+- Frequent Minor GCs → allocation rate too high, or survivors too large
+- Long Full GCs → old gen too small, or memory leak filling old gen
+- Long pauses despite G1 → consider ZGC
+
+**Step 3: Sizing rules of thumb**
+- Heap: 2–4× your live data set size (leave room for garbage accumulation)
+- \`-Xms = -Xmx\` in production (prevent heap resize overhead)
+- Leave OS 1–2GB for Metaspace, thread stacks, native buffers
+
+**Step 4: Collector selection by use case**
+- Batch/throughput job → Parallel GC
+- Web service, ≤16GB heap → G1 with \`-XX:MaxGCPauseMillis=100\`
+- Low-latency service, large heap → ZGC
+- Never tune what you don't measure
+
+**Step 5: Tools**
+- \`jstat -gcutil <pid> 1000\` — live GC stats every 1 second
+- **GCViewer** or **GCEasy** — visualise GC log
+- **JFR (Java Flight Recorder)** + **JMC** — production-safe deep profiling
+- **async-profiler** — CPU + allocation profiling with low overhead
+
+> [!EU]
+> The classic European interview question: *"Your service has periodic 2-second latency spikes. Walk me through how you'd diagnose it."* Strong answer: (1) Check GC logs first — correlate spike timestamps with GC events; (2) If Full GC → take heap dump, find leak with MAT dominator tree; (3) If pause inherent to collector → switch to ZGC; (4) If allocation rate too high → profile with async-profiler to find hot allocation sites and reduce object creation. Showing measurement-first thinking beats reciting flags.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Watch generational GC and promotion happen',
-              code: `import java.util.*;
+      code: [
+        {
+          lang: 'java',
+          title: 'Watch generational GC & promotion happen',
+          code: `import java.util.*;
 
 public class GcDemo {
     public static void main(String[] args) {
@@ -501,76 +719,93 @@ public class GcDemo {
         System.out.println("Tip: re-run with -Xlog:gc -Xmx64m to see GC pauses.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'Why does the JVM use tracing GC instead of reference counting?', a: 'Tracing from GC roots correctly reclaims cyclic references (A→B→A) that reference counting would leak, and it avoids the per-assignment counter bookkeeping overhead of reference counting.' },
-            { q: 'List the four main categories of GC roots.', a: 'Local variables in any live stack frame; static fields of loaded classes; active Java threads; and JNI (native) references.' },
-            { q: 'What is the mark-sweep-compact algorithm?', a: 'Mark: traverse from GC roots and mark all reachable objects live. Sweep: reclaim memory from unmarked (dead) objects, leaving fragmented free space. Compact: slide all live objects together to eliminate fragmentation and enable fast pointer-bump allocation.' },
-            { q: 'What is a safepoint and why does GC need one?', a: 'A safepoint is a position in execution where thread state is fully known and consistent (e.g. between bytecode instructions). The JVM can only safely inspect or modify the heap when all threads are at safepoints — it signals threads to park there before starting a STW GC phase.' }
-          ]
         },
         {
-          title: 'Generational GC & Collection Types',
-          notes: `
-## The Weak Generational Hypothesis
+          lang: 'java',
+          title: 'Common memory leak patterns and how to find them',
+          code: `import java.util.*;
+import java.util.concurrent.*;
 
-Researchers observed: **most objects die young**. In a typical web server, a request arrives, dozens of temporary Strings and DTOs are created, the request completes in 50ms — and all those objects are immediately garbage. A few objects (caches, connection pools) live for hours.
+// The four most common Java memory leak patterns — all produce reachable-but-unused objects.
+// GC cannot reclaim them because they have live references.
+public class MemoryLeakPatterns {
 
-This observation — "most objects die young" — is called the **Weak Generational Hypothesis**. It justifies splitting the heap into generations and collecting them separately.
+    // LEAK 1: Unbounded static cache (most common in production)
+    static final Map<String, byte[]> REPORT_CACHE = new HashMap<>();
+    static void leakPattern1_UnboundedCache(String key) {
+        // Cache grows without limit. Never evicted. Heap fills up with stale reports.
+        // Fix: use Caffeine/Guava cache with size limit + TTL
+        REPORT_CACHE.computeIfAbsent(key, k -> new byte[1024]); // "cache" that never shrinks
+    }
 
-## Heap Generations
+    // LEAK 2: Listener / observer never deregistered
+    interface EventListener { void onEvent(String e); }
+    static final List<EventListener> listeners = new ArrayList<>();
+    static void leakPattern2_UnregisteredListener() {
+        // A new listener is added every time a component is created.
+        // If the component is GC-able but the listener is still in the list, it won't be collected.
+        // Fix: remove listener in the component's destroy/close method.
+        listeners.add(e -> System.out.println("event: " + e));
+        System.out.println("Listeners registered: " + listeners.size() + " (keeps growing!)");
+    }
 
-\`\`\`
-JAVA HEAP
-┌─────────────────────────────────────────────────────────┐
-│  YOUNG GENERATION (~25% of heap)                        │
-│  ┌──────────────┬──────────────┬────────────────────┐   │
-│  │  Eden Space  │ Survivor S0  │   Survivor S1      │   │
-│  │  (new objs)  │  (age 1-N)   │   (bounce here)    │   │
-│  └──────────────┴──────────────┴────────────────────┘   │
-│  OLD GENERATION / TENURED (~75% of heap)                │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │  Long-lived objects (survived enough minor GCs) │    │
-│  └─────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────┘
-\`\`\`
+    // LEAK 3: ThreadLocal not removed in a thread pool
+    static final ThreadLocal<List<String>> PER_THREAD_CONTEXT = ThreadLocal.withInitial(ArrayList::new);
+    static void leakPattern3_ThreadLocal() {
+        // Thread-pool threads live forever. ThreadLocal values attached to them live forever too.
+        // Fix: always call remove() in a finally block.
+        PER_THREAD_CONTEXT.get().add("user-session-data-" + UUID.randomUUID()); // keeps accumulating
+        System.out.println("Thread context size: " + PER_THREAD_CONTEXT.get().size());
+        // CORRECT PATTERN:
+        try {
+            PER_THREAD_CONTEXT.get().add("safe");
+        } finally {
+            PER_THREAD_CONTEXT.remove(); // ALWAYS clean up in thread pools
+        }
+    }
 
-## Object Lifecycle
+    // LEAK 4: Inner class / lambda holding outer class reference
+    static class HeavyService {
+        byte[] bigData = new byte[10 * 1024 * 1024]; // 10MB
+        Runnable createLeakyTask() {
+            // Anonymous inner class / lambda implicitly holds 'this' (the HeavyService).
+            // If the task is submitted to a long-lived executor, HeavyService is pinned in memory.
+            return () -> System.out.println("I hold a ref to HeavyService via outer 'this'");
+            // Fix: make the closure variables local finals, don't capture 'this'
+        }
+    }
 
-1. New object created → goes to **Eden** space (via thread-local allocation buffer — TLAB)
-2. Eden fills → triggers a **Minor GC** (Young GC)
-3. Minor GC scans Eden + one Survivor space
-4. Live objects copied to the other Survivor space, **age incremented** by 1
-5. Objects with age ≥ 15 (tune with \`-XX:MaxTenuringThreshold\`) → **promoted to Old Gen**
-6. Eden and the source Survivor space are cleared — just a pointer reset (O(1), instant!)
-7. When Old Gen fills → **Major GC** or **Full GC** (much more expensive)
+    // HOW TO DIAGNOSE: heap dump + Eclipse MAT
+    // jmap -dump:format=b,file=heap.hprof <pid>
+    // Then open in Eclipse MAT -> "Leak Suspects" report -> look at dominator tree
 
-## Collection Types Compared
-
-| Type | What it collects | Frequency | Cost |
-|------|-----------------|-----------|------|
-| **Minor GC** | Eden + one Survivor | Frequent | Cheap — mostly dead objects, only live ones copied |
-| **Major GC** | Old generation | Infrequent | Expensive — large, mostly live, needs compaction |
-| **Full GC** | Entire heap + Metaspace | Rare, bad | Very expensive — compacts everything, long STW pause |
-
-**Why is Minor GC cheap?** Because most objects in Eden are dead. You only copy the few survivors. Clearing Eden is just resetting a pointer — O(1).
-
-**Why is Full GC expensive?** Old gen is large, mostly full of live objects, needs to compact everything, and pauses ALL application threads. A 2-second Full GC means 2 seconds of zero responses.
-
-> [!WARNING]
-> Premature promotion (objects surviving into Old Gen when they shouldn't) is a common cause of frequent Full GCs. Profile with \`jstat -gcutil <pid> 1000\` to watch promotion rates.
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'G1 GC tuning: reading pause logs and setting goals',
-              code: `// Run with: java -Xmx128m -Xms128m -XX:+UseG1GC -XX:MaxGCPauseMillis=50 -Xlog:gc*:stdout GcTuningDemo
+    public static void main(String[] args) {
+        System.out.println("=== Demonstrating leak patterns ===");
+        for (int i = 0; i < 5; i++) {
+            leakPattern1_UnboundedCache("report-" + i);
+            leakPattern2_UnregisteredListener();
+            leakPattern3_ThreadLocal();
+        }
+        System.out.println("Cache size: " + REPORT_CACHE.size());
+        System.out.println("Listeners:  " + listeners.size());
+        System.out.println("\\nDiagnosis: jmap -histo:live <pid> | head -20 shows top object counts.");
+        System.out.println("A growing byte[] at the top of the list -> memory leak.");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'G1 GC tuning: reading pause logs and setting goals',
+          code: `// This demo generates GC activity you can observe with -Xlog:gc*
+// Run with: java -Xmx128m -Xms128m -XX:+UseG1GC -XX:MaxGCPauseMillis=50 -Xlog:gc*:stdout GcTuningDemo
+// Then watch G1 try to hit the 50ms pause goal.
 import java.util.*;
 
 public class GcTuningDemo {
     public static void main(String[] args) throws InterruptedException {
         List<byte[]> survivors = new ArrayList<>();
+        long totalPause = 0;
+        int gcCount = 0;
 
         // Simulate a mixed workload: short-lived + long-lived objects
         for (int i = 0; i < 500; i++) {
@@ -586,266 +821,41 @@ public class GcTuningDemo {
                 survivors.subList(0, 10).clear();
             }
 
-            Thread.sleep(2);
+            Thread.sleep(2); // Slow down so GC logs are readable
         }
 
         System.out.println("Surviving objects: " + survivors.size());
         System.out.println();
-        System.out.println("Key GC log lines to watch:");
-        System.out.println("  Pause Young (Normal)         -> minor GC, short");
-        System.out.println("  Pause Young (Concurrent Start) -> triggers concurrent marking");
-        System.out.println("  Pause Remark                 -> STW, short: finalises marking");
-        System.out.println("  Pause Mixed                  -> reclaims old gen regions");
+        System.out.println("Key GC log lines to look for:");
+        System.out.println("  [gc] GC(n) Pause Young (Normal) -> minor GC, short");
+        System.out.println("  [gc] GC(n) Pause Young (Concurrent Start) -> triggers concurrent marking");
+        System.out.println("  [gc] GC(n) Pause Remark -> STW, short: finalizes marking");
+        System.out.println("  [gc] GC(n) Pause Cleanup -> STW, very short: selects regions");
+        System.out.println("  [gc] GC(n) Pause Mixed -> reclaims old gen regions (the payoff)");
+        System.out.println();
+        System.out.println("Tuning knobs:");
+        System.out.println("  -XX:MaxGCPauseMillis=200  (default; lower = more frequent GCs)");
+        System.out.println("  -XX:G1HeapRegionSize=4m   (for humongous obj tuning)");
+        System.out.println("  -XX:G1NewSizePercent=20   (min young gen %)");
+        System.out.println("  -XX:G1MaxNewSizePercent=60 (max young gen %)");
+        System.out.println("  -XX:ConcGCThreads=4       (concurrent marking threads)");
         System.out.println();
         System.out.println("Rule: set -Xms == -Xmx to avoid heap resize pauses in prod.");
+        System.out.println("Leave 25% of container RAM for Metaspace, threads, direct memory.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'State the weak generational hypothesis and its consequence for GC design.', a: '"Most objects die young." Therefore the heap is split into young/old generations so cheap, frequent minor GCs reclaim short-lived objects, while expensive major GCs run rarely only when the old gen fills up.' },
-            { q: 'What is object promotion and when does it happen?', a: 'When an object survives enough minor GC cycles (age ≥ MaxTenuringThreshold, default 15), it is promoted (copied) from the Survivor space to the Old Generation (tenured heap). Objects may also be promoted early if the Survivor space is full.' },
-            { q: 'Why is Minor GC cheaper than Full GC?', a: 'Minor GC only collects the Young Generation — most objects in Eden are already dead, so you only copy the few survivors. Clearing Eden is a pointer reset (O(1)). Full GC collects the entire heap, compacts live old-gen objects, and causes a long STW pause.' },
-            { q: 'What is a TLAB and why does it matter?', a: 'Thread-Local Allocation Buffer — each thread reserves a private chunk of Eden. New objects are allocated into the thread\'s TLAB via fast pointer bumping, without any synchronisation. TLABs make allocation nearly free for short-lived objects.' },
-            { q: 'What triggers a Full GC and why is it so expensive?', a: 'Full GC is triggered when both Young and Old generations are full and promotion fails, or when the GC cannot reclaim enough space. It pauses all application threads (STW), collects and compacts the entire heap including Metaspace — on large heaps this can take several seconds.' }
-          ]
-        },
-        {
-          title: 'Modern GC Collectors',
-          notes: `
-## The Five Collectors You Must Know
-
-### Serial GC (\`-XX:+UseSerialGC\`)
-Single-threaded, stop-the-world for both Minor and Major GC. Only sensible for tiny heaps (<100 MB) or single-CPU containers. Never use in production web services.
-
-### Parallel GC (\`-XX:+UseParallelGC\`) — Throughput Collector
-Multiple GC threads working in parallel → faster collection, but still stop-the-world. Optimised for **maximum throughput** — minimise total GC time, not individual pause length. Good for batch jobs, data pipelines. Bad for low-latency web services (pauses can be 500ms–5s on large heaps).
-
-### G1 GC (\`-XX:+UseG1GC\`) — Default since Java 9
-
-G1 (Garbage-First) divides the heap into **~2048 equal-sized regions** (1–32 MB each), each labelled dynamically as Eden, Survivor, Old, or Humongous (for objects > half a region).
-
-\`\`\`
-G1 Heap = grid of regions, each ~2MB:
-┌──┬──┬──┬──┬──┬──┬──┬──┐
-│E │E │S │O │O │H │E │O │  E=Eden, S=Survivor
-├──┼──┼──┼──┼──┼──┼──┼──┤  O=Old,  H=Humongous
-│O │E │O │O │E │O │S │E │
-└──┴──┴──┴──┴──┴──┴──┴──┘
-\`\`\`
-
-**Why "Garbage First"?** G1 tracks garbage density per region and collects the highest-garbage regions first — maximising reclaimed memory per unit of pause time.
-
-Key feature: \`-XX:MaxGCPauseMillis=200\` (default). G1 tries to stay within this pause goal by choosing how many regions to collect per cycle. It's a target, not a guarantee, but G1 usually hits it on reasonably-sized heaps.
-
-G1 tuning tips: \`-Xms = -Xmx\` (avoid resize overhead), \`-XX:G1HeapRegionSize=4m\` for large objects.
-
-### ZGC (\`-XX:+UseZGC\`) — Java 11+, production-ready Java 15+
-
-Targets **sub-millisecond pauses** even on multi-terabyte heaps by doing almost everything **concurrently** while your application threads keep running.
-
-ZGC uses:
-- **Coloured pointers** — stores GC metadata in unused bits of 64-bit pointers
-- **Load barriers** — tiny code snippets injected at every object reference read; fix up stale pointers in-flight
-- **Concurrent relocation** — moves objects while the app runs
-
-Pauses: only ~1ms for root scanning + safepoint sync, regardless of heap size. Best for financial trading, real-time services, ML inference. Trade-off: ~15% more CPU overhead, more memory footprint.
-
-### Shenandoah (\`-XX:+UseShenandoahGC\`) — OpenJDK only
-
-Similar goals to ZGC but uses **Brooks pointers** (forwarding pointers in object header) instead of coloured pointers. Available in OpenJDK, not Oracle JDK.
-
-| | G1 | ZGC | Shenandoah |
-|---|---|---|---|
-| Pause goal | ≤200ms | <1ms | <10ms |
-| Concurrent compaction | ❌ (STW) | ✅ | ✅ |
-| Heap sweet spot | 4–16 GB | Any (TB scale) | Any |
-| CPU overhead | Low | ~15% | ~10% |
-
-> [!EU]
-> The classic European interview question: *"Your service has periodic 2-second latency spikes — walk me through how you'd diagnose it."* Strong answer: (1) check GC logs first — correlate spike timestamps with GC events; (2) if Full GC → take heap dump, find leak with MAT dominator tree; (3) if pause inherent to collector → switch to ZGC; (4) if allocation rate too high → profile with async-profiler. Measurement-first thinking beats reciting flags.
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'Common memory leak patterns and how to find them',
-              code: `import java.util.*;
-
-// The four most common Java memory leak patterns.
-// GC cannot reclaim them because they have live references — reachable but unused.
-public class MemoryLeakPatterns {
-
-    // LEAK 1: Unbounded static cache (most common in production)
-    static final Map<String, byte[]> REPORT_CACHE = new HashMap<>();
-    static void leakPattern1(String key) {
-        // Cache grows without limit. Fix: use Caffeine/Guava cache with size limit + TTL
-        REPORT_CACHE.computeIfAbsent(key, k -> new byte[1024]);
-    }
-
-    // LEAK 2: Listener never deregistered
-    interface EventListener { void onEvent(String e); }
-    static final List<EventListener> listeners = new ArrayList<>();
-    static void leakPattern2() {
-        listeners.add(e -> System.out.println("event: " + e));
-        System.out.println("Listeners registered: " + listeners.size() + " (keeps growing!)");
-    }
-
-    // LEAK 3: ThreadLocal not removed in a thread pool
-    static final ThreadLocal<List<String>> PER_THREAD = ThreadLocal.withInitial(ArrayList::new);
-    static void leakPattern3() {
-        // Thread-pool threads live forever — ThreadLocal values survive between requests
-        // FIX: always call remove() in a finally block
-        try {
-            PER_THREAD.get().add("user-session-data-" + UUID.randomUUID());
-        } finally {
-            PER_THREAD.remove(); // ALWAYS clean up in thread pools
         }
-    }
-
-    // LEAK 4: Inner class capturing outer reference
-    static class HeavyService {
-        byte[] bigData = new byte[10 * 1024 * 1024]; // 10MB
-        Runnable leakyTask() {
-            // Lambda / anonymous class implicitly holds 'this' (HeavyService).
-            // If submitted to a long-lived executor, HeavyService is pinned in memory.
-            return () -> System.out.println("holding HeavyService via outer 'this'");
-        }
-    }
-
-    // DIAGNOSE: heap dump + Eclipse MAT
-    // jmap -dump:format=b,file=heap.hprof <pid>
-    // Open in Eclipse MAT -> Leak Suspects -> Dominator Tree
-
-    public static void main(String[] args) {
-        for (int i = 0; i < 5; i++) {
-            leakPattern1("report-" + i);
-            leakPattern2();
-            leakPattern3();
-        }
-        System.out.println("Cache size: " + REPORT_CACHE.size());
-        System.out.println("Listeners:  " + listeners.size());
-        System.out.println("\\nDiagnosis: jmap -histo:live <pid> | head -20 shows top object counts.");
-    }
-}`
-            }
-          ],
-          flashcards: [
-            { q: 'How does G1 GC differ from Parallel GC?', a: 'G1 splits the heap into ~2048 equal-sized regions tagged dynamically as Eden/Survivor/Old/Humongous, collects highest-garbage regions first, and targets a configurable pause goal (MaxGCPauseMillis). Parallel GC maximises total throughput but with longer, less predictable STW pauses.' },
-            { q: 'How do ZGC and Shenandoah achieve sub-millisecond pauses?', a: 'They perform marking AND object relocation/compaction concurrently with the application using load/read barriers (coloured pointers in ZGC, Brooks pointers in Shenandoah). STW phases are tiny and largely independent of heap size.' },
-            { q: 'What is a "humongous object" in G1 GC?', a: 'An object that is ≥50% of a G1 region size. G1 allocates these directly in the Old Generation (Humongous regions), bypassing Eden. They can trigger mixed GCs early — if many are present, increase G1HeapRegionSize or redesign the allocation.' },
-            { q: 'When would you choose ZGC over G1?', a: 'When you need sub-millisecond GC pauses regardless of heap size — financial trading, real-time APIs, ML inference. ZGC costs ~15% more CPU for load barriers and concurrent work. G1 is the better default for most web services where ≤200ms pauses are acceptable.' },
-            { q: 'Can you have a memory leak in Java? Give two examples.', a: 'Yes — objects that remain reachable but are logically unused. Examples: (1) unbounded static cache that grows without eviction; (2) ThreadLocals not cleared in thread-pool threads (threads are reused, values accumulate). GC cannot reclaim them because they are still referenced.' }
-          ]
-        },
-        {
-          title: 'GC Tuning & Diagnosing Leaks',
-          notes: `
-## GC Tuning Workflow (Production)
-
-> [!DANGER]
-> Never tune GC without measurements. Premature tuning based on guessing GC flags makes things worse.
-
-**Step 1: Enable GC logging**
-\`\`\`
--Xlog:gc*:file=gc.log:time,uptime,level,tags:filecount=5,filesize=20m
-\`\`\`
-
-**Step 2: Identify the problem**
-- Frequent Minor GCs → allocation rate too high, or survivors too large
-- Long Full GCs → old gen too small, or memory leak filling old gen
-- Long pauses despite G1 → consider ZGC
-
-**Step 3: Sizing rules of thumb**
-- Heap: 2–4× your live data set size
-- Set \`-Xms = -Xmx\` in production — prevents heap resize overhead (resize triggers a Full GC)
-- Leave the OS 1–2 GB for Metaspace, thread stacks, and native buffers
-
-**Step 4: Collector selection**
-- Batch/throughput job → Parallel GC
-- Web service ≤16 GB heap → G1 with \`-XX:MaxGCPauseMillis=100\`
-- Low-latency service, large heap → ZGC
-
-## Diagnosing Memory Leaks
-
-Common misconception: "Java has GC so there are no memory leaks." Wrong. Leaks in Java are **reachable but unused** objects — GC can't collect them because you still hold a reference.
-
-**The five classic patterns:**
-1. **Static collections that grow forever** — \`static Map<K,V>\` with no eviction
-2. **Event listeners never removed** — component registered as listener but never unregistered
-3. **ThreadLocal not cleaned up** — in a thread pool, threads reuse \`ThreadLocal\` values; must call \`remove()\` in \`finally\`
-4. **Inner classes holding outer reference** — anonymous inner class / lambda captures \`this\`; if submitted to a long-lived executor, the outer object is pinned
-5. **Unclosed resources** — streams, connections not closed on exception paths; always use try-with-resources
-
-**How to diagnose:**
-1. Take a heap dump: \`jmap -dump:format=b,file=heap.hprof <pid>\`
-2. Open in **Eclipse Memory Analyzer (MAT)**
-3. Look at the **Dominator Tree** — which objects retain the most memory?
-4. Follow the reference chain back to the GC root — that's your leak
-
-## OOM Error Types
-
-| OOM type | Cause | Fix |
-|----------|-------|-----|
-| \`Java heap space\` | Heap full, GC can't reclaim | Increase \`-Xmx\` or fix leak |
-| \`GC overhead limit exceeded\` | >98% time in GC, <2% reclaimed | Same as above — severe heap pressure |
-| \`Metaspace\` | Too many loaded classes / classloader leak | Add \`-XX:MaxMetaspaceSize\`, fix classloader leak |
-| \`Direct buffer memory\` | NIO direct buffers exhausted | Increase \`-XX:MaxDirectMemorySize\` |
-
-## Tools Reference
-
-- \`jstat -gcutil <pid> 1000\` — live GC stats every 1 second
-- **GCViewer / GCEasy** — visualise GC log files
-- **JFR + JMC** — production-safe deep profiling (<1% overhead)
-- **async-profiler** — CPU + allocation flame graphs
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'G1 GC tuning flags and OOM type reference',
-              code: `// Runnable reference: key GC tuning flags and when to use each.
-public class GcTuningReference {
-    public static void main(String[] args) {
-        System.out.println("=== Collector selection ===");
-        System.out.println("Batch / throughput   : -XX:+UseParallelGC");
-        System.out.println("Web service <= 16GB  : -XX:+UseG1GC (default since Java 9)");
-        System.out.println("Low-latency, large   : -XX:+UseZGC (Java 15+ production ready)");
-        System.out.println();
-        System.out.println("=== Essential sizing flags ===");
-        System.out.println("-Xms2g -Xmx2g          set equal to prevent resize Full GC");
-        System.out.println("-XX:MaxMetaspaceSize=256m  cap native memory for class metadata");
-        System.out.println("-XX:MaxGCPauseMillis=100   G1 pause target (default 200ms)");
-        System.out.println("-XX:G1HeapRegionSize=4m    tune for large objects");
-        System.out.println();
-        System.out.println("=== GC logging (unified log, Java 9+) ===");
-        System.out.println("-Xlog:gc*:file=gc.log:time,uptime,level,tags:filecount=5,filesize=20m");
-        System.out.println();
-        System.out.println("=== OOM types and meaning ===");
-        System.out.println("OutOfMemoryError: Java heap space     -> heap full, check for leak");
-        System.out.println("OutOfMemoryError: GC overhead limit   -> >98% time in GC, severe pressure");
-        System.out.println("OutOfMemoryError: Metaspace           -> classloader leak or too many classes");
-        System.out.println("OutOfMemoryError: Direct buffer memory -> NIO direct buffers exhausted");
-        System.out.println();
-        System.out.println("=== Heap dump for leak analysis ===");
-        System.out.println("jmap -dump:format=b,file=heap.hprof <pid>");
-        System.out.println("Then open in Eclipse MAT -> Leak Suspects -> Dominator Tree");
-        System.out.println();
-        System.out.println("=== Live monitoring ===");
-        System.out.println("jstat -gcutil <pid> 1000   # print GC stats every 1 second");
-        System.out.println("  S0   S1   E    O    M     YGC   YGCT   FGC   FGCT    GCT");
-        System.out.println("  0.0  42.3 83.1 20.4 97.2  1402  3.442    0   0.000   3.442");
-        System.out.println("  ^Survivor  ^Eden ^Old ^Meta  ^MinorGC count/time  ^FullGC");
-    }
-}`
-            }
-          ],
-          flashcards: [
-            { q: 'First step when diagnosing GC-related latency spikes?', a: 'Enable and read GC logs (-Xlog:gc*) to confirm pauses correlate with the spikes, then take a heap dump to inspect the retained set — always measure before tuning any flags.' },
-            { q: 'Why set -Xms equal to -Xmx in production?', a: 'If Xms < Xmx, the JVM starts with a small heap and grows it on demand. Heap growth triggers a Full GC (to copy/compact) — an avoidable pause. Setting them equal allocates the full heap at startup, trading startup memory for stable, predictable pause behaviour.' },
-            { q: 'What does "GC overhead limit exceeded" OOM mean?', a: 'The JVM spent >98% of CPU time in GC but reclaimed <2% of the heap — it is thrashing. This is a severe form of heap pressure, usually indicating a memory leak. Fix: increase -Xmx as a temporary measure, then find and fix the leak.' },
-            { q: 'What is the Dominator Tree in Eclipse MAT and how do you use it?', a: 'The Dominator Tree shows which objects retain the most heap memory — if object A is removed, all objects only reachable through A would be freed. Find the largest retainers at the top and follow the reference chain back to a GC root to identify the leak source.' },
-            { q: 'Name the four classic Java memory leak patterns.', a: '1) Unbounded static caches with no eviction. 2) Listeners/observers registered but never deregistered. 3) ThreadLocals not cleared in thread-pool threads. 4) Inner classes/lambdas capturing references to large outer objects submitted to long-lived executors.' }
-          ]
-        }
+      ],
+      flashcards: [
+        { q: 'Why does the JVM use tracing GC instead of reference counting?', a: 'Tracing from GC roots correctly reclaims cyclic references (A→B→A) that reference counting would leak, and it avoids per-assignment counter bookkeeping overhead.' },
+        { q: 'State the weak generational hypothesis and its consequence.', a: '"Most objects die young." Therefore the heap is split into young/old generations so cheap, frequent minor GCs reclaim short-lived objects, while expensive major GCs run rarely.' },
+        { q: 'How does G1 differ from Parallel GC?', a: 'G1 splits the heap into ~2048 equal regions dynamically tagged Eden/Survivor/Old/Humongous, collects highest-garbage regions first, and targets a configurable pause goal (MaxGCPauseMillis). Parallel maximises throughput but with longer, less predictable STW pauses.' },
+        { q: 'How do ZGC/Shenandoah achieve sub-millisecond pauses?', a: 'They perform marking AND object relocation/compaction concurrently with the application using load/read barriers (and coloured pointers in ZGC), so STW phases are tiny and largely independent of heap size.' },
+        { q: 'Can you have a memory leak in Java? Give examples.', a: 'Yes — objects that remain reachable but unused: unbounded static collections/caches, unremoved listeners, ThreadLocals in thread pools, unclosed resources. GC won\'t reclaim them because they\'re still referenced. Diagnose via heap dump + dominator tree.' },
+        { q: 'First step when diagnosing GC-related latency spikes?', a: 'Enable and read GC logs (-Xlog:gc*) to confirm pauses correlate with the spikes, then take a heap dump to inspect the retained set — measure before tuning any flags.' },
+        { q: 'Why set -Xms equal to -Xmx in production?', a: 'If Xms < Xmx, the JVM starts with a small heap and grows it on demand. Heap growth triggers a Full GC (to copy/compact) — an avoidable pause. Setting them equal allocates the full heap at startup, trading startup memory for stable, predictable runtime behaviour.' },
+        { q: 'What is a "humongous object" in G1 GC?', a: 'An object that is 50%+ of a G1 region size (default ~1-32MB depending on heap). G1 allocates these directly in the old generation (Humongous regions), bypassing Eden. They can trigger mixed GCs early — if you see many humongous allocations, increase G1HeapRegionSize or redesign the allocation.' },
+        { q: 'Name the four classic Java memory leak patterns.', a: '1) Unbounded static caches/collections that grow without eviction. 2) Listeners/observers registered but never deregistered. 3) ThreadLocals not cleared in thread-pool threads (pool threads are reused, values accumulate). 4) Inner classes/lambdas that capture references to large outer objects submitted to long-lived executors.' }
       ]
     },
 
@@ -853,164 +863,266 @@ public class GcTuningReference {
       id: '1.3',
       title: 'Java Memory Model & Safe Publication',
       hours: 4,
-      sections: [
-        {
-          title: 'Why JMM Exists: The Visibility Problem',
-          notes: `
-## Three Problems in Multi-Threaded Memory
+      notes: `
+# Java Memory Model (JMM) — From Zero to Senior Level
 
-In a single-threaded program, instructions execute in order and everything is predictable. In a multi-threaded program, **three things conspire to make shared memory dangerous**.
+## The Problem: Why Do We Need a Memory Model?
+
+In a single-threaded program, instructions execute in order and everything is predictable. But in a multi-threaded program, **three things conspire to make shared memory dangerous:**
 
 ### Problem 1: CPU Caches (Visibility)
-
-Modern CPUs don't read from RAM directly — they have L1/L2/L3 caches. When thread A writes a value, it goes into A's CPU cache. Thread B on a different CPU core may still have the **stale** value in its own cache.
+Modern CPUs don't read directly from RAM — they have L1/L2/L3 caches. When thread A writes a value, it goes into A's CPU cache. Thread B on a different CPU core reads from ITS cache, which may still have the old stale value.
 
 \`\`\`
 CPU Core 1 (Thread A)          CPU Core 2 (Thread B)
   L1 Cache: running = true        L1 Cache: running = true (STALE!)
      ↕                                ↕
+  L2/L3 Cache                    L2/L3 Cache
+     ↕                                ↕
                     RAM: running = false   ← A wrote this
 \`\`\`
 
-Thread B may **never** see the update. This is a **visibility** problem.
+Thread B may never see the update! This is a **visibility** problem.
 
 ### Problem 2: Compiler & CPU Reordering (Ordering)
-
-Both the JIT and the CPU reorder instructions for performance — as long as reordering doesn't change the result **within a single thread**. But this breaks multi-threaded code:
+Both the Java compiler (JIT) and the CPU reorder instructions for performance — as long as the reordering doesn't change the result **within a single thread**. But this can break multi-threaded code.
 
 \`\`\`java
-// These two lines can be reordered (same single-thread result):
-x = 1;          // compiler may execute this second
-ready = true;   // compiler may execute this first
+// Single-threaded: these two lines can be reordered (same result)
+x = 1;          // ← compiler may execute this second
+ready = true;   // ← compiler may execute this first
 
-// Thread B reads ready=true but x=0 (old value) — broken!
+// Multi-threaded: if another thread reads 'ready' and then 'x',
+// it might see ready=true but x=0 (old value) — broken!
 \`\`\`
 
 ### Problem 3: Non-Atomic Compound Operations (Atomicity)
-
+Some operations look atomic but aren't:
 \`\`\`java
-count++;   // actually THREE operations:
+count++;   // This is actually THREE operations:
            // 1. READ count from memory
            // 2. ADD 1
            // 3. WRITE result back
-// Two threads doing this simultaneously can lose increments
+// If two threads do this simultaneously, you can lose increments
 \`\`\`
 
-## The Plain Shared Counter Demonstration
+**The JMM (Java Memory Model)** solves all three by defining exactly what guarantees the language provides and what programmers must do to achieve them.
 
-\`\`\`java
-// WITHOUT any synchronisation — broken:
-private static int counter = 0; // NOT volatile, NOT synchronized
+---
 
-// Thread A and Thread B both call 10_000 times:
-void increment() { counter++; }
-
-// Expected: 20_000. Actual: somewhere between 10_000 and 20_000.
-// Lost updates because of the read-modify-write race.
-\`\`\`
-
-The **Java Memory Model (JMM)** solves all three problems by defining exactly what guarantees the language provides and what programmers must do to get those guarantees.
-
-> [!TIP]
-> The JMM is not about speed — it's about correctness. Without it, behaviour depends entirely on which CPU and OS the code runs on. With it, you have portable, predictable multi-threading guarantees.
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'Visibility bug vs volatile fix',
-              code: `import java.util.concurrent.TimeUnit;
-
-public class VisibilityDemo {
-    // Try removing 'volatile' — the worker may loop forever on some JVMs/CPUs
-    // because the JIT caches 'running' in a register and never re-reads from memory.
-    private static volatile boolean running = true;
-
-    public static void main(String[] args) throws InterruptedException {
-        Thread worker = new Thread(() -> {
-            long count = 0;
-            while (running) { count++; }   // reads 'running' each iteration
-            System.out.println("Worker stopped after " + count + " iterations");
-        });
-        worker.start();
-
-        TimeUnit.MILLISECONDS.sleep(50);
-        running = false;  // volatile write -> immediately visible to worker
-        System.out.println("main set running=false");
-        worker.join(1000);
-        System.out.println("Done. Worker alive? " + worker.isAlive());
-
-        // Without 'volatile': the JIT may hoist 'running' into a CPU register
-        // and the worker loop becomes: while (true) { count++; }  -- loops forever.
-        // This is not a bug in the JIT -- it is legal under the JMM without volatile.
-    }
-}`
-            }
-          ],
-          flashcards: [
-            { q: 'What are the three multi-threading memory problems the JMM addresses?', a: 'Visibility (CPU caches — writes by one thread may not be seen by others), Ordering (compiler/CPU instruction reordering may break assumed sequencing), and Atomicity (compound operations like ++ are not a single indivisible step).' },
-            { q: 'Why can a plain boolean flag used as a stop signal loop forever without volatile?', a: 'Without volatile, the JIT may cache the flag value in a CPU register or optimise away the memory read entirely, because the JMM allows this for non-volatile fields. The worker thread never re-reads from main memory and never sees the update.' },
-            { q: 'What is the difference between visibility and atomicity?', a: 'Visibility means: when one thread writes a value, other threads can see the latest value (no stale cache). Atomicity means: a compound operation (read-modify-write) completes as a single indivisible unit with no interleaving. volatile provides visibility but NOT atomicity.' },
-            { q: 'Why can two threads doing counter++ produce a result less than expected?', a: 'counter++ is three operations: READ, ADD 1, WRITE. Two threads can both read the same old value, both compute +1, and both write the same new value — one increment is lost. This race condition requires an atomic operation (AtomicInteger) or synchronization to fix.' }
-          ]
-        },
-        {
-          title: 'Happens-Before & volatile',
-          notes: `
 ## The Happens-Before Relationship
 
-The JMM uses **happens-before** to formally describe visibility guarantees.
+The JMM uses the concept of **happens-before** to describe visibility guarantees formally.
 
 > If action A **happens-before** action B, then all effects of A are **visible** to B.
 
-This is NOT about wall-clock time. It's about **guaranteed visibility**: if happens-before exists between A and B, B is guaranteed to see A's effects regardless of CPU caching or reordering.
+This is NOT about time (A doesn't necessarily execute before B in wall-clock time). It's about **guaranteed visibility**: if happens-before exists, B is guaranteed to see A's effects.
 
-## The Six Happens-Before Rules
+### The Six Happens-Before Rules (Memorise These)
 
-**1. Program Order Rule** — within a single thread, each action happens-before the next action in program order. (A thread always sees its own writes.)
+**1. Program Order Rule**
+Within a single thread, every action happens-before the next action in program order.
+(Trivial — a thread always sees its own writes)
 
-**2. Monitor Lock Rule** — an **unlock** of a \`synchronized\` block happens-before every subsequent **lock** of the same monitor.
+**2. Monitor Lock Rule**
+An **unlock** of a \`synchronized\` block happens-before every subsequent **lock** of the same monitor.
+\`\`\`java
+synchronized (lock) {
+    x = 42;
+}  // ← unlock here
 
-**3. Volatile Variable Rule** — a **write** to a \`volatile\` field happens-before every subsequent **read** of that field.
+// Later in another thread:
+synchronized (lock) {
+    // ← lock here. Guaranteed to see x = 42
+    System.out.println(x);
+}
+\`\`\`
+
+**3. Volatile Variable Rule**
+A **write** to a \`volatile\` field happens-before every subsequent **read** of that field.
 \`\`\`java
 volatile boolean ready = false;
 volatile int data = 0;
+
 // Thread A:
-data = 42;        // happens-before the volatile write (program order)
-ready = true;     // volatile WRITE
+data = 42;        // ← happens-before the volatile write below
+ready = true;     // ← volatile WRITE
+
 // Thread B:
-while (!ready) {} // volatile READ (sees ready=true)
-System.out.println(data); // guaranteed to see data=42 (HB chain)
+while (!ready) {} // ← volatile READ (sees ready=true)
+System.out.println(data); // ← guaranteed to see data=42 (because of HB chain)
 \`\`\`
 
-**4. Thread Start Rule** — \`Thread.start()\` happens-before all actions in the started thread. (New thread sees everything the starting thread did before \`start()\`.)
+**4. Thread Start Rule**
+\`Thread.start()\` happens-before all actions in the started thread.
+(The new thread sees everything the starting thread did before calling \`start()\`)
 
-**5. Thread Termination Rule** — all actions in a thread happen-before another thread's \`thread.join()\` returns. (After \`join()\`, you can safely read results the other thread wrote.)
+**5. Thread Termination Rule**
+All actions in a thread happen-before another thread's \`thread.join()\` returns.
+(After \`join()\` returns, you can safely read results the other thread wrote)
 
-**6. Final Field Rule** — writes to \`final\` fields in a constructor happen-before any thread reads those fields (provided \`this\` doesn't escape the constructor).
+**6. Final Field Rule**
+All writes to \`final\` fields in a constructor happen-before any thread reads those fields (as long as \`this\` doesn't escape the constructor).
+\`\`\`java
+class SafePoint {
+    final int x, y;  // final fields are safely published
+    SafePoint(int x, int y) { this.x = x; this.y = y; }
+}
+// Even without synchronisation, x and y are guaranteed correct once
+// another thread has a reference to the SafePoint object
+\`\`\`
 
-## volatile: Two Guarantees, One Non-Guarantee
+---
 
-**Guarantee 1: Visibility** — a volatile write is immediately flushed; a volatile read always sees the latest written value.
+## volatile: What It Actually Guarantees (Critical Interview Topic)
 
-**Guarantee 2: Ordering (Memory Barriers)** — a volatile write acts as a store fence (all preceding writes committed first). A volatile read acts as a load fence (all subsequent reads see the committed state).
+\`volatile\` provides TWO guarantees:
 
-**NOT guaranteed: Atomicity**
+### Guarantee 1: Visibility
+A volatile write is immediately flushed to main memory (or at least made visible to all other CPU caches). A volatile read always reads the latest written value — bypasses the CPU cache.
+
+### Guarantee 2: Ordering (Memory Barriers)
+A volatile write acts like a **store fence**: all writes before it cannot be reordered to after it.
+A volatile read acts like a **load fence**: all reads after it cannot be reordered to before it.
+
+\`\`\`
+Before volatile write: all preceding writes are committed first
+volatile WRITE
+After volatile write: subsequent operations see the committed state
+\`\`\`
+
+### What volatile Does NOT Guarantee: Atomicity
+
 \`\`\`java
 volatile int counter = 0;
-counter++;  // still three ops: read, increment, write — NOT atomic!
+
+// Thread A and Thread B both do:
+counter++;  // ← NOT atomic! Still three ops: read, increment, write
 \`\`\`
 
-> [!WARNING]
-> The #1 volatile mistake: thinking it makes a variable "thread-safe". It only makes single READ/WRITE operations atomic for primitives ≤32 bits. Compound operations (\`++\`, check-then-act, read-modify-write) still need \`AtomicInteger\` or \`synchronized\`.
+Two threads can both read \`0\`, both increment to \`1\`, both write \`1\`. You lose one increment. Use \`AtomicInteger\` or \`synchronized\` for compound operations.
 
-## Double-Checked Locking: The Classic JMM Case Study
+> [!WARNING]
+> The #1 volatile mistake: thinking \`volatile\` makes a variable "thread-safe". It only makes SINGLE READ/WRITE operations atomic (for primitive types up to 32 bits; 64-bit longs/doubles need volatile too). For compound operations (\`++\`, check-then-act, read-modify-write), you need atomics or locks.
+
+---
+
+## synchronized: The Complete Tool
+
+\`synchronized\` gives you ALL THREE guarantees: visibility, ordering, AND atomicity.
 
 \`\`\`java
-// BROKEN — instance not volatile: constructor can be reordered after reference write
-private static Singleton instance;
+class Counter {
+    private int count = 0;
 
-// CORRECT — volatile prevents partial construction visibility
-private static volatile Singleton instance;
+    synchronized void increment() {  // acquires monitor lock on 'this'
+        count++;  // now atomic — no other thread can enter while we hold the lock
+    }            // releases lock — happens-before next lock acquisition
+
+    synchronized int get() {
+        return count;  // guaranteed to see the latest value written by increment()
+    }
+}
+\`\`\`
+
+**synchronized** is the heavy option. It's correct but:
+- Can block threads (contention → threads wait)
+- Cannot be acquired in a non-blocking way (no tryLock)
+- Not always needed — use the lighter tools when appropriate
+
+---
+
+## Safe Publication: Handing Objects Between Threads
+
+**Safe publication** means making an object available to other threads in a state where they'll see it fully initialised.
+
+**Unsafe publication:**
+\`\`\`java
+class UnsafeHolder {
+    Object obj;
+    // Thread A:
+    holder.obj = new Object();   // the reference write and constructor
+                                 // can be reordered — B might see non-null
+                                 // but partially constructed object!
+    // Thread B:
+    if (holder.obj != null) holder.obj.doSomething(); // NPE or stale state
+}
+\`\`\`
+
+**Safe publication methods:**
+1. Store in a **\`volatile\`** field (volatile write happens-before volatile read)
+2. Store in an **\`AtomicReference\`**
+3. Store in a **\`final\`** field set in the constructor
+4. Store while **holding a lock** (and reader holds the same lock)
+5. Put in a **\`ConcurrentHashMap\`**, \`BlockingQueue\`, or other concurrent collection
+
+---
+
+## False Sharing: The Hidden Performance Killer
+
+Modern CPUs move memory in **cache lines** (typically 64 bytes). If two threads write to different variables that happen to be in the same cache line, they compete — each write invalidates the other thread's cache line.
+
+\`\`\`
+Cache line (64 bytes):
+┌────────────────────────────────────────────────────────────────┐
+│  counter1 (8 bytes) │ counter2 (8 bytes) │  padding (48 bytes) │
+└────────────────────────────────────────────────────────────────┘
+Thread A writes counter1 → invalidates entire cache line
+Thread B (different core) must reload the cache line → now reads counter2
+Thread B writes counter2 → invalidates the line again
+→ Thread A must reload...
+→ This ping-pong effect can be 10x SLOWER than uncontended access!
+\`\`\`
+
+**Fix: pad to different cache lines**
+\`\`\`java
+// JDK 8+ annotation (requires -XX:-RestrictContended in some JVMs)
+@sun.misc.Contended
+class PaddedCounter {
+    volatile long value;
+    // @Contended adds 128 bytes of padding around the field
+    // ensuring it occupies its own cache line
+}
+\`\`\`
+
+Or manually pad with dummy fields to push variables apart in memory.
+
+> [!TIP]
+> \`LongAdder\` (Java 8+) is faster than \`AtomicLong\` for high-contention counters precisely because it uses an array of cells (spread across cache lines) and only sums them on \`sum()\`. Use \`LongAdder\` for counters, \`AtomicLong\` when you need compare-and-swap.
+
+---
+
+## The Singleton Pattern: A JMM Case Study
+
+This is the most-asked JMM interview question. There are four common implementations, only some are correct:
+
+**1. Eager initialisation (always safe, often best):**
+\`\`\`java
+class Singleton {
+    // Class initialisation is thread-safe — JVM guarantees it runs once
+    private static final Singleton INSTANCE = new Singleton();
+    public static Singleton getInstance() { return INSTANCE; }
+}
+\`\`\`
+
+**2. Broken lazy double-checked locking (do NOT use):**
+\`\`\`java
+private static Singleton instance;  // NOT volatile
+public static Singleton getInstance() {
+    if (instance == null) {          // check 1 (no lock)
+        synchronized (Singleton.class) {
+            if (instance == null) {  // check 2 (with lock)
+                instance = new Singleton(); // BROKEN: write of reference can be
+            }                              // reordered before constructor finishes
+        }
+    }
+    return instance;  // reader might see non-null but uninitialised!
+}
+\`\`\`
+
+**3. Correct double-checked locking (volatile required):**
+\`\`\`java
+private static volatile Singleton instance;  // volatile fixes the reordering
 public static Singleton getInstance() {
     if (instance == null) {
         synchronized (Singleton.class) {
@@ -1021,27 +1133,64 @@ public static Singleton getInstance() {
 }
 \`\`\`
 
+**4. Initialisation-on-demand holder (elegant, always correct):**
+\`\`\`java
+class Singleton {
+    private static class Holder {
+        static final Singleton INSTANCE = new Singleton(); // class init = thread safe
+    }
+    public static Singleton getInstance() { return Holder.INSTANCE; }
+    // Holder class is not loaded until getInstance() is first called -> lazy
+    // No synchronisation needed — JVM class initialisation handles it
+}
+\`\`\`
+
 > [!EU]
-> When asked "what does volatile guarantee?" give the three-part answer: (1) Visibility; (2) Ordering (memory barriers); (3) NOT atomicity. Then mention double-checked locking to prove you understand why. This answer alone separates senior candidates from mid-level.
+> When asked "what does \`volatile\` guarantee?", give the three-part answer: (1) **Visibility** — reads always see the latest write; (2) **Ordering** — memory barriers prevent harmful reordering; (3) NOT atomicity — compound operations still need locks or atomics. Then mention the double-checked locking example to prove you understand why. This answer alone separates senior candidates from mid-level.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Double-checked locking: broken vs correct singleton',
-              code: `// The classic broken DCL vs the correct volatile version — a JMM favourite.
+      code: [
+        {
+          lang: 'java',
+          title: 'Visibility bug vs volatile fix',
+          code: `import java.util.concurrent.TimeUnit;
+
+public class VisibilityDemo {
+    // Try removing 'volatile' and the worker may loop forever on some JVMs/CPUs
+    private static volatile boolean running = true;
+
+    public static void main(String[] args) throws InterruptedException {
+        Thread worker = new Thread(() -> {
+            long count = 0;
+            while (running) { count++; }      // reads 'running' each iteration
+            System.out.println("Worker stopped after " + count + " iterations");
+        });
+        worker.start();
+
+        TimeUnit.MILLISECONDS.sleep(50);
+        running = false;                       // volatile write -> visible to worker
+        System.out.println("main set running=false");
+        worker.join(1000);
+        System.out.println("Done. Worker alive? " + worker.isAlive());
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'Double-checked locking: broken vs correct singleton',
+          code: `// The classic broken DCL vs the correct volatile version — a JMM favourite.
 public class DoubleCheckedLocking {
 
-    // BROKEN: without volatile, another thread can see non-null but uninitialised instance.
-    // JVM/CPU can reorder: 1) allocate memory, 2) assign reference, 3) run constructor.
+    // ❌ BROKEN: without volatile, another thread can see non-null but uninitialised instance.
+    // The JVM/CPU can reorder: 1) allocate memory, 2) assign reference, 3) run constructor.
     // Another thread reading after step 2 sees non-null but step 3 hasn't happened yet!
     static class BrokenSingleton {
         private static BrokenSingleton instance; // NOT volatile
         private final String config;
         private BrokenSingleton() { this.config = "loaded"; }
         static BrokenSingleton getInstance() {
-            if (instance == null) {
+            if (instance == null) {                    // first check (no lock)
                 synchronized (BrokenSingleton.class) {
-                    if (instance == null) {
+                    if (instance == null) {             // second check (with lock)
                         instance = new BrokenSingleton(); // reordering can leak partial object!
                     }
                 }
@@ -1050,16 +1199,16 @@ public class DoubleCheckedLocking {
         }
     }
 
-    // CORRECT: volatile prevents constructor/reference-write reordering.
+    // ✅ CORRECT: volatile prevents the constructor/reference-write reordering.
     static class CorrectSingleton {
-        private static volatile CorrectSingleton instance;
+        private static volatile CorrectSingleton instance; // volatile = happens-before guarantee
         private final String config;
         private CorrectSingleton() { this.config = "loaded"; }
         static CorrectSingleton getInstance() {
             if (instance == null) {
                 synchronized (CorrectSingleton.class) {
                     if (instance == null) {
-                        instance = new CorrectSingleton();
+                        instance = new CorrectSingleton(); // safe: volatile write happens-after constructor
                     }
                 }
             }
@@ -1068,15 +1217,17 @@ public class DoubleCheckedLocking {
         public String getConfig() { return config; }
     }
 
-    // BEST: Initialization-on-demand holder — no synchronisation overhead, lazy, always correct.
-    // Class initialisation is atomic (single-threaded by the ClassLoader).
+    // ✅ BEST: Initialization-on-demand holder — zero synchronization overhead, lazy, correct.
+    // The JVM guarantees class initialisation is atomic (single-threaded by the ClassLoader).
     static class HolderSingleton {
         private final String config = "loaded";
         private static class Holder { static final HolderSingleton INSTANCE = new HolderSingleton(); }
         static HolderSingleton getInstance() { return Holder.INSTANCE; }
+        // Holder class is loaded lazily when getInstance() is first called.
+        // Class loading is synchronised by the JVM — no explicit locking needed.
     }
 
-    // SIMPLEST: enum (Josh Bloch Item 3) — serialization-safe, reflection-safe
+    // ✅ SIMPLEST: enum (Josh Bloch Item 3) — serialization-safe, reflection-safe
     enum EnumSingleton { INSTANCE;
         public String getConfig() { return "loaded"; }
     }
@@ -1085,115 +1236,33 @@ public class DoubleCheckedLocking {
         System.out.println(CorrectSingleton.getInstance().getConfig());
         System.out.println(HolderSingleton.getInstance().config);
         System.out.println(EnumSingleton.INSTANCE.getConfig());
-        System.out.println("\\nFor interview: prefer Holder or enum. If asked about DCL, explain volatile.");
+        System.out.println("\\nFor interview: prefer Initialization-on-demand holder or enum.");
+        System.out.println("If asked about DCL, explain the volatile requirement and WHY.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'Define the happens-before relationship.', a: 'A partial ordering: if A happens-before B, A\'s memory effects are guaranteed visible to B. Edges include program order within a thread, unlock→lock on the same monitor, volatile write→read, Thread.start, and Thread.join.' },
-            { q: 'What does volatile guarantee and what does it NOT?', a: 'Guarantees visibility (no stale reads) and ordering (memory barriers prevent reordering around the access). Does NOT guarantee atomicity of compound operations like x++.' },
-            { q: 'Why must the double-checked-locking singleton field be volatile?', a: 'Without volatile, the JVM/CPU can reorder the constructor execution and the reference assignment, so another thread may observe a non-null but partially constructed instance. volatile ensures the constructor completes before the reference becomes visible.' },
-            { q: 'What happens-before edges does Thread.start() and Thread.join() establish?', a: 'Thread.start(): all actions before start() happen-before any action in the started thread. Thread.join(): all actions in the joined thread happen-before join() returns to the joining thread. This allows safe data handoff to and from threads.' },
-            { q: 'Why is the Initialization-on-demand holder pattern preferred over double-checked locking?', a: 'A private static inner class holding the singleton as a static final field. The JVM guarantees class initialisation is single-threaded (done by the ClassLoader under synchronisation), so the instance is created safely and lazily on first access — zero explicit locking overhead.' }
-          ]
         },
         {
-          title: 'synchronized, Locks & Atomics',
-          notes: `
-## synchronized: All Three Guarantees
+          lang: 'java',
+          title: 'False sharing and @Contended — cache-line performance trap',
+          code: `import java.util.concurrent.CountDownLatch;
+import java.lang.annotation.*;
 
-\`synchronized\` provides **visibility + ordering + atomicity** — the complete package.
-
-\`\`\`java
-class Counter {
-    private int count = 0;
-
-    synchronized void increment() {  // acquires monitor lock on 'this'
-        count++;  // atomic — no other thread can enter while we hold the lock
-    }            // releases lock (happens-before next lock acquisition)
-
-    synchronized int get() {
-        return count;  // sees the latest value written by increment()
-    }
-}
-\`\`\`
-
-**When synchronized is too heavy:**
-- Can block threads (contention → threads wait)
-- Cannot be acquired in a non-blocking way (no tryLock)
-- Per-object monitor — every Java object has one; can cause lock contention on shared objects
-
-## ReentrantLock: More Control
-
-\`ReentrantLock\` provides the same guarantees as \`synchronized\` plus additional features:
-- \`tryLock(timeout, unit)\` — attempt acquisition without blocking forever
-- **Fairness policy** — option for longest-waiting thread gets the lock next (prevents starvation, but reduces throughput)
-- Multiple \`Condition\` variables on one lock (more expressive than \`wait/notify\`)
-
-\`\`\`java
-ReentrantLock lock = new ReentrantLock();
-lock.lock();
-try {
-    // critical section
-} finally {
-    lock.unlock(); // ALWAYS in finally — lock.lock() can't throw, but the body can
-}
-\`\`\`
-
-## AtomicInteger vs synchronized: Choose the Right Tool
-
-For a single integer counter:
-\`\`\`java
-// synchronized: correct but acquires/releases a monitor (OS-level operation)
-synchronized void increment() { count++; }
-
-// AtomicInteger: correct and faster — uses CPU-level CAS (Compare-And-Swap)
-AtomicInteger counter = new AtomicInteger(0);
-counter.incrementAndGet();  // single hardware instruction on x86 (LOCK XADD)
-\`\`\`
-
-**CAS (Compare-And-Swap):** the hardware atomically does:
-1. Read current value
-2. Compare with expected value
-3. If match: write new value → success
-4. If no match: do nothing → caller retries
-
-This is **lock-free** — no OS mutex, no thread parking. Faster under low-to-moderate contention. Under very high contention (many threads hammering the same counter), use \`LongAdder\` instead.
-
-## When to Use Each
-
-| Need | Tool |
-|------|------|
-| Simple counter, low contention | \`AtomicInteger\` / \`AtomicLong\` |
-| Simple counter, high contention | \`LongAdder\` |
-| Compound operations, simple | \`synchronized\` |
-| Need tryLock / fairness / conditions | \`ReentrantLock\` |
-| Read-heavy data structures | \`ReentrantReadWriteLock\` |
-
-> [!TIP]
-> \`LongAdder\` (Java 8+) is faster than \`AtomicLong\` for high-contention counters because it maintains an array of cells spread across cache lines and only sums them on \`sum()\`. Use \`LongAdder\` for counters, \`AtomicLong\` when you need compare-and-swap (\`compareAndSet\`).
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'False sharing and @Contended — cache-line performance trap',
-              code: `import java.util.concurrent.CountDownLatch;
-
-// False sharing: two variables on the SAME 64-byte CPU cache line written by different threads.
-// Each write invalidates the other thread's cache line, causing constant cache-coherence traffic.
+// False sharing: two variables on the SAME CPU cache line (64 bytes) are written
+// by different threads. Each write invalidates the other thread's cache line,
+// causing bouncing between CPU caches — massive throughput loss.
 public class FalseSharingDemo {
 
-    // FALSE SHARING: x and y likely share a cache line
+    // ❌ False sharing: x and y likely share a cache line
     static class Shared {
         volatile long x = 0;
-        volatile long y = 0; // probably within 64 bytes of x
+        volatile long y = 0; // probably within 64 bytes of x -> false sharing!
     }
 
-    // PADDED: force x and y onto separate cache lines
-    // (each field + 7 dummy longs = 64 bytes)
+    // ✅ Padded: force x and y onto separate cache lines (each field + 7 longs = 64 bytes)
+    // In production use: @jdk.internal.vm.annotation.Contended (JDK internal, needs --add-opens)
+    // or simply structure your data so hot fields are in separate objects.
     static class Padded {
-        volatile long x = 0; long p1,p2,p3,p4,p5,p6,p7;  // padding to end of cache line
+        volatile long x = 0; long p1,p2,p3,p4,p5,p6,p7;  // padding
         volatile long y = 0; long q1,q2,q3,q4,q5,q6,q7;  // separate cache line
     }
 
@@ -1229,174 +1298,20 @@ public class FalseSharingDemo {
         System.out.printf("Shared  (false sharing): %,d ms%n", shared  / 1_000_000);
         System.out.printf("Padded  (no false share): %,d ms%n", padded  / 1_000_000);
         System.out.println("Padded can be 3-10x faster for write-heavy shared counters.");
-        System.out.println("LongAdder uses this technique internally via its cells array.");
+        System.out.println("java.util.concurrent.atomic.LongAdder uses this technique internally.");
+        System.out.println("@jdk.internal.vm.annotation.Contended pads automatically.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What does synchronized guarantee that volatile does not?', a: 'Atomicity of compound operations. synchronized ensures only one thread executes the guarded block at a time, making read-modify-write (like count++) atomic. volatile only guarantees visibility and ordering for individual reads/writes.' },
-            { q: 'What is CAS (Compare-And-Swap) and how does AtomicInteger use it?', a: 'CAS is a single atomic hardware instruction that reads a memory location, compares with an expected value, and writes a new value only if they match (otherwise fails and caller retries). AtomicInteger.incrementAndGet() uses CAS via a LOCK XADD instruction — no OS mutex, no thread parking.' },
-            { q: 'When should you use LongAdder instead of AtomicLong?', a: 'Under high write contention (many threads incrementing the same counter). LongAdder distributes the value across an array of cells (one per contended thread), only summing them on sum(). This eliminates cache-line bouncing. Use AtomicLong when you need compareAndSet semantics.' },
-            { q: 'What is false sharing and how does it degrade performance?', a: 'When two variables on the same 64-byte CPU cache line are written by different threads, each write invalidates the other thread\'s entire cache line, causing constant cache-coherence traffic. Fix: pad to force hot fields onto separate cache lines. LongAdder does this internally.' },
-            { q: 'When would you choose ReentrantLock over synchronized?', a: 'When you need tryLock (non-blocking acquisition attempt with timeout), fairness (longest-waiting thread wins, preventing starvation), or multiple Condition variables on one lock. synchronized is simpler and sufficient for most use cases.' }
-          ]
-        },
-        {
-          title: 'Safe Publication & Immutability',
-          notes: `
-## What Is Safe Publication?
-
-**Safe publication** means making an object visible to other threads in a state where they see it **fully initialised** — not partially constructed.
-
-### Unsafe Publication (The Trap)
-
-\`\`\`java
-class UnsafeHolder {
-    Object obj;
-}
-// Thread A:
-holder.obj = new Object();
-// The JVM/CPU can reorder this as:
-// 1. Allocate memory
-// 2. Write reference to holder.obj  ← another thread can see non-null here
-// 3. Run constructor                ← but this hasn't happened yet!
-
-// Thread B:
-if (holder.obj != null) holder.obj.doSomething(); // may see partially constructed object!
-\`\`\`
-
-### Safe Publication Methods
-
-1. **Store in a \`volatile\` field** — volatile write happens-before volatile read; constructor completes before reference is visible
-2. **Store in an \`AtomicReference\`** — same guarantee as volatile
-3. **Store in a \`final\` field set in the constructor** — JMM final field rule guarantees full construction visibility
-4. **Store while holding a lock** (and reader holds the same lock)
-5. **Place in a thread-safe collection** — \`ConcurrentHashMap\`, \`BlockingQueue\`, etc.
-
-## Immutable Objects: Always Safely Published
-
-An immutable object — all fields \`final\`, no mutation after construction, \`this\` doesn't escape the constructor — is **always safely published** regardless of how it is shared.
-
-\`\`\`java
-// Immutable: final fields, no setters, no this-escape
-final class SafePoint {
-    final int x, y;
-    SafePoint(int x, int y) { this.x = x; this.y = y; }
-}
-// Any thread that has a reference to SafePoint is guaranteed to see fully initialised x and y.
-// No volatile, no synchronisation needed.
-\`\`\`
-
-Java **records** are a clean way to express immutable data transfer objects (DTOs):
-\`\`\`java
-record Point(int x, int y) {}           // compiler generates: final fields, all-args constructor, accessors
-record UserDto(long id, String name) {} // safe to share across threads without synchronisation
-\`\`\`
-
-## Common Safe Publication Patterns
-
-**Eager static final (simplest — always safe):**
-\`\`\`java
-// Class initialisation is thread-safe — runs once, serialised by JVM
-static final Config INSTANCE = new Config();
-\`\`\`
-
-**Volatile field (safe, lazy if needed):**
-\`\`\`java
-volatile Config instance;
-// writer:
-instance = new Config();  // volatile write = constructor happens-before this
-// reader:
-Config c = instance;      // volatile read = sees fully constructed Config
-\`\`\`
-
-**Constructor injection (most idiomatic):**
-\`\`\`java
-class Service {
-    private final Config config;
-    Service(Config config) { this.config = config; } // final field: safe publication
-}
-\`\`\`
-
-> [!WARNING]
-> **this-escape** is when the \`this\` reference leaks out of a constructor (e.g. registering \`this\` as a listener in the constructor). Another thread could obtain the reference and read fields before the constructor has finished initialising them — breaking the final field guarantee. Never publish \`this\` from a constructor.
-
-> [!TIP]
-> Immutability is the strongest possible thread-safety guarantee — it eliminates the need for all synchronisation on an object. In Java, use \`records\` for data objects, \`List.of()\`/\`Map.of()\` for collections, and mark all value object fields \`final\`.
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'Safe publication patterns: volatile, final, record',
-              code: `import java.util.concurrent.atomic.AtomicReference;
-
-public class SafePublicationDemo {
-
-    // PATTERN 1: Immutable record — always safe, no synchronisation needed
-    record SafePoint(int x, int y) {}
-
-    // PATTERN 2: volatile field — safe for mutable reference
-    static volatile SafePoint latestPoint = new SafePoint(0, 0);
-    static void updatePoint(int x, int y) {
-        latestPoint = new SafePoint(x, y); // volatile write: constructor happens-before this
-    }
-    static SafePoint readPoint() {
-        return latestPoint; // volatile read: sees fully constructed SafePoint
-    }
-
-    // PATTERN 3: AtomicReference — same guarantee as volatile, with CAS capability
-    static final AtomicReference<SafePoint> atomicPoint = new AtomicReference<>(new SafePoint(0, 0));
-
-    // PATTERN 4: this-escape trap — DO NOT DO THIS
-    static class BadService {
-        final String name;
-        BadService(Registry registry) {
-            registry.register(this); // 'this' escapes before constructor finishes!
-            this.name = "service";   // another thread could read name as null
         }
-    }
-    static class Registry { void register(Object o) {} }
-
-    // PATTERN 5: Constructor injection (safe final field)
-    static class GoodService {
-        private final String name;
-        GoodService(String name) {
-            this.name = name; // final field: guaranteed visible after constructor
-        }
-    }
-
-    public static void main(String[] args) {
-        // Record — immutable, safe to share across threads
-        SafePoint p = new SafePoint(3, 4);
-        System.out.println("Record point: " + p);
-
-        // Volatile field pattern
-        updatePoint(10, 20);
-        System.out.println("Volatile point: " + readPoint());
-
-        // AtomicReference with CAS
-        atomicPoint.compareAndSet(new SafePoint(0,0), new SafePoint(10, 20));
-        System.out.println("Atomic point: " + atomicPoint.get());
-
-        System.out.println("\\nSafe publication methods:");
-        System.out.println("  1. volatile field");
-        System.out.println("  2. AtomicReference");
-        System.out.println("  3. final field set in constructor (no this-escape)");
-        System.out.println("  4. synchronized write+read on same lock");
-        System.out.println("  5. ConcurrentHashMap / BlockingQueue / other thread-safe collections");
-    }
-}`
-            }
-          ],
-          flashcards: [
-            { q: 'List five safe publication mechanisms.', a: '1) Store in a volatile field (volatile write happens-before volatile read). 2) Store in an AtomicReference. 3) Store in a final field set in the constructor (no this-escape). 4) Store while holding a lock that readers also acquire. 5) Place in a ConcurrentHashMap, BlockingQueue, or other thread-safe collection.' },
-            { q: 'Why are immutable objects always safely published?', a: 'All fields are final, so the JMM\'s Final Field Rule guarantees that any thread that has a reference to the object sees all final fields fully initialised. No volatile or locking needed. Immutability eliminates all synchronisation requirements for that object.' },
-            { q: 'What is this-escape and why is it dangerous?', a: 'When a constructor publishes the this reference before it finishes (e.g. registering this as a listener). Another thread may obtain the reference and read fields before the constructor initialises them, breaking the final-field guarantee and potentially reading null or default values.' },
-            { q: 'Why are Java records useful for thread safety?', a: 'Records are inherently immutable — all components are final, there are no setters, and the constructor is canonical. They satisfy the Final Field Rule, so any thread that holds a reference to a record sees all fields fully initialised without any synchronisation.' },
-            { q: 'What is unsafe publication and what is the risk?', a: 'Storing an object reference in a non-volatile, non-final, unguarded field. The JVM/CPU can reorder: assign reference (step 2) before run constructor (step 3), so another thread may see a non-null reference but a partially constructed object — reading uninitialised or default field values.' }
-          ]
-        }
+      ],
+      flashcards: [
+        { q: 'What does volatile guarantee and what does it NOT?', a: 'Guarantees visibility (no stale reads) and ordering (happens-before across the volatile access). Does NOT guarantee atomicity of compound operations like x++.' },
+        { q: 'Define the happens-before relationship.', a: 'A partial ordering: if A happens-before B, A\'s memory effects are visible to B. Edges include program order, unlock→lock on same monitor, volatile write→read, Thread.start, and Thread.join.' },
+        { q: 'Why must the double-checked-locking singleton field be volatile?', a: 'Without volatile, the JVM/CPU can reorder the constructor execution and the reference assignment, so another thread may observe a non-null but partially constructed instance. volatile ensures the constructor happens-before the reference write.' },
+        { q: 'List safe publication mechanisms.', a: 'Store the reference in a volatile field or AtomicReference, initialise it as a final field in the constructor, guard it with a lock, or place it in a thread-safe/concurrent collection.' },
+        { q: 'What is false sharing and how does it degrade performance?', a: 'When two variables on the same 64-byte CPU cache line are written by different threads, each write invalidates the other\'s cached line, causing constant cache coherence traffic. The fix is padding to force hot fields onto separate cache lines. LongAdder uses this internally.' },
+        { q: 'What is the initialization-on-demand holder singleton pattern and why is it safe without synchronisation?', a: 'A private static inner class holds the singleton instance as a static final field. The JVM guarantees class initialisation is single-threaded (done by the ClassLoader under synchronisation) so the instance is created safely and lazily on first access — zero explicit locking overhead.' },
+        { q: 'What happens-before edges does Thread.start() and Thread.join() establish?', a: 'Thread.start(): all actions before start() happen-before any action in the started thread. Thread.join(): all actions in the joined thread happen-before Thread.join() returns to the joining thread. These allow safe publication of data to new threads.' }
       ]
     },
 
@@ -1404,349 +1319,162 @@ public class SafePublicationDemo {
       id: '1.4',
       title: 'JIT Compilation & Performance',
       hours: 3,
-      sections: [
-        {
-          title: 'JIT Fundamentals: Why Interpretation is Slow',
-          notes: `
-## The Problem with Pure Interpretation
+      notes: `
+# JIT Compilation & Performance — From Zero to Senior Level
 
-When the JVM first loads a method, it **interprets** bytecode — a fetch-decode-execute loop that reads each bytecode instruction one at a time and dispatches it to a handler. This works instantly but carries heavy overhead:
+## What Is JIT and Why Does It Exist?
 
-- Each bytecode instruction takes multiple native machine instructions to dispatch
-- No opportunity to apply cross-instruction optimisations
-- Interpreted code is typically **10–100× slower** than compiled native code
+When you write Java, \`javac\` compiles your code to **bytecode** — a compact, platform-neutral instruction set. The JVM then has a choice: interpret bytecode (slow but instant) or compile it to native machine code (fast but takes time).
 
-## Why Not Just Compile Everything Upfront (AOT)?
+**The problem with ahead-of-time (AOT) compilation** (like C or Go):
+- Must compile everything before running — slow startup
+- Can't adapt to runtime behaviour
+- Optimises based on code structure alone
 
-Ahead-of-time compilation (like C or Go) has trade-offs:
-- Must compile all code before running — **slow startup**
-- Cannot adapt to actual runtime behaviour
-- Optimises on code structure alone, missing real data distribution
+**The JIT (Just-In-Time) compiler's insight:**
+- Start running immediately (via interpreter)
+- While running, **profile** which code is actually hot (called frequently)
+- **Compile only the hot code** to native — spend compilation effort where it matters
+- Use **runtime profile data** to make better optimisation decisions than AOT ever could
 
-## The JIT Insight: Compile Only What's Hot
+This is why a warmed-up Java server often outperforms equivalent C++ code — the JIT knows your actual data distributions, call patterns, and branch outcomes at runtime.
 
-The JVM's **JIT (Just-In-Time) compiler** combines the best of both:
+---
 
-1. **Start running immediately** — interpreter handles early calls
-2. **Profile while running** — count invocations, track branch outcomes, measure loop back-edges
-3. **Compile only hot code** — spend compilation effort where it delivers ROI
-4. **Use runtime profile data** — make better optimisation decisions than any static AOT compiler
+## Tiered Compilation: The Five Levels
 
-This is why a warmed-up Java server can **outperform equivalent C++ code** — the JIT knows your actual call patterns, data distributions, and branch outcomes at runtime. C++ compilers can only guess.
-
-## What Triggers JIT Compilation?
-
-The JVM maintains **invocation counters** and **back-edge counters** (loop iterations) per method. When a method's total exceeds a threshold (default ~10,000 combined), it becomes a candidate for JIT compilation.
-
-Compilation happens **on a background JIT compiler thread** — application threads keep running during compilation. The old interpreted version runs until the compiled version is ready, then the JVM swaps them.
-
-\`\`\`
-Method called 1st time:       → interpreter starts
-Method called ~1,000 times:   → C1 compiles with profiling
-Method called ~10,000 times:  → C2 compiles with full profile-guided optimisation
-Method running hot forever:   → C2 may recompile with even better optimisation
-\`\`\`
-
-> [!TIP]
-> JIT compilation is the reason Java benchmarks must **warm up**. Cold (interpreted) performance is 10–100× slower than warm (JIT-compiled) performance. A benchmark that measures cold iterations is not measuring production Java performance.
-
-> [!WARNING]
-> The JIT can **decompile** a method back to the interpreter if its speculative assumptions become invalid (e.g. a new subclass appears at a call site the JIT assumed was monomorphic). This is called **deoptimisation** — rare but important to know.
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'JIT warm-up effect made visible',
-              code: `public class JitWarmupDemo {
-    // A simple method that will get JIT-compiled as it heats up
-    static int compute(int n) {
-        int result = 0;
-        for (int i = 0; i < n; i++) result += i;
-        return result;
-    }
-
-    public static void main(String[] args) {
-        int REPS = 1000;
-        int N = 10_000;
-
-        System.out.println("Measuring cold vs warm JIT performance...");
-        System.out.println("Run with -XX:+PrintCompilation to watch tiers.\n");
-
-        // Cold: first iterations interpreted (~tier 0)
-        long coldStart = System.nanoTime();
-        int sink = 0;
-        for (int i = 0; i < 10; i++) sink += compute(N);
-        long coldNs = (System.nanoTime() - coldStart) / 10;
-
-        // Warm-up: let the JIT compile this method (C1 then C2)
-        for (int i = 0; i < 50_000; i++) sink += compute(N);
-
-        // Hot: now running from compiled native code
-        long hotStart = System.nanoTime();
-        for (int i = 0; i < REPS; i++) sink += compute(N);
-        long hotNs = (System.nanoTime() - hotStart) / REPS;
-
-        System.out.println("sink = " + sink); // prevent dead-code elimination
-        System.out.printf("Cold avg: %,d ns/call%n", coldNs);
-        System.out.printf("Hot  avg: %,d ns/call%n", hotNs);
-        System.out.printf("Speedup:  %.1fx%n", (double) coldNs / hotNs);
-        System.out.println("\nThis is why benchmarks must warm up before measuring.");
-    }
-}`
-            }
-          ],
-          flashcards: [
-            { q: 'Why is pure bytecode interpretation slow?', a: 'The interpreter dispatches each bytecode instruction through a fetch-decode-execute loop that takes multiple native machine instructions per bytecode. There is no opportunity for cross-instruction optimisations. Interpreted code is ~10-100× slower than JIT-compiled native code.' },
-            { q: 'What triggers JIT compilation of a method?', a: 'The JVM maintains invocation counters and loop back-edge counters per method. When the combined total exceeds a threshold (~10,000), the method becomes a candidate for JIT compilation. Compilation happens on a background thread; the interpreter keeps running until the compiled version is ready.' },
-            { q: 'Why can JIT-compiled Java outperform equivalent AOT-compiled C++ in some cases?', a: 'JIT compiles with runtime profile data — actual call patterns, branch outcomes, type distributions. It can devirtualise polymorphic calls based on observed monomorphism, inline based on actual hot paths, and apply speculative optimisations that static AOT compilers cannot safely apply without runtime evidence.' },
-            { q: 'What is deoptimisation?', a: 'When a JIT-compiled method is thrown back to the interpreter because a speculative optimisation assumption was violated at runtime — e.g. a call site the JIT assumed was always ArrayList received a LinkedList. The JIT then recompiles with updated information.' }
-          ]
-        },
-        {
-          title: 'Tiered Compilation: C1 & C2',
-          notes: `
-## The Five Compilation Tiers
-
-The JVM uses **five tiers**, and methods move through them as they heat up:
+The JVM uses **five compilation tiers**, and methods move through them as they get hotter:
 
 \`\`\`
 Level 0: Interpreter
   - Executes bytecode instruction by instruction
-  - Collects invocation counts and branch statistics
+  - Collects method invocation counts and branch-taken statistics
   - ~10-100x slower than compiled code
 
 Level 1: C1 (Client compiler) — no profiling
-  - Fast compile, simple optimisations (method inlining, constant folding)
-  - For methods needed quickly; profiling instrumentation not added
-  - Used for trivially short methods that don't need profiling
+  - Fast compile, simple optimisations
+  - For methods called very frequently but profiling not needed
+  - Typically short-lived
 
 Level 2: C1 — limited profiling
-  - C1 compile with some profiling counters
-  - Balances compilation speed with data quality
+  - C1 compile + some profiling instrumentation
+  - Balances compile time vs profile data quality
 
 Level 3: C1 — full profiling
-  - Full type profiling and invocation counters inserted
-  - "Holding area" where methods gather data for C2
-  - Most methods spend their mid-life here
+  - Full profiling counters inserted
+  - The "holding area" before C2 takes over
+  - Most methods spend time here collecting data for C2
 
-Level 4: C2 (Server compiler) — aggressively optimised
+Level 4: C2 (Server compiler) — heavily optimised
   - Slow compile, but maximum native code quality
-  - Uses ALL profiling data collected at tiers 1-3
-  - Only for the hottest ~5% of methods by execution count
+  - Uses all the profiling data collected at lower tiers
+  - Only for the "hot" methods (top ~5% by execution count)
   - This is where Java gets its peak performance
 \`\`\`
 
-Methods graduate: 0 → 3 → 4 for typical hot methods. Short trivial methods may go 0 → 1 → 4.
-
-## Viewing Compilations: -XX:+PrintCompilation
-
+\`-XX:+PrintCompilation\` prints each compilation event:
 \`\`\`
     113    1       3  java.lang.String::hashCode (55 bytes)
     ^       ^      ^  ^
-    time   id    tier  method (size in bytes)
+    time   id    tier  method
 \`\`\`
 
-Lines prefixed with \`made not entrant\` indicate a method was deoptimised.
+The default compilation thresholds (can tune with \`-XX:CompileThreshold\`):
+- Level 3 → Level 4: ~10,000 invocations OR ~10,000 back-edges (loop iterations)
 
-## Compilation Thresholds
+---
 
-Default (Tiered, \`-XX:+TieredCompilation\`):
-- 0 → 3 (C1 with profiling): ~200 invocations
-- 3 → 4 (C2 full): ~10,000 invocations OR ~10,000 back-edges (loop iterations)
+## The Key JIT Optimisations
 
-Tune threshold with \`-XX:CompileThreshold=N\` (lower = compile sooner, more warmup overhead).
+### 1. Method Inlining (The Most Important One)
 
-## Server vs Client Flags (Historical Context)
-
-Old Java had:
-- \`-client\` → C1 only (fast startup, lower peak performance)
-- \`-server\` → C2 only (slow startup, max peak performance)
-
-Modern Java 7+ uses **Tiered Compilation** by default, combining both. \`-client\`/\`-server\` flags still exist but mostly no longer affect behaviour — Tiered is always on.
-
-> [!TIP]
-> GraalVM's Graal JIT is a Java-based alternative to C2 that can be used as the top-tier compiler (\`-XX:+UseJVMCICompiler\`). It enables more aggressive optimisations and is the foundation of GraalVM Native Image's AOT compiler.
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'Watching tier progression with PrintCompilation',
-              code: `// Run with: java -XX:+PrintCompilation TierDemo
-// You will see lines like:
-//   113    1       3  TierDemo::hotMethod (12 bytes)   <- C1 with profiling
-//   891    2       4  TierDemo::hotMethod (12 bytes)   <- C2 takes over
-// Sometimes followed by: "made not entrant" if the method is deoptimised
-
-public class TierDemo {
-    // This method will heat up and move through tiers as the loop runs
-    static int hotMethod(int n) {
-        int sum = 0;
-        for (int i = 0; i < n; i++) sum += i;
-        return sum;
-    }
-
-    // This method is called only once - stays interpreted (tier 0)
-    static void coldMethod() {
-        System.out.println("cold method: never JIT compiled");
-    }
-
-    public static void main(String[] args) throws InterruptedException {
-        long sink = 0;
-
-        // Drive hotMethod through the tiers:
-        // - First ~200 calls: C1 with profiling (tier 3)
-        // - ~10,000 calls: C2 takes over (tier 4)
-        System.out.println("Warming up (watch PrintCompilation output for tier transitions)...");
-        for (int i = 0; i < 100_000; i++) {
-            sink += hotMethod(100);
-            if (i == 200 || i == 1_000 || i == 10_000) {
-                System.out.println("  Iteration " + i + " — check PrintCompilation above");
-                Thread.sleep(10); // brief pause so log lines are interleaved readably
-            }
-        }
-
-        coldMethod(); // only called once, never compiled
-
-        System.out.println("\\nsink = " + sink);
-        System.out.println("\\nKey tiers to recognise in PrintCompilation:");
-        System.out.println("  tier 3 = C1 with full profiling (collecting data for C2)");
-        System.out.println("  tier 4 = C2 final compile (maximum native code quality)");
-        System.out.println("  'made not entrant' = method deoptimised (assumption violated)");
-        System.out.println("  'blocking' = main thread had to wait for compilation");
-    }
-}`
-            }
-          ],
-          flashcards: [
-            { q: 'What is tiered compilation?', a: 'The JVM starts interpreting (level 0), compiles hot methods with C1 (levels 1-3, fast + progressive profiling), and promotes the hottest to C2 (level 4, aggressive profile-guided optimisation). Methods graduate through tiers as they accumulate invocation counts.' },
-            { q: 'What is the difference between C1 and C2 compilers?', a: 'C1 (Client compiler) produces fast but less optimised code — it compiles quickly and inserts profiling instrumentation. C2 (Server compiler) compiles slowly but produces maximally optimised native code using all the profiling data C1 collected.' },
-            { q: 'What does "made not entrant" mean in PrintCompilation output?', a: 'The compiled version of a method has been invalidated (deoptimised) — typically because a speculative optimisation assumption was violated (e.g. a new subclass appeared at a monomorphic call site). Threads currently executing the method finish with the old code; new calls go back to the interpreter until recompilation.' },
-            { q: 'At what approximate invocation count does a method typically reach tier 4 (C2)?', a: 'Approximately 10,000 invocations or 10,000 loop back-edges (whichever comes first triggers the 3→4 transition). The 0→3 (C1 with profiling) transition happens much earlier, around 200 invocations.' }
-          ]
-        },
-        {
-          title: 'Key JIT Optimisations',
-          notes: `
-## Method Inlining: The Most Important Optimisation
-
-The JIT replaces a method call with the method's body — eliminating call overhead and, more importantly, **enabling further optimisations** by giving the compiler visibility into more code at once.
+When a method is called, the JIT replaces the call site with the method's body — eliminating the call overhead and, more importantly, **enabling further optimisations** by giving the compiler visibility into more code at once.
 
 \`\`\`java
 // Your code:
 int result = add(a, b);
 int add(int x, int y) { return x + y; }
 
-// After JIT inlining (no method call overhead):
-int result = a + b;
-// Now constant folding, escape analysis, etc. can work on the combined code
+// After JIT inlining — no method call overhead:
+int result = a + b;  // now further optimisations can work on the combined code
 \`\`\`
 
-The JIT inlines aggressively (up to \`-XX:MaxInlineSize=35\` bytes; \`-XX:FreqInlineSize=325\` bytes for hot methods). Keep hot methods small to allow inlining.
+The JIT inlines aggressively by default (up to \`-XX:MaxInlineSize=35\` bytes, \`-XX:FreqInlineSize=325\` bytes for hot methods). Large methods can't be inlined — keep hot methods small.
 
-## Escape Analysis: Eliminating Heap Allocations
+> [!WARNING]
+> If you mark a class \`final\` or a method \`private\`/\`final\`, you're telling the JIT "there's only one implementation" — enabling better inlining of virtual calls. Not necessary to obsess over, but worth knowing.
 
-If an object **doesn't escape** its creating method (not stored in a field, not returned, not passed to another thread), the JIT can:
+### 2. Escape Analysis — No Heap Allocation Needed
 
-- **Scalar replace** — decompose the object into individual fields in CPU registers. Zero heap allocation, zero GC pressure.
-- **Stack allocate** — place the object on the stack frame (conceptually). No GC involvement.
-- **Elide locks** — remove \`synchronized\` blocks on non-escaping objects entirely.
+The JIT analyses whether an object can "escape" its creating method (be stored in a field, returned, or passed to another thread). If not, the object can be:
+
+- **Scalar replaced**: decomposed into individual fields stored in CPU registers — zero heap allocation, zero GC pressure
+- **Stack allocated**: placed on the stack frame (conceptually) — no GC involvement
+- **Lock elided**: synchronized blocks on non-escaping objects have their locks removed
 
 \`\`\`java
 void processPoint(int x, int y) {
-    Point p = new Point(x, y);  // p doesn't escape
+    Point p = new Point(x, y);  // p doesn't escape this method
     return p.x * p.x + p.y * p.y;
-    // JIT may scalar-replace: no Point ever created on the heap!
+    // JIT may scalar-replace p: no Point object ever created on the heap!
     // Equivalent to: return x*x + y*y
 }
 \`\`\`
 
-Disable to see the difference: \`-XX:-DoEscapeAnalysis\`
+Disable with \`-XX:-DoEscapeAnalysis\` to see the performance difference.
 
-## Loop Optimisations
+### 3. Loop Optimisations
 
-**Loop unrolling** — executes the loop body multiple times per iteration to reduce branch overhead:
+**Loop unrolling:** Executes loop body multiple times per iteration to reduce branch overhead:
 \`\`\`java
-// Original:      for (int i = 0; i < 8; i++) sum += arr[i];
-// After unroll:  sum += arr[0]; sum += arr[1]; ... sum += arr[7];
+// Original:
+for (int i = 0; i < 8; i++) sum += arr[i];
+
+// Unrolled (JIT may do this automatically):
+sum += arr[0]; sum += arr[1]; sum += arr[2]; sum += arr[3];
+sum += arr[4]; sum += arr[5]; sum += arr[6]; sum += arr[7];
 \`\`\`
 
-**Vectorisation (SIMD)** — the JIT uses SIMD CPU instructions to process multiple array elements in one CPU instruction. This is why \`Arrays.stream().sum()\` can beat a manual loop on JDK 17+.
+**Vectorisation (SIMD):** The JIT can use SIMD CPU instructions to process multiple array elements in parallel (e.g. add 4 ints in one CPU instruction). This is why \`Arrays.sum()\` can be faster than a manual loop on JDK 17+.
 
-**Bounds check elimination** — for loops with predictable bounds, the JIT removes per-iteration array bounds checks.
+**Bounds check elimination:** For loops with predictable bounds, the JIT removes per-iteration array bounds checks.
 
-## Devirtualisation
+### 4. Devirtualisation and Polymorphic Inline Caches
 
-Virtual method calls (\`interface.method()\`) need a vtable lookup. The JIT profiles:
-- **Monomorphic** (always same class) → compile as direct call (as fast as non-virtual)
-- **Bimorphic** (two classes) → compile as if/else of two direct calls
-- **Megamorphic** (many classes) → maintain a dispatch table (slower)
+Virtual method calls (\`interface.method()\`) are slower than direct calls because the JVM must look up which implementation to call. JIT tracks:
 
-This is why hot \`Comparator\` lambdas or \`Iterator\` implementations can be fully devirtualised.
+- **Monomorphic**: always the same class → compile as direct call (fast as non-virtual)
+- **Bimorphic**: two classes → compile as if/else of two direct calls
+- **Megamorphic**: many classes → use a dispatch table (inline cache)
 
-## Dead Code Elimination
+This is why interfaces at hot call sites with too many implementations can be a performance concern. The JIT **deoptimises** back to interpreter if its assumptions turn out wrong (e.g. it assumed monomorphic but a new subclass shows up).
+
+### 5. Dead Code Elimination
 
 \`\`\`java
-static final boolean DEBUG = false;
-if (DEBUG) { expensiveLogging(); }  // JIT removes this entirely at tier 4
+boolean DEBUG = false;
+if (DEBUG) { expensiveLogging(); }  // JIT removes this entirely
 \`\`\`
 
-The JIT also simplifies constant expressions, propagates known values, and removes unreachable branches.
+The JIT also removes unreachable code paths, simplifies constant expressions, and propagates constants through the code.
 
-> [!TIP]
-> If you mark a class \`final\` or a method \`private\`/\`final\`, you're giving the JIT certainty that there's only one implementation — enabling stronger devirtualisation and inlining. Not critical to obsess over, but it's the "why" behind sealing hot inner classes.
-`,
-          code: [
-            {
-              lang: 'java',
-              title: 'Escape analysis & scalar replacement in action',
-              code: `public class EscapeAnalysisDemo {
+---
 
-    // Point does NOT escape this method -> JIT can scalar-replace it
-    static long distanceSquared(int x, int y) {
-        int[] point = new int[] { x, y };  // candidate for scalar replacement
-        return (long) point[0] * point[0] + (long) point[1] * point[1];
-    }
+## Deoptimisation: Speculative Optimisation Safety Net
 
-    // Counter DOES escape (returned) -> cannot scalar replace
-    static int[] createEscapingArray(int size) {
-        return new int[size]; // must allocate on heap
-    }
+JIT makes **speculative** optimisations based on observed behaviour:
+- "This call site is always \`ArrayList\` — I'll devirtualise it"
+- "This branch is always false — I'll remove it"
 
-    public static void main(String[] args) {
-        long sink = 0;
-        // Warm up so the JIT can observe and optimise
-        for (int i = 0; i < 100_000; i++) sink += distanceSquared(i, i + 1);
+If assumptions become invalid at runtime, the JIT **deoptimises** — discards the compiled version and returns to the interpreter (or a lower compilation tier). Deoptimisation is rare but has overhead.
 
-        long start = System.nanoTime();
-        for (int i = 0; i < 10_000_000; i++) sink += distanceSquared(i, i + 1);
-        long ns = System.nanoTime() - start;
+\`-XX:+PrintDeoptimization\` shows when it happens.
 
-        System.out.println("sink = " + sink);
-        System.out.printf("10M calls after warmup: %.2f ms%n", ns / 1_000_000.0);
-        System.out.println();
-        System.out.println("Compare these runs:");
-        System.out.println("  Default:                  (escape analysis ON — array scalar-replaced)");
-        System.out.println("  -XX:-DoEscapeAnalysis:    (force heap alloc — slower, more GC)");
-        System.out.println("  -XX:+PrintCompilation:    (see when tier 4 kicks in)");
-        System.out.println();
-        System.out.println("If after warmup the heap allocation rate drops to near-zero");
-        System.out.println("for distanceSquared, scalar replacement is working.");
-    }
-}`
-            }
-          ],
-          flashcards: [
-            { q: 'What is method inlining and why is it the most important JIT optimisation?', a: 'Inlining copies a called method\'s body into the call site, eliminating call overhead. More importantly, it exposes the combined code to further optimisations (escape analysis, constant folding, dead-code elimination) that cannot work when the compiler can only see each method in isolation.' },
-            { q: 'What is escape analysis and what three things can the JIT do when an object does not escape?', a: '(1) Scalar replace it — decompose into individual fields in CPU registers (no heap allocation, no GC). (2) Stack allocate it — no GC involvement. (3) Elide locks — remove synchronized blocks on non-escaping objects entirely.' },
-            { q: 'What is devirtualisation and when does it apply?', a: 'JIT compiles a virtual/interface call as a direct call when profiling shows the call site is monomorphic (always the same implementation). This eliminates vtable lookup overhead. Deoptimises if a new subclass later appears at that call site.' },
-            { q: 'What optimisation does declaring a class or method final enable?', a: 'It gives the JIT static certainty that there is only one implementation — enabling aggressive inlining and devirtualisation without speculative assumptions. Non-final methods require profiling to establish monomorphism; final methods can be inlined unconditionally.' },
-            { q: 'How does loop unrolling improve performance?', a: 'It replaces the loop with repeated loop-body statements (e.g. 8 iterations unrolled to 8 statements), reducing the branch/counter overhead per element processed. It also exposes more independent operations for CPU instruction-level parallelism and SIMD vectorisation.' }
-          ]
-        },
-        {
-          title: 'Measuring & Profiling JIT',
-          notes: `
-## The Wrong Way to Benchmark Java
+---
+
+## How to Measure Performance Correctly
+
+### The Wrong Way (What Most People Do)
 
 \`\`\`java
 long start = System.nanoTime();
@@ -1756,119 +1484,155 @@ System.out.println(time / 1_000_000 + " ns/op");  // WRONG
 \`\`\`
 
 Problems:
-1. **No warmup** — first iterations are interpreted (~100× slower), skewing the average
-2. **Dead code elimination** — if \`result\` is never used externally, the JIT may eliminate \`myMethod()\` entirely; you're measuring nothing
-3. **Single JVM fork** — JIT state from other code influences the result
-4. **No statistical analysis** — one measurement is meaningless (JIT, GC, OS scheduling all add noise)
+1. **No warmup** — first iterations are interpreted (much slower), skewing results
+2. **Dead code elimination** — JIT sees \`result\` is never used → eliminates \`myMethod()\` entirely → you're measuring nothing
+3. **Single JVM fork** — JIT state from other code affects results
+4. **No statistical analysis** — one measurement is meaningless
 
-## The Right Way: JMH
-
-**JMH (Java Microbenchmark Harness)** is the only correct tool for JVM microbenchmarks:
+### The Right Way: JMH (Java Microbenchmark Harness)
 
 \`\`\`java
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
-@Warmup(iterations = 5, time = 1)        // 5 iterations discarded
-@Measurement(iterations = 10, time = 1) // 10 iterations measured
-@Fork(3)                                  // 3 separate JVM processes
+@Warmup(iterations = 5, time = 1)    // 5 warmup iterations discarded
+@Measurement(iterations = 10, time = 1) // 10 measurement iterations
+@Fork(3)                              // run in 3 separate JVM processes
 @State(Scope.Benchmark)
 public class MyBenchmark {
+    @Param({"100", "1000", "10000"})  // test multiple input sizes
+    int size;
+
     @Benchmark
-    public int measure(Blackhole bh) {
+    public int measureMyMethod(Blackhole bh) {
         int result = myMethod(size);
-        bh.consume(result);   // prevents dead-code elimination
+        bh.consume(result);   // prevent dead-code elimination
         return result;
     }
 }
 \`\`\`
 
-JMH handles: warmup, JVM fork isolation, dead-code prevention via \`Blackhole\`, statistical output (mean, confidence interval, error).
+JMH handles: warmup, fork isolation, dead-code prevention via Blackhole, statistical output (mean, confidence interval, percentiles).
 
-## Profiling Tools
+---
 
-**async-profiler** — the go-to for production CPU and allocation profiling. Uses OS perf APIs (no safepoint bias). Generates flame graphs.
+## Production Profiling (After Warmup)
+
+For production performance issues, use **async-profiler** or **Java Flight Recorder (JFR)**:
+
 \`\`\`bash
+# async-profiler: CPU flame graph (shows where time is actually spent)
 ./profiler.sh -d 30 -f flamegraph.html <pid>
-\`\`\`
 
-**Java Flight Recorder (JFR)** — built into JDK 11+. Production-safe (<1% overhead). Captures CPU, GC, locking, class loading, memory allocation — all in one recording.
-\`\`\`bash
+# JFR (built into JDK 11+, production safe, <1% overhead)
 jcmd <pid> JFR.start duration=60s filename=recording.jfr
 jcmd <pid> JFR.stop
-# Open in JDK Mission Control (JMC)
+# Open recording.jfr in JDK Mission Control (JMC)
 \`\`\`
 
-**Flame graphs** — show call stacks sampled over time. Widest frames = where time is spent = optimisation targets.
+**Flame graphs** show call stacks over time — widest frames are where time is spent. Look for:
+- Wide frames = hot code = optimisation targets
+- Unexpected frames (GC, locking) = systemic issues
 
-## Useful JIT Flags Reference
+---
 
-| Flag | Purpose |
-|------|---------|
-| \`-XX:+PrintCompilation\` | Print each compilation event with tier |
-| \`-XX:+PrintDeoptimization\` | Show deoptimisation events |
-| \`-XX:-DoEscapeAnalysis\` | Disable escape analysis (benchmark comparison) |
-| \`-XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining\` | Show inlining decisions |
-| \`-XX:MaxInlineSize=N\` | Max bytecode size for inlining (default 35) |
-| \`-XX:FreqInlineSize=N\` | Max size for hot-method inlining (default 325) |
+## GraalVM Native Image: AOT for Java
 
-## GraalVM Native Image: AOT as an Alternative
-
-GraalVM Native Image compiles your entire application to a standalone native binary — no JVM at runtime.
+**GraalVM Native Image** compiles your entire Java application to a standalone native binary — ahead of time, no JVM needed at runtime.
 
 | | Traditional JVM | Native Image |
 |---|---|---|
-| Startup | Seconds | Milliseconds |
-| Peak throughput | Very high (JIT) | Lower (no JIT) |
-| Memory footprint | High | Very low |
-| Best for | Long-running services | Serverless, CLI tools |
+| Startup | Seconds (warm-up) | Milliseconds |
+| Peak throughput | Very high (JIT optimised) | Lower (no JIT) |
+| Memory footprint | High (JVM overhead) | Very low |
+| Build time | Fast | Slow (minutes) |
+| Reflection | Works automatically | Needs config file |
+| Dynamic classloading | Works | Not supported |
+| Best for | Long-running services | Serverless, CLI tools, containers |
+
+Spring Boot 3 + GraalVM Native Image is increasingly used for **serverless functions** (AWS Lambda, Google Cloud Run) where cold start time matters.
 
 > [!EU]
-> The rigour question: *"How did you measure that your code was actually slow? How do you know your optimisation helped?"* Answer: JMH for microbenchmarks (warmup, multiple forks, Blackhole), async-profiler flame graphs for production CPU hotspots, JFR for system-level view. Saying "I ran it a few times and it felt faster" is the wrong answer for a German engineering team.
+> The rigour question: *"How did you measure that your code was actually slow? How do you know your optimisation helped?"* Answer: JMH for micro-benchmarks (with warmup, multiple forks, Blackhole), async-profiler flame graphs for production CPU hotspots, JFR for system-level view. Saying "I ran it a few times and it felt faster" is the wrong answer for a German engineering team.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Proper JMH microbenchmark — the correct way to measure Java performance',
-              code: `// JMH is the ONLY correct tool for JVM microbenchmarks.
-// Naive System.nanoTime loops are invalid: JIT may eliminate the code,
-// warm-up skews averages, and single-fork results are unreliable.
+      code: [
+        {
+          lang: 'java',
+          title: 'Escape analysis & JIT warm-up effect',
+          code: `public class JitDemo {
+    // This object does not escape -> JIT may scalar-replace it (no heap alloc)
+    static long distanceSquared(int x, int y) {
+        int[] point = new int[] { x, y };  // candidate for scalar replacement
+        return (long) point[0] * point[0] + (long) point[1] * point[1];
+    }
 
-// DEPENDENCY: org.openjdk.jmh:jmh-core:1.37
+    public static void main(String[] args) {
+        long sink = 0;
+        // Warm-up: let the method get hot and JIT-compile
+        for (int i = 0; i < 100_000; i++) sink += distanceSquared(i, i + 1);
 
+        long start = System.nanoTime();
+        for (int i = 0; i < 10_000_000; i++) sink += distanceSquared(i, i + 1);
+        long ns = System.nanoTime() - start;
+
+        System.out.println("sink = " + sink);
+        System.out.printf("10M hot calls took %.2f ms%n", ns / 1_000_000.0);
+        System.out.println("Run with -XX:+PrintCompilation to watch tiers, " +
+                           "or -XX:-DoEscapeAnalysis to disable scalar replacement.");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'Proper JMH microbenchmark — the correct way to measure Java performance',
+          code: `// JMH (Java Microbenchmark Harness) is the ONLY correct way to benchmark JVM code.
+// Naive System.nanoTime loops are invalid: JIT may eliminate the code, warm-up skews results.
+
+// PRODUCTION DEPENDENCY: org.openjdk.jmh:jmh-core:1.37
+
+// In a real JMH benchmark project:
 /*
 import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.runner.Runner;
+import org.openjdk.jmh.runner.options.*;
 import java.util.concurrent.TimeUnit;
 
-@BenchmarkMode(Mode.AverageTime)
+@BenchmarkMode(Mode.AverageTime)        // measure average time per operation
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
-@State(Scope.Thread)
-@Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
+@State(Scope.Thread)                    // one state instance per thread
+@Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)   // discard first 5s
 @Measurement(iterations = 10, time = 1, timeUnit = TimeUnit.SECONDS)
-@Fork(2)    // 2 fresh JVM forks: eliminates noise from JVM startup state
+@Fork(2)                                // run in 2 fresh JVM processes (eliminates JVM startup noise)
 public class StringConcatBenchmark {
 
     @Param({"10", "100", "1000"})
     private int count;
 
-    // Slow: creates N intermediate String objects
+    // ❌ Slow: creates N intermediate String objects
     @Benchmark
-    public String plusConcat(Blackhole bh) {
+    public String plusConcat() {
         String s = "";
         for (int i = 0; i < count; i++) s += i;
-        return s; // returning = safe from dead-code elimination
+        return s;
     }
 
-    // Fast: StringBuilder reuses internal buffer
+    // ✅ Fast: StringBuilder reuses internal buffer
     @Benchmark
     public String stringBuilder() {
         StringBuilder sb = new StringBuilder(count * 3);
         for (int i = 0; i < count; i++) sb.append(i);
         return sb.toString();
     }
+
+    public static void main(String[] args) throws Exception {
+        Options opt = new OptionsBuilder()
+            .include(StringConcatBenchmark.class.getSimpleName())
+            .build();
+        new Runner(opt).run();
+    }
 }
 */
 
-// Runnable approximation (still naively benchmarked — for illustration only):
+// This runnable version shows WHAT JMH protects against:
 public class JmhConceptDemo {
     static String plusConcat(int n) {
         String s = ""; for (int i = 0; i < n; i++) s += i; return s;
@@ -1879,8 +1643,9 @@ public class JmhConceptDemo {
 
     public static void main(String[] args) {
         int n = 1000;
-        // Simulate JMH warmup (as @Warmup does automatically)
-        for (int w = 0; w < 10_000; w++) { plusConcat(10); builderConcat(10); }
+
+        // Warm up the JIT (as JMH does automatically with @Warmup)
+        for (int w = 0; w < 10000; w++) { plusConcat(10); builderConcat(10); }
 
         long t1 = System.nanoTime();
         for (int i = 0; i < 1000; i++) plusConcat(n);
@@ -1890,23 +1655,84 @@ public class JmhConceptDemo {
         for (int i = 0; i < 1000; i++) builderConcat(n);
         long sbNs = (System.nanoTime() - t2) / 1000;
 
-        System.out.printf("String +      (n=%d): avg %,d ns%n", n, plusNs);
-        System.out.printf("StringBuilder (n=%d): avg %,d ns%n", n, sbNs);
+        System.out.printf("String +   (1000 iters, n=%d): avg %,d ns%n", n, plusNs);
+        System.out.printf("StringBuilder (1000 iters, n=%d): avg %,d ns%n", n, sbNs);
         System.out.println("\\nIMPORTANT: this is still a naive benchmark.");
-        System.out.println("For real measurements: use JMH with @Fork(2) @Warmup(iterations=5).");
-        System.out.println("JMH prevents dead-code elimination and gives confidence intervals.");
+        System.out.println("For real numbers: use JMH with @Fork(2) @Warmup(iterations=5).");
+        System.out.println("JMH prevents dead-code elimination and reports confidence intervals.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'Why use JMH instead of System.nanoTime loops?', a: 'JMH handles JIT warmup (discards early iterations via @Warmup), prevents dead-code elimination (via Blackhole.consume), forks fresh JVMs per benchmark (@Fork), and reports statistically meaningful averages with confidence intervals.' },
-            { q: 'What is the Blackhole in JMH and why is it needed?', a: 'Blackhole.consume(value) tells JMH to "use" a computed value, preventing the JIT from treating the result as unused and eliminating the benchmark code entirely via dead-code elimination. Without it, sophisticated JIT may optimise away the entire computation being measured.' },
-            { q: 'What does GraalVM Native Image trade away for fast startup?', a: 'Peak JIT throughput (no runtime profiling-guided optimisation), runtime adaptivity, and dynamic class loading — reflection/proxies need explicit build-time configuration. Build time is 3-10 minutes vs seconds for a JAR. Best for serverless functions and CLI tools.' },
-            { q: 'What is a flame graph and how do you use it for optimisation?', a: 'A flame graph visualises sampled call stacks over time. Each frame\'s width is proportional to the time spent in that call path. The widest frames at the top of the graph are the hottest code paths — the primary optimisation targets. Generated by async-profiler or JFR + JMC.' },
-            { q: 'When is GraalVM Native Image the right choice vs the JVM?', a: 'Native image wins for serverless functions (AWS Lambda, Cloud Run), CLI tools, and batch jobs where cold-start time and memory footprint matter more than peak throughput. The JVM wins for long-running services where JIT profiling delivers higher peak throughput than AOT.' }
-          ]
+        },
+        {
+          lang: 'java',
+          title: 'GraalVM Native Image: tradeoffs made concrete',
+          code: `// GraalVM Native Image compiles Java AOT to a native binary.
+// Startup: milliseconds (vs seconds for JVM). Memory: ~10x lower at startup.
+// Cost: no JIT runtime optimisation, closed-world assumption.
+// Best for: CLI tools, serverless functions, microservices where cold-start matters.
+
+// To build (requires GraalVM installed):
+//   native-image -cp myapp.jar com.example.Main -o myapp
+//   ./myapp   # runs without a JVM!
+
+// Restrictions that catch teams off-guard:
+public class GraalvmNativeDemo {
+    // ❌ Dynamic class loading breaks native image (open world assumption)
+    static void brokenDynamic() throws Exception {
+        // This fails at native-image build time unless you add a reflect-config.json
+        Class<?> clazz = Class.forName("com.example.plugins.DynamicPlugin");
+        Object inst = clazz.getDeclaredConstructor().newInstance();
+        System.out.println(inst);
+    }
+
+    // ✅ Static analysis friendly — the class reference is known at build time
+    static void staticFriendly() {
+        // Native image can trace this; no reflection config needed
+        var service = new ConcreteService();
+        service.run();
+    }
+
+    static class ConcreteService { void run() { System.out.println("running"); } }
+
+    // Spring Native / Spring Boot 3 handles most of this automatically via AOT processing.
+    // It generates reflect-config.json, proxy-config.json etc. at build time.
+
+    public static void main(String[] args) {
+        System.out.println("GraalVM Native Image trade-offs:");
+        System.out.println();
+        System.out.println("  Wins:");
+        System.out.println("    Startup: ~50ms (vs 3-5s JVM Spring Boot)");
+        System.out.println("    Memory:  ~50MB RSS (vs 300-500MB JVM)");
+        System.out.println("    No JVM required at runtime");
+        System.out.println();
+        System.out.println("  Costs:");
+        System.out.println("    Build time: 3-10 minutes (vs seconds for jar)");
+        System.out.println("    No JIT peak throughput (peak ~20-30% lower than JVM)");
+        System.out.println("    Reflection/proxies need explicit config or AOT hints");
+        System.out.println("    Debugging is harder (no JVM tooling)");
+        System.out.println();
+        System.out.println("  When to use:");
+        System.out.println("    Serverless (Lambda, Cloud Run) — cold starts matter");
+        System.out.println("    CLI tools — instant startup");
+        System.out.println("    Batch jobs — high throughput matters less than startup");
+        System.out.println();
+        System.out.println("  When NOT to use:");
+        System.out.println("    Long-running services where JIT peak throughput matters");
+        System.out.println("    Heavy reflection/dynamic proxies (frameworks that resist AOT)");
+
+        staticFriendly(); // would work in native image
+    }
+}`
         }
+      ],
+      flashcards: [
+        { q: 'What is tiered compilation?', a: 'The JVM starts interpreting (level 0), compiles hot methods with C1 (levels 1–3, fast + profiling), and promotes the hottest to C2 (level 4, aggressive profile-guided optimisation).' },
+        { q: 'What is escape analysis and what does it enable?', a: 'Analysis determining whether an object escapes its creating method/thread. If it doesn\'t, the JIT can scalar-replace it (avoid heap allocation) and elide locks (lock coarsening/elision).' },
+        { q: 'Why use JMH instead of System.nanoTime loops?', a: 'JMH handles JIT warm-up (discards early iterations), prevents dead-code elimination from removing your benchmark (via Blackhole), forks fresh JVMs per benchmark, and reports statistically meaningful averages and confidence intervals.' },
+        { q: 'What does GraalVM Native Image trade away for fast startup?', a: 'Peak JIT throughput (profiling-guided optimisation cannot happen AOT), runtime adaptivity, and the ability to load classes dynamically — reflection/proxies need explicit build-time configuration. Build time is also 3-10 minutes vs seconds for a JAR.' },
+        { q: 'What JVM optimisation does method inlining enable?', a: 'Inlining copies a called method\'s body into the caller, eliminating call overhead and exposing the combined code to further optimisations (escape analysis, constant folding, dead-code elimination). It is the most impactful single JIT optimisation.' },
+        { q: 'What is deoptimisation and when does it happen?', a: 'The JIT makes speculative optimisations (e.g. assuming a call site is monomorphic). If an assumption is later violated (a new subclass appears), the JIT deoptimises — falls back to the interpreter for that code path — and recompiles with the new type information.' },
+        { q: 'When is GraalVM Native Image the right choice vs the JVM?', a: 'Native image wins for serverless functions, CLI tools, and batch jobs where cold-start time and memory footprint matter more than peak throughput. The JVM wins for long-running services where JIT profiling delivers peak throughput that AOT cannot match.' }
       ]
     }
   ]
