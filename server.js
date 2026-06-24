@@ -2,10 +2,23 @@ import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync, statSync } from 'fs';
+import { execSync } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3030;
+
+// Cache-busting version: git short hash if available, else mtime of curriculum.js
+function buildVersion() {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['pipe','pipe','ignore'] })
+      .toString().trim();
+  } catch {
+    return String(statSync(join(__dirname, 'public/js/curriculum.js')).mtimeMs | 0);
+  }
+}
+const VERSION = buildVersion();
 
 // Execution provider: 'wandbox' (public, zero-infra, default) or 'piston' (self-hosted).
 const PROVIDER = (process.env.EXEC_PROVIDER || 'wandbox').toLowerCase();
@@ -13,6 +26,16 @@ const PISTON_URL = process.env.PISTON_URL || 'http://localhost:2000';
 
 app.use(cors());
 app.use(express.json({ limit: '256kb' }));
+
+// Serve index.html with ?v= cache-busting stamp injected into script tags
+const indexPath = join(__dirname, 'public', 'index.html');
+app.get('/', (_req, res) => {
+  const html = readFileSync(indexPath, 'utf8')
+    .replace('/js/curriculum.js"', `/js/curriculum.js?v=${VERSION}"`)
+    .replace('/js/app.js"',        `/js/app.js?v=${VERSION}"`);
+  res.type('html').send(html);
+});
+
 app.use(express.static(join(__dirname, 'public'), { extensions: ['html'] }));
 
 /* ---------- Wandbox provider (https://wandbox.org) ----------
@@ -93,8 +116,13 @@ app.post('/api/execute', async (req, res) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', provider: PROVIDER }));
 
-// SPA fallback
-app.get('*', (_req, res) => res.sendFile(join(__dirname, 'public', 'index.html')));
+// SPA fallback — serve the same versioned HTML
+app.get('*', (_req, res) => {
+  const html = readFileSync(indexPath, 'utf8')
+    .replace('/js/curriculum.js"', `/js/curriculum.js?v=${VERSION}"`)
+    .replace('/js/app.js"',        `/js/app.js?v=${VERSION}"`);
+  res.type('html').send(html);
+});
 
 app.listen(PORT, () =>
   console.log(`Java Interview Hub on http://localhost:${PORT} (exec provider: ${PROVIDER})`)
