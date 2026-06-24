@@ -1750,41 +1750,285 @@ public class GraalvmNativeDemo {
       title: 'Collections & Equals/HashCode Contracts',
       hours: 4,
       notes: `
-# Collections & the Equals/HashCode Contract
+# Collections & Equals/HashCode Contracts — From Zero to Senior Level
 
-A senior must know the data-structure trade-offs cold and the subtle contracts that break \`HashMap\` and \`HashSet\`.
+## Why Collections Matter
 
-## The map/set family
+In almost every Java interview and production system, you'll use collections constantly. The difference between a junior and a senior engineer is not just knowing which collection to use — it's understanding **why** each one works the way it does, what can go wrong, and how to pick the right one for the situation.
 
-| Type | Ordering | Null keys | Backing | Get/Put |
-|------|----------|-----------|---------|---------|
-| \`HashMap\` | none | 1 null key | array of buckets (+ tree) | O(1) avg |
-| \`LinkedHashMap\` | insertion / access | yes | hash + linked list | O(1) |
-| \`TreeMap\` | sorted (comparator) | no | red-black tree | O(log n) |
-| \`ConcurrentHashMap\` | none | no nulls | striped/CAS buckets | O(1), thread-safe |
+---
 
-## HashMap internals (Java 8+)
+## The Collections Family Tree
 
-Buckets are an array; collisions form a **linked list** that **treeifies** into a red-black tree once a bucket exceeds 8 entries (and capacity ≥ 64), giving O(log n) worst case instead of O(n). Default load factor 0.75 triggers resize (doubling + rehash).
+\`\`\`
+java.util.Collection
+├── List (ordered, allows duplicates)
+│   ├── ArrayList      (resizable array — fast random access, slow insert in middle)
+│   ├── LinkedList     (doubly-linked — fast insert/delete at ends, slow random access)
+│   └── ArrayDeque     (preferred deque/stack over LinkedList in most cases)
+│
+├── Set (no duplicates)
+│   ├── HashSet        (backed by HashMap — O(1) add/contains, no ordering)
+│   ├── LinkedHashSet  (insertion order preserved)
+│   └── TreeSet        (sorted — O(log n), needs Comparable or Comparator)
+│
+└── Queue / Deque
+    ├── ArrayDeque     (fast stack/queue, NOT thread-safe)
+    ├── PriorityQueue  (min-heap — O(log n) offer/poll, O(1) peek)
+    └── LinkedList     (also implements Deque)
 
-## The equals/hashCode contract
+java.util.Map (key-value, separate hierarchy)
+├── HashMap            (O(1) avg, no ordering, 1 null key allowed)
+├── LinkedHashMap      (insertion or access order)
+├── TreeMap            (sorted by key — O(log n))
+├── Hashtable          (legacy, synchronized, avoid)
+└── ConcurrentHashMap  (thread-safe, O(1), no null keys/values)
+\`\`\`
 
-1. Consistent: equal objects **must** return equal hashCodes.
-2. Unequal objects *should* (not must) return different hashCodes — but good distribution matters for performance.
-3. Reflexive, symmetric, transitive, consistent; \`x.equals(null)\` is false.
+---
 
-> [!WARNING]
-> Override **both or neither**. Override \`equals\` but not \`hashCode\` and your object vanishes in a \`HashSet\`/\`HashMap\`. Use a **mutable field** in \`hashCode\` and then mutate it after insertion → the entry is lost in the wrong bucket. Prefer immutable keys.
+## ArrayList vs LinkedList: The Most Misunderstood Choice
+
+Most developers use \`LinkedList\` thinking "inserting in the middle is O(1)". But:
+
+\`\`\`
+ArrayList internal structure:
+[elem0][elem1][elem2][elem3][elem4][ ][ ][ ]  ← contiguous array
+  idx0   idx1   idx2   idx3   idx4
+\`\`\`
+\`\`\`
+LinkedList internal structure:
+[prev|elem0|next] ↔ [prev|elem1|next] ↔ [prev|elem2|next]
+                                          ← scattered in heap
+\`\`\`
+
+| Operation | ArrayList | LinkedList |
+|-----------|-----------|------------|
+| \`get(i)\` | O(1) — index into array | O(n) — traverse from head |
+| \`add(end)\` | O(1) amortised | O(1) |
+| \`add(middle)\` | O(n) — shift elements | O(n) — find position first! |
+| \`remove(middle)\` | O(n) — shift elements | O(n) — find position first |
+| Memory | Compact (CPU cache friendly) | High overhead (node objects, pointers) |
+| Iteration | Very fast (cache line prefetching) | Slow (random memory access) |
+
+**The verdict:** Use \`ArrayList\` almost always. \`LinkedList\` is only better when you iterate with an \`Iterator\` and call \`iterator.remove()\` frequently, and even then \`ArrayDeque\` is usually better for queue/stack use cases.
 
 > [!TIP]
-> \`record\` types auto-generate \`equals\`, \`hashCode\`, and \`toString\` from components — perfect immutable map keys and DTOs. Reach for them in Java 16+.
+> If you know the approximate size upfront, use \`new ArrayList<>(expectedSize)\` to avoid repeated resizing. \`ArrayList\` doubles its capacity each resize (amortised O(1) add), but each resize copies the whole array.
 
-## Fail-fast iterators
+---
 
-\`ArrayList\`/\`HashMap\` iterators throw \`ConcurrentModificationException\` if the collection is structurally modified during iteration (modCount check). Use \`Iterator.remove()\`, \`removeIf\`, or a concurrent collection.
+## HashMap Internals: Deep Dive
+
+HashMap is the most important collection to understand deeply. Every interview asks about it.
+
+### The Data Structure
+
+A \`HashMap\` is an **array of buckets**. Each bucket can hold multiple entries (when keys hash to the same bucket — a "collision").
+
+\`\`\`
+HashMap internal array (capacity = 16 by default):
+index: [0]  [1]  [2]  [3]  [4]  [5]  [6]  [7] ...
+        null null null  ↓   null null null  ↓
+                      Entry              Entry → Entry → Entry
+                      k="cat"            k="dog"  k="fox"  k="emu"
+                      v=1                v=2      v=3      v=4
+                     (no collision)      (3 collisions in bucket 7)
+\`\`\`
+
+### Step-by-Step: What Happens on \`map.put("cat", 1)\`?
+
+1. Call \`"cat".hashCode()\` → e.g. \`98262\`
+2. Apply spread function: \`hash = hashCode ^ (hashCode >>> 16)\` (spreads high bits to reduce clustering)
+3. Compute bucket index: \`index = (capacity - 1) & hash\` → e.g. \`3\`
+4. Check bucket 3:
+   - Empty → create new \`Entry(key="cat", value=1, hash=..., next=null)\`, place it
+   - Not empty → walk the chain, check \`hash == entry.hash && key.equals(entry.key)\`
+     - Match found → update value (put overwrites)
+     - No match → append to chain (collision)
+
+### Step-by-Step: What Happens on \`map.get("cat")\`?
+
+1. Hash "cat" → same spread → same bucket index (3)
+2. Walk bucket 3's chain, compare hash first (fast int compare), then \`.equals()\`
+3. Return value, or \`null\` if not found
+
+### Treeification: From O(n) to O(log n) Worst Case
+
+Before Java 8: bucket chains were linked lists. With many collisions (e.g. all keys hash to the same bucket), get/put degrades to O(n) — a DoS attack vector!
+
+Java 8 fix: when a bucket chain exceeds **8 entries** AND total capacity ≥ **64**, the chain is converted to a **Red-Black Tree**. Get/put worst case becomes O(log n). When elements are removed and the tree shrinks below **6**, it converts back to a linked list.
+
+### Load Factor and Resizing
+
+- **Capacity**: number of buckets (default 16, always a power of 2)
+- **Load factor**: threshold ratio = entries / capacity (default 0.75)
+- When \`size > capacity × 0.75\` → **resize**: new array of double capacity, rehash all entries
+
+\`\`\`
+After 12 entries (16 × 0.75 = 12) → resize to 32 buckets → rehash all 12 entries
+After 24 entries (32 × 0.75 = 24) → resize to 64 → rehash all 24
+\`\`\`
+
+Resizing is O(n) — expensive! Pre-size maps when you know the approximate count:
+\`\`\`java
+// To hold 100 entries without resizing: capacity = 100/0.75 + 1 = 134, round up to 256
+Map<String, Value> map = new HashMap<>(256);
+// Or use the Google Guava helper:
+Map<String, Value> map = Maps.newHashMapWithExpectedSize(100);
+\`\`\`
+
+---
+
+## The equals/hashCode Contract — The Most Important Rule in Java
+
+This is the #1 source of subtle bugs with collections.
+
+### The Rules (Must Memorise)
+
+**Rule 1 (the critical one):** If \`a.equals(b)\` is \`true\`, then \`a.hashCode() == b.hashCode()\` MUST be true.
+
+**Rule 2 (performance, not correctness):** If \`a.equals(b)\` is \`false\`, \`a.hashCode()\` SHOULD differ from \`b.hashCode()\` (but doesn't have to — just causes more collisions).
+
+**Rule 3:** \`equals\` must be:
+- Reflexive: \`x.equals(x)\` → true
+- Symmetric: \`x.equals(y)\` ↔ \`y.equals(x)\`
+- Transitive: if \`x.equals(y)\` and \`y.equals(z)\` then \`x.equals(z)\`
+- Consistent: same result on repeated calls (assuming no state change)
+- \`x.equals(null)\` → always false
+
+### What Breaks When You Violate the Contract
+
+**Mistake 1: Override equals but not hashCode**
+\`\`\`java
+class Person {
+    String name;
+    @Override public boolean equals(Object o) {
+        return o instanceof Person p && p.name.equals(name);
+    }
+    // ← NO hashCode override!
+}
+
+Set<Person> set = new HashSet<>();
+set.add(new Person("Alice"));
+set.contains(new Person("Alice")); // FALSE! Different hashCode → wrong bucket → not found
+\`\`\`
+
+**Mistake 2: Mutable key — mutate it after putting in the map**
+\`\`\`java
+List<String> key = new ArrayList<>(List.of("a", "b"));
+Map<List<String>, Integer> map = new HashMap<>();
+map.put(key, 42);
+
+key.add("c");  // ← mutate the key!
+// hashCode changed → the entry is now in the WRONG bucket
+map.get(key);  // → null (can't find it)
+map.get(List.of("a", "b")); // → null (hash doesn't match the new position either)
+// The entry is LOST — a memory leak in the map
+\`\`\`
+
+**The fix:** Always use **immutable objects** as map keys: \`String\`, \`Integer\`, \`Long\`, \`UUID\`, \`record\` types, enums.
+
+### How to Implement equals/hashCode Correctly
+
+\`\`\`java
+// Option 1: Java record (auto-generates from all components — best for DTOs/keys)
+record Point(int x, int y) {}  // equals, hashCode, toString all correct
+
+// Option 2: Manual implementation (when record isn't appropriate)
+class OrderId {
+    private final String value;
+    OrderId(String value) { this.value = Objects.requireNonNull(value); }
+
+    @Override public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof OrderId other)) return false;
+        return value.equals(other.value);
+    }
+
+    @Override public int hashCode() {
+        return Objects.hash(value);  // or: value.hashCode()
+    }
+}
+
+// Option 3: Lombok (code generation)
+@EqualsAndHashCode  // generates correct equals + hashCode from all fields
+class Product { String sku; String name; }
+\`\`\`
+
+---
+
+## TreeMap and Sorted Collections
+
+\`TreeMap\` keeps keys in sorted order (natural ordering via \`Comparable\`, or a \`Comparator\` provided at construction). Internally a **Red-Black Tree** — self-balancing BST guaranteeing O(log n) for all operations.
+
+\`\`\`java
+TreeMap<String, Integer> scores = new TreeMap<>();
+scores.put("Charlie", 85);
+scores.put("Alice", 92);
+scores.put("Bob", 78);
+// Iterates in alphabetical order: Alice, Bob, Charlie
+
+// Rich navigation API:
+scores.firstKey();              // "Alice"
+scores.lastKey();               // "Charlie"
+scores.headMap("Bob");          // {Alice=92} (keys < "Bob")
+scores.tailMap("Bob");          // {Bob=78, Charlie=85} (keys >= "Bob")
+scores.floorKey("Ba");          // "Alice" (greatest key ≤ "Ba")
+scores.subMap("Alice", "Bob");  // {Alice=92} (Alice inclusive, Bob exclusive)
+\`\`\`
+
+**TreeMap vs HashMap:** TreeMap is O(log n) for all ops vs HashMap's O(1) average. Use TreeMap when you need sorted order or range queries. Use HashMap when you just need fast lookup by key.
+
+---
+
+## Fail-Fast vs Fail-Safe Iterators
+
+**Fail-fast** (ArrayList, HashMap, etc.): throws \`ConcurrentModificationException\` if the collection is structurally modified while iterating. Uses a \`modCount\` counter — each structural change increments it, iterator checks on each \`next()\`.
+
+\`\`\`java
+List<String> list = new ArrayList<>(List.of("a", "b", "c"));
+for (String s : list) {
+    if (s.equals("b")) list.remove(s);  // ← ConcurrentModificationException!
+}
+
+// Correct ways to remove while iterating:
+// 1. Iterator.remove()
+Iterator<String> it = list.iterator();
+while (it.hasNext()) { if (it.next().equals("b")) it.remove(); }  // safe
+
+// 2. removeIf (Java 8+) — cleanest
+list.removeIf(s -> s.equals("b"));
+
+// 3. Collect to remove, then removeAll
+List<String> toRemove = list.stream().filter(s -> s.equals("b")).toList();
+list.removeAll(toRemove);
+\`\`\`
+
+**Fail-safe** (CopyOnWriteArrayList, ConcurrentHashMap): iterates over a snapshot, never throws. Modifications during iteration are invisible to the current iterator. Higher memory cost.
+
+---
+
+## LinkedHashMap: LRU Cache in 5 Lines
+
+\`LinkedHashMap\` maintains insertion order (or access order) via a doubly-linked list threaded through the entries. With access-order mode and overriding \`removeEldestEntry\`, you get a built-in LRU cache:
+
+\`\`\`java
+// LRU cache: evicts least-recently-accessed entry when size exceeds limit
+int MAX_SIZE = 100;
+Map<String, String> lruCache = new LinkedHashMap<>(MAX_SIZE, 0.75f, true /* access order */) {
+    @Override protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+        return size() > MAX_SIZE;  // evict when over the limit
+    }
+};
+// get() and put() both count as "access" and move the entry to the end
+// The eldest (least recently used) is always at the front, auto-evicted
+\`\`\`
+
+This is a classic interview coding question. Understanding that \`LinkedHashMap\` with \`accessOrder=true\` gives you access-order tracking for free is the key insight.
 
 > [!EU]
-> Expect *"What happens internally when two keys collide in a HashMap?"* and *"Why must keys be immutable?"* Draw the bucket array, mention treeification at 8, load factor 0.75, and the hashCode→bucket index (\`(n-1) & hash\` with a spread function).
+> "Implement an LRU cache" is asked at virtually every European backend interview (Booking.com, Adyen, Zalando, Spotify). Know both approaches: (1) \`LinkedHashMap\` override — 5 lines, simple but not thread-safe; (2) manual \`HashMap\` + doubly-linked list — more code but shows you understand the internals. For thread safety: \`Collections.synchronizedMap(lru)\` or use Caffeine cache library.
 `,
       code: [
         {
@@ -1942,46 +2186,304 @@ public class ConcurrentMapDemo {
       title: 'Concurrency: Threads, Executors, Locks',
       hours: 5,
       notes: `
-# Concurrency: Executors, Locks, and java.util.concurrent
+# Concurrency: Threads, Executors & Locks — From Zero to Senior Level
 
-Raw \`Thread\` management doesn't scale. The \`java.util.concurrent\` (JUC) toolkit is the senior baseline.
+## Why Concurrency Is Hard (The Foundation)
 
-## Executors — never \`new Thread()\` in app code
+Concurrency lets your program do multiple things at once. But shared mutable state + multiple threads = subtle bugs that appear randomly, only in production, only under load.
 
-\`\`\`
-ExecutorService pool = Executors.newFixedThreadPool(8);
-Future<Integer> f = pool.submit(() -> compute());
-pool.shutdown();
-\`\`\`
-
-Prefer \`ThreadPoolExecutor\` directly for control over **core/max size, queue, rejection policy**. \`Executors.newFixedThreadPool\` uses an *unbounded* queue → hidden OOM risk under load.
-
-## Coordination primitives
-
-- **\`CompletableFuture\`** — composable async pipelines (\`thenApply\`, \`thenCompose\`, \`allOf\`); the modern way to orchestrate I/O.
-- **Locks** — \`ReentrantLock\` (tryLock, fairness), \`ReadWriteLock\`, \`StampedLock\` (optimistic reads).
-- **Atomics** — \`AtomicInteger\`, \`LongAdder\` (better under high contention).
-- **Synchronizers** — \`CountDownLatch\`, \`CyclicBarrier\`, \`Semaphore\`, \`Phaser\`.
-- **Concurrent collections** — \`ConcurrentHashMap\`, \`BlockingQueue\`, \`CopyOnWriteArrayList\`.
-
-> [!WARNING]
-> **Deadlock** needs four conditions (mutual exclusion, hold-and-wait, no preemption, circular wait). Break the cycle by **acquiring locks in a global order**, using \`tryLock\` with timeout, or avoiding nested locks entirely.
+The three main hazards:
+1. **Race condition** — outcome depends on thread scheduling (non-deterministic)
+2. **Deadlock** — two threads wait for each other forever
+3. **Livelock** — threads keep reacting to each other but make no progress
 
 > [!TIP]
-> Prefer **immutability + message passing** over shared mutable state. The cheapest concurrency bug is the one you design out. When you must share, confine state to one thread or guard it with a single lock.
+> The safest concurrency design: **don't share mutable state**. Use immutable objects (records, final fields), thread confinement (one thread owns the data), or message passing (queues). Only use locking when you genuinely need shared mutable state.
 
-## synchronized vs ReentrantLock
+---
 
-| | \`synchronized\` | \`ReentrantLock\` |
-|--|--|--|
-| Acquire | implicit, block scope | explicit lock()/unlock() |
-| Try / timeout | no | \`tryLock(timeout)\` |
-| Fairness | no | optional |
-| Interruptible | no | \`lockInterruptibly()\` |
-| Condition | one (wait/notify) | multiple \`Condition\`s |
+## Threads: The Basics
+
+A **thread** is an independent unit of execution within a process. All threads in a JVM process share the same heap (objects) but each has its own stack (local variables, call frames).
+
+\`\`\`java
+// Raw thread — avoid in app code (use thread pools instead)
+Thread t = new Thread(() -> {
+    System.out.println("Running in: " + Thread.currentThread().getName());
+});
+t.setDaemon(true);   // daemon threads don't prevent JVM shutdown
+t.start();           // start() creates the OS thread; run() just calls the method
+t.join();            // wait for t to finish
+\`\`\`
+
+**Thread states:**
+\`\`\`
+NEW → RUNNABLE ⇄ BLOCKED (waiting for monitor lock)
+              ⇄ WAITING (Object.wait(), Thread.join(), LockSupport.park())
+              ⇄ TIMED_WAITING (sleep(), wait(timeout))
+              → TERMINATED
+\`\`\`
+
+---
+
+## Thread Pools: Never Use \`new Thread()\` in Production
+
+Creating a thread is expensive (OS-level operation, ~1MB stack allocation). For every task, creating and destroying a thread wastes CPU and memory.
+
+**Thread pools** maintain a set of reusable threads. Tasks go into a queue; idle threads pick them up.
+
+### ThreadPoolExecutor — The Foundation
+
+All Executors factory methods return a \`ThreadPoolExecutor\` underneath. Understanding its parameters is critical:
+
+\`\`\`java
+ThreadPoolExecutor pool = new ThreadPoolExecutor(
+    4,                          // corePoolSize: always-alive threads
+    8,                          // maximumPoolSize: max threads when queue is full
+    60, TimeUnit.SECONDS,       // keepAliveTime: idle extra threads die after this
+    new ArrayBlockingQueue<>(100),  // workQueue: tasks wait here (BOUNDED!)
+    new ThreadPoolExecutor.CallerRunsPolicy()  // rejectionPolicy: caller runs task if full
+);
+\`\`\`
+
+**How it works when tasks arrive:**
+1. Fewer than \`corePoolSize\` threads → create a new thread (even if idle threads exist)
+2. Reached \`corePoolSize\` → put task in queue
+3. Queue is full AND fewer than \`maxPoolSize\` threads → create a new thread
+4. Queue full AND at max threads → **RejectionPolicy** kicks in
+
+**The dangerous Executors factory methods:**
+\`\`\`java
+Executors.newFixedThreadPool(8);    // UNBOUNDED queue → OOM under sustained load
+Executors.newCachedThreadPool();    // UNBOUNDED thread count → can spawn thousands
+Executors.newSingleThreadExecutor(); // UNBOUNDED queue → tasks pile up forever
+\`\`\`
+
+**The safe way:** always use \`ThreadPoolExecutor\` directly with a bounded queue and explicit rejection policy.
+
+### Thread Pool Sizing Rules of Thumb
+
+**CPU-bound tasks** (math, compression, no I/O):
+\`\`\`
+pool size ≈ number of CPU cores
+(more threads = more context switching = slower)
+\`\`\`
+
+**I/O-bound tasks** (database, HTTP calls, file I/O):
+\`\`\`
+pool size ≈ cores × (1 + wait_time / compute_time)
+e.g. if tasks spend 90% waiting: cores × (1 + 0.9/0.1) = cores × 10
+(threads waiting on I/O don't use CPU, so more threads = more throughput)
+\`\`\`
+
+**Modern answer:** use **Virtual Threads** (Java 21+) for I/O-bound work — pool sizing becomes irrelevant.
+
+---
+
+## CompletableFuture: Async Pipelines
+
+\`CompletableFuture\` is the modern way to write non-blocking async code in Java.
+
+\`\`\`java
+// Sequential (blocking — bad):
+String result1 = fetchUser(id);   // waits here
+String result2 = fetchOrders(id); // waits here
+return result1 + result2;         // 200ms + 200ms = 400ms
+
+// Parallel (non-blocking — good):
+CompletableFuture<String> cf1 = CompletableFuture.supplyAsync(() -> fetchUser(id));
+CompletableFuture<String> cf2 = CompletableFuture.supplyAsync(() -> fetchOrders(id));
+return CompletableFuture.allOf(cf1, cf2)
+    .thenApply(v -> cf1.join() + cf2.join()); // 200ms total (parallel)
+\`\`\`
+
+**The key operators:**
+\`\`\`java
+cf.thenApply(result -> transform(result))      // sync transform (like map)
+cf.thenCompose(result -> anotherCF(result))   // chain another CF (like flatMap)
+cf.thenAccept(result -> consume(result))       // terminal consumer
+cf.exceptionally(ex -> defaultValue)          // error recovery
+cf.thenCombine(cf2, (r1, r2) -> r1 + r2)     // combine two CFs
+CompletableFuture.allOf(cf1, cf2, cf3)        // wait for ALL to complete
+CompletableFuture.anyOf(cf1, cf2, cf3)        // complete when ANY completes
+\`\`\`
+
+> [!WARNING]
+> Without specifying an executor, \`thenApply\`/\`thenCompose\` run on the **ForkJoinPool.commonPool()** (shared, fixed size = cores - 1). Blocking I/O in that pool starves other tasks. Always pass a dedicated executor for I/O: \`thenApplyAsync(fn, ioPool)\`.
+
+---
+
+## Locks: synchronized vs ReentrantLock vs StampedLock
+
+### synchronized — Simple, Correct, Limited
+
+\`\`\`java
+class Counter {
+    private int count = 0;
+    synchronized void increment() { count++; }  // acquires 'this' monitor
+    synchronized int get() { return count; }
+}
+
+// Block form (preferred — limits scope):
+synchronized (lockObject) {
+    // critical section
+}
+\`\`\`
+
+**Limitations:** no tryLock, no timeout, can't interrupt a waiting thread, only one condition (wait/notify).
+
+### ReentrantLock — Full Control
+
+\`\`\`java
+ReentrantLock lock = new ReentrantLock();
+
+// Must release in finally — or you deadlock on exception!
+lock.lock();
+try {
+    // critical section
+} finally {
+    lock.unlock();
+}
+
+// Try to acquire without blocking:
+if (lock.tryLock(100, TimeUnit.MILLISECONDS)) {
+    try { /* critical section */ }
+    finally { lock.unlock(); }
+} else {
+    // couldn't get lock in 100ms — do something else
+}
+
+// Multiple conditions (producer-consumer):
+Condition notFull = lock.newCondition();
+Condition notEmpty = lock.newCondition();
+// producer: notFull.await(); ... notEmpty.signal();
+// consumer: notEmpty.await(); ... notFull.signal();
+\`\`\`
+
+### ReadWriteLock — Optimise Read-Heavy Scenarios
+
+\`\`\`java
+ReadWriteLock rwLock = new ReentrantReadWriteLock();
+Lock readLock = rwLock.readLock();
+Lock writeLock = rwLock.writeLock();
+
+// Multiple readers can hold readLock simultaneously
+// writeLock is exclusive (blocks all readers AND writers)
+
+// Good for: caches, config, lookups — many reads, rare writes
+readLock.lock();
+try { return cache.get(key); }
+finally { readLock.unlock(); }
+\`\`\`
+
+### StampedLock — Optimistic Reads (Fastest)
+
+\`\`\`java
+StampedLock sl = new StampedLock();
+
+// Optimistic read (no lock taken — may observe inconsistent state):
+long stamp = sl.tryOptimisticRead();
+double x = this.x, y = this.y;  // read fields
+if (!sl.validate(stamp)) {       // was there a write while we were reading?
+    stamp = sl.readLock();       // no — fall back to real read lock
+    try { x = this.x; y = this.y; }
+    finally { sl.unlockRead(stamp); }
+}
+\`\`\`
+
+Optimistic reads have zero overhead when there's no concurrent write — perfect for high-read scenarios.
+
+---
+
+## Atomics and Lock-Free Programming
+
+\`java.util.concurrent.atomic\` provides lock-free thread-safe operations using **CAS (Compare-And-Swap)** — a single CPU instruction that atomically checks and updates a value.
+
+\`\`\`java
+AtomicInteger counter = new AtomicInteger(0);
+counter.incrementAndGet();          // atomic i++
+counter.compareAndSet(5, 10);       // if value==5, set to 10; returns true/false
+counter.getAndUpdate(x -> x * 2);  // atomic lambda update
+
+// LongAdder is better than AtomicLong for counters under high contention:
+LongAdder adder = new LongAdder();
+adder.increment();     // distributes across cells — less CAS contention
+adder.sum();           // sum all cells — slightly stale but fast
+
+// AtomicReference for any object:
+AtomicReference<String> ref = new AtomicReference<>("initial");
+ref.compareAndSet("initial", "updated");
+\`\`\`
+
+**When to use which:**
+- \`AtomicInteger/Long\` — single counter or CAS logic (check-then-act)
+- \`LongAdder\` — pure incrementing counter with many writers (10-100x faster than AtomicLong under contention)
+- \`AtomicReference\` — atomic object swap / CAS on any object
+
+---
+
+## Deadlock: Detection and Prevention
+
+**Deadlock** occurs when two (or more) threads each hold a lock the other needs:
+
+\`\`\`
+Thread A holds lock1, waiting for lock2
+Thread B holds lock2, waiting for lock1
+→ Both blocked forever
+\`\`\`
+
+**The four Coffman conditions** (all four must hold for deadlock):
+1. **Mutual exclusion** — resources can't be shared
+2. **Hold and wait** — thread holds one lock while waiting for another
+3. **No preemption** — locks can't be forcibly taken away
+4. **Circular wait** — A waits for B waits for C waits for A
+
+**Prevention strategies:**
+
+**1. Always acquire locks in the same global order:**
+\`\`\`java
+// All threads always acquire lock1 before lock2 — no circular wait possible
+synchronized (lock1) { synchronized (lock2) { /* ... */ } }
+\`\`\`
+
+**2. Use tryLock with timeout:**
+\`\`\`java
+if (lock1.tryLock(100, MILLISECONDS)) {
+    if (lock2.tryLock(100, MILLISECONDS)) {
+        try { /* do work */ } finally { lock2.unlock(); lock1.unlock(); }
+    } else {
+        lock1.unlock();  // give up, retry or abort
+    }
+}
+\`\`\`
+
+**3. Avoid nested locks entirely** — restructure so each thread only holds one lock at a time.
+
+**Detect in production:** \`jstack <pid>\` shows thread dumps — look for "waiting to lock" cycles.
+
+---
+
+## Synchronizers: CountDownLatch, Semaphore, CyclicBarrier
+
+\`\`\`java
+// CountDownLatch: wait for N events to happen (one-shot)
+CountDownLatch ready = new CountDownLatch(3);  // 3 services must start
+// each service calls: ready.countDown()
+ready.await();  // main thread waits until count reaches 0
+
+// Semaphore: rate limiting / resource pool (N permits)
+Semaphore throttle = new Semaphore(10);  // max 10 concurrent
+throttle.acquire();
+try { callExternalApi(); }
+finally { throttle.release(); }
+
+// CyclicBarrier: all threads wait at a point then proceed together (reusable)
+CyclicBarrier barrier = new CyclicBarrier(3, () -> System.out.println("All ready!"));
+// each thread: barrier.await() — blocks until all 3 have arrived, then all continue
+\`\`\`
 
 > [!EU]
-> Be ready to *implement* a bounded producer-consumer with \`BlockingQueue\` on a whiteboard, and to explain thread-pool sizing: CPU-bound ≈ \`#cores\`; I/O-bound ≈ \`#cores × (1 + wait/compute)\`. Then pivot to "...or just use virtual threads (2.4)".
+> A common whiteboard task at European interviews: "Implement a thread-safe bounded blocking queue." The expected answer uses \`ReentrantLock\` with two \`Condition\` objects (\`notFull\`, \`notEmpty\`), or simply wraps \`ArrayBlockingQueue\`. Explain that \`BlockingQueue.put()\` blocks when full and \`take()\` blocks when empty — it's already the correct solution. Then mention virtual threads (Java 21) as the modern alternative that makes pool sizing and blocking less important.
 `,
       code: [
         {
