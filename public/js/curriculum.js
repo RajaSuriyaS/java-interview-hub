@@ -2485,6 +2485,574 @@ public class GraalvmNativeDemo {
         { q: 'What JVM optimisation does method inlining enable?', a: 'Inlining copies a called method\'s body into the caller, eliminating call overhead and exposing the combined code to further optimisations (escape analysis, constant folding, dead-code elimination). It is the most impactful single JIT optimisation.' },
         { q: 'What is deoptimisation and when does it happen?', a: 'The JIT makes speculative optimisations (e.g. assuming a call site is monomorphic). If an assumption is later violated (a new subclass appears), the JIT deoptimises — falls back to the interpreter for that code path — and recompiles with the new type information.' },
         { q: 'When is GraalVM Native Image the right choice vs the JVM?', a: 'Native image wins for serverless functions, CLI tools, and batch jobs where cold-start time and memory footprint matter more than peak throughput. The JVM wins for long-running services where JIT profiling delivers peak throughput that AOT cannot match.' }
+      ],
+      sections: [
+        {
+          title: 'Why Interpretation is Slow & How JIT Helps',
+          notes: `
+### Interpreting Bytecode
+
+The JVM can run bytecode immediately by interpreting it. The interpreter reads one bytecode instruction, decodes it, executes the corresponding VM routine, then repeats. This is excellent for startup because no compilation delay is paid up front.
+
+The cost is that every bytecode instruction has dispatch overhead. The interpreter cannot use CPU registers as aggressively as native code, cannot schedule instructions deeply for the current processor, and repeatedly pays for generic bytecode semantics. A tight Java loop interpreted instruction-by-instruction is doing useful work plus a lot of VM bookkeeping.
+
+### What JIT Changes
+
+The Just-In-Time compiler watches running code and compiles hot paths into native machine code. The compiled version can use native registers, CPU instructions, branch prediction, inlining, escape analysis, and layout choices informed by real runtime profiles.
+
+\`\`\`
+time ───────────────────────────────────────────────────────────────>
+
+cold start        interpret          warm JVM          JIT compiled       peak
+    |                |                   |                  |              |
+    v                v                   v                  v              v
+load classes -> bytecode dispatch -> counters hot -> native code -> optimized steady state
+startup fast       slow per op       profile data      fast per op       best throughput
+\`\`\`
+
+> [!TIP]
+> Java performance is often a story of phases. The first request after startup and the millionth request on a warmed service are not measuring the same machine.
+
+### JIT vs AOT
+
+Ahead-of-time compilation produces native code before execution. It can start quickly because compilation already happened, but it cannot observe production runtime behavior before choosing optimizations. JIT pays compilation cost during execution but can optimize the exact hot methods, receiver types, branch behavior, and allocation patterns it observes.
+
+| Approach | Startup | Peak perf | Portability | Example |
+|----------|---------|-----------|-------------|---------|
+| Bytecode interpretation | Very fast | Low | Excellent; bytecode runs on any JVM | Early JVM startup, cold code |
+| JIT compilation | Moderate warm-up | Very high | Excellent at bytecode level; native code generated per machine | HotSpot C1/C2, Graal JIT |
+| Traditional AOT | Fast runtime startup after build | Good, but less adaptive | Binary is OS/CPU-specific | C, Go, Rust binary |
+| GraalVM Native Image | Millisecond startup | Often lower than warmed JVM | Binary is OS/CPU-specific | Serverless Java function |
+
+### Warm-Up
+
+Warm-up is the period where code moves from interpreted execution to profiled C1 code and then to optimized C2 or Graal code. During warm-up, class loading, bytecode verification, profiling counters, tier transitions, and compilation all affect latency.
+
+This is why benchmarking a cold JVM is usually meaningless for long-running services. Cold timing measures startup, class loading, and interpretation. It does not measure the steady-state throughput the service will deliver after warm-up.
+
+> [!WARNING]
+> A single \`System.nanoTime()\` loop around one call is not a Java benchmark. The JIT may not have compiled the code yet, or it may optimize the whole measurement away.
+
+### JMH Is the Correct Tool
+
+JMH exists because benchmarking JVM code is surprisingly hostile. It handles warm-up, multiple forks, dead-code prevention, parameterization, compiler barriers, and statistical reporting. If a microbenchmark matters enough to influence an engineering decision, it matters enough to use JMH.
+
+> [!SUCCESS]
+> Strong interview answer: use JMH for microbenchmarks, JFR or async-profiler for real application profiling, and always separate cold-start questions from steady-state throughput questions.
+
+### A Practical Mental Model
+
+For CLI tools and serverless functions, startup dominates. For long-running APIs, peak steady-state throughput and tail latency after warm-up dominate. For batch jobs, throughput and allocation rate often matter more than first-operation latency. The best runtime strategy depends on which phase users actually experience.
+
+> [!EU]
+> A common interview challenge is: "Our Java code is slow on the first request. Is Java slow?" A precise answer distinguishes class loading and JIT warm-up from steady-state performance, then proposes warm-up traffic, CDS/AppCDS, native image, or architectural changes depending on the product requirement.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Cold vs Warm Timing Demo',
+              code: `public class ColdWarmTimingDemo {
+    static long work(int n) {
+        long acc = 0;
+        for (int i = 1; i <= n; i++) {
+            acc += (long) i * 31;
+            acc ^= (acc << 7);
+        }
+        return acc;
+    }
+
+    static long timeBatch(int calls, int size) {
+        long sink = 0;
+        long start = System.nanoTime();
+        for (int i = 0; i < calls; i++) {
+            sink += work(size + (i & 7));
+        }
+        long elapsed = System.nanoTime() - start;
+        if (sink == 42) {
+            System.out.println("impossible");
+        }
+        return elapsed;
+    }
+
+    public static void main(String[] args) {
+        long cold = timeBatch(1_000, 2_000);
+
+        for (int i = 0; i < 20; i++) {
+            timeBatch(1_000, 2_000);
+        }
+
+        long warm = timeBatch(1_000, 2_000);
+        System.out.printf("Cold batch: %.3f ms%n", cold / 1_000_000.0);
+        System.out.printf("Warm batch: %.3f ms%n", warm / 1_000_000.0);
+        System.out.println("Run with -XX:+PrintCompilation to see compilation activity.");
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Naive Benchmark Pitfall',
+              code: `public class NaiveBenchmarkPitfall {
+    static int compute(int x) {
+        int y = x;
+        y = y * 31 + 17;
+        y ^= y >>> 3;
+        return y;
+    }
+
+    static long wrongBenchmark() {
+        long start = System.nanoTime();
+        for (int i = 0; i < 100_000_000; i++) {
+            compute(i);
+        }
+        return System.nanoTime() - start;
+    }
+
+    static long lessWrongBenchmark() {
+        int sink = 0;
+        long start = System.nanoTime();
+        for (int i = 0; i < 100_000_000; i++) {
+            sink ^= compute(i);
+        }
+        long elapsed = System.nanoTime() - start;
+        System.out.println("sink=" + sink);
+        return elapsed;
+    }
+
+    public static void main(String[] args) {
+        System.out.printf("Wrong benchmark: %.3f ms%n", wrongBenchmark() / 1_000_000.0);
+        System.out.printf("Less wrong benchmark: %.3f ms%n", lessWrongBenchmark() / 1_000_000.0);
+        System.out.println("Still use JMH for real decisions: warmup, forks, Blackhole, stats.");
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'Why is bytecode interpretation slower than compiled native code?', a: 'Each bytecode instruction pays decode/dispatch overhead and runs through generic VM machinery instead of optimized CPU-specific instructions and registers.' },
+            { q: 'What does the JIT compiler compile?', a: 'Hot methods and hot loop paths observed at runtime, not every method in the program immediately.' },
+            { q: 'Why can JIT beat static AOT for long-running services?', a: 'It uses runtime profile data such as receiver types, branch probabilities, and allocation behavior to optimize actual hot paths.' },
+            { q: 'What is JVM warm-up?', a: 'The period where code is interpreted, profiled, compiled by lower tiers, and eventually optimized into high-quality native code.' },
+            { q: 'Why is cold JVM benchmarking misleading?', a: 'It includes class loading, verification, interpretation, and compilation transitions rather than steady-state optimized execution.' },
+            { q: 'When is AOT or native image attractive?', a: 'When startup time and memory footprint matter more than warmed peak throughput, such as serverless and CLI tools.' },
+            { q: 'What does JMH protect against?', a: 'Missing warm-up, dead-code elimination, JVM state pollution, insufficient forks, and poor statistical measurement.' },
+            { q: 'What is a benchmark fork in JMH?', a: 'A separate JVM process used to isolate measurements from prior JVM state and compilation history.' },
+            { q: 'What is the difference between startup and peak performance?', a: 'Startup is time to begin useful work; peak performance is optimized steady-state throughput after warm-up.' },
+            { q: 'Which tool should you use for a Java microbenchmark?', a: 'JMH, the Java Microbenchmark Harness.' }
+          ]
+        },
+        {
+          title: 'Tiered Compilation: C1 & C2',
+          notes: `
+### The Five Tiers
+
+HotSpot uses tiered compilation so it does not spend expensive compiler time on code that may never matter. The interpreter starts execution immediately. C1 compiles quickly and can add profiling. C2 compiles more slowly but produces aggressive optimized code for methods that prove important.
+
+| Tier | Name | Trigger | Compile time | Code quality |
+|------|------|---------|--------------|--------------|
+| 0 | Interpreter | First execution and cold code | None | Lowest, but instant startup |
+| 1 | C1 simple | Method gets warm; profiling not needed | Very fast | Basic native code |
+| 2 | C1 limited profile | More profiling useful | Fast | Basic code plus limited counters |
+| 3 | C1 full profile | Hot enough to collect rich data | Fast to moderate | Good code and profile data |
+| 4 | C2 optimized | Very hot method or loop | Slowest | Highest HotSpot peak quality |
+
+### C1 Compiler
+
+C1 is the client compiler. It is optimized for compilation speed. It performs basic optimizations, emits native code quickly, and can insert profiling counters that C2 later consumes. C1 is why warm Java applications improve quickly instead of waiting for every hot method to reach C2.
+
+### C2 Compiler
+
+C2 is the server compiler. It performs aggressive optimizations such as inlining, escape analysis, devirtualization, loop transformations, and global code motion. It is slower to compile, so the JVM reserves it for the hottest methods and loops.
+
+### Promotion Between Tiers
+
+The JVM tracks method invocation counters and loop back-edge counters. When counters cross policy thresholds, the method may be queued for compilation. \`-XX:CompileThreshold\` influences when compilation begins, though tiered policy has additional heuristics beyond one simple number.
+
+\`\`\`
+method invoked
+     |
+     v
+is method hot?
+     | no
+     v
+interpret at tier 0
+     |
+     +-----------------------------+
+                                   |
+yes                                |
+ |                                 |
+ v                                 |
+compile with C1? ---- no ----------+
+ | yes
+ v
+tier 1/2/3 native code + profiling
+ |
+ v
+hot enough for C2 or hot loop?
+ | no
+ v
+keep C1 code
+ |
+yes
+ |
+ v
+C2 compile tier 4
+ |
+ v
+assumption violated? -- yes --> deoptimise -> interpreter/C1 -> reprofile
+ |
+no
+ |
+ v
+run optimized native code
+\`\`\`
+
+### OSR
+
+On-Stack Replacement lets the JVM replace an actively running interpreted loop with compiled code. Without OSR, a long-running loop might remain interpreted until the method returns and is called again. With OSR, a hot loop can jump into compiled code while it is already on the stack.
+
+> [!TIP]
+> OSR explains why \`-XX:+PrintCompilation\` sometimes shows entries with a percent sign. They are loop compilations entered while a method is already running.
+
+### Deoptimisation
+
+JIT optimizations are speculative. If profiling says a call site always receives \`ArrayList\`, C2 may compile a direct call. If a new implementation appears later, the assumption can fail. The JVM then deoptimizes: it maps native state back to interpreter state, resumes safely, and may recompile with broader assumptions.
+
+Common deoptimization triggers include class loading that invalidates hierarchy assumptions, call sites becoming megamorphic, uncommon branches suddenly becoming common, and debugging or instrumentation changing execution conditions.
+
+> [!WARNING]
+> Deoptimization is a correctness feature, not a bug. It lets the JVM optimize aggressively while preserving Java's dynamic loading and polymorphism semantics.
+
+> [!SUCCESS]
+> Senior-level explanation: tiered compilation is a budget allocator. It spends cheap compiler time early to get speed and profile data, then spends expensive C2 time only where runtime evidence says it will pay off.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Hot Method Tier Promotion',
+              code: `public class TierPromotionDemo {
+    static int score(String value) {
+        int result = 0;
+        for (int i = 0; i < value.length(); i++) {
+            result = result * 31 + value.charAt(i);
+        }
+        return result;
+    }
+
+    public static void main(String[] args) {
+        long sink = 0;
+        for (int round = 0; round < 200_000; round++) {
+            sink += score("customer-" + (round & 255));
+        }
+        System.out.println("sink=" + sink);
+        System.out.println("Run with: -XX:+PrintCompilation -XX:+TieredCompilation");
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'OSR Long-Running Loop Demo',
+              code: `public class OsrLoopDemo {
+    public static void main(String[] args) {
+        long sum = 0;
+        long start = System.nanoTime();
+
+        for (int i = 0; i < 600_000_000; i++) {
+            sum += (i * 17L) ^ (i >>> 3);
+            if (i == 10_000_000) {
+                System.out.println("Loop is still running; OSR may compile it before method return.");
+            }
+        }
+
+        long elapsed = System.nanoTime() - start;
+        System.out.println("sum=" + sum);
+        System.out.printf("elapsed %.3f ms%n", elapsed / 1_000_000.0);
+        System.out.println("Run with -XX:+PrintCompilation and look for % OSR compilations.");
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is tier 0 in HotSpot tiered compilation?', a: 'The bytecode interpreter.' },
+            { q: 'What are tiers 1 through 3?', a: 'C1 compiled code at different profiling levels, from simple native code to fully profiled C1 code.' },
+            { q: 'What is tier 4?', a: 'C2 optimized server-compiler code.' },
+            { q: 'Why does the JVM use C1 before C2?', a: 'C1 compiles quickly and gathers profile data, while C2 is slower but produces better optimized code.' },
+            { q: 'What counters make code hot?', a: 'Method invocation counters and loop back-edge counters.' },
+            { q: 'What is OSR?', a: 'On-Stack Replacement: switching a currently running interpreted loop to compiled code before the method returns.' },
+            { q: 'What does -XX:CompileThreshold influence?', a: 'How hot code generally must become before compilation is considered, though tiered policy has more heuristics.' },
+            { q: 'What is deoptimisation?', a: 'Discarding compiled code and returning to a safer tier when a speculative JIT assumption becomes invalid.' },
+            { q: 'How can class loading trigger deoptimization?', a: 'A newly loaded subclass can invalidate assumptions about a call site or class hierarchy.' },
+            { q: 'What does a megamorphic call site do to optimization?', a: 'It makes devirtualization and inlining harder because many receiver types appear at the same call site.' }
+          ]
+        },
+        {
+          title: 'Key JIT Optimisations',
+          notes: `
+### Method Inlining
+
+Inlining replaces a method call with the callee body. It removes call overhead, but the bigger win is that it exposes more code to later optimizations. Once a getter, helper, or strategy method is inline, constants can fold, allocations can disappear, and virtual calls can become direct.
+
+\`\`\`java
+// before
+int tax = calculateTax(order.total());
+
+// after conceptual inlining
+int tax = (int) (order.totalCents * 0.18);
+\`\`\`
+
+HotSpot uses size thresholds such as \`-XX:MaxInlineSize\` for small methods and larger thresholds for very hot methods. Large hot methods can block optimization because they are too expensive or risky to inline.
+
+### Escape Analysis
+
+Escape analysis asks whether an object can be observed outside the current method or thread. If it cannot escape, C2 may avoid heap allocation. Scalar replacement decomposes the object into fields held in registers or stack slots. Lock elision removes synchronization when the locked object is proven thread-local.
+
+### Loop Optimisations
+
+Loops are where CPU time often lives. The JIT can unroll loops to reduce branch overhead, hoist invariant work out of loops, remove bounds checks when index ranges are proven safe, and sometimes vectorize operations into SIMD instructions.
+
+### Dead Code Elimination and Constant Folding
+
+If a value is computed but never used, the JIT can remove it. If an expression depends only on constants, it can be folded. This is good for production code and dangerous for naive benchmarks because the measured work can vanish.
+
+### Devirtualisation
+
+The JVM profiles receiver types at call sites:
+
+- **Monomorphic**: one receiver type. Best case; direct call and inline likely.
+- **Bimorphic**: two receiver types. Often optimized with type checks and two direct paths.
+- **Megamorphic**: many receiver types. Harder to inline; dispatch remains more generic.
+
+### Intrinsics
+
+Intrinsics are special JVM implementations for important methods. Instead of compiling Java bytecode literally, the JVM emits optimized CPU-specific code. Examples include \`String.equals\`, \`System.arraycopy\`, \`Arrays.copyOf\`, \`Math.sqrt\`, some VarHandle/Unsafe operations, and cryptographic primitives on supported CPUs.
+
+| Optimisation | What it does | When it kicks in | How to verify |
+|--------------|--------------|------------------|---------------|
+| Inlining | Copies callee body into caller | Hot call site and method small/hot enough | \`-XX:+PrintInlining\`, JITWatch |
+| Escape analysis | Proves object does not escape | C2 optimization of hot code | Compare with \`-XX:-DoEscapeAnalysis\`, allocation profiler |
+| Scalar replacement | Replaces object with fields | After successful escape analysis | JFR allocation events, GC allocation rate |
+| Lock elision | Removes locks on non-escaping objects | Synchronization proven thread-local | JITWatch, perf difference with EA disabled |
+| Loop unrolling | Reduces loop branch overhead | Hot loops with predictable bounds | Assembly/JITWatch, benchmark carefully |
+| Bounds-check elimination | Removes repeated array bounds checks | Index range proven safe | JITWatch, assembly, perf counters |
+| Dead-code elimination | Removes unused work | Value has no observable effect | JMH Blackhole prevents accidental removal |
+| Constant folding | Precomputes constant expressions | Inputs are compile-time or profiled constants | JIT logs/JITWatch |
+| Devirtualisation | Converts virtual call to direct call | Monomorphic or bimorphic profile | \`-XX:+PrintInlining\`, JITWatch |
+| Intrinsics | Uses JVM/CPU special implementation | Recognized JDK method on supported platform | \`-XX:+PrintIntrinsics\`, assembly |
+
+> [!TIP]
+> Inlining is often the first domino. Many impressive JIT optimizations only become possible after call boundaries disappear.
+
+> [!WARNING]
+> Do not contort clean code purely for imagined JIT wins. Measure first; modern HotSpot is very good at optimizing ordinary, simple Java.
+
+> [!SUCCESS]
+> A useful rule: small cohesive methods are usually JIT-friendly because they inline well, and they are also human-friendly because they are easier to understand.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Inlining Before and After Concept',
+              code: `public class InliningConceptDemo {
+    static int addTax(int cents) {
+        return cents + tax(cents);
+    }
+
+    static int tax(int cents) {
+        return cents / 10;
+    }
+
+    static int conceptualAfterInlining(int cents) {
+        return cents + cents / 10;
+    }
+
+    public static void main(String[] args) {
+        long a = 0;
+        long b = 0;
+        for (int i = 0; i < 10_000_000; i++) {
+            a += addTax(i);
+            b += conceptualAfterInlining(i);
+        }
+        System.out.println("same result: " + (a == b));
+        System.out.println("Run with -XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining");
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Escape Analysis Before and After Concept',
+              code: `public class EscapeAnalysisConceptDemo {
+    record Point(int x, int y) {}
+
+    static int distanceSquared(int x, int y) {
+        Point p = new Point(x, y);
+        return p.x() * p.x() + p.y() * p.y();
+    }
+
+    static int conceptualAfterScalarReplacement(int x, int y) {
+        return x * x + y * y;
+    }
+
+    public static void main(String[] args) {
+        long a = 0;
+        long b = 0;
+        for (int i = 0; i < 20_000_000; i++) {
+            a += distanceSquared(i & 1023, (i + 1) & 1023);
+            b += conceptualAfterScalarReplacement(i & 1023, (i + 1) & 1023);
+        }
+        System.out.println("same result: " + (a == b));
+        System.out.println("Compare allocation behavior with and without -XX:-DoEscapeAnalysis.");
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'Why is method inlining so important?', a: 'It removes call overhead and exposes the combined code to further optimizations such as escape analysis and constant folding.' },
+            { q: 'What does -XX:MaxInlineSize control?', a: 'The bytecode-size threshold for ordinary small-method inlining decisions.' },
+            { q: 'What is escape analysis?', a: 'A JIT analysis that determines whether an object can be observed outside its method or thread.' },
+            { q: 'What is scalar replacement?', a: 'Replacing an object allocation with its individual fields, often held in registers, so no heap object is created.' },
+            { q: 'What is lock elision?', a: 'Removing synchronization when the JIT proves the locked object cannot be shared across threads.' },
+            { q: 'What is dead-code elimination?', a: 'Removing computations that have no observable effect.' },
+            { q: 'What is devirtualisation?', a: 'Turning a virtual/interface call into a direct call based on observed receiver types.' },
+            { q: 'What is a monomorphic call site?', a: 'A call site that has observed one receiver type, making direct call and inlining likely.' },
+            { q: 'What is a JVM intrinsic?', a: 'A special optimized JVM implementation for a known method, often using CPU-specific instructions.' },
+            { q: 'How do you verify inlining decisions?', a: 'Use -XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining or inspect with JITWatch.' }
+          ]
+        },
+        {
+          title: 'Profiling, Measuring & GraalVM',
+          notes: `
+### PrintCompilation
+
+\`-XX:+PrintCompilation\` prints methods as the JVM compiles them. A typical line includes a timestamp, compilation id, tier, method name, bytecode size, and sometimes markers for OSR, made-not-entrant, or made-zombie code.
+
+\`\`\`
+  113   42       3       java.lang.String::hashCode (60 bytes)
+  time  id       tier    method                         size
+\`\`\`
+
+Tier \`3\` means C1 with full profiling; tier \`4\` means C2 optimized code. A percent sign usually indicates OSR compilation for a hot loop.
+
+### JFR for Production Profiling
+
+Java Flight Recorder is built into modern JDKs and is safe enough for production when configured sensibly. It records allocation, CPU, thread, lock, GC, exception, and execution-sample events. Open recordings in JDK Mission Control to correlate symptoms rather than guess.
+
+### async-profiler
+
+async-profiler produces CPU, allocation, lock, and wall-clock flame graphs with low overhead. Flame graphs show stack width by sample count. Wide frames are where time or allocation pressure is concentrated.
+
+### JITWatch
+
+JITWatch consumes JIT logs and visualizes compilation decisions. It is especially useful for understanding why a method did or did not inline, whether bytecode shape is blocking optimization, and how source maps to bytecode and assembly.
+
+### Useful JIT Flags
+
+| Flag | Purpose | Example |
+|------|---------|---------|
+| \`-XX:+PrintCompilation\` | Show compilation events | \`java -XX:+PrintCompilation App\` |
+| \`-XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining\` | Show inlining decisions | \`java -XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining App\` |
+| \`-XX:+PrintIntrinsics\` | List JVM intrinsics | \`java -XX:+UnlockDiagnosticVMOptions -XX:+PrintIntrinsics -version\` |
+| \`-XX:+TieredCompilation\` | Enable tiered compilation | \`-XX:+TieredCompilation\` |
+| \`-XX:-TieredCompilation\` | Disable tiered compilation for experiments | \`-XX:-TieredCompilation\` |
+| \`-XX:CICompilerCount\` | Set compiler thread count | \`-XX:CICompilerCount=4\` |
+| \`-XX:CompileThreshold\` | Influence compilation threshold | \`-XX:CompileThreshold=10000\` |
+| \`-XX:-DoEscapeAnalysis\` | Disable escape analysis for comparison | \`-XX:-DoEscapeAnalysis\` |
+| \`-XX:ReservedCodeCacheSize\` | Size the native code cache | \`-XX:ReservedCodeCacheSize=256m\` |
+| \`-XX:+LogCompilation\` | Emit XML compilation log for tools | \`java -XX:+UnlockDiagnosticVMOptions -XX:+LogCompilation App\` |
+
+### GraalVM Native Image and Graal JIT
+
+GraalVM has two different stories. Native Image is AOT: it builds a standalone binary with millisecond startup and low memory, but no runtime JIT warm-up and less dynamic behavior. Graal JIT is a JVM compiler that can run in JVM mode on GraalVM and optimize at runtime like a JIT.
+
+Native Image works best when startup and footprint dominate. A warmed HotSpot or Graal JIT JVM often wins for long-running throughput because runtime profiles keep improving hot code.
+
+> [!WARNING]
+> Native Image uses a closed-world assumption. Reflection, proxies, resources, serialization, and dynamic class loading need build-time configuration or framework AOT support.
+
+### JMH Warm-Up Effect
+
+The benchmark below is a real JMH benchmark. It uses warm-up iterations that are not measured, measurement iterations that are reported, multiple forks, and a \`Blackhole\` so the JIT cannot erase the work.
+
+> [!SUCCESS]
+> Production profiling answers "where is the application spending time?" JMH answers "is this small code change faster under controlled conditions?" They solve different problems.
+
+> [!EU]
+> A rigorous performance report includes the tool, JVM version, flags, hardware, warm-up, input sizes, confidence/error values, and a before/after comparison. Without those, it is a story, not evidence.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'PrintCompilation Target Program',
+              code: `public class PrintCompilationTarget {
+    static long parseAndMix(String text) {
+        long result = 1125899906842597L;
+        for (int i = 0; i < text.length(); i++) {
+            result = 31 * result + text.charAt(i);
+        }
+        return result;
+    }
+
+    public static void main(String[] args) {
+        long sink = 0;
+        for (int i = 0; i < 500_000; i++) {
+            sink ^= parseAndMix("order-" + (i & 1023));
+        }
+        System.out.println("sink=" + sink);
+        System.out.println("Run with: -XX:+PrintCompilation");
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Real JMH Benchmark Showing Warm-Up Effect',
+              code: `import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.BenchmarkMode;
+import org.openjdk.jmh.annotations.Fork;
+import org.openjdk.jmh.annotations.Measurement;
+import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Scope;
+import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.infra.Blackhole;
+
+import java.util.concurrent.TimeUnit;
+
+@BenchmarkMode(Mode.AverageTime)
+@OutputTimeUnit(TimeUnit.NANOSECONDS)
+@State(Scope.Thread)
+@Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
+@Measurement(iterations = 8, time = 1, timeUnit = TimeUnit.SECONDS)
+@Fork(2)
+public class WarmupEffectBenchmark {
+    private int value = 1;
+
+    private static int hotFunction(int x) {
+        int y = x;
+        y = y * 31 + 17;
+        y ^= y >>> 7;
+        y *= 0x45d9f3b;
+        return y;
+    }
+
+    @Benchmark
+    public void measuredAfterWarmup(Blackhole blackhole) {
+        value = hotFunction(value);
+        blackhole.consume(value);
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What does -XX:+PrintCompilation show?', a: 'JVM compilation events including compile id, tier, method, bytecode size, and status markers.' },
+            { q: 'What does tier 4 mean in PrintCompilation output?', a: 'C2 optimized compiled code.' },
+            { q: 'What is JFR best used for?', a: 'Low-overhead production profiling across CPU, allocation, locks, GC, threads, exceptions, and latency events.' },
+            { q: 'What does async-profiler produce?', a: 'Low-overhead flame graphs for CPU, allocation, lock, or wall-clock profiling.' },
+            { q: 'What is JITWatch used for?', a: 'Visualizing JIT compilation logs, inlining decisions, bytecode, and assembly relationships.' },
+            { q: 'What does -XX:CICompilerCount tune?', a: 'The number of compiler threads available for JIT compilation.' },
+            { q: 'What is the code cache?', a: 'Native memory where the JVM stores generated compiled machine code.' },
+            { q: 'How is GraalVM Native Image different from Graal JIT?', a: 'Native Image is ahead-of-time compilation to a standalone binary; Graal JIT optimizes code at runtime inside a JVM.' },
+            { q: 'Why does Native Image start quickly?', a: 'Most analysis and compilation happen at build time, so runtime avoids JVM warm-up and dynamic JIT compilation.' },
+            { q: 'Why can Native Image have lower peak throughput?', a: 'It lacks runtime profile-guided JIT optimization and must obey closed-world build-time assumptions.' }
+          ]
+        }
       ]
     }
   ]
