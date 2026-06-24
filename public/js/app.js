@@ -312,7 +312,8 @@
     const idx = flat.findIndex(x => x.module.id === id);
     const prev = idx > 0 ? flat[idx - 1] : null;
     const next = idx < flat.length - 1 ? flat[idx + 1] : null;
-    const st = statusOf(id);
+
+    const hasSections = Array.isArray(module.sections) && module.sections.length > 0;
 
     const content = $('#content');
     content.scrollTop = 0;
@@ -328,18 +329,33 @@
         </div>
 
         <!-- title + status control -->
-        <div class="flex items-start justify-between flex-wrap gap-4 mb-6">
+        <div class="flex items-start justify-between flex-wrap gap-4 mb-5">
           <div>
             <h1 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">${esc(module.title)}</h1>
             <div class="flex items-center gap-3 mt-2 text-xs text-slate-400">
               <span class="inline-flex items-center gap-1"><i data-lucide="clock" class="w-3.5 h-3.5"></i> ${module.hours}h est.</span>
               <span class="inline-flex items-center gap-1"><i data-lucide="layers" class="w-3.5 h-3.5"></i> ${esc(phase.title)}</span>
+              ${hasSections ? `<span class="inline-flex items-center gap-1 text-brand"><i data-lucide="layout-list" class="w-3.5 h-3.5"></i> ${module.sections.length} sections</span>` : ''}
             </div>
           </div>
           <button id="status-btn" class="status-btn inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition"></button>
         </div>
 
-        <!-- tabs -->
+        ${hasSections ? `
+        <!-- section pill nav -->
+        <div class="mb-5 p-3 rounded-xl bg-slate-900/50 border border-slate-800">
+          <div class="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-2.5 flex items-center gap-1.5">
+            <i data-lucide="map" class="w-3 h-3"></i> Sections — pick a topic
+          </div>
+          <div class="flex flex-wrap gap-2" id="sec-pills">
+            ${module.sections.map((s, i) => `
+              <button data-sec="${i}" class="sec-pill px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${i === 0 ? 'bg-brand border-brand text-white shadow-sm' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:border-slate-600'}">
+                <span class="text-[9px] opacity-60 mr-1">${i + 1}.</span>${esc(s.title)}
+              </button>`).join('')}
+          </div>
+        </div>` : ''}
+
+        <!-- content tabs -->
         <div class="flex items-center gap-1 border-b border-slate-800 mb-6 text-sm">
           <button data-tab="notes" class="tab-btn active px-4 py-2.5 font-medium text-slate-400">📘 Study Guide</button>
           <button data-tab="sandbox" class="tab-btn px-4 py-2.5 font-medium text-slate-400">⚡ Code Sandbox</button>
@@ -366,20 +382,45 @@
         <div class="h-8"></div>
       </div>`;
 
-    // notes
-    if (module.notes && module.notes.trim()) {
-      $('#tab-notes').innerHTML = renderMarkdown(module.notes);
-    } else {
-      $('#tab-notes').innerHTML = placeholderNotes(module, phase);
+    // ---- helper: fill Study Guide / Code Sandbox / Flashcards from any src object ----
+    function fillContent(src) {
+      if (src.notes && src.notes.trim()) {
+        $('#tab-notes').innerHTML = renderMarkdown(src.notes);
+      } else {
+        $('#tab-notes').innerHTML = placeholderNotes(module, phase);
+      }
+      $('#tab-notes').querySelectorAll('pre code').forEach(b => { try { hljs.highlightElement(b); } catch (e) {} });
+      renderSandbox(src);
+      renderFlashcards(src);
     }
-    // highlight code in notes
-    $('#tab-notes').querySelectorAll('pre code').forEach(b => { try { hljs.highlightElement(b); } catch (e) {} });
 
-    renderSandbox(module);
-    renderFlashcards(module);
+    // ---- section pill wiring (only when module has sections) ----
+    if (hasSections) {
+      const pills = content.querySelectorAll('.sec-pill');
+      const activePillClass = 'sec-pill px-3 py-1.5 rounded-lg text-xs font-semibold border transition bg-brand border-brand text-white shadow-sm';
+      const idlePillClass   = 'sec-pill px-3 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:border-slate-600';
+      pills.forEach(pill => {
+        pill.addEventListener('click', () => {
+          const i = parseInt(pill.getAttribute('data-sec'));
+          pills.forEach(p => { p.className = idlePillClass; });
+          pill.className = activePillClass;
+          // reset tab to Study Guide when switching section
+          content.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
+          content.querySelectorAll('.tab-pane').forEach(x => x.classList.add('hidden'));
+          content.querySelector('[data-tab="notes"]').classList.add('active');
+          $('#tab-notes').classList.remove('hidden');
+          fillContent(module.sections[i]);
+          content.scrollTop = 0;
+        });
+      });
+      fillContent(module.sections[0]);
+    } else {
+      fillContent(module);
+    }
+
     renderMyNotes(module);
 
-    // status button
+    // ---- status button ----
     const updateStatusBtn = () => {
       const s = statusOf(id);
       const btn = $('#status-btn');
@@ -402,7 +443,7 @@
       renderGlobalProgress();
     });
 
-    // tabs
+    // ---- tab switching ----
     content.querySelectorAll('.tab-btn').forEach(tb => {
       tb.addEventListener('click', () => {
         content.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active', 'text-white'));
@@ -410,7 +451,6 @@
         tb.classList.add('active');
         const pane = $('#tab-' + tb.getAttribute('data-tab'));
         pane.classList.remove('hidden');
-        // monaco needs a relayout when shown
         if (tb.getAttribute('data-tab') === 'sandbox') setTimeout(() => editors.forEach(e => e.ed && e.ed.layout()), 30);
       });
     });
