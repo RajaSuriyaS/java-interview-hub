@@ -21,9 +21,11 @@ jobs:
   deploy:
     name: SSH deploy
     runs-on: ubuntu-latest
+    # Skip entirely when secrets aren't configured (VPS uses systemd timer auto-deploy instead)
     if: >
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.workflow_run.conclusion == 'success') &&
+      vars.DEPLOY_ENABLED == 'true'
     steps:
       - name: Check required secrets
         run: |
@@ -32,8 +34,10 @@ jobs:
           [ -z "${{ secrets.VPS_SSH_USER }}" ] && MISSING="$MISSING VPS_SSH_USER"
           [ -z "${{ secrets.VPS_SSH_KEY }}" ]  && MISSING="$MISSING VPS_SSH_KEY"
           if [ -n "$MISSING" ]; then
-            echo "::error::Missing GitHub secrets:$MISSING — see docs/VPS_DEPLOY.md"
-            exit 1
+            echo "::warning::Missing GitHub secrets:$MISSING — SSH deploy skipped."
+            echo "The VPS auto-deploys via systemd git-poll timer within 60s of a push."
+            echo "To enable GitHub Actions deploy: set secrets + add DEPLOY_ENABLED=true variable."
+            exit 0
           fi
           echo "All required secrets present ✓"
 
