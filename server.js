@@ -123,6 +123,25 @@ app.post('/api/execute', async (req, res) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', provider: PROVIDER }));
 
+// Debug: shows exactly what curriculum is loaded on this server instance
+app.get('/api/stats', (_req, res) => {
+  const src = readFileSync(join(__dirname, 'public/js/curriculum.js'), 'utf8')
+    .replace('const CURRICULUM', 'var __CURRICULUM');
+  const curriculum = new Function(src + '; return __CURRICULUM;')();
+  const stats = curriculum.map(p => ({
+    phase: p.title,
+    modules: p.modules.map(m => ({
+      id: m.id,
+      title: m.title,
+      sections: m.sections ? m.sections.length : null,
+      words: m.sections
+        ? m.sections.reduce((s, sec) => s + sec.notes.trim().split(/\s+/).length, 0)
+        : (m.notes || '').trim().split(/\s+/).length
+    }))
+  }));
+  res.json({ version: VERSION, stats });
+});
+
 // SPA fallback — serve the same versioned HTML
 app.get('*', (_req, res) => serveIndex(res));
 
