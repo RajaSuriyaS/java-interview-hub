@@ -29,12 +29,19 @@ app.use(express.json({ limit: '256kb' }));
 
 // Serve index.html with ?v= cache-busting stamp injected into script tags
 const indexPath = join(__dirname, 'public', 'index.html');
-app.get('/', (_req, res) => {
+
+function serveIndex(res) {
   const html = readFileSync(indexPath, 'utf8')
     .replace('/js/curriculum.js"', `/js/curriculum.js?v=${VERSION}"`)
     .replace('/js/app.js"',        `/js/app.js?v=${VERSION}"`);
+  // HTML must never be cached — browser must always re-fetch so the ?v= hash stays fresh
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   res.type('html').send(html);
-});
+}
+
+app.get('/', (_req, res) => serveIndex(res));
 
 app.use(express.static(join(__dirname, 'public'), { extensions: ['html'] }));
 
@@ -117,12 +124,7 @@ app.post('/api/execute', async (req, res) => {
 app.get('/health', (_req, res) => res.json({ status: 'ok', provider: PROVIDER }));
 
 // SPA fallback — serve the same versioned HTML
-app.get('*', (_req, res) => {
-  const html = readFileSync(indexPath, 'utf8')
-    .replace('/js/curriculum.js"', `/js/curriculum.js?v=${VERSION}"`)
-    .replace('/js/app.js"',        `/js/app.js?v=${VERSION}"`);
-  res.type('html').send(html);
-});
+app.get('*', (_req, res) => serveIndex(res));
 
 app.listen(PORT, () =>
   console.log(`Java Interview Hub on http://localhost:${PORT} (exec provider: ${PROVIDER})`)
