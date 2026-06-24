@@ -8,10 +8,10 @@ A self-hosted, interactive **Senior Java Backend Engineer interview study hub** 
 
 ## ✨ Features
 
-- **10 phases · 33 modules · ~123 study hours** of structured, senior-level content.
+- **11 phases · 36 modules · ~145 study hours** of structured, senior-level content.
 - **Live code sandbox** — edit and **Run** Java on a real JDK compiler (via the [Wandbox](https://wandbox.org) execution API, proxied by the backend; self-hosted [Piston](https://github.com/engineer-man/piston) also supported). Powered by the **Monaco editor** (the VS Code engine).
 - **Deep-dive study guides** — markdown-typeset notes with **callout blocks** for European-interview tips, warnings, and "strong answer" cues.
-- **147 active-recall flashcards** — click to flip; "flip all" for rapid drills.
+- **300+ active-recall flashcards** — click to flip; "flip all" for rapid drills.
 - **Per-module progress** — cycle *Not Started → In Progress → Completed*; progress rings per phase and an overall readiness %.
 - **Personal notes** per module, auto-saved.
 - **Everything persists** in `localStorage` — no account, no database for your progress.
@@ -31,6 +31,7 @@ A self-hosted, interactive **Senior Java Backend Engineer interview study hub** 
 | 8 | Camunda & Process Orchestration | BPMN, Camunda 7 vs 8 |
 | 9 | Linux, Networking & Observability | Shell, TCP/HTTP, the three pillars |
 | 10 | Behavioral & EU Interview Strategy | STAR, system-design communication, visa logistics |
+| 11 | Real-World Java Backend Architecture | Multi-module Maven monolith, Docker+Caddy+VPS prod deploy, Spring Security & OAuth2 |
 
 ## 🚀 Quick start (local)
 

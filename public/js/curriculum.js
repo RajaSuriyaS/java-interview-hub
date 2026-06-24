@@ -104,6 +104,110 @@ Source.java --javac--> Bytecode (.class)
         System.out.println("counter           : " + counter);
     }
 }`
+        },
+        {
+          lang: 'java',
+          title: 'Stack frames, StackOverflow, and tail-call insight',
+          code: `public class StackFrameDemo {
+    // Each call to recurse() pushes a new STACK FRAME onto the thread's JVM stack.
+    // Frame contains: local variables, operand stack, reference back to constant pool.
+    // Default stack size ~512KB-1MB per thread. Deep recursion overflows it.
+    static long recurse(int n, long acc) {
+        if (n <= 0) return acc;
+        // This call creates a new frame. JVM does NOT do tail-call elimination
+        // (unlike Scala/Haskell), so even though this IS tail-recursive, it will overflow.
+        return recurse(n - 1, acc + n);
+    }
+
+    // Safe iterative version — O(1) stack space
+    static long iterate(int n) {
+        long sum = 0;
+        for (int i = 1; i <= n; i++) sum += i;
+        return sum;
+    }
+
+    public static void main(String[] args) {
+        // How deep can we go? (varies by JVM/-Xss setting)
+        int depth = 0;
+        try {
+            recurse(100_000, 0);    // likely StackOverflowError
+            System.out.println("100k calls completed (uncommon without -Xss)");
+        } catch (StackOverflowError e) {
+            System.out.println("StackOverflowError hit (stack full of frames)");
+        }
+
+        // Iterative is always safe and avoids frame allocation overhead
+        System.out.println("Iterative sum 1..1M = " + iterate(1_000_000));
+
+        System.out.println("\\nStack size tuning: -Xss512k (smaller, more threads) or -Xss2m (deeper recursion)");
+        System.out.println("Thread count × stack size = OS memory committed for stacks.");
+        System.out.println("Virtual threads (JDK 21) use heap-allocated stacks -> millions possible.");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'Custom ClassLoader: load a class from bytes at runtime',
+          code: `// Custom ClassLoaders power OSGi, plugin systems, hot-reload, and Spring Boot fat-jars.
+// They break parent delegation (child-first) to isolate different versions of the same library.
+public class ClassLoaderDemo {
+
+    // A classloader that loads a class from a raw byte array (e.g. from a DB or network).
+    // In real frameworks this would load from a JAR stream.
+    static class ByteArrayClassLoader extends ClassLoader {
+        private final String className;
+        private final byte[] bytecode;
+
+        ByteArrayClassLoader(String className, byte[] bytecode) {
+            super(ClassLoaderDemo.class.getClassLoader()); // parent = app classloader
+            this.className = className;
+            this.bytecode  = bytecode;
+        }
+
+        @Override
+        protected Class<?> findClass(String name) throws ClassNotFoundException {
+            if (name.equals(className)) {
+                System.out.println("[CustomCL] defining class: " + name);
+                return defineClass(name, bytecode, 0, bytecode.length);
+            }
+            return super.findClass(name);
+        }
+    }
+
+    // Minimal valid .class bytecode for: public class Hello { public static String greet() { return "Hi!"; } }
+    // Generated with: javac Hello.java && xxd -i Hello.class
+    // (Using a tiny pre-built bytecode array for this demo)
+    static final byte[] HELLO_CLASS_BYTECODE = buildTinyClass();
+
+    static byte[] buildTinyClass() {
+        // A real example would load bytes from a file/DB/network.
+        // Here we just return the bytes of a class we ALREADY have (to show the mechanism).
+        // In practice: return Files.readAllBytes(Path.of("plugins/MyPlugin.class"));
+        try {
+            return ClassLoaderDemo.class.getResourceAsStream(
+                "ClassLoaderDemo.class") != null
+                ? ClassLoaderDemo.class.getResourceAsStream("ClassLoaderDemo.class").readAllBytes()
+                : new byte[0];
+        } catch (Exception e) { return new byte[0]; }
+    }
+
+    public static void main(String[] args) throws Exception {
+        // Demonstrate isolation: same class name, different loaders = different Class objects
+        ClassLoader loaderA = new ByteArrayClassLoader("Isolated", new byte[0]);
+        ClassLoader loaderB = new ByteArrayClassLoader("Isolated", new byte[0]);
+
+        System.out.println("loaderA == loaderB? " + (loaderA == loaderB));  // false
+        System.out.println("Parent of loaderA: " + loaderA.getParent());
+
+        // Key insight: Class identity = class name + ClassLoader
+        // Two classes with identical bytecode loaded by different ClassLoaders are NOT the same type.
+        // This is how Tomcat isolates web apps: each app has its own ClassLoader.
+        System.out.println("\\nParent-delegation in action:");
+        System.out.println("  String class loader: " + String.class.getClassLoader()); // null = Bootstrap
+        System.out.println("  This class loader:   " + ClassLoaderDemo.class.getClassLoader());
+        System.out.println("  Bootstrap is null because it's native (C++), not a Java object.");
+    }
+}`
         }
       ],
       flashcards: [
@@ -111,7 +215,11 @@ Source.java --javac--> Bytecode (.class)
         { q: 'What replaced PermGen in Java 8 and why does it matter?', a: 'Metaspace, which lives in native memory and grows dynamically (bounded by -XX:MaxMetaspaceSize). It removed fixed PermGen sizing and the classic "PermGen space" OOM, but class-loader leaks can still exhaust native memory.' },
         { q: 'Explain the parent-delegation model and why it exists.', a: 'A class loader delegates to its parent before attempting to load a class itself (Bootstrap → Platform → Application → custom). It guarantees core classes (java.lang.String) can\'t be spoofed and avoids duplicate class definitions.' },
         { q: 'What are the three phases of linking?', a: 'Verify (bytecode integrity & safety), Prepare (allocate static fields with default values), Resolve (replace symbolic references with direct references).' },
-        { q: 'How does the JVM decide to JIT-compile a method?', a: 'It interprets bytecode first and profiles invocation/loop counts. "Hot" methods crossing a threshold are compiled by the JIT (tiered: C1 client for quick compiles, C2 server for aggressive optimisation).' }
+        { q: 'How does the JVM decide to JIT-compile a method?', a: 'It interprets bytecode first and profiles invocation/loop counts. "Hot" methods crossing a threshold are compiled by the JIT (tiered: C1 client for quick compiles, C2 server for aggressive optimisation).' },
+        { q: 'What constitutes a JVM stack frame?', a: 'Each method invocation creates a frame containing: local variable array, operand stack (where bytecode instructions push/pop values), and a reference to the runtime constant pool of the current class.' },
+        { q: 'Why does the JVM throw StackOverflowError instead of OutOfMemoryError for deep recursion?', a: 'The JVM stack is a fixed-size per-thread structure (tuned with -Xss). When recursion exhausts the space for new frames, the JVM throws StackOverflowError — distinct from heap OOM. Fix: convert to iteration or increase -Xss (but more threads × larger stack = more native memory).' },
+        { q: 'What is the class identity contract in Java?', a: 'A class\'s identity is defined by BOTH its fully-qualified name AND the ClassLoader that loaded it. Two classes with the same bytecode loaded by different ClassLoaders are different types and cannot be cast to each other — this enables web app isolation in Tomcat/OSGi.' },
+        { q: 'How does Spring Boot\'s fat-jar ClassLoader differ from standard parent delegation?', a: 'Spring Boot\'s LaunchedURLClassLoader loads nested JARs inside the fat-jar (BOOT-INF/lib/) using a custom protocol handler. It loads application classes first (child-first), overriding standard parent delegation, to isolate the app\'s dependencies from the host JVM\'s classpath.' }
       ]
     },
 
@@ -206,6 +314,131 @@ public class GcDemo {
         System.out.println("Tip: re-run with -Xlog:gc -Xmx64m to see GC pauses.");
     }
 }`
+        },
+        {
+          lang: 'java',
+          title: 'Common memory leak patterns and how to find them',
+          code: `import java.util.*;
+import java.util.concurrent.*;
+
+// The four most common Java memory leak patterns — all produce reachable-but-unused objects.
+// GC cannot reclaim them because they have live references.
+public class MemoryLeakPatterns {
+
+    // LEAK 1: Unbounded static cache (most common in production)
+    static final Map<String, byte[]> REPORT_CACHE = new HashMap<>();
+    static void leakPattern1_UnboundedCache(String key) {
+        // Cache grows without limit. Never evicted. Heap fills up with stale reports.
+        // Fix: use Caffeine/Guava cache with size limit + TTL
+        REPORT_CACHE.computeIfAbsent(key, k -> new byte[1024]); // "cache" that never shrinks
+    }
+
+    // LEAK 2: Listener / observer never deregistered
+    interface EventListener { void onEvent(String e); }
+    static final List<EventListener> listeners = new ArrayList<>();
+    static void leakPattern2_UnregisteredListener() {
+        // A new listener is added every time a component is created.
+        // If the component is GC-able but the listener is still in the list, it won't be collected.
+        // Fix: remove listener in the component's destroy/close method.
+        listeners.add(e -> System.out.println("event: " + e));
+        System.out.println("Listeners registered: " + listeners.size() + " (keeps growing!)");
+    }
+
+    // LEAK 3: ThreadLocal not removed in a thread pool
+    static final ThreadLocal<List<String>> PER_THREAD_CONTEXT = ThreadLocal.withInitial(ArrayList::new);
+    static void leakPattern3_ThreadLocal() {
+        // Thread-pool threads live forever. ThreadLocal values attached to them live forever too.
+        // Fix: always call remove() in a finally block.
+        PER_THREAD_CONTEXT.get().add("user-session-data-" + UUID.randomUUID()); // keeps accumulating
+        System.out.println("Thread context size: " + PER_THREAD_CONTEXT.get().size());
+        // CORRECT PATTERN:
+        try {
+            PER_THREAD_CONTEXT.get().add("safe");
+        } finally {
+            PER_THREAD_CONTEXT.remove(); // ALWAYS clean up in thread pools
+        }
+    }
+
+    // LEAK 4: Inner class / lambda holding outer class reference
+    static class HeavyService {
+        byte[] bigData = new byte[10 * 1024 * 1024]; // 10MB
+        Runnable createLeakyTask() {
+            // Anonymous inner class / lambda implicitly holds 'this' (the HeavyService).
+            // If the task is submitted to a long-lived executor, HeavyService is pinned in memory.
+            return () -> System.out.println("I hold a ref to HeavyService via outer 'this'");
+            // Fix: make the closure variables local finals, don't capture 'this'
+        }
+    }
+
+    // HOW TO DIAGNOSE: heap dump + Eclipse MAT
+    // jmap -dump:format=b,file=heap.hprof <pid>
+    // Then open in Eclipse MAT -> "Leak Suspects" report -> look at dominator tree
+
+    public static void main(String[] args) {
+        System.out.println("=== Demonstrating leak patterns ===");
+        for (int i = 0; i < 5; i++) {
+            leakPattern1_UnboundedCache("report-" + i);
+            leakPattern2_UnregisteredListener();
+            leakPattern3_ThreadLocal();
+        }
+        System.out.println("Cache size: " + REPORT_CACHE.size());
+        System.out.println("Listeners:  " + listeners.size());
+        System.out.println("\\nDiagnosis: jmap -histo:live <pid> | head -20 shows top object counts.");
+        System.out.println("A growing byte[] at the top of the list -> memory leak.");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'G1 GC tuning: reading pause logs and setting goals',
+          code: `// This demo generates GC activity you can observe with -Xlog:gc*
+// Run with: java -Xmx128m -Xms128m -XX:+UseG1GC -XX:MaxGCPauseMillis=50 -Xlog:gc*:stdout GcTuningDemo
+// Then watch G1 try to hit the 50ms pause goal.
+import java.util.*;
+
+public class GcTuningDemo {
+    public static void main(String[] args) throws InterruptedException {
+        List<byte[]> survivors = new ArrayList<>();
+        long totalPause = 0;
+        int gcCount = 0;
+
+        // Simulate a mixed workload: short-lived + long-lived objects
+        for (int i = 0; i < 500; i++) {
+            // Short-lived: dies in Eden (cheap minor GC)
+            byte[] ephemeral = new byte[100_000];
+            ephemeral[0] = (byte) i;
+
+            // 1 in 10 survives (simulates a cache that grows the old gen)
+            if (i % 10 == 0) survivors.add(new byte[50_000]);
+
+            // Periodically release some survivors to simulate cache eviction
+            if (i % 50 == 0 && survivors.size() > 20) {
+                survivors.subList(0, 10).clear();
+            }
+
+            Thread.sleep(2); // Slow down so GC logs are readable
+        }
+
+        System.out.println("Surviving objects: " + survivors.size());
+        System.out.println();
+        System.out.println("Key GC log lines to look for:");
+        System.out.println("  [gc] GC(n) Pause Young (Normal) -> minor GC, short");
+        System.out.println("  [gc] GC(n) Pause Young (Concurrent Start) -> triggers concurrent marking");
+        System.out.println("  [gc] GC(n) Pause Remark -> STW, short: finalizes marking");
+        System.out.println("  [gc] GC(n) Pause Cleanup -> STW, very short: selects regions");
+        System.out.println("  [gc] GC(n) Pause Mixed -> reclaims old gen regions (the payoff)");
+        System.out.println();
+        System.out.println("Tuning knobs:");
+        System.out.println("  -XX:MaxGCPauseMillis=200  (default; lower = more frequent GCs)");
+        System.out.println("  -XX:G1HeapRegionSize=4m   (for humongous obj tuning)");
+        System.out.println("  -XX:G1NewSizePercent=20   (min young gen %)");
+        System.out.println("  -XX:G1MaxNewSizePercent=60 (max young gen %)");
+        System.out.println("  -XX:ConcGCThreads=4       (concurrent marking threads)");
+        System.out.println();
+        System.out.println("Rule: set -Xms == -Xmx to avoid heap resize pauses in prod.");
+        System.out.println("Leave 25% of container RAM for Metaspace, threads, direct memory.");
+    }
+}`
         }
       ],
       flashcards: [
@@ -214,7 +447,10 @@ public class GcDemo {
         { q: 'How does G1 differ from Parallel GC?', a: 'G1 splits the heap into ~2048 equal regions dynamically tagged Eden/Survivor/Old/Humongous, collects highest-garbage regions first, and targets a configurable pause goal (MaxGCPauseMillis). Parallel maximises throughput but with longer, less predictable STW pauses.' },
         { q: 'How do ZGC/Shenandoah achieve sub-millisecond pauses?', a: 'They perform marking AND object relocation/compaction concurrently with the application using load/read barriers (and coloured pointers in ZGC), so STW phases are tiny and largely independent of heap size.' },
         { q: 'Can you have a memory leak in Java? Give examples.', a: 'Yes — objects that remain reachable but unused: unbounded static collections/caches, unremoved listeners, ThreadLocals in thread pools, unclosed resources. GC won\'t reclaim them because they\'re still referenced. Diagnose via heap dump + dominator tree.' },
-        { q: 'First step when diagnosing GC-related latency spikes?', a: 'Enable and read GC logs (-Xlog:gc*) to confirm pauses correlate with the spikes, then take a heap dump to inspect the retained set — measure before tuning any flags.' }
+        { q: 'First step when diagnosing GC-related latency spikes?', a: 'Enable and read GC logs (-Xlog:gc*) to confirm pauses correlate with the spikes, then take a heap dump to inspect the retained set — measure before tuning any flags.' },
+        { q: 'Why set -Xms equal to -Xmx in production?', a: 'If Xms < Xmx, the JVM starts with a small heap and grows it on demand. Heap growth triggers a Full GC (to copy/compact) — an avoidable pause. Setting them equal allocates the full heap at startup, trading startup memory for stable, predictable runtime behaviour.' },
+        { q: 'What is a "humongous object" in G1 GC?', a: 'An object that is 50%+ of a G1 region size (default ~1-32MB depending on heap). G1 allocates these directly in the old generation (Humongous regions), bypassing Eden. They can trigger mixed GCs early — if you see many humongous allocations, increase G1HeapRegionSize or redesign the allocation.' },
+        { q: 'Name the four classic Java memory leak patterns.', a: '1) Unbounded static caches/collections that grow without eviction. 2) Listeners/observers registered but never deregistered. 3) ThreadLocals not cleared in thread-pool threads (pool threads are reused, values accumulate). 4) Inner classes/lambdas that capture references to large outer objects submitted to long-lived executors.' }
       ]
     },
 
@@ -281,13 +517,145 @@ public class VisibilityDemo {
         System.out.println("Done. Worker alive? " + worker.isAlive());
     }
 }`
+        },
+        {
+          lang: 'java',
+          title: 'Double-checked locking: broken vs correct singleton',
+          code: `// The classic broken DCL vs the correct volatile version — a JMM favourite.
+public class DoubleCheckedLocking {
+
+    // ❌ BROKEN: without volatile, another thread can see non-null but uninitialised instance.
+    // The JVM/CPU can reorder: 1) allocate memory, 2) assign reference, 3) run constructor.
+    // Another thread reading after step 2 sees non-null but step 3 hasn't happened yet!
+    static class BrokenSingleton {
+        private static BrokenSingleton instance; // NOT volatile
+        private final String config;
+        private BrokenSingleton() { this.config = "loaded"; }
+        static BrokenSingleton getInstance() {
+            if (instance == null) {                    // first check (no lock)
+                synchronized (BrokenSingleton.class) {
+                    if (instance == null) {             // second check (with lock)
+                        instance = new BrokenSingleton(); // reordering can leak partial object!
+                    }
+                }
+            }
+            return instance;
+        }
+    }
+
+    // ✅ CORRECT: volatile prevents the constructor/reference-write reordering.
+    static class CorrectSingleton {
+        private static volatile CorrectSingleton instance; // volatile = happens-before guarantee
+        private final String config;
+        private CorrectSingleton() { this.config = "loaded"; }
+        static CorrectSingleton getInstance() {
+            if (instance == null) {
+                synchronized (CorrectSingleton.class) {
+                    if (instance == null) {
+                        instance = new CorrectSingleton(); // safe: volatile write happens-after constructor
+                    }
+                }
+            }
+            return instance;
+        }
+        public String getConfig() { return config; }
+    }
+
+    // ✅ BEST: Initialization-on-demand holder — zero synchronization overhead, lazy, correct.
+    // The JVM guarantees class initialisation is atomic (single-threaded by the ClassLoader).
+    static class HolderSingleton {
+        private final String config = "loaded";
+        private static class Holder { static final HolderSingleton INSTANCE = new HolderSingleton(); }
+        static HolderSingleton getInstance() { return Holder.INSTANCE; }
+        // Holder class is loaded lazily when getInstance() is first called.
+        // Class loading is synchronised by the JVM — no explicit locking needed.
+    }
+
+    // ✅ SIMPLEST: enum (Josh Bloch Item 3) — serialization-safe, reflection-safe
+    enum EnumSingleton { INSTANCE;
+        public String getConfig() { return "loaded"; }
+    }
+
+    public static void main(String[] args) {
+        System.out.println(CorrectSingleton.getInstance().getConfig());
+        System.out.println(HolderSingleton.getInstance().config);
+        System.out.println(EnumSingleton.INSTANCE.getConfig());
+        System.out.println("\\nFor interview: prefer Initialization-on-demand holder or enum.");
+        System.out.println("If asked about DCL, explain the volatile requirement and WHY.");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'False sharing and @Contended — cache-line performance trap',
+          code: `import java.util.concurrent.CountDownLatch;
+import java.lang.annotation.*;
+
+// False sharing: two variables on the SAME CPU cache line (64 bytes) are written
+// by different threads. Each write invalidates the other thread's cache line,
+// causing bouncing between CPU caches — massive throughput loss.
+public class FalseSharingDemo {
+
+    // ❌ False sharing: x and y likely share a cache line
+    static class Shared {
+        volatile long x = 0;
+        volatile long y = 0; // probably within 64 bytes of x -> false sharing!
+    }
+
+    // ✅ Padded: force x and y onto separate cache lines (each field + 7 longs = 64 bytes)
+    // In production use: @jdk.internal.vm.annotation.Contended (JDK internal, needs --add-opens)
+    // or simply structure your data so hot fields are in separate objects.
+    static class Padded {
+        volatile long x = 0; long p1,p2,p3,p4,p5,p6,p7;  // padding
+        volatile long y = 0; long q1,q2,q3,q4,q5,q6,q7;  // separate cache line
+    }
+
+    static final int ITERATIONS = 50_000_000;
+
+    static long benchmark(boolean padded) throws InterruptedException {
+        Object obj = padded ? new Padded() : new Shared();
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done  = new CountDownLatch(2);
+
+        Thread t1 = new Thread(() -> {
+            try { start.await(); } catch (InterruptedException e) { return; }
+            if (padded) { Padded p = (Padded) obj; for (int i=0;i<ITERATIONS;i++) p.x++; }
+            else        { Shared s = (Shared) obj; for (int i=0;i<ITERATIONS;i++) s.x++; }
+            done.countDown();
+        });
+        Thread t2 = new Thread(() -> {
+            try { start.await(); } catch (InterruptedException e) { return; }
+            if (padded) { Padded p = (Padded) obj; for (int i=0;i<ITERATIONS;i++) p.y++; }
+            else        { Shared s = (Shared) obj; for (int i=0;i<ITERATIONS;i++) s.y++; }
+            done.countDown();
+        });
+        t1.start(); t2.start();
+        long t = System.nanoTime();
+        start.countDown();
+        done.await();
+        return System.nanoTime() - t;
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        long shared = benchmark(false);
+        long padded  = benchmark(true);
+        System.out.printf("Shared  (false sharing): %,d ms%n", shared  / 1_000_000);
+        System.out.printf("Padded  (no false share): %,d ms%n", padded  / 1_000_000);
+        System.out.println("Padded can be 3-10x faster for write-heavy shared counters.");
+        System.out.println("java.util.concurrent.atomic.LongAdder uses this technique internally.");
+        System.out.println("@jdk.internal.vm.annotation.Contended pads automatically.");
+    }
+}`
         }
       ],
       flashcards: [
         { q: 'What does volatile guarantee and what does it NOT?', a: 'Guarantees visibility (no stale reads) and ordering (happens-before across the volatile access). Does NOT guarantee atomicity of compound operations like x++.' },
         { q: 'Define the happens-before relationship.', a: 'A partial ordering: if A happens-before B, A\'s memory effects are visible to B. Edges include program order, unlock→lock on same monitor, volatile write→read, Thread.start, and Thread.join.' },
-        { q: 'Why must the double-checked-locking singleton field be volatile?', a: 'Without volatile, the constructor\'s writes and the reference assignment can be reordered, so another thread may observe a non-null but partially constructed instance.' },
-        { q: 'List safe publication mechanisms.', a: 'Store the reference in a volatile field or AtomicReference, initialise it as a final field in the constructor, guard it with a lock, or place it in a thread-safe/concurrent collection.' }
+        { q: 'Why must the double-checked-locking singleton field be volatile?', a: 'Without volatile, the JVM/CPU can reorder the constructor execution and the reference assignment, so another thread may observe a non-null but partially constructed instance. volatile ensures the constructor happens-before the reference write.' },
+        { q: 'List safe publication mechanisms.', a: 'Store the reference in a volatile field or AtomicReference, initialise it as a final field in the constructor, guard it with a lock, or place it in a thread-safe/concurrent collection.' },
+        { q: 'What is false sharing and how does it degrade performance?', a: 'When two variables on the same 64-byte CPU cache line are written by different threads, each write invalidates the other\'s cached line, causing constant cache coherence traffic. The fix is padding to force hot fields onto separate cache lines. LongAdder uses this internally.' },
+        { q: 'What is the initialization-on-demand holder singleton pattern and why is it safe without synchronisation?', a: 'A private static inner class holds the singleton instance as a static final field. The JVM guarantees class initialisation is single-threaded (done by the ClassLoader under synchronisation) so the instance is created safely and lazily on first access — zero explicit locking overhead.' },
+        { q: 'What happens-before edges does Thread.start() and Thread.join() establish?', a: 'Thread.start(): all actions before start() happen-before any action in the started thread. Thread.join(): all actions in the joined thread happen-before Thread.join() returns to the joining thread. These allow safe publication of data to new threads.' }
       ]
     },
 
@@ -354,13 +722,159 @@ A method climbs tiers as it gets hotter. \`-XX:+PrintCompilation\` shows transit
                            "or -XX:-DoEscapeAnalysis to disable scalar replacement.");
     }
 }`
+        },
+        {
+          lang: 'java',
+          title: 'Proper JMH microbenchmark — the correct way to measure Java performance',
+          code: `// JMH (Java Microbenchmark Harness) is the ONLY correct way to benchmark JVM code.
+// Naive System.nanoTime loops are invalid: JIT may eliminate the code, warm-up skews results.
+
+// PRODUCTION DEPENDENCY: org.openjdk.jmh:jmh-core:1.37
+
+// In a real JMH benchmark project:
+/*
+import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.runner.Runner;
+import org.openjdk.jmh.runner.options.*;
+import java.util.concurrent.TimeUnit;
+
+@BenchmarkMode(Mode.AverageTime)        // measure average time per operation
+@OutputTimeUnit(TimeUnit.NANOSECONDS)
+@State(Scope.Thread)                    // one state instance per thread
+@Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)   // discard first 5s
+@Measurement(iterations = 10, time = 1, timeUnit = TimeUnit.SECONDS)
+@Fork(2)                                // run in 2 fresh JVM processes (eliminates JVM startup noise)
+public class StringConcatBenchmark {
+
+    @Param({"10", "100", "1000"})
+    private int count;
+
+    // ❌ Slow: creates N intermediate String objects
+    @Benchmark
+    public String plusConcat() {
+        String s = "";
+        for (int i = 0; i < count; i++) s += i;
+        return s;
+    }
+
+    // ✅ Fast: StringBuilder reuses internal buffer
+    @Benchmark
+    public String stringBuilder() {
+        StringBuilder sb = new StringBuilder(count * 3);
+        for (int i = 0; i < count; i++) sb.append(i);
+        return sb.toString();
+    }
+
+    public static void main(String[] args) throws Exception {
+        Options opt = new OptionsBuilder()
+            .include(StringConcatBenchmark.class.getSimpleName())
+            .build();
+        new Runner(opt).run();
+    }
+}
+*/
+
+// This runnable version shows WHAT JMH protects against:
+public class JmhConceptDemo {
+    static String plusConcat(int n) {
+        String s = ""; for (int i = 0; i < n; i++) s += i; return s;
+    }
+    static String builderConcat(int n) {
+        var sb = new StringBuilder(); for (int i = 0; i < n; i++) sb.append(i); return sb.toString();
+    }
+
+    public static void main(String[] args) {
+        int n = 1000;
+
+        // Warm up the JIT (as JMH does automatically with @Warmup)
+        for (int w = 0; w < 10000; w++) { plusConcat(10); builderConcat(10); }
+
+        long t1 = System.nanoTime();
+        for (int i = 0; i < 1000; i++) plusConcat(n);
+        long plusNs = (System.nanoTime() - t1) / 1000;
+
+        long t2 = System.nanoTime();
+        for (int i = 0; i < 1000; i++) builderConcat(n);
+        long sbNs = (System.nanoTime() - t2) / 1000;
+
+        System.out.printf("String +   (1000 iters, n=%d): avg %,d ns%n", n, plusNs);
+        System.out.printf("StringBuilder (1000 iters, n=%d): avg %,d ns%n", n, sbNs);
+        System.out.println("\\nIMPORTANT: this is still a naive benchmark.");
+        System.out.println("For real numbers: use JMH with @Fork(2) @Warmup(iterations=5).");
+        System.out.println("JMH prevents dead-code elimination and reports confidence intervals.");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'GraalVM Native Image: tradeoffs made concrete',
+          code: `// GraalVM Native Image compiles Java AOT to a native binary.
+// Startup: milliseconds (vs seconds for JVM). Memory: ~10x lower at startup.
+// Cost: no JIT runtime optimisation, closed-world assumption.
+// Best for: CLI tools, serverless functions, microservices where cold-start matters.
+
+// To build (requires GraalVM installed):
+//   native-image -cp myapp.jar com.example.Main -o myapp
+//   ./myapp   # runs without a JVM!
+
+// Restrictions that catch teams off-guard:
+public class GraalvmNativeDemo {
+    // ❌ Dynamic class loading breaks native image (open world assumption)
+    static void brokenDynamic() throws Exception {
+        // This fails at native-image build time unless you add a reflect-config.json
+        Class<?> clazz = Class.forName("com.example.plugins.DynamicPlugin");
+        Object inst = clazz.getDeclaredConstructor().newInstance();
+        System.out.println(inst);
+    }
+
+    // ✅ Static analysis friendly — the class reference is known at build time
+    static void staticFriendly() {
+        // Native image can trace this; no reflection config needed
+        var service = new ConcreteService();
+        service.run();
+    }
+
+    static class ConcreteService { void run() { System.out.println("running"); } }
+
+    // Spring Native / Spring Boot 3 handles most of this automatically via AOT processing.
+    // It generates reflect-config.json, proxy-config.json etc. at build time.
+
+    public static void main(String[] args) {
+        System.out.println("GraalVM Native Image trade-offs:");
+        System.out.println();
+        System.out.println("  Wins:");
+        System.out.println("    Startup: ~50ms (vs 3-5s JVM Spring Boot)");
+        System.out.println("    Memory:  ~50MB RSS (vs 300-500MB JVM)");
+        System.out.println("    No JVM required at runtime");
+        System.out.println();
+        System.out.println("  Costs:");
+        System.out.println("    Build time: 3-10 minutes (vs seconds for jar)");
+        System.out.println("    No JIT peak throughput (peak ~20-30% lower than JVM)");
+        System.out.println("    Reflection/proxies need explicit config or AOT hints");
+        System.out.println("    Debugging is harder (no JVM tooling)");
+        System.out.println();
+        System.out.println("  When to use:");
+        System.out.println("    Serverless (Lambda, Cloud Run) — cold starts matter");
+        System.out.println("    CLI tools — instant startup");
+        System.out.println("    Batch jobs — high throughput matters less than startup");
+        System.out.println();
+        System.out.println("  When NOT to use:");
+        System.out.println("    Long-running services where JIT peak throughput matters");
+        System.out.println("    Heavy reflection/dynamic proxies (frameworks that resist AOT)");
+
+        staticFriendly(); // would work in native image
+    }
+}`
         }
       ],
       flashcards: [
         { q: 'What is tiered compilation?', a: 'The JVM starts interpreting (level 0), compiles hot methods with C1 (levels 1–3, fast + profiling), and promotes the hottest to C2 (level 4, aggressive profile-guided optimisation).' },
         { q: 'What is escape analysis and what does it enable?', a: 'Analysis determining whether an object escapes its creating method/thread. If it doesn\'t, the JIT can scalar-replace it (avoid heap allocation) and elide locks (lock coarsening/elision).' },
-        { q: 'Why use JMH instead of System.nanoTime loops?', a: 'JMH handles JIT warm-up, prevents dead-code elimination from removing your benchmark, forks fresh JVMs, and reports statistically meaningful results — naive timing loops measure interpreter/C1 noise.' },
-        { q: 'What does GraalVM Native Image trade away for fast startup?', a: 'Peak JIT throughput and runtime adaptivity, plus a closed-world assumption (reflection/proxies/resources need explicit build-time configuration).' }
+        { q: 'Why use JMH instead of System.nanoTime loops?', a: 'JMH handles JIT warm-up (discards early iterations), prevents dead-code elimination from removing your benchmark (via Blackhole), forks fresh JVMs per benchmark, and reports statistically meaningful averages and confidence intervals.' },
+        { q: 'What does GraalVM Native Image trade away for fast startup?', a: 'Peak JIT throughput (profiling-guided optimisation cannot happen AOT), runtime adaptivity, and the ability to load classes dynamically — reflection/proxies need explicit build-time configuration. Build time is also 3-10 minutes vs seconds for a JAR.' },
+        { q: 'What JVM optimisation does method inlining enable?', a: 'Inlining copies a called method\'s body into the caller, eliminating call overhead and exposing the combined code to further optimisations (escape analysis, constant folding, dead-code elimination). It is the most impactful single JIT optimisation.' },
+        { q: 'What is deoptimisation and when does it happen?', a: 'The JIT makes speculative optimisations (e.g. assuming a call site is monomorphic). If an assumption is later violated (a new subclass appears), the JIT deoptimises — falls back to the interpreter for that code path — and recompiles with the new type information.' },
+        { q: 'When is GraalVM Native Image the right choice vs the JVM?', a: 'Native image wins for serverless functions, CLI tools, and batch jobs where cold-start time and memory footprint matter more than peak throughput. The JVM wins for long-running services where JIT profiling delivers peak throughput that AOT cannot match.' }
       ]
     }
   ]
@@ -444,13 +958,124 @@ public class EqualsHashDemo {
         System.out.println("bad key lookup    : " + bad.get(new BadKey("A"))); // null!
     }
 }`
+        },
+        {
+          lang: 'java',
+          title: 'LRU Cache using LinkedHashMap — a real interview question',
+          code: `import java.util.*;
+
+// Classic interview question: implement an LRU (Least Recently Used) cache.
+// LinkedHashMap with accessOrder=true maintains access order — the tail is the most-recently-used.
+// Override removeEldestEntry to evict when capacity is exceeded.
+public class LruCacheDemo {
+
+    static class LruCache<K, V> extends LinkedHashMap<K, V> {
+        private final int capacity;
+
+        LruCache(int capacity) {
+            super(capacity, 0.75f, true); // accessOrder=true: get() moves entry to tail
+            this.capacity = capacity;
+        }
+
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+            return size() > capacity; // evict oldest (head) when over capacity
+        }
+    }
+
+    public static void main(String[] args) {
+        LruCache<Integer, String> cache = new LruCache<>(3);
+        cache.put(1, "one");
+        cache.put(2, "two");
+        cache.put(3, "three");
+        System.out.println("After 3 puts: " + cache.keySet()); // [1, 2, 3]
+
+        cache.get(1); // access key 1 -> moves to tail (most recently used)
+        System.out.println("After get(1): " + cache.keySet()); // [2, 3, 1]
+
+        cache.put(4, "four"); // capacity exceeded -> evicts LRU (key 2, the head)
+        System.out.println("After put(4): " + cache.keySet()); // [3, 1, 4] — 2 evicted
+
+        // For thread-safety: wrap with Collections.synchronizedMap() or use Caffeine
+        // For production: com.github.ben-manes.caffeine:caffeine
+        // Caffeine.newBuilder().maximumSize(1000).expireAfterWrite(10, MINUTES).build()
+
+        System.out.println("\\nAlgorithm insight:");
+        System.out.println("  LinkedHashMap with accessOrder maintains a doubly-linked list.");
+        System.out.println("  get/put moves the entry to the tail in O(1).");
+        System.out.println("  removeEldestEntry evicts the head (LRU) in O(1).");
+        System.out.println("  Total: O(1) get and put for LRU — the optimal solution.");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'ConcurrentHashMap: atomic operations and common pitfalls',
+          code: `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+// ConcurrentHashMap is the workhorse of concurrent Java code.
+// Key: operations are NOT synchronized across multiple method calls.
+public class ConcurrentMapDemo {
+
+    public static void main(String[] args) throws InterruptedException {
+        ConcurrentHashMap<String, AtomicInteger> wordCount = new ConcurrentHashMap<>();
+
+        // ✅ computeIfAbsent is ATOMIC — safe for concurrent initialization
+        // Only one thread creates the AtomicInteger for a key; others get the same instance.
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        String[] words = {"java","python","java","go","java","python","rust","java"};
+
+        for (String w : words) {
+            pool.submit(() -> {
+                wordCount.computeIfAbsent(w, k -> new AtomicInteger(0)).incrementAndGet();
+            });
+        }
+        pool.shutdown();
+        pool.awaitTermination(2, TimeUnit.SECONDS);
+        System.out.println("Word counts: " + wordCount);
+
+        // ❌ WRONG: check-then-act is NOT atomic across two calls
+        ConcurrentHashMap<String, Integer> broken = new ConcurrentHashMap<>();
+        // Two threads could both pass the null check and both put a value
+        if (broken.get("key") == null) {
+            broken.put("key", 1); // RACE: another thread may also do this
+        }
+
+        // ✅ CORRECT: putIfAbsent or compute
+        broken.putIfAbsent("key", 1);                     // atomic
+        broken.merge("key", 1, Integer::sum);             // atomic increment: null-safe
+        broken.compute("key", (k, v) -> v == null ? 1 : v + 1); // full control
+
+        System.out.println("Atomic put result: " + broken.get("key"));
+
+        // NULL keys/values are NOT allowed (unlike HashMap) — common NPE source
+        try {
+            ConcurrentHashMap<String,String> m = new ConcurrentHashMap<>();
+            m.put(null, "value"); // throws NullPointerException!
+        } catch (NullPointerException e) {
+            System.out.println("ConcurrentHashMap rejects null keys/values (NPE caught)");
+        }
+
+        // WHY? In CHM, null would be ambiguous: does get() return null because the key
+        // is absent, or because the value IS null? Without separate containsKey(),
+        // the API would be unusable. HashMap allows it because it's single-threaded.
+        System.out.println("\\nKey rule: in CHM, treat every operation as potentially racing.");
+        System.out.println("Use atomic compound ops: computeIfAbsent, merge, compute.");
+    }
+}`
         }
       ],
       flashcards: [
         { q: 'What happens inside a HashMap bucket when collisions grow large (Java 8+)?', a: 'The bucket\'s linked list treeifies into a red-black tree once it exceeds 8 nodes and table capacity ≥ 64, improving worst-case lookup from O(n) to O(log n).' },
         { q: 'State the equals/hashCode contract.', a: 'Equal objects must have equal hashCodes; equals must be reflexive, symmetric, transitive, consistent, and false for null. Unequal objects ideally have different hashCodes for good distribution.' },
         { q: 'Why must HashMap keys be immutable (or at least their hash-relevant fields)?', a: 'The bucket index is derived from hashCode at insertion. If a field used in hashCode changes afterward, the entry sits in the wrong bucket and becomes unreachable by get().' },
-        { q: 'How do you avoid ConcurrentModificationException while removing during iteration?', a: 'Use Iterator.remove(), Collection.removeIf(predicate), iterate over a copy, or use a concurrent collection (CopyOnWriteArrayList / ConcurrentHashMap).' }
+        { q: 'How do you avoid ConcurrentModificationException while removing during iteration?', a: 'Use Iterator.remove(), Collection.removeIf(predicate), iterate over a copy, or use a concurrent collection (CopyOnWriteArrayList / ConcurrentHashMap).' },
+        { q: 'Why does ConcurrentHashMap not allow null keys or values while HashMap does?', a: 'In CHM, a null return from get() is ambiguous — it could mean the key is absent OR the value is null. Without a separate containsKey() call (which would create a race condition), the API becomes unusable. HashMap avoids this issue because it\'s single-threaded.' },
+        { q: 'What is the difference between putIfAbsent, computeIfAbsent, and merge on ConcurrentHashMap?', a: 'putIfAbsent: inserts only if key absent (returns existing value). computeIfAbsent: inserts using a factory function if absent — the function is called only once (atomic for initialization). merge: combines an existing value with a new one using a BiFunction — perfect for accumulation (e.g. word count).' },
+        { q: 'How would you implement an O(1) get and put LRU cache in Java?', a: 'Extend LinkedHashMap with accessOrder=true and override removeEldestEntry to return true when size() > capacity. accessOrder=true moves entries to the tail on get(), so the head is always the least recently used. The JDK\'s doubly-linked list maintenance makes all operations O(1).' },
+        { q: 'When would you choose TreeMap over HashMap?', a: 'When you need keys in sorted order (e.g. range queries: subMap, headMap, tailMap), ceiling/floor lookups, or iteration in natural/comparator order. TreeMap gives O(log n) operations via a red-black tree. HashMap is O(1) average but unordered.' }
       ]
     },
 
@@ -533,6 +1158,136 @@ public class ConcurrencyDemo {
         pool.shutdown();
     }
 }`
+        },
+        {
+          lang: 'java',
+          title: 'Producer-consumer with BlockingQueue — the classic pattern',
+          code: `import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+// BlockingQueue is the canonical producer-consumer building block.
+// put() blocks when full; take() blocks when empty — no explicit synchronisation needed.
+public class ProducerConsumerDemo {
+    static final int CAPACITY = 5;
+    static final BlockingQueue<String> queue = new LinkedBlockingQueue<>(CAPACITY);
+    static final AtomicInteger produced = new AtomicInteger();
+    static final AtomicInteger consumed = new AtomicInteger();
+
+    static class Producer implements Runnable {
+        private final String name;
+        Producer(String name) { this.name = name; }
+        public void run() {
+            for (int i = 0; i < 5; i++) {
+                String item = name + "-item-" + i;
+                try {
+                    queue.put(item);  // BLOCKS if queue is full (backpressure!)
+                    System.out.println("[P:" + name + "] produced: " + item
+                                       + " (queue size=" + queue.size() + ")");
+                    produced.incrementAndGet();
+                    Thread.sleep(100);
+                } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
+            }
+        }
+    }
+
+    static class Consumer implements Runnable {
+        private final String name;
+        Consumer(String name) { this.name = name; }
+        public void run() {
+            try {
+                while (true) {
+                    // poll with timeout so consumers can exit gracefully
+                    String item = queue.poll(500, TimeUnit.MILLISECONDS);
+                    if (item == null) break; // no new items for 500ms -> done
+                    System.out.println("  [C:" + name + "] consumed: " + item);
+                    consumed.incrementAndGet();
+                    Thread.sleep(200); // consumers slower than producers -> tests backpressure
+                }
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        ExecutorService pool = Executors.newCachedThreadPool();
+        pool.submit(new Producer("P1"));
+        pool.submit(new Producer("P2"));
+        pool.submit(new Consumer("C1"));
+        pool.submit(new Consumer("C2"));
+        pool.shutdown();
+        pool.awaitTermination(10, TimeUnit.SECONDS);
+        System.out.printf("\\nTotal produced=%d consumed=%d%n", produced.get(), consumed.get());
+        System.out.println("Key: queue capacity=5 provides backpressure. If consumers lag,");
+        System.out.println("producers block at put() instead of flooding memory with tasks.");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'StampedLock: optimistic reads for read-heavy data',
+          code: `import java.util.concurrent.locks.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.LongAdder;
+
+// StampedLock (Java 8+) adds OPTIMISTIC reading to ReadWriteLock.
+// Optimistic read: read WITHOUT acquiring a lock, then validate the stamp.
+// If the stamp is invalid (a write happened during our read), fall back to a real read lock.
+// For data that is MOSTLY read with rare writes, this eliminates read-lock overhead.
+public class StampedLockDemo {
+    static class Point {
+        private double x, y;
+        private final StampedLock lock = new StampedLock();
+
+        void move(double deltaX, double deltaY) {
+            long stamp = lock.writeLock();           // exclusive write lock
+            try { x += deltaX; y += deltaY; }
+            finally { lock.unlockWrite(stamp); }
+        }
+
+        double distanceFromOrigin() {
+            // OPTIMISTIC: try to read without locking
+            long stamp = lock.tryOptimisticRead();
+            double cx = x, cy = y;                  // read the data
+            if (!lock.validate(stamp)) {             // was there a write during our read?
+                // A write happened -> fall back to a real read lock
+                stamp = lock.readLock();
+                try { cx = x; cy = y; }
+                finally { lock.unlockRead(stamp); }
+            }
+            return Math.sqrt(cx * cx + cy * cy);
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Point point = new Point();
+        LongAdder reads = new LongAdder(), writes = new LongAdder(), retries = new LongAdder();
+
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+
+        // Many readers, few writers — the scenario where StampedLock shines
+        for (int i = 0; i < 7; i++) pool.submit(() -> {
+            for (int j = 0; j < 10000; j++) {
+                point.distanceFromOrigin(); reads.increment();
+            }
+        });
+        pool.submit(() -> {
+            for (int j = 0; j < 100; j++) {
+                point.move(1, 1); writes.increment();
+                try { Thread.sleep(1); } catch (InterruptedException e) {}
+            }
+        });
+
+        pool.shutdown();
+        pool.awaitTermination(5, TimeUnit.SECONDS);
+        System.out.printf("Reads=%,d  Writes=%d%n", reads.sum(), writes.sum());
+        System.out.println("Point distance: " + point.distanceFromOrigin());
+        System.out.println("\\nWhen to use StampedLock:");
+        System.out.println("  - Read : write ratio >> 100:1 (cache-like data)");
+        System.out.println("  - Short read critical sections (copy values, not compute)");
+        System.out.println("When NOT to use:");
+        System.out.println("  - StampedLock is NOT reentrant (a thread cannot re-acquire its own lock)");
+        System.out.println("  - Complex read sections where optimistic retry is expensive");
+    }
+}`
         }
       ],
       flashcards: [
@@ -540,7 +1295,11 @@ public class ConcurrencyDemo {
         { q: 'Name the four conditions for deadlock and one way to break it.', a: 'Mutual exclusion, hold-and-wait, no preemption, circular wait. Break it by imposing a global lock-acquisition order (or using tryLock with timeout).' },
         { q: 'When prefer ReentrantLock over synchronized?', a: 'When you need tryLock/timeouts, interruptible acquisition, fairness, or multiple Condition objects. Otherwise synchronized is simpler and now comparably fast.' },
         { q: 'How do you size a thread pool?', a: 'CPU-bound ≈ number of cores (±1). I/O-bound ≈ cores × (1 + wait time / compute time). Measure under real load; or sidestep sizing with virtual threads for blocking I/O.' },
-        { q: 'Why LongAdder over AtomicInteger under high contention?', a: 'LongAdder spreads updates across multiple cells to reduce CAS contention, trading exact instantaneous reads for far higher write throughput.' }
+        { q: 'Why LongAdder over AtomicInteger under high contention?', a: 'LongAdder spreads updates across multiple cells to reduce CAS contention, trading exact instantaneous reads for far higher write throughput.' },
+        { q: 'What is the optimistic read pattern with StampedLock and when does it help?', a: 'tryOptimisticRead() returns a stamp without locking; you read the data, then validate(stamp) checks if a write occurred. If valid, no lock was ever acquired. If invalid, fall back to readLock(). Helps when reads are >>100x more frequent than writes, eliminating read-lock overhead.' },
+        { q: 'What provides backpressure in a producer-consumer queue?', a: 'A bounded BlockingQueue (e.g. LinkedBlockingQueue(capacity)). When the queue is full, producer.put() blocks until a consumer takes an item, naturally slowing the producer to match consumer throughput instead of growing the queue without bound.' },
+        { q: 'How does CompletableFuture.allOf work and what does it return?', a: 'allOf(cf1, cf2, ...) returns a CompletableFuture<Void> that completes when all given futures complete. It does NOT aggregate results — you must call .join() on each individual future afterward to retrieve their values. Combine with thenApply to collect results.' },
+        { q: 'What is the difference between thenApply and thenCompose on CompletableFuture?', a: 'thenApply maps the result synchronously (like Stream.map): takes T, returns U. thenCompose chains an async operation (like Stream.flatMap): takes T, returns CompletableFuture<U>. Use thenCompose when the next step is itself async to avoid nested CompletableFuture<CompletableFuture<U>>.' }
       ]
     },
 
@@ -613,13 +1372,160 @@ public class StreamDemo {
         System.out.println("By pay desc        : " + roster);
     }
 }`
+        },
+        {
+          lang: 'java',
+          title: 'Custom Collector and infinite streams',
+          code: `import java.util.*;
+import java.util.stream.*;
+import java.util.function.*;
+
+public class AdvancedStreamsDemo {
+
+    // 1. Custom Collector: collect into an ImmutableMap (demonstrating Collector anatomy)
+    // A Collector has: supplier (creates accumulator), accumulator (folds element in),
+    // combiner (merges two accumulators for parallel), finisher (transforms accumulator to result).
+    static <K, V> Collector<Map.Entry<K,V>, Map<K,V>, Map<K,V>> toUnmodifiableMap() {
+        return Collector.of(
+            HashMap::new,                                          // supplier
+            (map, e) -> map.put(e.getKey(), e.getValue()),        // accumulator
+            (m1, m2) -> { m1.putAll(m2); return m1; },           // combiner (parallel)
+            Collections::unmodifiableMap                          // finisher
+        );
+    }
+
+    // 2. Infinite streams: generate and iterate
+    static void infiniteStreams() {
+        // Fibonacci sequence — infinite, lazy: nothing is computed until terminal op
+        Stream<long[]> fibs = Stream.iterate(
+            new long[]{0, 1},
+            pair -> new long[]{pair[1], pair[0] + pair[1]}
+        );
+        List<Long> first10 = fibs.limit(10)
+                                 .map(p -> p[0])
+                                 .collect(Collectors.toList());
+        System.out.println("First 10 Fibonacci: " + first10);
+
+        // Random numbers until we get one > 0.99
+        OptionalDouble rare = DoubleStream.generate(Math::random)
+                                          .filter(x -> x > 0.99)
+                                          .findFirst();
+        System.out.printf("First random > 0.99: %.4f%n", rare.getAsDouble());
+
+        // Primes via an infinite stream (Sieve is better for large N, but elegant demo)
+        List<Integer> primes = IntStream.iterate(2, n -> n + 1)
+            .filter(n -> IntStream.rangeClosed(2, (int)Math.sqrt(n)).allMatch(d -> n % d != 0))
+            .limit(15)
+            .boxed()
+            .collect(Collectors.toList());
+        System.out.println("First 15 primes: " + primes);
+    }
+
+    // 3. flatMap: flattening nested structures
+    static void flatMapDemo() {
+        List<List<Integer>> nested = List.of(List.of(1,2,3), List.of(4,5), List.of(6,7,8,9));
+        List<Integer> flat = nested.stream()
+                                   .flatMap(Collection::stream)
+                                   .sorted()
+                                   .collect(Collectors.toList());
+        System.out.println("flatMap nested: " + flat);
+
+        // Practical: all words in all sentences
+        List<String> sentences = List.of("hello world", "java streams are cool");
+        long uniqueWords = sentences.stream()
+                                    .flatMap(s -> Arrays.stream(s.split(" ")))
+                                    .distinct()
+                                    .count();
+        System.out.println("Unique words: " + uniqueWords);
+    }
+
+    public static void main(String[] args) {
+        infiniteStreams();
+        flatMapDemo();
+
+        // Multi-level grouping: dept -> senior/junior -> list of names
+        record Person(String name, String dept, int yoe) {}
+        List<Person> people = List.of(
+            new Person("Ana","ENG",8), new Person("Ben","ENG",2),
+            new Person("Cara","HR",5), new Person("Dan","ENG",10), new Person("Eve","HR",1)
+        );
+        Map<String, Map<String, List<String>>> grouped = people.stream()
+            .collect(Collectors.groupingBy(Person::dept,
+                     Collectors.groupingBy(p -> p.yoe() >= 5 ? "senior" : "junior",
+                     Collectors.mapping(Person::name, Collectors.toList()))));
+        System.out.println("Multi-level grouping: " + grouped);
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'Stream performance: when parallel helps and when it hurts',
+          code: `import java.util.*;
+import java.util.stream.*;
+import java.util.concurrent.ForkJoinPool;
+
+public class StreamPerformanceDemo {
+    // ✅ Good candidate for parallel: large array, CPU-bound, stateless, no ordering needed
+    static long sumLargeArray(boolean parallel) {
+        int[] data = IntStream.rangeClosed(1, 10_000_000).toArray();
+        IntStream s = Arrays.stream(data);
+        if (parallel) s = s.parallel();
+        return s.filter(n -> n % 2 == 0).mapToLong(n -> (long) n * n).sum();
+    }
+
+    // ❌ Bad candidate for parallel: small data (overhead dominates)
+    static List<String> processSmall(boolean parallel) {
+        List<String> names = List.of("Ana","Ben","Cara","Dan","Eve");
+        Stream<String> s = names.stream();
+        if (parallel) s = s.parallel();
+        return s.map(String::toUpperCase).collect(Collectors.toList());
+    }
+
+    // ❌ Bad candidate for parallel: ordered operation with LinkedList (poor splittability)
+    // LinkedList splits into halves recursively in O(n) — no benefit from parallel
+
+    public static void main(String[] args) {
+        System.out.println("=== Large CPU-bound sum ===");
+        long t1 = System.nanoTime();
+        long r1 = sumLargeArray(false);
+        long seqMs = (System.nanoTime() - t1) / 1_000_000;
+
+        long t2 = System.nanoTime();
+        long r2 = sumLargeArray(true);
+        long parMs = (System.nanoTime() - t2) / 1_000_000;
+
+        System.out.printf("Sequential: %dms  Parallel: %dms  (result=%d)%n", seqMs, parMs, r1);
+        System.out.println("Parallel speedup: " + seqMs / Math.max(parMs, 1) + "x (up to #cores)");
+
+        System.out.println("\\n=== Small list ===");
+        long t3 = System.nanoTime();
+        processSmall(false);
+        long s1 = System.nanoTime() - t3;
+        long t4 = System.nanoTime();
+        processSmall(true);
+        long s2 = System.nanoTime() - t4;
+        System.out.printf("Sequential: %dns  Parallel: %dns — parallel is SLOWER for 5 elements%n", s1, s2);
+
+        System.out.println("\\nParallel stream uses the COMMON ForkJoinPool (shared by all parallel streams).");
+        System.out.println("A slow parallel stream blocks ALL parallel computation in the JVM.");
+        System.out.println("Custom pool workaround: pool.submit(() -> stream.parallel()...).get()");
+
+        System.out.println("\\nDecision guide:");
+        System.out.println("  dataset >> 10k elements AND CPU-bound AND stateless AND splittable -> try parallel");
+        System.out.println("  contains I/O / shared state / ordering / small data -> sequential");
+        System.out.println("  ALWAYS measure: .parallel() on the wrong stream is a pessimisation");
+    }
+}`
         }
       ],
       flashcards: [
         { q: 'What is lazy evaluation in streams?', a: 'Intermediate operations build a pipeline but execute nothing until a terminal operation runs, enabling fusion and short-circuiting (e.g., findFirst stops early).' },
         { q: 'When do parallel streams actually help?', a: 'Large, CPU-bound, easily splittable datasets with stateless, side-effect-free operations. They hurt for small/IO-bound/ordered/stateful work and share the common ForkJoinPool.' },
         { q: 'Proper Optional usage?', a: 'Use as a return type; chain map/flatMap/filter; resolve with orElseGet/orElseThrow. Avoid Optional.get() without a presence check and don\'t use it for fields or parameters.' },
-        { q: 'Can a stream be reused after a terminal operation?', a: 'No — streams are single-use. After a terminal op the stream is consumed; reusing it throws IllegalStateException. Create a new stream from the source.' }
+        { q: 'Can a stream be reused after a terminal operation?', a: 'No — streams are single-use. After a terminal op the stream is consumed; reusing it throws IllegalStateException. Create a new stream from the source.' },
+        { q: 'What does flatMap do and when do you use it?', a: 'flatMap maps each element to a Stream and flattens the resulting streams into one. Use it when each element produces zero or more output elements (e.g. splitting sentences to words, expanding nested lists). It is Stream\'s equivalent of list monad bind.' },
+        { q: 'What are the four components of a custom Collector?', a: 'Supplier (creates the mutable accumulator container), Accumulator (folds a single element into the container), Combiner (merges two containers for parallel execution), Finisher (transforms the final container to the result type).' },
+        { q: 'Why does parallel stream performance depend on the data source\'s Spliterator?', a: 'Parallel streams split the source recursively for parallel processing. Arrays and ArrayList split in O(1) (index arithmetic). LinkedList, IO streams, and custom iterators split poorly (O(n) or sequential only) — no parallelism benefit. Always consider the source\'s splittability before adding .parallel().' }
       ]
     },
 
@@ -1276,13 +2182,151 @@ HAVING COUNT(*) > 1;
 SELECT day, amount,
        SUM(amount) OVER (ORDER BY day ROWS UNBOUNDED PRECEDING) AS running_total
 FROM   daily_revenue;`
+        },
+        {
+          lang: 'sql',
+          title: 'CTEs, recursive queries, and practical patterns',
+          code: `-- CTEs (Common Table Expressions) make complex queries readable and reusable.
+-- They are NOT materialized by default in Postgres (optimizer can inline them).
+
+-- 1. Simple CTE: name intermediate results for clarity
+WITH
+recent_orders AS (
+    SELECT customer_id, SUM(total) AS order_total
+    FROM   orders
+    WHERE  created_at > NOW() - INTERVAL '30 days'
+    GROUP  BY customer_id
+),
+customers_with_totals AS (
+    SELECT c.id, c.name, c.email, COALESCE(ro.order_total, 0) AS recent_total
+    FROM   customer c
+    LEFT   JOIN recent_orders ro ON c.id = ro.customer_id
+)
+SELECT * FROM customers_with_totals WHERE recent_total > 1000 ORDER BY recent_total DESC;
+
+-- 2. Recursive CTE: employee hierarchy (org chart)
+WITH RECURSIVE org_tree AS (
+    -- Base case: top-level employees (no manager)
+    SELECT id, name, manager_id, 1 AS depth, name AS path
+    FROM   employee
+    WHERE  manager_id IS NULL
+
+    UNION ALL
+
+    -- Recursive case: employees reporting to someone already in the tree
+    SELECT e.id, e.name, e.manager_id, ot.depth + 1, ot.path || ' -> ' || e.name
+    FROM   employee e
+    JOIN   org_tree ot ON e.manager_id = ot.id
+)
+SELECT depth, path FROM org_tree ORDER BY path;
+
+-- 3. De-duplicate: keep one row per group (common data-cleaning task)
+-- Strategy: number rows within each group, keep row_number = 1
+WITH numbered AS (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY email ORDER BY created_at DESC) AS rn
+    FROM   user_signups
+)
+DELETE FROM user_signups
+WHERE  id IN (SELECT id FROM numbered WHERE rn > 1);  -- remove all but the most recent
+
+-- 4. Gap-and-island problem: find consecutive date ranges
+WITH gaps AS (
+    SELECT date,
+           date - (ROW_NUMBER() OVER (ORDER BY date))::int AS island_id
+    FROM   active_days
+)
+SELECT MIN(date) AS start_date, MAX(date) AS end_date, COUNT(*) AS days
+FROM   gaps
+GROUP  BY island_id
+ORDER  BY start_date;`
+        },
+        {
+          lang: 'java',
+          title: 'SQL in Java: PreparedStatement, ResultSet, and N+1 detection',
+          code: `import java.sql.*;
+import java.util.*;
+
+// Core JDBC patterns every backend engineer must know — the foundation under all ORMs.
+public class JdbcPatternsDemo {
+
+    // ✅ ALWAYS use PreparedStatement — never string concatenation (SQL injection!)
+    static List<Map<String, Object>> findOrders(Connection conn, long customerId, String status)
+            throws SQLException {
+        String sql = "SELECT id, total, status, created_at FROM orders " +
+                     "WHERE customer_id = ? AND status = ? ORDER BY created_at DESC LIMIT 50";
+
+        List<Map<String, Object>> results = new ArrayList<>();
+        // try-with-resources ensures stmt + rs are closed even on exception
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, customerId);   // position 1 corresponds to first ?
+            stmt.setString(2, status);     // position 2 = second ?
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id",         rs.getLong("id"));
+                    row.put("total",      rs.getBigDecimal("total"));
+                    row.put("status",     rs.getString("status"));
+                    row.put("created_at", rs.getTimestamp("created_at").toLocalDateTime());
+                    results.add(row);
+                }
+            }
+        }
+        return results;
+    }
+
+    // N+1 detection at the JDBC layer: count queries per request
+    static class QueryCountingDataSource {
+        private int queryCount = 0;
+        void beforeQuery(String sql) { queryCount++; }
+        int getCount() { return queryCount; }
+        void reset() { queryCount = 0; }
+    }
+
+    // Batch insert: much faster than individual INSERTs for bulk operations
+    static void batchInsert(Connection conn, List<String> emails) throws SQLException {
+        String sql = "INSERT INTO newsletter_subscriber (email, created_at) VALUES (?, NOW())";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            conn.setAutoCommit(false);          // wrap batch in one transaction
+            for (String email : emails) {
+                stmt.setString(1, email);
+                stmt.addBatch();                // queue up — no DB round-trip yet
+            }
+            int[] counts = stmt.executeBatch(); // ONE round-trip for all rows
+            conn.commit();
+            System.out.println("Inserted " + counts.length + " rows in one batch");
+        } catch (SQLException e) {
+            conn.rollback();
+            throw e;
+        }
+    }
+
+    public static void main(String[] args) {
+        System.out.println("JDBC golden rules:");
+        System.out.println("  1. Always use PreparedStatement (never string concat)");
+        System.out.println("  2. try-with-resources for Connection/Statement/ResultSet");
+        System.out.println("  3. Use connection pools (HikariCP) — never create new Connection per query");
+        System.out.println("  4. Batch inserts/updates for bulk operations (addBatch/executeBatch)");
+        System.out.println("  5. Set query timeout: stmt.setQueryTimeout(10) in seconds");
+        System.out.println("  6. Log slow queries: datasource-proxy or p6spy in dev");
+        System.out.println();
+        System.out.println("N+1 detection in production:");
+        System.out.println("  Enable: spring.jpa.show-sql=true OR use datasource-proxy");
+        System.out.println("  Count queries per HTTP request — if count grows with result size -> N+1");
+        System.out.println("  Fix: JOIN FETCH, @EntityGraph, or batch loading");
+    }
+}`
         }
       ],
       flashcards: [
         { q: 'Difference between WHERE and HAVING?', a: 'WHERE filters individual rows before aggregation; HAVING filters groups after GROUP BY aggregation. You can reference aggregate functions in HAVING but not in WHERE.' },
         { q: 'How do window functions differ from GROUP BY?', a: 'Window functions compute a value across a set of related rows (a "window") while preserving each individual row, whereas GROUP BY collapses rows into one per group.' },
         { q: 'How do you get the top N rows per group?', a: 'Use ROW_NUMBER() OVER (PARTITION BY group_col ORDER BY sort_col) in a subquery, then filter WHERE row_number <= N.' },
-        { q: 'What is the logical execution order of a SELECT?', a: 'FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT. This is why SELECT aliases aren\'t visible in WHERE/GROUP BY.' }
+        { q: 'What is the logical execution order of a SELECT?', a: 'FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT. This is why SELECT aliases aren\'t visible in WHERE/GROUP BY.' },
+        { q: 'What is a CTE and how does it differ from a subquery?', a: 'A CTE (WITH clause) names a result set and can be referenced multiple times in the same query, improving readability. It can also be recursive. In PostgreSQL, CTEs are generally not materialized (optimizer inlines them) unless WITH MATERIALIZED is specified.' },
+        { q: 'How do you write a recursive SQL query? Give a use case.', a: 'WITH RECURSIVE cte AS ( base_case UNION ALL recursive_case JOIN cte ... ) SELECT from cte. Use cases: org chart traversal, bill of materials, file system tree, consecutive date ranges (gap-and-island).' },
+        { q: 'Why must you always use PreparedStatement and never string concatenation?', a: 'String concatenation of user input creates SQL injection vulnerability — an attacker can inject arbitrary SQL (e.g. OR 1=1; DROP TABLE). PreparedStatement parameterizes the query; the driver escapes parameters, making injection structurally impossible.' },
+        { q: 'What is batch insert and when does it matter?', a: 'Batching groups multiple INSERT statements into a single database round-trip (addBatch()/executeBatch()). For bulk inserts of 100+ rows, batch inserts are 10-100x faster than individual INSERTs because they eliminate per-statement round-trip latency and can use optimized server-side bulk paths.' }
       ]
     },
 
@@ -1888,6 +2932,139 @@ public class KafkaModelDemo {
         System.out.println("Actual side effects: " + sideEffects + " (correctly 2, not 3)");
     }
 }`
+        },
+        {
+          lang: 'java',
+          title: 'Dead Letter Queue (DLQ) pattern for Kafka error handling',
+          code: `import java.util.*;
+
+// When a Kafka consumer fails to process a message (parse error, downstream down),
+// retrying forever blocks the partition. The DLQ pattern sends failed messages
+// to a separate "dead letter" topic for manual review / replay.
+public class KafkaDlqDemo {
+
+    record KafkaMessage(String topic, int partition, long offset, String key, String payload) {}
+
+    interface KafkaProducer {
+        void send(String topic, String key, String payload);
+    }
+
+    static class OrderConsumer {
+        private final KafkaProducer producer;
+        private final int MAX_RETRIES = 3;
+
+        OrderConsumer(KafkaProducer producer) { this.producer = producer; }
+
+        void processWithDlq(KafkaMessage msg) {
+            int attempt = 0;
+            Exception lastError = null;
+
+            while (attempt < MAX_RETRIES) {
+                try {
+                    processOrder(msg.payload());
+                    System.out.println("[OK] Processed: " + msg.key() + " offset=" + msg.offset());
+                    return;  // success — commit offset
+                } catch (Exception e) {
+                    lastError = e;
+                    attempt++;
+                    System.out.printf("[RETRY %d/%d] %s: %s%n", attempt, MAX_RETRIES, msg.key(), e.getMessage());
+                    // Exponential backoff between retries (for transient errors)
+                    try { Thread.sleep(100L * (1L << attempt)); } catch (InterruptedException ie) { break; }
+                }
+            }
+
+            // Retries exhausted: send to DLQ topic for human review
+            String dlqPayload = String.format(
+                "{\"original\":%s,\"error\":\"%s\",\"topic\":\"%s\",\"partition\":%d,\"offset\":%d}",
+                msg.payload(), lastError.getMessage(), msg.topic(), msg.partition(), msg.offset()
+            );
+            producer.send("orders.DLQ", msg.key(), dlqPayload);
+            System.out.println("[DLQ] Sent to dead letter: " + msg.key());
+            // Still commit the offset — we don't block the partition for a poison pill
+        }
+
+        void processOrder(String payload) {
+            // Simulate: some messages are "poison pills" (permanently bad)
+            if (payload.contains("INVALID")) throw new RuntimeException("invalid order format");
+            System.out.println("  -> Order processed: " + payload);
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        List<String> dlqMessages = new ArrayList<>();
+        KafkaProducer mockProducer = (topic, key, payload) -> {
+            if (topic.endsWith("DLQ")) dlqMessages.add(key + ":" + payload);
+        };
+
+        OrderConsumer consumer = new OrderConsumer(mockProducer);
+        consumer.processWithDlq(new KafkaMessage("orders", 0, 1L, "order-1", "{\"id\":1,\"total\":100}"));
+        consumer.processWithDlq(new KafkaMessage("orders", 0, 2L, "order-2", "INVALID_DATA"));
+        consumer.processWithDlq(new KafkaMessage("orders", 0, 3L, "order-3", "{\"id\":3,\"total\":200}"));
+
+        System.out.println("\nDLQ messages: " + dlqMessages.size());
+        System.out.println("\nDLQ replay: when the bug is fixed, replay the DLQ topic to reprocess");
+        System.out.println("In Spring Kafka: @DltHandler / SeekToCurrentErrorHandler / DeadLetterPublishingRecoverer");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'Kafka consumer group & partition assignment simulation',
+          code: `import java.util.*;
+import java.util.stream.*;
+
+// Models how Kafka distributes partitions across a consumer group.
+// Rule: each partition is consumed by EXACTLY ONE consumer in a group.
+// Parallelism ceiling = number of partitions.
+public class KafkaConsumerGroupDemo {
+
+    record Partition(String topic, int id) {}
+    record Consumer(String id, List<Partition> assigned) {}
+
+    // Range assignor: divides sorted partitions evenly across sorted consumers
+    static List<Consumer> rangeAssign(String topic, int partitionCount, List<String> consumerIds) {
+        List<Partition> partitions = IntStream.range(0, partitionCount)
+            .mapToObj(i -> new Partition(topic, i))
+            .collect(Collectors.toList());
+
+        List<String> sorted = consumerIds.stream().sorted().collect(Collectors.toList());
+        List<Consumer> consumers = sorted.stream()
+            .map(id -> new Consumer(id, new ArrayList<>()))
+            .collect(Collectors.toList());
+
+        // Distribute partitions round-robin style (simplified range assignor)
+        for (int i = 0; i < partitions.size(); i++) {
+            consumers.get(i % consumers.size()).assigned().add(partitions.get(i));
+        }
+        return consumers;
+    }
+
+    static void printAssignment(List<Consumer> consumers) {
+        consumers.forEach(c -> {
+            List<Integer> pIds = c.assigned().stream().map(Partition::id).collect(Collectors.toList());
+            System.out.printf("  Consumer %-10s -> partitions %s%n", c.id(), pIds);
+        });
+    }
+
+    public static void main(String[] args) {
+        System.out.println("=== 6 partitions, 3 consumers (ideal: 2 each) ===");
+        printAssignment(rangeAssign("orders", 6, List.of("C1","C2","C3")));
+
+        System.out.println("\n=== 6 partitions, 2 consumers (3 each) ===");
+        printAssignment(rangeAssign("orders", 6, List.of("C1","C2")));
+
+        System.out.println("\n=== 6 partitions, 8 consumers (2 idle!) ===");
+        List<Consumer> over = rangeAssign("orders", 6, List.of("C1","C2","C3","C4","C5","C6","C7","C8"));
+        printAssignment(over);
+        long idle = over.stream().filter(c -> c.assigned().isEmpty()).count();
+        System.out.println("  Idle consumers: " + idle + " (adding consumers beyond partition count is wasteful)");
+
+        System.out.println("\n=== After consumer C2 dies -> REBALANCE ===");
+        printAssignment(rangeAssign("orders", 6, List.of("C1","C3"))); // C2 removed
+        System.out.println("  Rebalance: all consumers stop, coordinator reassigns, all resume");
+        System.out.println("  During rebalance: no messages consumed! Design for it (idempotency)");
+    }
+}`
         }
       ],
       flashcards: [
@@ -1895,7 +3072,10 @@ public class KafkaModelDemo {
         { q: 'What determines Kafka consumer parallelism?', a: 'The number of partitions. Within a consumer group each partition is consumed by exactly one consumer, so you cannot have more active consumers than partitions.' },
         { q: 'Why is end-to-end exactly-once usually replaced by at-least-once + idempotent consumers?', a: 'True exactly-once across external systems (DB/APIs) is impractical. The pragmatic design is at-least-once delivery with consumers that dedupe on a business key or track processed offsets, making reprocessing safe.' },
         { q: 'Kafka vs RabbitMQ — when each?', a: 'Kafka: a durable, partitioned, replayable log for high-throughput event streaming, event sourcing, and analytics. RabbitMQ: a broker with flexible routing, per-message acks, and priorities for task queues and RPC.' },
-        { q: 'What enables replay in Kafka?', a: 'Messages are retained by time/size independent of consumption, and consumers track offsets, so a consumer can reset its offset and reprocess from any point (e.g. offset 0) to rebuild state.' }
+        { q: 'What enables replay in Kafka?', a: 'Messages are retained by time/size independent of consumption, and consumers track offsets, so a consumer can reset its offset and reprocess from any point (e.g. offset 0) to rebuild state.' },
+        { q: 'What is a Dead Letter Queue (DLQ) in Kafka and when do you use it?', a: 'A DLQ is a separate topic where messages that fail processing after N retries are sent instead of blocking the partition. It prevents a single "poison pill" message from halting all downstream processing. Messages are manually inspected and replayed after the bug is fixed.' },
+        { q: 'What happens during a Kafka consumer group rebalance?', a: 'All consumers in the group stop processing, the group coordinator reassigns partitions (using a configured assignor like Range or CooperativeSticky), then consumers resume. During rebalance no messages are consumed. CooperativeSticky rebalancing (Kafka 2.4+) minimizes the disruption by only moving partitions that need to move.' },
+        { q: 'What is the ISR (In-Sync Replica) and why does it matter for durability?', a: 'The ISR is the set of replicas fully caught up with the leader. With acks=all, the producer waits for all ISR replicas to acknowledge the write, ensuring the message survives a leader failure. min.insync.replicas controls how many ISR replicas must ack before the write is accepted.' }
       ]
     },
 
@@ -3052,6 +4232,1043 @@ public class DesignRoundChecklist {
         { q: 'Name two common EU highly-skilled migration routes.', a: 'Germany\'s EU Blue Card (salary-threshold route for graduates) and the Netherlands\' kennismigrant (highly-skilled migrant) route via recognised sponsors. Ireland\'s Critical Skills Permit is another. (Always verify current thresholds/rules.)' },
         { q: 'Why might the technical bar be higher for visa-sponsored roles, and how do you handle it?', a: 'Sponsorship adds employer cost and lead time, so they must justify it. Be upfront about needing sponsorship early, clearly clear the technical bar, and have your documents (degree, references, valid passport) ready.' },
         { q: 'What is the winning candidate profile for EU sponsorship?', a: 'Solid fundamentals plus clear communication, a collaborative attitude, and genuine interest in the product — a reliable, communicative engineer worth the sponsorship effort, rather than necessarily the strongest pure coder.' }
+      ]
+    }
+  ]
+},
+
+/* ===================== PHASE 11: Real-World Architecture ===================== */
+{
+  id: 'p11',
+  title: 'Real-World Java Backend Architecture',
+  icon: 'layers',
+  blurb: 'How production Spring Boot systems are actually built, deployed, and operated — modelled on a real trading platform. Zero to production.',
+  modules: [
+    {
+      id: '11.1',
+      title: 'Multi-Module Maven Monolith Design',
+      hours: 5,
+      notes: `
+# Multi-Module Maven Monolith Design
+
+The most important architectural decision for a new backend is **not** microservices vs monolith — it is **how you enforce module boundaries** so the system can evolve without becoming a big ball of mud.
+
+## Why start with a modular monolith
+
+A modular monolith gives you:
+- Single deployable unit (simple ops, fast CI)
+- In-process calls (no network latency, no serialization cost)
+- Real transactional guarantees across modules
+- Can extract to microservices later by cutting along module seams
+
+The key is that modules are **enforced by Maven**, not just convention: module A cannot import module B unless B is a declared dependency. If you leave everything in one Maven module, "modular" is a lie — anyone can import anything.
+
+## The module graph (strict acyclic)
+
+\`\`\`
+core ← broker ← engine ← web ← app (runnable jar)
+       └─ ai  ←┘
+       └─ news ←┘
+\`\`\`
+
+- **core** — domain models, enums, shared config properties. No Spring, no DB, no external libs. Any module can depend on core.
+- **broker** — adapter interfaces + implementations for stock brokers/exchanges. Knows core; knows nothing of engine.
+- **ai** — LLM API clients. Knows core.
+- **news** — RSS/news aggregation. Knows core.
+- **engine** — business logic: risk, orders, journal, analytics. Knows core + broker + ai + news.
+- **web** — REST controllers, dashboard. Knows engine.
+- **app** — bootstraps everything: Spring Boot main class, Flyway migrations, scheduler config.
+
+> [!TIP]
+> The strict downward dependency rule means **business logic never depends on HTTP**. If you need to extract a module to a service later, you just add a thin REST adapter — the logic doesn't change. This also makes unit testing trivial: no Spring context needed for core/engine tests.
+
+## Parent POM structure
+
+\`\`\`xml
+<!-- pom.xml (root parent) -->
+<groupId>com.example</groupId>
+<artifactId>myapp-parent</artifactId>
+<packaging>pom</packaging>
+<modules>
+  <module>core</module>
+  <module>broker</module>
+  <module>ai</module>
+  <module>engine</module>
+  <module>web</module>
+  <module>app</module>
+</modules>
+<dependencyManagement>
+  <!-- BOM: all versions declared here, child modules just name the artifact -->
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-dependencies</artifactId>
+      <version>${spring-boot.version}</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+\`\`\`
+
+Each child module declares only the **siblings it needs** — enforcing the graph:
+
+\`\`\`xml
+<!-- engine/pom.xml -->
+<dependencies>
+  <dependency><groupId>com.example</groupId><artifactId>core</artifactId></dependency>
+  <dependency><groupId>com.example</groupId><artifactId>broker</artifactId></dependency>
+  <dependency><groupId>com.example</groupId><artifactId>ai</artifactId></dependency>
+</dependencies>
+\`\`\`
+
+If engine tried to import web classes, Maven would fail the build. **The build is the architecture enforcer.**
+
+## The shared kernel (core module)
+
+Core should contain only:
+- **Domain value objects**: \`Money\`, \`OrderId\`, \`Symbol\`, \`Side\` (BUY/SELL)
+- **Domain events**: \`OrderPlaced\`, \`TradeExecuted\`
+- **Enums and constants** shared across modules
+- **Config properties** interfaces (\`@ConfigurationProperties\` POJOs)
+- No Spring beans, no DB, no Jackson (just plain Java)
+
+> [!WARNING]
+> The temptation is to throw everything into core "for convenience." Resist it. Every class in core is a dependency of every other module — a poorly-placed class in core creates hidden coupling across the entire system. If something is only needed by two adjacent modules, put it in the higher one.
+
+## The app (runnable jar) module
+
+The app module's job is assembly:
+- \`@SpringBootApplication\` lives here
+- Flyway migrations in \`src/main/resources/db/migration/\`
+- \`application.yml\` and profile configs
+- \`@EnableScheduling\`, \`@EnableAsync\`, \`@EnableCaching\`
+- Docker / deployment config
+
+**It contains almost no business logic.** If you find yourself writing business code in app, something is in the wrong module.
+
+## Testing across modules
+
+- **core, ai, news**: pure JUnit 5, no Spring
+- **engine**: JUnit 5 + Mockito for broker/AI collaborators
+- **web**: \`@WebMvcTest\` (loads only the web slice)
+- **Integration/E2E**: only in app module (has all deps)
+
+This layering means CI can test core/engine/ai in parallel and fast, without a database.
+
+> [!EU]
+> Senior EU interviews increasingly probe *how* you structure large codebases. "We started with a modular monolith with strict Maven-enforced boundaries. Module A could never accidentally import module B unless declared as a dependency — this prevented the big-ball-of-mud anti-pattern and gave us clean seams to extract services later." This shows architectural maturity.
+`,
+      code: [
+        {
+          lang: 'java',
+          title: 'Enforcing module boundaries — the shared kernel pattern',
+          code: `// core module: pure Java, no Spring, no DB
+// com.example.core.domain.Money
+public record Money(long minorUnits, String currency) {
+    public Money {
+        if (minorUnits < 0) throw new IllegalArgumentException("negative money");
+        if (currency == null || currency.isBlank()) throw new IllegalArgumentException("currency required");
+    }
+
+    public Money add(Money other) {
+        if (!currency.equals(other.currency)) throw new IllegalArgumentException("currency mismatch");
+        return new Money(minorUnits + other.minorUnits, currency);
+    }
+
+    public Money multiply(int factor) { return new Money(minorUnits * factor, currency); }
+
+    @Override public String toString() {
+        return String.format("%s %.2f", currency, minorUnits / 100.0);
+    }
+
+    public static Money of(double amount, String currency) {
+        return new Money(Math.round(amount * 100), currency);
+    }
+}
+
+// com.example.core.domain.OrderSide
+public enum OrderSide { BUY, SELL }
+
+// com.example.core.domain.OrderRequest
+public record OrderRequest(
+    String symbol,
+    OrderSide side,
+    int quantity,
+    Money limitPrice  // null for market orders
+) {
+    public OrderRequest {
+        if (symbol == null || symbol.isBlank()) throw new IllegalArgumentException("symbol required");
+        if (quantity <= 0) throw new IllegalArgumentException("quantity must be positive");
+    }
+    public boolean isMarket() { return limitPrice == null; }
+}
+
+// engine module: depends on core, broker, ai — NOT on web
+// com.example.engine.OrderExecutionService
+// @Service  (Spring bean but pure business logic, testable without HTTP)
+class OrderExecutionService {
+    private final BrokerAdapter broker;       // interface from broker module
+    private final RiskService riskService;
+
+    OrderExecutionService(BrokerAdapter broker, RiskService riskService) {
+        this.broker = broker;
+        this.riskService = riskService;
+    }
+
+    public String placeOrder(OrderRequest req) {
+        riskService.validate(req);             // throws if breaches risk limits
+        return broker.submitOrder(req);        // broker-specific; paper/Upstox/Dhan
+    }
+}
+
+// web module: knows engine, NOT business logic
+// com.example.web.OrderController
+// @RestController — this is the only place HTTP concepts live
+class OrderController {
+    private final OrderExecutionService execService;
+    OrderController(OrderExecutionService execService) { this.execService = execService; }
+
+    // @PostMapping("/api/v1/orders")
+    String placeOrder(/* @RequestBody */ OrderRequest req) {
+        return execService.placeOrder(req);    // delegate everything; no logic here
+    }
+}
+
+// Demo: test engine independently — no Spring, no HTTP, no DB
+public class ModuleArchDemo {
+    public static void main(String[] args) {
+        // Pure unit test of business logic — no container needed
+        BrokerAdapter paperBroker = req -> "PAPER-ORDER-" + req.symbol() + "-" + req.quantity();
+        RiskService risk = req -> {
+            if (req.quantity() > 100) throw new RuntimeException("quantity exceeds limit");
+        };
+        var svc = new OrderExecutionService(paperBroker, risk);
+        String id = svc.placeOrder(new OrderRequest("NIFTY24DEC20000CE", OrderSide.BUY, 1,
+                                                     Money.of(150.0, "INR")));
+        System.out.println("Order placed: " + id);
+
+        // The module boundary is enforced by Maven: web cannot skip to broker directly
+        System.out.println("Money demo: " + Money.of(100.50, "EUR").add(Money.of(49.50, "EUR")));
+    }
+
+    interface BrokerAdapter { String submitOrder(OrderRequest req); }
+    interface RiskService   { void validate(OrderRequest req); }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'Adapter pattern: swappable broker implementations',
+          code: `import java.util.*;
+
+// The broker module: defines the interface in core; implementations here.
+// This is the adapter pattern — the engine doesn't care which broker executes the trade.
+public class BrokerAdapterDemo {
+
+    // In the broker module:
+    interface BrokerAdapter {
+        String submitOrder(String symbol, String side, int qty, double price);
+        String getOrderStatus(String orderId);
+        double getLtp(String symbol);
+    }
+
+    // Paper broker: simulates trades, no real money. Safe default.
+    static class PaperBrokerAdapter implements BrokerAdapter {
+        private final Map<String, String> orders = new LinkedHashMap<>();
+        private int seq = 1;
+
+        public String submitOrder(String symbol, String side, int qty, double price) {
+            String id = "PAPER-" + seq++;
+            orders.put(id, "COMPLETE");
+            System.out.printf("[PAPER] %s %s x%d @ %.2f -> %s%n", side, symbol, qty, price, id);
+            return id;
+        }
+        public String getOrderStatus(String id) { return orders.getOrDefault(id, "NOT_FOUND"); }
+        public double getLtp(String symbol) { return 150.25 + Math.random() * 5; } // simulated
+    }
+
+    // Upstox broker: calls real REST API (simplified)
+    static class UpstoxBrokerAdapter implements BrokerAdapter {
+        private final String accessToken;
+        UpstoxBrokerAdapter(String accessToken) { this.accessToken = accessToken; }
+
+        public String submitOrder(String symbol, String side, int qty, double price) {
+            // In reality: HTTP POST to https://api.upstox.com/v2/order/place
+            System.out.printf("[UPSTOX] Calling Upstox API with token %s... %s %s x%d%n",
+                              accessToken.substring(0, 8) + "...", side, symbol, qty);
+            return "UPX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        }
+        public String getOrderStatus(String id) { return "COMPLETE"; } // simplified
+        public double getLtp(String symbol) { return 150.50; }
+    }
+
+    // Per-user routing: each user selects their broker; the router dispatches correctly
+    static class BrokerAdapterRouter {
+        private final Map<String, BrokerAdapter> userAdapters = new HashMap<>();
+        private final BrokerAdapter defaultAdapter = new PaperBrokerAdapter();
+
+        void setUserBroker(String userId, BrokerAdapter adapter) {
+            userAdapters.put(userId, adapter);
+        }
+        BrokerAdapter forUser(String userId) {
+            return userAdapters.getOrDefault(userId, defaultAdapter);
+        }
+    }
+
+    public static void main(String[] args) {
+        BrokerAdapterRouter router = new BrokerAdapterRouter();
+
+        // user1 uses paper (default — safe!)
+        // user2 configured live Upstox
+        router.setUserBroker("user2", new UpstoxBrokerAdapter("real-token-xyz"));
+
+        // Engine calls router.forUser(userId).submitOrder(...)
+        // It never cares which broker is behind it
+        router.forUser("user1").submitOrder("NIFTY24C20000", "BUY", 1, 150.0);
+        router.forUser("user2").submitOrder("NIFTY24C20000", "BUY", 1, 150.0);
+        router.forUser("user3").submitOrder("NIFTY24C20000", "BUY", 1, 150.0); // defaults to paper
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'Flyway migrations: safe database evolution',
+          code: `// Flyway manages DB schema evolution with versioned, checksummed SQL scripts.
+// Location: app/src/main/resources/db/migration/
+// Naming: V{version}__{description}.sql  (two underscores!)
+
+// V1__create_users.sql
+/*
+CREATE TABLE app_user (
+    id          BIGSERIAL PRIMARY KEY,
+    email       VARCHAR(255) UNIQUE NOT NULL,
+    role        VARCHAR(50)  NOT NULL DEFAULT 'VIEWER',
+    created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
+);
+*/
+
+// V2__create_trade_journal.sql
+/*
+CREATE TABLE trade_journal (
+    id           BIGSERIAL    PRIMARY KEY,
+    user_id      BIGINT       NOT NULL REFERENCES app_user(id),
+    symbol       VARCHAR(100) NOT NULL,
+    side         VARCHAR(10)  NOT NULL,    -- BUY / SELL
+    quantity     INT          NOT NULL,
+    entry_price  NUMERIC(12,4),
+    exit_price   NUMERIC(12,4),
+    broker       VARCHAR(50),             -- which broker executed this trade
+    status       VARCHAR(20)  NOT NULL DEFAULT 'OPEN',
+    created_at   TIMESTAMP    NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_journal_user ON trade_journal(user_id);
+CREATE INDEX idx_journal_status ON trade_journal(user_id, status) WHERE status = 'OPEN';
+*/
+
+// V3__add_risk_settings.sql  (single-row config table — runtime overrides YAML)
+/*
+CREATE TABLE risk_settings (
+    id               BIGINT PRIMARY KEY DEFAULT 1,
+    max_daily_loss   NUMERIC(12,2) NOT NULL DEFAULT 5000,
+    max_position_pct NUMERIC(5,2)  NOT NULL DEFAULT 10,
+    trading_enabled  BOOLEAN       NOT NULL DEFAULT TRUE,
+    CONSTRAINT single_row CHECK (id = 1)
+);
+INSERT INTO risk_settings DEFAULT VALUES;
+*/
+
+// Safe migration rules:
+// ✅ ADD columns (nullable or with DEFAULT)
+// ✅ ADD tables, indexes
+// ✅ UPDATE existing data in the migration
+// ❌ DROP columns in use (remove code first, deploy, then drop)
+// ❌ Change column type without a migration plan
+// ❌ Edit an already-deployed migration (Flyway checksums will fail!)
+
+// Demonstrating the Flyway "two-step" pattern for removing a column:
+// Step 1: V10__stop_using_old_col.sql  -> code change: stop reading/writing it
+// Step 2: V11__drop_old_col.sql (in the NEXT release, after Step 1 is live)
+/*
+ALTER TABLE trade_journal DROP COLUMN IF EXISTS legacy_notes;
+*/
+
+public class FlywayConceptDemo {
+    public static void main(String[] args) {
+        System.out.println("Flyway migration naming: V{n}__{desc}.sql");
+        System.out.println("  V1__create_users.sql");
+        System.out.println("  V2__create_trade_journal.sql");
+        System.out.println("  V14__add_api_usage_log.sql");
+        System.out.println();
+        System.out.println("Flyway checks the checksum of applied migrations.");
+        System.out.println("NEVER edit a migration that's already been applied to any env.");
+        System.out.println("To fix: create a NEW migration V{n+1} that corrects the data/schema.");
+        System.out.println();
+        System.out.println("Local profile: set spring.flyway.enabled=false + ddl-auto=create-drop");
+        System.out.println("for fast iteration without real migrations during dev.");
+    }
+}`
+        }
+      ],
+      flashcards: [
+        { q: 'What is a modular monolith and what makes it different from a "big ball of mud" monolith?', a: 'A modular monolith enforces module boundaries structurally (e.g. via Maven modules) so code in module A cannot access module B without a declared dependency. A ball-of-mud monolith has everything in one module where anyone can import anything — creating hidden coupling.' },
+        { q: 'What belongs in the "core" module of a multi-module Spring Boot app?', a: 'Domain value objects, enums, domain events, shared config property classes (@ConfigurationProperties POJOs) — pure Java with no Spring beans, no DB, no HTTP. Every other module depends on core, so it must stay lean.' },
+        { q: 'What is the role of the "app" (runnable jar) module?', a: 'Assembly only: @SpringBootApplication, Flyway migrations, application.yml, scheduling/async config. Almost no business logic — if you write business code there, it belongs in a lower module.' },
+        { q: 'Why does the engine module never depend on the web module?', a: 'To keep business logic decoupled from HTTP. Engine can be tested without a web server, extracted to a separate service later, and reused by multiple frontends (REST, CLI, bot). The web module adapts HTTP calls to engine service calls — never the reverse.' },
+        { q: 'What is the adapter pattern in the context of broker integrations?', a: 'A BrokerAdapter interface is defined in the broker module. Implementations (PaperAdapter, UpstoxAdapter, DhanAdapter) fulfil it. The engine depends only on the interface; swapping brokers requires no engine changes — just registering a different implementation.' },
+        { q: 'What is the Flyway two-step migration pattern for removing a column?', a: 'Step 1 (current release): stop reading/writing the column in code and deploy. Step 2 (next release): add a migration that DROPs the column. This ensures no running code references the column when it is dropped — zero-downtime schema evolution.' },
+        { q: 'What is the "default paper broker" safety invariant?', a: 'When a user has no broker configured, the system routes to the paper (simulated) broker by default. This prevents real-money order submission for unconfigured users — a capital-safety guarantee baked into routing, not a UI toggle.' },
+        { q: 'How do you test engine-layer business logic without Spring or a database?', a: 'Pure JUnit 5 + Mockito: inject mock BrokerAdapter, RiskService, etc. No @SpringBootTest, no container startup. Fast, isolated unit tests are only possible because the module graph keeps engine free of HTTP/DB dependencies.' }
+      ]
+    },
+
+    {
+      id: '11.2',
+      title: 'Production Infrastructure: Docker, Caddy & VPS',
+      hours: 4,
+      notes: `
+# Production Infrastructure: Docker + Caddy + VPS
+
+This module covers how a real production Java backend is deployed on a VPS (Hetzner/DigitalOcean) using Docker Compose, Caddy as a reverse proxy, and automated deployments. This is the actual setup used by many European startups and small product teams.
+
+## The technology choices explained
+
+### Why Hetzner instead of AWS?
+Hetzner VPS is **10x cheaper** than AWS EC2 for equivalent CPU/RAM. A CX21 (2 vCPU, 4GB RAM) costs €4/month vs ~$40 for an equivalent AWS instance. For a product serving thousands of users, the economics are clear. Tradeoffs: less managed tooling, more ops responsibility.
+
+### Why Docker Compose instead of Kubernetes?
+K8s for a single-machine deployment is significant complexity overhead. Docker Compose gives:
+- Declarative multi-container setup
+- Service discovery (containers address each other by service name)
+- Healthchecks and restarts
+- Network isolation
+- Zero learning curve for teams already using Docker
+
+Rule of thumb: use K8s when you have **multiple VPS nodes** and need auto-scheduling across them. One or two machines → Docker Compose.
+
+### Why Caddy instead of Nginx?
+Caddy automatically provisions **Let's Encrypt TLS certificates** (HTTPS) and renews them. Zero config. With Nginx you write certbot cronjobs and reload configs. Caddy's config (the Caddyfile) is 3 lines vs 40 for Nginx for the same setup.
+
+## Production architecture on a single VPS
+
+\`\`\`
+Internet
+    |
+ [Caddy :443]  ← TLS termination, auto-HTTPS, gzip
+    |            ← routes by hostname
+    ├─ myapp.com  → [app:8080]         # Spring Boot
+    ├─ dashboard.myapp.com → [caddy serving static]
+    └─ api.myapp.com → [app:8080]
+
+[Docker network "prod-default"]
+  app (Java)     - port 127.0.0.1:8080:8080 (not public!)
+  postgres       - port 127.0.0.1:5432:5432 (not public!)
+  redis          - port 127.0.0.1:6379:6379 (not public!)
+  caddy          - ports 80:80, 443:443 (public — the only entry point)
+\`\`\`
+
+**Key principle:** only Caddy is exposed to the internet. App and database ports are bound to \`127.0.0.1\` only — not \`0.0.0.0\`. A firewall rule only allows 80/443/22.
+
+## Docker Compose for multi-service setup
+
+\`\`\`yaml
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"    # NOT 0.0.0.0 — internal only!
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/myapp   # service name DNS
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # persist across container restarts!
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d myapp"]
+      interval: 10s
+      retries: 5
+    ports:
+      - "127.0.0.1:5432:5432"
+
+volumes:
+  pgdata:                              # named volume: survives container recreation
+\`\`\`
+
+> [!WARNING]
+> **Never put secrets in docker-compose.yml** (committed to git). Use a **\`.env\`** file (gitignored, chmod 600) in the same directory. Docker Compose reads it automatically. On the VPS: \`cp .env.example .env && nano .env\`. Only copy .env.example to git.
+
+## The Caddyfile (auto-HTTPS in 4 lines)
+
+\`\`\`
+myapp.com {
+    encode gzip
+    reverse_proxy app:8080
+}
+\`\`\`
+
+That's the entire config. Caddy fetches a Let's Encrypt cert for \`myapp.com\`, renews it automatically, terminates TLS, gzips responses, and proxies to the app container. Adding a second domain is two more lines.
+
+## Push-to-deploy with a systemd timer
+
+Instead of GitHub Actions (which needs secrets and external network), a systemd timer on the VPS polls git every minute:
+
+\`\`\`bash
+# /root/auto-pull.sh
+cd /root/myapp
+git fetch origin main
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse origin/main)
+if [ "$LOCAL" != "$REMOTE" ]; then
+  git reset --hard origin/main
+  docker compose up -d --build
+  docker image prune -f
+  echo "Deployed at $(date)" >> deploy.log
+fi
+\`\`\`
+
+Timer fires every minute, redeploys only when there's a new commit. **No secrets needed, no GitHub Actions, no manual SSH.**
+
+> [!TIP]
+> The combination of Docker Compose + Caddy + systemd timer is the **simplest possible production setup** for a Java backend. Learn it deeply — you will use this or something equivalent at most startups and scale-ups. It handles production load for hundreds of thousands of users before you need to think about Kubernetes.
+
+## Monitoring a single-VPS production app
+
+- **Caddy logs** — structured JSON access logs; tail -f for real-time
+- **Docker logs** — \`docker compose logs -f app\`
+- **Spring Boot Actuator** — \`/actuator/health\`, \`/actuator/metrics\`, \`/actuator/prometheus\`
+- **Host metrics** — \`htop\`, \`df -h\`, \`free -h\`
+- **Alerting** — send a Telegram message from a scheduled Spring task or a simple cron script
+
+> [!EU]
+> EU interviewers at seed/Series A companies will ask: *"How did you deploy and operate your previous product?"* "We used Docker Compose on a Hetzner VPS with Caddy for TLS, automated deploys via a systemd git-poll timer, and Actuator + Telegram alerts for monitoring" is a **solid, pragmatic answer** that shows real ops experience — more valuable than "we used AWS EKS with Helm" which often means "our platform team did it."
+`,
+      code: [
+        {
+          lang: 'bash',
+          title: 'Complete VPS setup from scratch (annotated)',
+          code: `#!/usr/bin/env bash
+# --- Day-1 VPS setup: security hardening, Docker, Caddy ---
+
+# 1. Secure SSH: disable password auth (keys only)
+echo "PasswordAuthentication no" >> /etc/ssh/sshd_config
+systemctl restart sshd
+
+# 2. Firewall: only allow SSH(22), HTTP(80), HTTPS(443)
+ufw allow 22/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw --force enable
+
+# 3. Install Docker (one-liner from docs.docker.com)
+curl -fsSL https://get.docker.com | sh
+
+# 4. Install Caddy (Debian/Ubuntu)
+apt install -y debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main" > /etc/apt/sources.list.d/caddy-stable.list
+apt update && apt install caddy -y
+
+# 5. Clone the app
+git clone https://github.com/yourorg/myapp.git /root/myapp
+cd /root/myapp
+cp deploy/.env.example deploy/.env
+chmod 600 deploy/.env
+# Edit .env with real secrets:  nano deploy/.env
+
+# 6. Start everything
+docker compose -f deploy/docker-compose.yml up -d --build
+
+# 7. Set up auto-deploy timer
+cp deploy/systemd/myapp-autodeploy.service /etc/systemd/system/
+cp deploy/systemd/myapp-autodeploy.timer   /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now myapp-autodeploy.timer
+
+# 8. Verify
+systemctl list-timers myapp-autodeploy.timer
+docker compose -f deploy/docker-compose.yml ps
+curl -f https://myapp.com/actuator/health   # should return {"status":"UP"}
+
+echo ""
+echo "Production checklist:"
+echo "  [ ] Firewall: only 22/80/443 open"
+echo "  [ ] .env: chmod 600, not in git"
+echo "  [ ] Postgres data: named volume (persists restarts)"
+echo "  [ ] Caddy: verify HTTPS works and cert auto-renewed"
+echo "  [ ] Healthcheck: actuator/health returns UP"
+echo "  [ ] Auto-deploy: timer active and log shows picks up pushes"`
+        },
+        {
+          lang: 'bash',
+          title: 'Docker Compose healthcheck patterns and zero-downtime redeploy',
+          code: `# Full docker-compose.yml with healthchecks, restart policies, and safe redeploy
+
+cat << 'YAML'
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime          # multi-stage: pick the slim JRE stage
+    image: myapp:\${GIT_SHA:-latest}
+    restart: unless-stopped    # restart on crash but respect manual stops
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file: deploy/.env      # loaded from .env file — NOT in this yaml
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider",
+             "http://localhost:8080/actuator/health/readiness"]
+      interval: 20s
+      timeout: 5s
+      start_period: 40s        # give Spring Boot time to start
+      retries: 3
+    depends_on:
+      postgres: { condition: service_healthy }
+    deploy:
+      resources:
+        limits:   { memory: 512m }
+        reservations: { memory: 256m }
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    env_file: deploy/.env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data            # TLS cert storage — must persist!
+      - caddy_config:/config
+    depends_on:
+      app: { condition: service_healthy }  # only start Caddy when app is healthy
+
+volumes:
+  pgdata:
+  caddy_data:      # CRITICAL: if this volume is deleted, certs are lost (re-issue triggers rate limits)
+  caddy_config:
+YAML
+
+echo ""
+echo "=== Zero-downtime redeploy steps ==="
+echo "1. docker compose pull (if using registry) OR docker compose build"
+echo "2. docker compose up -d app   # rolling: Compose stops old, starts new"
+echo "   Caddy keeps routing to old app until the new one passes healthcheck"
+echo ""
+echo "=== Rollback if new version is broken ==="
+echo "docker compose down app"
+echo "docker compose up -d --no-build app  # uses previously built image"
+echo ""
+echo "=== See what's running ==="
+echo "docker compose ps"
+echo "docker compose logs -f --tail=100 app"
+echo "docker inspect myapp-app-1 | grep -A5 Health"`
+        }
+      ],
+      flashcards: [
+        { q: 'Why bind app and database ports to 127.0.0.1 instead of 0.0.0.0 in Docker Compose?', a: 'Binding to 127.0.0.1 means the port is only accessible from the host itself, not from the public internet. Caddy (bound to 0.0.0.0:443) is the only public entry point. Containers on the same Docker network communicate via service names, not host ports.' },
+        { q: 'What does Caddy give you over Nginx for TLS?', a: 'Automatic Let\'s Encrypt certificate provisioning and renewal with zero configuration. Nginx requires certbot, cronjobs, and reload automation. A Caddy reverse proxy for a domain is 3 lines vs ~40 for Nginx with the same functionality.' },
+        { q: 'Why use a named Docker volume for Postgres data and Caddy certs?', a: 'Named volumes persist across container restarts and recreations (docker compose up --build). If you use a bind-mount in /tmp or omit the volume, your database data and TLS certificates are wiped on every rebuild — a production disaster.' },
+        { q: 'What is the systemd timer push-to-deploy pattern?', a: 'A oneshot systemd service runs a shell script that does: git fetch, compare local vs remote revision, git reset --hard + docker compose up --build only when there\'s a new commit. A timer fires it every minute. Result: deploys happen within 60 seconds of a push, no GitHub secrets or external CI needed.' },
+        { q: 'What is the start_period in a Docker healthcheck and why is it important for Spring Boot?', a: 'start_period is a grace time before health failures count. Spring Boot can take 20-40 seconds to start; without start_period, Docker would restart the container before it finishes booting. Set start_period longer than your worst-case startup time.' },
+        { q: 'How do you handle secrets (DB passwords, API keys) on a VPS deployment?', a: 'Store them in a .env file (gitignored, chmod 600) on the VPS. Docker Compose reads it automatically via env_file. Never commit secrets to git — commit only .env.example with placeholder values and document what each variable does.' },
+        { q: 'When would you graduate from Docker Compose to Kubernetes?', a: 'When you need to run across multiple VPS nodes and want automatic pod scheduling, or when you need advanced autoscaling, rolling deploys with zero-downtime at the orchestration level, or when your team has platform engineers who own the K8s cluster. For 1-2 servers with a small team, Docker Compose is the right tool.' }
+      ]
+    },
+
+    {
+      id: '11.3',
+      title: 'Spring Security, OAuth2 & Per-User Data Isolation',
+      hours: 5,
+      notes: `
+# Spring Security, OAuth2 & Per-User Data Isolation
+
+This module covers the full authentication and authorisation stack for a production Spring Boot application: the security filter chain, OAuth2/OIDC login (Google), role-based access control, and the patterns for keeping one user's data isolated from another's.
+
+## The Spring Security filter chain
+
+Every HTTP request passes through a chain of \`Filter\` implementations before reaching your controller. Spring Security inserts its own filters into this chain.
+
+\`\`\`
+Request
+  -> SecurityContextPersistenceFilter   (restore auth from session/token)
+  -> UsernamePasswordAuthenticationFilter (form login — if enabled)
+  -> OAuth2LoginAuthenticationFilter    (social login — if enabled)
+  -> BearerTokenAuthenticationFilter    (JWT — if enabled)
+  -> ExceptionTranslationFilter         (401/403 routing)
+  -> FilterSecurityInterceptor          (access decisions)
+  -> Your Controller
+\`\`\`
+
+Configuring security means customising this chain — adding filters, disabling defaults, configuring which paths need which roles.
+
+## Configuring Spring Security 6 (Lambda DSL)
+
+\`\`\`java
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+    @Bean
+    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        return http
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/api/v1/**").hasAnyRole("USER", "ADMIN")
+                .requestMatchers("/admin/**").hasRole("ADMIN")
+                .anyRequest().authenticated()
+            )
+            .oauth2Login(oauth2 -> oauth2
+                .userInfoEndpoint(ui -> ui.userService(customOAuth2UserService()))
+                .defaultSuccessUrl("/dashboard", true)
+            )
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+            .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**")) // REST API: stateless
+            .build();
+    }
+}
+\`\`\`
+
+## Google OAuth2 login (most common in EU startups)
+
+Spring Boot makes this almost config-only:
+
+\`\`\`yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: openid, email, profile
+\`\`\`
+
+Flow: user clicks "Login with Google" → redirect to Google → user authenticates → Google redirects back with a code → Spring exchanges code for tokens → loads user info → creates/updates your User entity → sets SecurityContext.
+
+> [!TIP]
+> Implement a \`OAuth2UserService\` to map the Google user (by email) to your own \`AppUser\` entity on first login, and to refresh their name/picture on subsequent logins. Store roles in your DB, not in the OAuth token — you control who is an ADMIN.
+
+## JWT for stateless APIs
+
+Session-based auth doesn't work for mobile clients or microservices. JWT (JSON Web Token) embeds claims in a signed token:
+
+- **Header**: algorithm (HS256/RS256)
+- **Payload**: \`sub\` (user id), \`roles\`, \`exp\` (expiry)
+- **Signature**: HMAC or RSA signature
+
+The server verifies the signature on every request — no session lookup needed. The token is stateless; invalidation requires short expiry + a refresh token.
+
+> [!WARNING]
+> JWTs cannot be revoked before expiry (unlike sessions). Use short expiry (15 min access token + longer refresh token). Never put sensitive data in the payload — it's Base64-encoded, not encrypted. Use HTTPS — a stolen JWT is a stolen identity.
+
+## Per-user data isolation
+
+In a multi-tenant application, every DB query must be scoped to the current user. The common patterns:
+
+### Pattern 1: Repository-level filtering (safest)
+\`\`\`java
+// Every query includes userId — impossible to forget if you use this as the only repository method
+public interface JournalRepository extends JpaRepository<TradeJournal, Long> {
+    List<TradeJournal> findByUserId(Long userId);
+    Optional<TradeJournal> findByIdAndUserId(Long id, Long userId); // ownership check built in
+}
+
+// Service: never expose findById without ownership check
+public TradeJournal getForCurrentUser(Long tradeId) {
+    Long userId = SecurityUtils.currentUserId();
+    return repo.findByIdAndUserId(tradeId, userId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+}
+\`\`\`
+
+### Pattern 2: @PostFilter / @PreFilter (Spring Security)
+Annotation-driven but can leak N+1 queries — not recommended for large datasets.
+
+### Pattern 3: Hibernate multi-tenancy (for stricter isolation)
+Separate schemas or databases per tenant. More complex, but appropriate for compliance-heavy applications (GDPR, finance).
+
+> [!WARNING]
+> **Insecure direct object reference (IDOR)** — the OWASP #1 access-control vulnerability: \`GET /api/trades/42\` where 42 is another user's trade. Always check ownership in the repository query, not just "is the user authenticated." \`findByIdAndUserId\` not \`findById\` is the pattern.
+
+## Role-based access control (RBAC)
+
+\`\`\`
+ADMIN  → everything
+USER   → own data + trading
+VIEWER → own data, read-only (no trading)
+\`\`\`
+
+Implement with Spring Security method security:
+
+\`\`\`java
+@EnableMethodSecurity
+@Service
+public class TradingService {
+    @PreAuthorize("hasRole('USER') and not hasRole('VIEWER')")
+    public void placeOrder(OrderRequest req) { ... }
+
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'VIEWER')")
+    public List<Trade> getMyTrades() { ... }
+}
+\`\`\`
+
+> [!EU]
+> EU GDPR requires knowing **who accessed whose data**. Log authenticated user id on every sensitive operation. Store userId in MDC (Mapped Diagnostic Context) at the filter layer so it appears in every log line — this is your audit trail. This is both a legal requirement and an interviewer-pleasing operational maturity signal.
+`,
+      code: [
+        {
+          lang: 'java',
+          title: 'OAuth2 user service: map Google login to your AppUser',
+          code: `import java.util.*;
+
+// In a real Spring Boot app, this is a @Service implementing OAuth2UserService<OidcUserRequest, OidcUser>
+// Here we model the essential logic without the Spring dependencies.
+public class OAuth2UserServiceDemo {
+
+    // Your domain entity
+    static class AppUser {
+        Long id; String email; String name; String role; String googleSub;
+        AppUser(Long id, String email, String name, String role, String googleSub) {
+            this.id=id; this.email=email; this.name=name;
+            this.role=role; this.googleSub=googleSub;
+        }
+        @Override public String toString() {
+            return "AppUser{id=" + id + ", email=" + email + ", role=" + role + "}";
+        }
+    }
+
+    // Simulated DB
+    static final Map<String, AppUser> userDb = new LinkedHashMap<>();
+    static long idSeq = 1;
+
+    // The Google OIDC attributes we care about
+    record GoogleClaims(String sub, String email, String name, String picture) {}
+
+    // This is the core logic of a custom OidcUserService:
+    // Called after Google authenticates the user and returns their claims.
+    static AppUser loadOrCreateUser(GoogleClaims claims, String adminEmail) {
+        // Try to find by Google's sub (stable unique ID — email can change!)
+        AppUser existing = userDb.values().stream()
+            .filter(u -> claims.sub().equals(u.googleSub))
+            .findFirst().orElse(null);
+
+        if (existing != null) {
+            // Refresh name (user might have changed it on Google)
+            existing.name = claims.name();
+            System.out.println("Returning user updated: " + existing);
+            return existing;
+        }
+
+        // First login: create account
+        // ADMIN role if email matches the configured admin; everyone else starts as VIEWER
+        String role = claims.email().equalsIgnoreCase(adminEmail) ? "ADMIN" : "VIEWER";
+        AppUser newUser = new AppUser(idSeq++, claims.email(), claims.name(), role, claims.sub());
+        userDb.put(claims.email(), newUser);
+        System.out.println("New user created: " + newUser);
+        return newUser;
+    }
+
+    public static void main(String[] args) {
+        String adminEmail = "admin@example.com";
+
+        // First login by admin
+        loadOrCreateUser(new GoogleClaims("google-sub-111", "admin@example.com", "Raja Admin", "photo1"), adminEmail);
+        // First login by regular user
+        loadOrCreateUser(new GoogleClaims("google-sub-222", "user@example.com", "John Doe", "photo2"), adminEmail);
+        // Second login by admin (returns existing, updates name)
+        loadOrCreateUser(new GoogleClaims("google-sub-111", "admin@example.com", "Raja S", "photo1"), adminEmail);
+
+        System.out.println("\\nAll users: " + userDb.values());
+        System.out.println("\\nKey point: role is stored in YOUR DB, not in the Google token.");
+        System.out.println("An ADMIN can elevate any user via the admin panel.");
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'Per-user data isolation: IDOR prevention pattern',
+          code: `import java.util.*;
+import java.util.stream.Collectors;
+
+// Demonstrates the correct pattern for preventing Insecure Direct Object Reference (IDOR)
+// OWASP Top 10 A01: Broken Access Control
+public class PerUserIsolationDemo {
+
+    record Trade(Long id, Long userId, String symbol, String status) {}
+
+    // Simulates the trade_journal table
+    static final List<Trade> trades = List.of(
+        new Trade(1L, 100L, "NIFTY24C20000", "OPEN"),
+        new Trade(2L, 100L, "BANKNIFTY", "CLOSED"),
+        new Trade(3L, 200L, "SENSEX", "OPEN"),   // belongs to user 200
+        new Trade(4L, 200L, "NIFTY", "OPEN")
+    );
+
+    // ❌ VULNERABLE: no ownership check — user 100 can access user 200's trade!
+    static Trade getTradeVulnerable(Long tradeId) {
+        return trades.stream().filter(t -> t.id().equals(tradeId)).findFirst()
+                     .orElseThrow(() -> new RuntimeException("not found"));
+    }
+
+    // ✅ SAFE: always filter by BOTH id AND userId — this is the repository pattern
+    static Optional<Trade> getTradeForUser(Long tradeId, Long currentUserId) {
+        return trades.stream()
+                     .filter(t -> t.id().equals(tradeId) && t.userId().equals(currentUserId))
+                     .findFirst();
+    }
+
+    // ✅ SAFE: list only returns the current user's trades
+    static List<Trade> getOpenTradesForUser(Long currentUserId) {
+        return trades.stream()
+                     .filter(t -> t.userId().equals(currentUserId) && "OPEN".equals(t.status()))
+                     .collect(Collectors.toList());
+    }
+
+    // Security audit helper: log who accessed what
+    static void auditLog(Long currentUserId, String action, Long resourceId, boolean success) {
+        System.out.printf("[AUDIT] user=%d action=%s resource=%d success=%s%n",
+                          currentUserId, action, resourceId, success);
+    }
+
+    public static void main(String[] args) {
+        Long attacker = 100L;   // authenticated as user 100
+        Long victim   = 200L;   // user 100 is trying to access user 200's trade
+
+        System.out.println("=== VULNERABLE endpoint ===");
+        // User 100 requests trade #3 (belongs to user 200) — gets it! IDOR!
+        Trade stolen = getTradeVulnerable(3L);
+        System.out.println("IDOR: attacker got " + stolen);
+
+        System.out.println("\n=== SAFE endpoint ===");
+        // Same request through safe endpoint — returns empty
+        Optional<Trade> result = getTradeForUser(3L, attacker);
+        boolean allowed = result.isPresent();
+        auditLog(attacker, "GET_TRADE", 3L, allowed);
+        System.out.println("Safe result for user " + attacker + " requesting trade 3: "
+                           + result.map(Object::toString).orElse("NOT FOUND (correct!)"));
+
+        System.out.println("\n=== User 100's own trades ===");
+        getOpenTradesForUser(attacker).forEach(t ->
+            System.out.println("  " + t + " (belongs to them)"));
+    }
+}`
+        },
+        {
+          lang: 'java',
+          title: 'JWT: creation, signing, and verification',
+          code: `import java.util.*;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
+// JWT concept demo (no external library — educational implementation).
+// In production use: io.jsonwebtoken:jjwt or com.auth0:java-jwt
+public class JwtConceptDemo {
+
+    // A JWT has three Base64URL-encoded parts: header.payload.signature
+    static String base64UrlEncode(String input) {
+        return Base64.getUrlEncoder().withoutPadding()
+                     .encodeToString(input.getBytes(StandardCharsets.UTF_8));
+    }
+
+    static String hmacSha256(String data, String secret) throws Exception {
+        // Simplified HMAC — real code uses javax.crypto.Mac
+        byte[] key  = secret.getBytes(StandardCharsets.UTF_8);
+        byte[] dataBytes = data.getBytes(StandardCharsets.UTF_8);
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        // In reality: javax.crypto.Mac.getInstance("HmacSHA256"), mac.init(SecretKeySpec), mac.doFinal()
+        byte[] hash = md.digest(data.getBytes(StandardCharsets.UTF_8)); // simplified (not real HMAC)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+    }
+
+    static String createToken(long userId, String email, String role, long expiryMs, String secret) throws Exception {
+        String header  = base64UrlEncode("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
+        long   expEpoch = (System.currentTimeMillis() + expiryMs) / 1000;
+        String payload = base64UrlEncode(String.format(
+            "{\"sub\":\"%d\",\"email\":\"%s\",\"role\":\"%s\",\"exp\":%d}",
+            userId, email, role, expEpoch));
+        String signingInput = header + "." + payload;
+        String signature = hmacSha256(signingInput, secret);
+        return signingInput + "." + signature;
+    }
+
+    static Map<String, String> parsePayload(String token) {
+        String[] parts = token.split("\\.");
+        if (parts.length != 3) throw new IllegalArgumentException("invalid token");
+        String payload = new String(Base64.getUrlDecoder().decode(parts[1]));
+        // Simplified parse — real code uses ObjectMapper
+        Map<String, String> claims = new LinkedHashMap<>();
+        payload = payload.replaceAll("[{}\"]", "");
+        for (String kv : payload.split(",")) {
+            String[] pair = kv.split(":");
+            if (pair.length == 2) claims.put(pair[0].trim(), pair[1].trim());
+        }
+        return claims;
+    }
+
+    public static void main(String[] args) throws Exception {
+        String secret = "my-super-secret-key-min-256-bits-for-hs256-security";
+
+        // 1. Issue a token on login
+        String token = createToken(42L, "user@example.com", "USER", 900_000 /*15min*/, secret);
+        System.out.println("Token: " + token.substring(0, 60) + "...");
+
+        // 2. Parse and verify on every request (BearerTokenFilter does this)
+        Map<String, String> claims = parsePayload(token);
+        System.out.println("Claims: " + claims);
+        System.out.println("User id: " + claims.get("sub"));
+        System.out.println("Role: "    + claims.get("role"));
+
+        // Key points about JWT in production:
+        System.out.println("\nProduction rules:");
+        System.out.println("  - Access token: 15min expiry (short! can't revoke before expiry)");
+        System.out.println("  - Refresh token: 7-30 days, stored in DB (can be revoked)");
+        System.out.println("  - Never put passwords or PII in payload (it's BASE64, not encrypted)");
+        System.out.println("  - Always use HTTPS — a stolen token = stolen identity until expiry");
+        System.out.println("  - Use RS256 (asymmetric) when multiple services verify tokens");
+        System.out.println("    (they need the public key only, not the secret)");
+    }
+}`
+        }
+      ],
+      flashcards: [
+        { q: 'What is the Spring Security filter chain and what is its role?', a: 'A chain of Filter implementations through which every HTTP request passes before reaching a controller. Spring Security inserts filters for authentication (OAuth2, JWT, form-login), authorization, exception translation (401/403), and session management. Configuring security means customising this chain.' },
+        { q: 'Why store roles in your own database rather than in the OAuth2 token?', a: 'The OAuth2 token contains identity (email, name) from the provider, but your application defines what roles/permissions that identity has. Storing roles in your DB lets you change a user\'s role without re-authenticating them and keeps authorisation decisions under your control.' },
+        { q: 'What is an IDOR vulnerability and how do you prevent it?', a: 'Insecure Direct Object Reference: accessing another user\'s resource by guessing its ID (e.g. GET /trades/3 where 3 belongs to another user). Prevent it by always querying with BOTH the resource ID AND the authenticated user\'s ID in the WHERE clause — findByIdAndUserId not findById.' },
+        { q: 'What are the trade-offs of JWT vs session-based auth?', a: 'JWT: stateless (no server-side lookup), scales horizontally, works for mobile/API clients — but cannot be revoked before expiry. Sessions: can be revoked instantly (delete the session), but require server-side storage and sticky sessions or a shared session store (Redis).' },
+        { q: 'How does Spring\'s @PreAuthorize prevent access-control bugs?', a: '@PreAuthorize checks the authenticated user\'s roles/authorities before the method executes. Combined with @EnableMethodSecurity it moves authorisation rules to the service layer rather than controllers, so authorisation is enforced even when called from jobs or other services.' },
+        { q: 'Why use findByEmailOrSub (stable Google ID) rather than findByEmail to look up users?', a: 'Google\'s "sub" (subject) claim is a stable unique identifier that never changes for a user. Email can change (user renames their account). If you look up only by email and the user changes their email, they\'d get a new account and lose their data.' },
+        { q: 'What is a short-lived access token + refresh token pattern and why use it?', a: 'Access token expires in 15 minutes (limits damage if stolen — theft window is short). Refresh token lives 7-30 days, stored in DB, and can be revoked. The client exchanges the refresh token for a new access token silently. This balances security with user experience.' },
+        { q: 'How do you implement a GDPR-compliant audit log for data access?', a: 'Store the authenticated user\'s ID in MDC (Mapped Diagnostic Context) at the filter layer so it appears on every log line. Log authenticated userId, action (READ/WRITE/DELETE), resource type, resource ID, and timestamp for every sensitive operation. This trace is your GDPR data-access audit trail.' }
       ]
     }
   ]
