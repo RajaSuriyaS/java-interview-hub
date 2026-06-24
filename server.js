@@ -9,10 +9,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3030;
 
-// Cache-busting version: git short hash if available, else mtime of curriculum.js
+// Cache-busting version: git short hash of THIS repo, else mtime of curriculum.js
+// cwd must be __dirname so git reads the right repo (not the shell's CWD)
 function buildVersion() {
   try {
-    return execSync('git rev-parse --short HEAD', { stdio: ['pipe','pipe','ignore'] })
+    return execSync('git rev-parse --short HEAD', { cwd: __dirname, stdio: ['pipe','pipe','ignore'] })
       .toString().trim();
   } catch {
     return String(statSync(join(__dirname, 'public/js/curriculum.js')).mtimeMs | 0);
