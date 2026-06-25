@@ -9354,6 +9354,223 @@ public class ConcurrentCollectionsDemo {
                 a: `ArrayBlockingQueue is bounded (fixed capacity specified at creation) and backed by an array — lower memory overhead, all elements pre-allocated. LinkedBlockingQueue is optionally bounded (defaults to Integer.MAX_VALUE) and backed by linked nodes — slightly higher overhead but no pre-allocation. Use ArrayBlockingQueue for bounded producer-consumer scenarios to limit memory.`
               }
             ]
+          },
+          {
+            title: `Time Complexity (Big-O) of Java Collections`,
+            notes: `## Time Complexity (Big-O) of Java Collections
+
+Picking the right collection is mostly about understanding how its operations
+*scale*. This is a practical Big-O primer, then a per-collection table, then a
+"pick the right one" guide.
+
+### What the Big-O classes mean (with real numbers)
+
+> [!TIP]
+> Big-O answers: *if I make the collection 10x bigger, how much slower does this
+> operation get?* It ignores constant factors and describes the growth trend.
+
+| Class | Name | If n grows 1k → 1,000,000 (×1000), work grows... | Example |
+|---|---|---|---|
+| **O(1)** | constant | not at all (~same) | \`HashMap.get\`, \`ArrayList.get(i)\` |
+| **O(log n)** | logarithmic | ~×2 (10 → 20 steps) | \`TreeMap.get\`, binary search |
+| **O(n)** | linear | ×1000 | \`ArrayList.contains\`, \`LinkedList.get(i)\` |
+| **O(n log n)** | linearithmic | ~×2000 | good sorting (\`Collections.sort\`) |
+| **O(n^2)** | quadratic | ×1,000,000 | nested loops over the same list |
+
+Concretely, for n = 1,000,000: an O(1) op is ~1 step, O(log n) is ~20 steps,
+O(n) is a million steps, and O(n^2) is a *trillion* steps. That's why an
+accidental O(n^2) (e.g. \`list.contains\` inside a loop over the same list) turns a
+fast feature into a timeout.
+
+> [!SUCCESS]
+> Rule of thumb: prefer **O(1)** lookups (hash) when you don't need order, and
+> **O(log n)** (tree) when you need things sorted. Avoid hidden O(n) lookups inside
+> loops.
+
+### List complexity — ArrayList vs LinkedList
+
+| Operation | ArrayList | LinkedList |
+|---|---|---|
+| \`get(i)\` / \`set(i)\` | **O(1)** | O(n) |
+| \`add\` (at end) | **O(1)** amortized | O(1) |
+| \`add(0, x)\` / remove first | O(n) (shift) | **O(1)** |
+| \`contains\` / \`indexOf\` | O(n) | O(n) |
+| iterate all | O(n), cache-friendly | O(n), pointer-chasing |
+
+> [!WARNING]
+> "Amortized O(1)" for \`ArrayList.add\`: when the internal array fills, it grows to
+> ~1.5x and copies everything (that one add is O(n)). It happens rarely enough that
+> the *average* add is still constant. **\`LinkedList.get(i)\` is O(n)** because it
+> walks node-by-node — there is no index math. In practice \`ArrayList\` wins almost
+> always; reach for \`LinkedList\` essentially never.
+
+### Set complexity — HashSet vs TreeSet vs LinkedHashSet
+
+| Operation | HashSet | LinkedHashSet | TreeSet |
+|---|---|---|---|
+| \`add\` | **O(1)** avg | O(1) avg | O(log n) |
+| \`contains\` | **O(1)** avg | O(1) avg | O(log n) |
+| \`remove\` | **O(1)** avg | O(1) avg | O(log n) |
+| iteration order | none | **insertion order** | **sorted** |
+
+### Map complexity — HashMap vs TreeMap vs LinkedHashMap
+
+| Operation | HashMap | LinkedHashMap | TreeMap |
+|---|---|---|---|
+| \`get\` | **O(1)** avg | O(1) avg | O(log n) |
+| \`put\` | **O(1)** avg | O(1) avg | O(log n) |
+| \`remove\` | **O(1)** avg | O(1) avg | O(log n) |
+| \`containsKey\` | **O(1)** avg | O(1) avg | O(log n) |
+| iteration order | none | **insertion/access** | **sorted by key** |
+
+> [!DANGER]
+> \`HashMap\`'s O(1) is an *average* with a good \`hashCode()\`. If many keys collide
+> into one bucket it degrades — but Java 8+ converts an overloaded bucket to a
+> red-black tree, so the worst case is **O(log n)**, not O(n). A broken/constant
+> \`hashCode()\` still destroys performance: every key lands in one bucket.
+
+### Queue / Deque complexity — ArrayDeque vs PriorityQueue vs LinkedList
+
+| Operation | ArrayDeque | PriorityQueue | LinkedList |
+|---|---|---|---|
+| add/offer (end) | **O(1)** amortized | O(log n) | O(1) |
+| peek (head) | O(1) | **O(1)** (min/max) | O(1) |
+| poll (remove head) | O(1) | O(log n) | O(1) |
+| \`contains\` | O(n) | O(n) | O(n) |
+
+> [!TIP]
+> \`ArrayDeque\` is the default queue *and* stack (faster and lighter than
+> \`LinkedList\` and the legacy \`Stack\`). \`PriorityQueue\` is a heap: it always gives
+> you the smallest (or largest, by comparator) element next, at O(log n) per
+> offer/poll and O(1) peek.
+
+### Pick the right one (by what you need)
+
+| You need... | Use | Because |
+|---|---|---|
+| Indexed access + iterate | \`ArrayList\` | O(1) get, O(1) append, cache-friendly |
+| Fast membership / dedup | \`HashSet\` | O(1) contains |
+| Key → value lookups | \`HashMap\` | O(1) get/put |
+| Sorted keys or range queries | \`TreeMap\`/\`TreeSet\` | O(log n) + ordering |
+| Keep insertion order / LRU cache | \`LinkedHashMap\`/\`Set\` | O(1) ops + ordered iterate |
+| FIFO queue or LIFO stack | \`ArrayDeque\` | O(1) both ends, no node overhead |
+| Always process smallest/highest first | \`PriorityQueue\` | O(log n) offer/poll, O(1) peek |
+
+> [!EU]
+> Safe defaults: **\`ArrayList\`**, **\`HashMap\`**, **\`HashSet\`**, **\`ArrayDeque\`**.
+> Switch to a \`Tree*\` only when you need ordering, to a \`LinkedHash*\` only when you
+> need predictable iteration order, and to \`PriorityQueue\` only when you need
+> min/max-first processing.`,
+            code: [
+              {
+                lang: `java`,
+                label: `Feel the difference: O(1) HashSet.contains vs O(n) ArrayList.contains`,
+                code: `import java.util.*;
+
+/**
+ * Shows why "contains" inside a loop can be O(1) or O(n) depending on the type.
+ * Compile/run on a bare JDK:  javac PickRightDemo.java && java PickRightDemo
+ */
+public class PickRightDemo {
+    public static void main(String[] args) {
+        int[] sizes = {50_000, 100_000, 200_000, 400_000};
+        int queries = 50_000;
+        Random rnd = new Random(1);
+
+        System.out.printf("%-10s | %-22s | %-22s%n",
+                "N", "ArrayList.contains(ns)", "HashSet.contains(ns)");
+        System.out.println("-".repeat(60));
+
+        for (int n : sizes) {
+            List<Integer> list = new ArrayList<>();
+            Set<Integer> set   = new HashSet<>();
+            for (int i = 0; i < n; i++) { list.add(i); set.add(i); }
+
+            long listNs = timeContains(list, queries, rnd, n);
+            long setNs  = timeContains(set,  queries, rnd, n);
+            System.out.printf("%-10d | %-22d | %-22d%n", n, listNs, setNs);
+        }
+        System.out.println();
+        System.out.println("ArrayList.contains grows with N -> O(n)");
+        System.out.println("HashSet.contains stays flat     -> O(1) average");
+    }
+
+    private static long timeContains(Collection<Integer> c, int queries, Random rnd, int n) {
+        long hits = 0;
+        long start = System.nanoTime();
+        for (int i = 0; i < queries; i++) {
+            if (c.contains(rnd.nextInt(n))) hits++;
+        }
+        long elapsed = System.nanoTime() - start;
+        if (hits == Long.MIN_VALUE) System.out.print(""); // prevent dead-code removal
+        return elapsed / queries;
+    }
+}`
+              },
+              {
+                lang: `text`,
+                label: `Sample output shape (numbers vary by machine)`,
+                code: `N          | ArrayList.contains(ns) | HashSet.contains(ns)
+------------------------------------------------------------
+50000      | 18234                  | 31
+100000     | 36510                  | 30
+200000     | 72980                  | 32
+400000     | 146120                 | 33
+
+ArrayList.contains grows with N -> O(n)
+HashSet.contains stays flat     -> O(1) average`
+              }
+            ],
+            flashcards: [
+              {
+                front: `In plain terms, what does O(1) vs O(n) mean for a collection operation?`,
+                back: `O(1) (constant) takes about the same time no matter how big the collection is. O(n) (linear) takes proportionally longer as the collection grows — 10x bigger means ~10x slower.`
+              },
+              {
+                front: `How fast does O(log n) grow compared to O(n)?`,
+                back: `Very slowly. For a million elements, O(n) is ~1,000,000 steps while O(log n) is only ~20. Doubling the data adds just one step to a log-time operation.`
+              },
+              {
+                front: `Why is ArrayList.get(i) O(1) but LinkedList.get(i) O(n)?`,
+                back: `ArrayList stores elements in one array and computes the address by index arithmetic (instant). LinkedList must hop node-by-node along pointers to reach index i, so cost grows with i.`
+              },
+              {
+                front: `What does "amortized O(1)" mean for ArrayList.add?`,
+                back: `Most appends are instant. Occasionally the backing array is full and gets copied to a ~1.5x bigger one (O(n) for that one add). It happens rarely enough that the average add is still constant.`
+              },
+              {
+                front: `HashMap.get is "O(1) average" — what is the catch?`,
+                back: `It relies on a good hashCode() spreading keys across buckets. With heavy collisions it degrades, but Java 8+ converts an overloaded bucket to a balanced tree, so the worst case is O(log n), not O(n).`
+              },
+              {
+                front: `When would you choose TreeMap over HashMap despite TreeMap being slower per op?`,
+                back: `When you need keys sorted or need range/navigation queries (firstKey, ceilingKey, headMap, subMap). TreeMap is O(log n) but ordered; HashMap is O(1) but unordered.`
+              },
+              {
+                front: `HashSet vs TreeSet vs LinkedHashSet — complexity and ordering?`,
+                back: `HashSet: O(1) ops, no order. LinkedHashSet: O(1) ops, insertion order. TreeSet: O(log n) ops, sorted order. Pay the log cost only when you need sorting.`
+              },
+              {
+                front: `Why prefer ArrayDeque over LinkedList for a queue or stack?`,
+                back: `Both give O(1) at the ends, but ArrayDeque uses a contiguous array (faster, cache-friendly, no per-element node objects). It is the recommended replacement for both LinkedList queues and the legacy Stack.`
+              },
+              {
+                front: `What does PriorityQueue give you and at what cost?`,
+                back: `It always returns the smallest (or comparator-defined) element next. offer and poll are O(log n), peek is O(1). It is a heap, so contains/remove(object) are O(n).`
+              },
+              {
+                front: `Why can an accidental O(n^2) be catastrophic?`,
+                back: `It scales as the square of n. At n = 1,000,000 that is a trillion operations. A common cause is calling list.contains (O(n)) inside a loop over the same list — switch to a HashSet to make membership O(1).`
+              },
+              {
+                front: `What are safe default collections and when do you deviate?`,
+                back: `Defaults: ArrayList, HashMap, HashSet, ArrayDeque. Use Tree* when you need sorting, LinkedHash* when you need predictable iteration order, and PriorityQueue when you need min/max-first processing.`
+              },
+              {
+                front: `Why does iteration order matter when choosing between HashMap and LinkedHashMap?`,
+                back: `HashMap iterates in an unpredictable order. LinkedHashMap keeps a linked list of entries and iterates in insertion (or access) order at the same O(1) per-op cost — useful for caches and reproducible output.`
+              }
+            ]
           }
         ]
       },
@@ -16583,6 +16800,275 @@ Dept breakdown:");
               {
                 q: `When would you use TreeMap instead of HashMap?`,
                 a: `When you need sorted key iteration, range queries (subMap, headMap, tailMap), or nearest-key lookups (floorKey, ceilingKey, lowerKey, higherKey). Examples: log entries by timestamp prefix, autocomplete with prefix range, scheduling sorted by time. TreeMap costs O(log n) per operation vs HashMap's O(1). Keys must implement Comparable or a Comparator must be provided.`
+              }
+            ]
+          },
+          {
+            title: `Big-O Cheat Sheet — Time & Space Complexity of the Collections`,
+            notes: `## Big-O Cheat Sheet — Time & Space Complexity of the Java Collections
+
+You know the APIs cold. This section is about the *cost model* behind them so you
+can reason about throughput, tail latency and memory at scale — and defend a
+collection choice in a design review.
+
+> [!TIP]
+> Big-O describes how cost *grows* with size \`n\`. It hides constant factors and
+> cache effects, which is exactly why a "slower" \`O(n)\` \`ArrayList\` scan can beat
+> a "faster" \`O(1)\` \`LinkedList\` operation in practice. Always pair asymptotics
+> with the memory-layout/cache story below.
+
+### The master table
+
+| Collection | get / indexOf | add (end) | insert/remove at index | remove(value) | contains | iterate all | Space |
+|---|---|---|---|---|---|---|---|
+| \`ArrayList\` | **O(1)** | **O(1)** amortized | O(n) (shift) | O(n) | O(n) | O(n) | O(n), 1 array |
+| \`LinkedList\` | O(n) | O(1) | O(n) to find + O(1) relink | O(n) | O(n) | O(n) | O(n), 2 ptrs/node |
+| \`ArrayDeque\` | n/a (no index) | O(1) amortized (both ends) | n/a | O(n) | O(n) | O(n) | O(n), 1 array |
+| \`HashMap\` | O(1) avg / **O(log n)** worst | O(1) avg / O(log n) worst | n/a | O(1) avg | O(1) avg | O(n + capacity) | O(n) + buckets |
+| \`LinkedHashMap\` | O(1) avg / O(log n) worst | O(1) avg | n/a | O(1) avg | O(1) avg | **O(n)** (no capacity scan) | O(n) + linked list |
+| \`TreeMap\` | O(log n) | O(log n) | n/a | O(log n) | O(log n) | O(n) | O(n), RB-tree nodes |
+| \`HashSet\` | n/a | O(1) avg / O(log n) worst | n/a | O(1) avg | O(1) avg | O(n + capacity) | backed by HashMap |
+| \`LinkedHashSet\` | n/a | O(1) avg | n/a | O(1) avg | O(1) avg | O(n) | backed by LinkedHashMap |
+| \`TreeSet\` | n/a | O(log n) | n/a | O(log n) | O(log n) | O(n) | backed by TreeMap |
+| \`PriorityQueue\` | n/a | offer **O(log n)** | n/a | remove(obj) O(n) | O(n) | O(n) | O(n), 1 array heap |
+| \`ConcurrentHashMap\` | O(1) avg / O(log n) worst | O(1) avg | n/a | O(1) avg | O(1) avg | O(n + capacity) | O(n) + buckets |
+
+\`PriorityQueue\`: \`peek\` is **O(1)**, \`poll\` is **O(log n)** (sift-down).
+
+### Why each number is what it is
+
+> [!SUCCESS]
+> **Array-backed (\`ArrayList\`, \`ArrayDeque\`, \`PriorityQueue\` heap).** A single
+> contiguous \`Object[]\`. Index math is one multiply+add → \`get(i)\` is true O(1)
+> and iteration is **cache-friendly** (sequential prefetch). The cost is *structural
+> change in the middle*: inserting/removing shifts up to \`n\` elements → O(n).
+
+**Amortized O(1) — \`ArrayList.add\`.** When the backing array fills, \`ArrayList\`
+grows by ~1.5x (\`oldCap + (oldCap >> 1)\`) and copies everything: that single add
+is O(n). But doubling-style growth means copies happen geometrically rarely, so
+the *average* cost over many adds is constant — **amortized O(1)**. Total work to
+append \`n\` items is O(n), not O(n^2). \`ArrayDeque\` and \`PriorityQueue\` use the same
+amortized-growth trick.
+
+> [!WARNING]
+> **\`LinkedList\` random access is O(n).** Nodes are scattered on the heap and
+> linked by pointers. \`get(i)\` walks from the nearest end (\`LinkedList\` optimizes
+> by starting from head or tail, but it is still up to n/2 hops). Pointer-chasing
+> defeats the CPU cache: every hop is a likely cache miss. In 12 years you will
+> rarely find a workload where \`LinkedList\` beats \`ArrayList\`/\`ArrayDeque\` — even
+> queue/stack/deque use \`ArrayDeque\`. The classic "fast middle insert" only wins
+> when you *already hold the node* (e.g. an \`Iterator\`), which application code
+> almost never does.
+
+**Hash-backed (\`HashMap\`/\`HashSet\` and concurrent variants).** Key hash →
+bucket index → short scan within the bucket. With a good hash and load factor
+\`0.75\`, buckets hold ~1 entry, so \`get\`/\`put\`/\`containsKey\` are **O(1) average**.
+
+> [!DANGER]
+> **HashMap worst case and Java 8 treeification.** Many keys colliding into one
+> bucket degrade lookups. Pre-Java 8 a bucket was a linked list → **O(n)** worst
+> case (a real DoS vector: \`HashDoS\` with crafted colliding keys). **Java 8**: when
+> a bucket exceeds \`TREEIFY_THRESHOLD = 8\` *and* table capacity \`>= 64\`, that bucket
+> converts to a **red-black tree**, bounding worst-case lookup at **O(log n)**
+> instead of O(n). It untreeifies back to a list below \`UNTREEIFY_THRESHOLD = 6\`.
+> Treeification needs keys to be \`Comparable\` (else it falls back to identity hash
+> ordering). Net: average O(1), worst O(log n) — never O(n) in modern JDKs.
+
+**Tree-backed (\`TreeMap\`/\`TreeSet\`).** A self-balancing **red-black tree** keeps
+height \`~log n\`, so \`get\`/\`put\`/\`remove\`/\`contains\` are all **O(log n)**. You pay
+that log factor to gain *sorted order* and range queries (\`firstKey\`, \`ceilingKey\`,
+\`headMap\`, \`subMap\`, \`floorEntry\`) that hash structures cannot offer.
+
+**Heap-backed (\`PriorityQueue\`).** A binary min-heap in an array. \`offer\`/\`poll\`
+are **O(log n)** (sift up/down along the tree height); \`peek\` is **O(1)** (root).
+\`contains\`/\`remove(Object)\` are O(n) — a heap is not searchable, only "min-first".
+Heapifying a known collection via the constructor is O(n).
+
+### Iteration cost & cache locality — the part interviews miss
+
+\`\`\`mermaid
+flowchart LR
+  A["ArrayList / ArrayDeque<br/>contiguous Object[]"] -->|"sequential, prefetch-friendly"| F["FAST iterate"]
+  L["LinkedList<br/>scattered nodes + pointers"] -->|"pointer chasing, cache misses"| S["SLOW iterate"]
+  H["HashMap iterate"] -->|"walks whole table incl. empty buckets"| C["O(n + capacity)"]
+  LH["LinkedHashMap iterate"] -->|"follows insertion-order linked list"| O["O(n) exactly"]
+\`\`\`
+
+> [!TIP]
+> Iterating a \`HashMap\` is **O(n + capacity)** because it scans every bucket slot,
+> including empty ones. A map sized for millions but holding few entries iterates
+> slowly. \`LinkedHashMap\` maintains its own doubly-linked list of entries, so its
+> iteration is a clean **O(n)** in insertion (or access) order — handy for LRU
+> caches via \`removeEldestEntry\` and \`accessOrder=true\`.
+
+### How to choose a collection (complexity-driven)
+
+| Need | Pick | Why (complexity) |
+|---|---|---|
+| Indexed list, append, scan | \`ArrayList\` | O(1) get/append, cache-friendly iterate |
+| FIFO queue / stack / deque | \`ArrayDeque\` | O(1) both ends, beats \`LinkedList\` & \`Stack\` |
+| Membership / dedup, no order | \`HashSet\` | O(1) contains/add |
+| Key→value lookup, no order | \`HashMap\` | O(1) get/put |
+| Sorted keys, ranges, nearest | \`TreeMap\`/\`TreeSet\` | O(log n) + ordered navigation |
+| Predictable iteration order / LRU | \`LinkedHashMap\`/\`Set\` | O(1) ops + O(n) ordered iterate |
+| Always pull the min/max next | \`PriorityQueue\` | O(log n) offer/poll, O(1) peek |
+| Concurrent map, high read throughput | \`ConcurrentHashMap\` | O(1) avg, lock-striped/CAS, no global lock |
+
+> [!EU]
+> Defaults that age well: **\`ArrayList\`** for sequences, **\`HashMap\`/\`HashSet\`** for
+> lookup/dedup, **\`ArrayDeque\`** for queues & stacks, **\`TreeMap\`/\`TreeSet\`** only when
+> you genuinely need ordering. Reach for \`LinkedList\` essentially never. Pre-size
+> hash structures (\`new HashMap<>(expected/0.75 + 1)\`) to avoid resize churn, and
+> ensure good \`hashCode()\` to keep the O(1) average true.`,
+            code: [
+              {
+                lang: `java`,
+                label: `ArrayList vs LinkedList — get(i) cost grows with N (random access)`,
+                code: `import java.util.*;
+
+/**
+ * Empirically shows ArrayList.get is O(1) (flat) while LinkedList.get is O(n)
+ * (grows with N). Run on a bare JDK:  javac BigODemo.java && java BigODemo
+ */
+public class BigODemo {
+
+    public static void main(String[] args) {
+        int[] sizes = {10_000, 20_000, 40_000, 80_000};
+        int probes = 2_000;
+        Random rnd = new Random(42);
+
+        System.out.printf("%-10s | %-22s | %-22s%n",
+                "N", "ArrayList.get (ns/op)", "LinkedList.get (ns/op)");
+        System.out.println("-".repeat(62));
+
+        for (int n : sizes) {
+            List<Integer> arr  = new ArrayList<>();
+            List<Integer> link = new LinkedList<>();
+            for (int i = 0; i < n; i++) { arr.add(i); link.add(i); }
+
+            long arrNs  = timeRandomGets(arr,  probes, rnd, n);
+            long linkNs = timeRandomGets(link, probes, rnd, n);
+
+            System.out.printf("%-10d | %-22d | %-22d%n", n, arrNs, linkNs);
+        }
+
+        System.out.println();
+        System.out.println("ArrayList column stays roughly flat  -> O(1) random access");
+        System.out.println("LinkedList column grows with N       -> O(n) random access");
+    }
+
+    private static long timeRandomGets(List<Integer> list, int probes, Random rnd, int n) {
+        // warm up the JIT a little
+        long sink = 0;
+        for (int w = 0; w < probes; w++) sink += list.get(rnd.nextInt(n));
+
+        long start = System.nanoTime();
+        for (int i = 0; i < probes; i++) sink += list.get(rnd.nextInt(n));
+        long elapsed = System.nanoTime() - start;
+
+        if (sink == Long.MIN_VALUE) System.out.print(""); // keep JIT honest
+        return elapsed / probes;
+    }
+}`
+              },
+              {
+                lang: `java`,
+                label: `HashMap O(1) vs TreeMap O(log n) lookup — and amortized ArrayList growth`,
+                code: `import java.util.*;
+
+public class HashVsTreeDemo {
+    public static void main(String[] args) {
+        int[] sizes = {100_000, 200_000, 400_000, 800_000};
+        int lookups = 200_000;
+        Random rnd = new Random(7);
+
+        System.out.printf("%-10s | %-20s | %-20s%n",
+                "N", "HashMap.get (ns)", "TreeMap.get (ns)");
+        System.out.println("-".repeat(56));
+
+        for (int n : sizes) {
+            Map<Integer,Integer> hash = new HashMap<>();
+            Map<Integer,Integer> tree = new TreeMap<>();
+            for (int i = 0; i < n; i++) { hash.put(i, i); tree.put(i, i); }
+
+            long h = timeGets(hash, lookups, rnd, n);
+            long t = timeGets(tree, lookups, rnd, n);
+            System.out.printf("%-10d | %-20d | %-20d%n", n, h, t);
+        }
+        System.out.println();
+        System.out.println("HashMap stays ~flat (O(1) avg); TreeMap grows ~log n.");
+
+        // Amortized O(1): appending n items copies geometrically rarely.
+        System.out.println();
+        int n = 2_000_000;
+        long start = System.nanoTime();
+        List<Integer> a = new ArrayList<>();
+        for (int i = 0; i < n; i++) a.add(i); // each add amortized O(1)
+        long ms = (System.nanoTime() - start) / 1_000_000;
+        System.out.println("Appended " + n + " items in " + ms +
+                " ms -> total O(n), amortized O(1)/add despite array doubling.");
+    }
+
+    private static long timeGets(Map<Integer,Integer> m, int lookups, Random rnd, int n) {
+        long sink = 0;
+        for (int w = 0; w < lookups; w++) sink += m.get(rnd.nextInt(n));
+        long start = System.nanoTime();
+        for (int i = 0; i < lookups; i++) sink += m.get(rnd.nextInt(n));
+        long elapsed = System.nanoTime() - start;
+        if (sink == Long.MIN_VALUE) System.out.print("");
+        return elapsed / lookups;
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                front: `What does "amortized O(1)" mean for ArrayList.add?`,
+                back: `Most adds are O(1); occasionally a full array is copied to a ~1.5x larger one (O(n)). Because growth is geometric, copies happen rarely enough that the average over n appends is constant. Total work to append n items is O(n), not O(n^2).`
+              },
+              {
+                front: `HashMap get: average vs worst case, and how Java 8 changed the worst case?`,
+                back: `Average O(1). Pre-Java 8 a colliding bucket was a linked list → O(n) worst. Java 8 treeifies a bucket to a red-black tree when it exceeds 8 entries and table capacity >= 64, bounding the worst case at O(log n).`
+              },
+              {
+                front: `Exact treeify/untreeify thresholds in HashMap?`,
+                back: `TREEIFY_THRESHOLD = 8 (and MIN_TREEIFY_CAPACITY = 64; below that it resizes instead). UNTREEIFY_THRESHOLD = 6 — the tree reverts to a list when shrinking past 6.`
+              },
+              {
+                front: `Why is LinkedList.get(i) O(n)?`,
+                back: `No index math — it must walk node pointers from the nearest end (up to n/2 hops). Each hop chases a scattered heap pointer, causing cache misses. ArrayList.get is O(1) via contiguous-array index arithmetic.`
+              },
+              {
+                front: `Why does ArrayList usually beat LinkedList even for "middle insert"?`,
+                back: `Application code rarely holds the node; it must first locate the position (O(n) walk) before the O(1) relink, so the net is O(n) anyway. Plus contiguous arrays are cache-friendly while pointer-chasing is not. The win only appears when you already hold an Iterator at the spot.`
+              },
+              {
+                front: `TreeMap/TreeSet complexity and what you buy with it?`,
+                back: `O(log n) for get/put/remove/contains via a self-balancing red-black tree (height ~log n). You pay the log factor for sorted order and navigation: firstKey, ceilingKey, floorEntry, headMap, subMap — none of which a hash structure offers.`
+              },
+              {
+                front: `PriorityQueue: complexity of offer, poll, peek, and contains?`,
+                back: `Binary heap in an array: offer O(log n) (sift up), poll O(log n) (sift down), peek O(1) (root). contains/remove(Object) are O(n) — a heap is min-first, not searchable. Bulk heapify via constructor is O(n).`
+              },
+              {
+                front: `Why is iterating a HashMap O(n + capacity), not O(n)?`,
+                back: `Iteration walks every bucket slot including empty ones, so cost depends on table capacity. A map sized huge but holding few entries iterates slowly. LinkedHashMap keeps a linked list of entries and iterates in clean O(n) insertion/access order.`
+              },
+              {
+                front: `ArrayDeque vs LinkedList for a queue/stack — which and why?`,
+                back: `ArrayDeque. Both give O(1) ends, but ArrayDeque is a contiguous circular array (cache-friendly, less garbage, no per-node pointer overhead). LinkedList allocates a node per element and chases pointers. ArrayDeque also replaces the legacy synchronized Stack.`
+              },
+              {
+                front: `What is HashDoS and how does treeification mitigate it?`,
+                back: `An attacker submits keys engineered to collide into one bucket, degrading lookups to O(n) and causing CPU exhaustion. Java 8 treeification converts an overloaded bucket to a red-black tree, capping worst-case lookup at O(log n).`
+              },
+              {
+                front: `Space cost: why does LinkedList use more memory than ArrayList?`,
+                back: `LinkedList allocates a Node object per element with two pointers (prev/next) plus object header — often 3-4x the payload. ArrayList stores references in one contiguous array with only ~capacity slack from growth.`
+              },
+              {
+                front: `When should you pre-size a HashMap and why?`,
+                back: `When you know the expected count. Sizing new HashMap<>((int)(expected/0.75)+1) avoids repeated resize+rehash (each O(n)) as it grows past the 0.75 load factor, keeping inserts smooth and O(1) average.`
               }
             ]
           }
