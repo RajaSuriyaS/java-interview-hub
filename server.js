@@ -33,8 +33,9 @@ const indexPath = join(__dirname, 'public', 'index.html');
 
 function serveIndex(res) {
   const html = readFileSync(indexPath, 'utf8')
-    .replace('/js/curriculum.js"', `/js/curriculum.js?v=${VERSION}"`)
-    .replace('/js/app.js"',        `/js/app.js?v=${VERSION}"`);
+    .replace('/js/curriculum.js"',          `/js/curriculum.js?v=${VERSION}"`)
+    .replace('/js/interview-questions.js"', `/js/interview-questions.js?v=${VERSION}"`)
+    .replace('/js/app.js"',                 `/js/app.js?v=${VERSION}"`);
   // HTML must never be cached — browser must always re-fetch so the ?v= hash stays fresh
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.set('Pragma', 'no-cache');

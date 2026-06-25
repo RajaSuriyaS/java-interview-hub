@@ -19067,6 +19067,9 @@ public class ModernJavaFeatures {
           title: 'Inversion of Control & Dependency Injection',
           notes: `## Inversion of Control & Dependency Injection
 
+> [!TIP]
+> **Big picture — read this first.** Spring is, at its core, one big factory. You write plain classes and tell Spring "this class needs a UserRepository"; Spring creates every object once, figures out what each one needs, and hands the right instances over for you. That's the *whole* idea behind the buzzwords below: **IoC** = Spring (not you) decides when objects are created and wired; **DI** = the concrete way it hands dependencies in. Everything else in this phase — auto-config, \`@Transactional\`, repositories — is built on top of this one factory. If you can explain *why you'd let a framework own object creation* in one sentence, you're ahead of most candidates.
+
 **Inversion of Control (IoC)** is the principle that a framework calls your code, rather than your code calling the framework. Control of object creation and wiring is *inverted* — you hand it to the container.
 
 **Dependency Injection (DI)** is the most common way to achieve IoC. Instead of a class creating its own dependencies, they are *injected* from outside.
@@ -20158,6 +20161,9 @@ public class ApplicationContextPatterns {
           title: 'Auto-Configuration Internals — How Spring Boot Wires Itself',
           notes: `## Auto-Configuration Internals
 
+> [!TIP]
+> **Big picture — read this first.** "Auto-configuration" sounds like magic, but it's just a giant pile of pre-written \`@Configuration\` classes that ship inside Spring Boot, each guarded by an *if* statement. When the app starts, Boot asks each one: "Is the H2 driver on the classpath? Has the user already defined their own DataSource? Is this property set?" — and only the ones whose conditions pass get applied. That's why dropping in a starter dependency "just works", and why **defining your own bean always wins** (the auto-config's \`@ConditionalOnMissingBean\` quietly steps aside). Hold onto that one mental model — *conditional config classes you can always override* — and the rest of this section is detail.
+
 Spring Boot's auto-configuration is the mechanism that configures beans automatically based on what's on the classpath, existing beans, and properties. It's why adding \`spring-boot-starter-data-jpa\` is enough — no XML or manual bean declarations needed.
 
 ### The Chain of Events
@@ -21067,6 +21073,9 @@ class AutoConfigTest {
           title: '@Transactional Internals — Proxy Mechanics & Pitfalls',
           notes: `## @Transactional Internals — Proxy Mechanics & Pitfalls
 
+> [!TIP]
+> **Big picture — read this first.** \`@Transactional\` doesn't change your method's code. Instead, Spring wraps your bean in an invisible stand-in (a *proxy*) that says "open a database transaction → call your real method → commit (or roll back if it threw)". Every caller actually talks to the proxy, not to you directly. This single fact explains the two most-asked Spring gotchas in interviews: (1) calling \`this.otherTransactionalMethod()\` from inside the same class **skips the proxy**, so no new transaction starts; and (2) by default Spring only rolls back on *unchecked* exceptions. Keep the proxy picture in your head and the pitfalls below stop being surprising. The runnable proxy demo in the **Code** tab lets you watch this happen on a bare JVM.
+
 ### How @Transactional Works
 
 Spring implements @Transactional using AOP proxies. When you annotate a class or method with @Transactional, Spring wraps your bean in a proxy that intercepts method calls to begin/commit/rollback the transaction.
@@ -21181,6 +21190,74 @@ public class MyService {
 }
 \`\`\``,
           code: [
+            `import java.lang.reflect.*;
+import java.lang.annotation.*;
+import java.util.*;
+
+// ✅ RUNNABLE on a bare JDK — no Spring needed. This recreates exactly what
+// Spring's @Transactional proxy does, so you can WATCH the self-invocation bug.
+public class TxProxyDemo {
+    // a tiny "transaction manager" — just prints begin/commit/rollback
+    static int depth = 0;
+    static void begin(String m)    { System.out.println("  ".repeat(depth++) + "BEGIN tx  -> " + m + "()"); }
+    static void commit(String m)   { System.out.println("  ".repeat(--depth) + "COMMIT    <- " + m + "()"); }
+    static void rollback(String m) { System.out.println("  ".repeat(--depth) + "ROLLBACK  <- " + m + "() (unchecked exception)"); }
+
+    @Retention(RetentionPolicy.RUNTIME) @interface Tx {}
+
+    interface AccountService {
+        void transfer(String from, String to, int amt);
+        void audited(String from, String to, int amt);
+    }
+
+    // your real bean — plain business logic, zero framework code
+    static class Impl implements AccountService {
+        @Tx public void transfer(String from, String to, int amt) {
+            System.out.println("    transferring " + amt + " from " + from + " to " + to);
+            if (amt < 0) throw new IllegalArgumentException("negative amount");
+        }
+        @Tx public void audited(String from, String to, int amt) {
+            System.out.println("    audited(): doing extra work, then calling this.transfer()...");
+            this.transfer(from, to, amt);   // ⚠️ self-call through 'this' bypasses the proxy
+        }
+    }
+
+    // the proxy — opens a tx around any @Tx method, just like Spring AOP
+    static AccountService proxy(AccountService target) {
+        return (AccountService) Proxy.newProxyInstance(
+            AccountService.class.getClassLoader(), new Class<?>[]{AccountService.class},
+            (px, method, args) -> {
+                Method real = target.getClass().getMethod(method.getName(), method.getParameterTypes());
+                if (!real.isAnnotationPresent(Tx.class)) return real.invoke(target, args);
+                begin(method.getName());
+                try {
+                    Object r = real.invoke(target, args);
+                    commit(method.getName());
+                    return r;
+                } catch (InvocationTargetException e) {
+                    if (e.getCause() instanceof RuntimeException) rollback(method.getName());
+                    else commit(method.getName());     // checked exception → Spring COMMITS by default
+                    throw e.getCause();
+                }
+            });
+    }
+
+    public static void main(String[] args) {
+        AccountService svc = proxy(new Impl());
+
+        System.out.println("1) Normal call THROUGH the proxy:");
+        svc.transfer("alice", "bob", 100);
+
+        System.out.println("\\n2) Self-invocation — audited() calls this.transfer():");
+        svc.audited("alice", "bob", 50);
+        System.out.println("   ^ transfer() got NO BEGIN/COMMIT of its own — the classic @Transactional bug.");
+        System.out.println("     Fix: call an injected reference to the proxy (self.transfer), or split into 2 beans.");
+
+        System.out.println("\\n3) Unchecked exception rolls the tx back:");
+        try { svc.transfer("alice", "bob", -5); }
+        catch (Exception e) { System.out.println("   caught: " + e.getMessage()); }
+    }
+}`,
             `import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.*;
 import org.springframework.beans.factory.annotation.*;
@@ -21788,6 +21865,9 @@ class UserService {
           title: 'Repository Pattern & JpaRepository',
           notes: `## Repository Pattern & JpaRepository
 
+> [!TIP]
+> **Big picture — read this first.** You declare an *interface* — \`interface UserRepository extends JpaRepository<User, Long>\` — and never write a single line of its implementation. At startup Spring Data reads the method names (\`findByEmailAndActiveTrue\`), translates them into SQL/JPQL, and generates a class that runs them. So the mental model is: **you describe the query in the method name or \`@Query\`, Spring writes the boring DAO code.** The catch that interviewers love: because the SQL is generated and lazy-loaded, it's easy to accidentally fire one query per row (the **N+1 problem**) or hit a \`LazyInitializationException\` after the transaction closed. The runnable demo in the **Code** tab simulates N+1 vs a join-fetch on a plain JVM so you can *see* the query count.
+
 Spring Data JPA generates repository implementations at startup — no need to write boilerplate DAO code.
 
 ### The Repository Hierarchy
@@ -21892,6 +21972,48 @@ repository.findAll(Sort.by("name"));
 repository.findAll(PageRequest.of(0, 20, Sort.by("createdAt").descending()));
 \`\`\``,
           code: [
+            `import java.util.*;
+import java.util.stream.*;
+
+// ✅ RUNNABLE on a bare JDK — no Spring/JPA needed. This simulates the N+1
+// problem vs a JOIN FETCH by counting the "SQL queries" Spring Data hides.
+public class NPlusOneDemo {
+    static int queries = 0;
+    static <T> T sql(String q, T result) { queries++; System.out.println("  SQL #" + queries + ": " + q); return result; }
+
+    record Post(long id, String title) {}
+    record Comment(long id, long postId, String text) {}
+
+    static final List<Post> POSTS = List.of(
+        new Post(1, "Spring tips"), new Post(2, "JVM GC"), new Post(3, "Kafka 101"));
+    static final List<Comment> COMMENTS = List.of(
+        new Comment(10, 1, "great"), new Comment(11, 1, "thanks"),
+        new Comment(12, 2, "helpful"), new Comment(13, 3, "nice"));
+
+    static List<Comment> commentsOf(long postId) {
+        return COMMENTS.stream().filter(c -> c.postId() == postId).collect(Collectors.toList());
+    }
+
+    public static void main(String[] args) {
+        System.out.println("=== LAZY loading: the N+1 problem ===");
+        queries = 0;
+        List<Post> posts = sql("SELECT * FROM post", POSTS);            // 1 query for the posts
+        for (Post p : posts) {                                          // ...then ONE more per post
+            List<Comment> cs = sql("SELECT * FROM comment WHERE post_id=" + p.id(), commentsOf(p.id()));
+            System.out.println("    '" + p.title() + "' -> " + cs.size() + " comments");
+        }
+        System.out.println(">> total queries = " + queries + "   (1 + N, N = " + posts.size() + " posts)\\n");
+
+        System.out.println("=== JOIN FETCH / @EntityGraph: a single query ===");
+        queries = 0;
+        Map<Long, List<Comment>> joined = sql(
+            "SELECT * FROM post p LEFT JOIN FETCH comment c ON c.post_id = p.id",
+            POSTS.stream().collect(Collectors.toMap(Post::id, p -> commentsOf(p.id()))));
+        joined.forEach((id, cs) -> System.out.println("    post #" + id + " -> " + cs.size() + " comments"));
+        System.out.println(">> total queries = " + queries + "   (constant, no matter how many posts)");
+        System.out.println("\\nLesson: lazy associations in a loop = N+1. Fix with JOIN FETCH, @EntityGraph, or a batch size.");
+    }
+}`,
             `import jakarta.persistence.*;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
@@ -24287,7 +24409,16 @@ public class IdempotencyDemo {
         }
       ]
     },
+  ],
+},
 
+/* ===================== PHASE 6: Distributed Systems & Messaging ===================== */
+{
+  id: 'p6',
+  title: 'Distributed Systems & Messaging',
+  icon: 'share-2',
+  blurb: 'Microservice decomposition, Apache Kafka event streaming, and the saga pattern for distributed transactions.',
+  modules: [
     {
       id: '6.1',
       title: 'Microservice Patterns',
@@ -24990,7 +25121,16 @@ public class SagaDemo {
         }
       ]
     },
+  ],
+},
 
+/* ===================== PHASE 7: DevOps — Docker, Kubernetes & Helm ===================== */
+{
+  id: 'p7',
+  title: 'DevOps: Docker, Kubernetes & Helm',
+  icon: 'ship',
+  blurb: 'Containers, Kubernetes core resources, Helm from zero to advanced, and CI/CD with GitOps.',
+  modules: [
     {
       id: '7.1',
       title: 'Docker & Containers',
@@ -25877,7 +26017,16 @@ jobs:
         }
       ]
     },
+  ],
+},
 
+/* ===================== PHASE 8: Camunda & Process Orchestration ===================== */
+{
+  id: 'p8',
+  title: 'Camunda & Process Orchestration',
+  icon: 'workflow',
+  blurb: 'BPMN fundamentals and Camunda 7 vs 8 (Zeebe) with Spring Boot integration.',
+  modules: [
     {
       id: '8.1',
       title: 'BPMN & Workflow Fundamentals',
@@ -26287,7 +26436,16 @@ class OrderProcessListener implements org.camunda.bpm.engine.delegate.ExecutionL
         }
       ]
     },
+  ],
+},
 
+/* ===================== PHASE 9: Linux, Networking & Observability ===================== */
+{
+  id: 'p9',
+  title: 'Linux, Networking & Observability',
+  icon: 'terminal',
+  blurb: 'Shell and process fundamentals, TCP/HTTP networking, and the three pillars of observability.',
+  modules: [
     {
       id: '9.1',
       title: 'Linux Essentials & Shell',
@@ -26964,7 +27122,16 @@ groups:
         }
       ]
     },
+  ],
+},
 
+/* ===================== PHASE 10: Behavioral & EU Interview Strategy ===================== */
+{
+  id: 'p10',
+  title: 'Behavioral & EU Interview Strategy',
+  icon: 'users',
+  blurb: 'STAR storytelling, system-design communication, and the European visa-sponsorship interview playbook.',
+  modules: [
     {
       id: '10.1',
       title: 'STAR Stories & Behavioral Rounds',
@@ -27305,7 +27472,16 @@ console.log("Key steps:", Object.keys(systemDesignTemplate).join(" → "));`
         }
       ]
     },
+  ],
+},
 
+/* ===================== PHASE 11: Real-World Java Backend Architecture ===================== */
+{
+  id: 'p11',
+  title: 'Real-World Java Backend Architecture',
+  icon: 'building-2',
+  blurb: 'A multi-module Maven monolith, production deploy on Docker + Caddy + VPS, and Spring Security with OAuth2.',
+  modules: [
     {
       id: '11.1',
       title: 'Multi-Module Maven Monolith Design',

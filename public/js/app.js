@@ -484,6 +484,7 @@
       });
       renderMermaidIn(notesEl);
       initJourneyWidgets(notesEl);
+      appendInterviewQuestions(notesEl, module, src);
       icons(); // re-run lucide for icons inside callouts / journey
       renderSandbox(src);
       renderFlashcards(src);
@@ -627,6 +628,68 @@
     renderNav($('#search').value);
   }
 
+  /* ===================== INTERVIEW QUESTIONS (bottom of Study Guide) ===================== */
+  // Pull the curated "most likely to be asked" questions for a module/section.
+  // Section-level `interview` arrays win; otherwise the module-level map is used.
+  function interviewQsFor(module, src) {
+    if (src && Array.isArray(src.interview) && src.interview.length) return src.interview;
+    if (typeof INTERVIEW_QUESTIONS !== 'undefined' && INTERVIEW_QUESTIONS[module.id]) {
+      return INTERVIEW_QUESTIONS[module.id];
+    }
+    return [];
+  }
+
+  // Render a click-to-reveal "Likely interview questions" panel under the notes,
+  // sitting right next to the [!EU] interview-tip callouts.
+  function appendInterviewQuestions(notesEl, module, src) {
+    const qs = interviewQsFor(module, src);
+    if (!qs.length) return;
+
+    const block = el('div', { class: 'iq-block mt-10 pt-6 border-t border-slate-800' });
+    const items = qs.map((qa, i) => `
+      <li class="iq-item rounded-lg border border-slate-800 bg-slate-900/40 overflow-hidden">
+        <button class="iq-q w-full text-left flex items-start gap-3 px-4 py-3 hover:bg-slate-800/50 transition" data-i="${i}">
+          <span class="shrink-0 grid place-items-center w-5 h-5 rounded bg-brand/20 text-brand text-[11px] font-bold mt-px">${i + 1}</span>
+          <span class="flex-1 text-[14px] text-slate-200 font-medium leading-snug">${esc(qa.q)}</span>
+          <i data-lucide="chevron-down" class="iq-chev w-4 h-4 text-slate-500 shrink-0 mt-0.5 transition-transform"></i>
+        </button>
+        <div class="iq-a hidden px-4 pb-3.5 pt-0 pl-12 text-[13.5px] text-slate-300 leading-relaxed">${esc(qa.a)}</div>
+      </li>`).join('');
+
+    block.innerHTML = `
+      <div class="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4 sm:p-5">
+        <div class="flex items-center gap-2 mb-1">
+          <i data-lucide="target" class="w-4 h-4 text-amber-400"></i>
+          <h3 class="text-sm font-bold text-amber-300 tracking-wide uppercase">Likely interview questions</h3>
+          <span class="ml-auto text-[11px] text-slate-500">${qs.length} · click to reveal</span>
+        </div>
+        <p class="text-[12.5px] text-slate-500 mb-4 leading-relaxed">The questions a panel is most likely to ask on this topic. Try to answer each one out loud first — then reveal the model answer.</p>
+        <ol class="space-y-2.5">${items}</ol>
+        <div class="mt-3 text-right">
+          <button class="iq-toggle-all text-[11px] text-slate-500 hover:text-amber-300 transition">Reveal all answers</button>
+        </div>
+      </div>`;
+
+    notesEl.appendChild(block);
+
+    const aEls = () => block.querySelectorAll('.iq-a');
+    block.querySelectorAll('.iq-q').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const a = btn.parentElement.querySelector('.iq-a');
+        const chev = btn.querySelector('.iq-chev');
+        a.classList.toggle('hidden');
+        if (chev) chev.style.transform = a.classList.contains('hidden') ? '' : 'rotate(180deg)';
+      });
+    });
+    const toggleAll = block.querySelector('.iq-toggle-all');
+    toggleAll.addEventListener('click', () => {
+      const anyHidden = [...aEls()].some(a => a.classList.contains('hidden'));
+      aEls().forEach(a => a.classList.toggle('hidden', !anyHidden));
+      block.querySelectorAll('.iq-chev').forEach(c => c.style.transform = anyHidden ? 'rotate(180deg)' : '');
+      toggleAll.textContent = anyHidden ? 'Hide all answers' : 'Reveal all answers';
+    });
+  }
+
   function placeholderNotes(module, phase) {
     return renderMarkdown(`
 # ${module.title}
@@ -673,7 +736,7 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
 
     pane.innerHTML = `<p class="text-sm text-slate-400 mb-4 flex items-center gap-2">
       <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
-      Edit and <strong class="text-slate-300">Run</strong> live — Java executes on a real JDK compiler. SQL &amp; shell snippets are shown for reference.
+      Edit and <strong class="text-slate-300">Run</strong> self-contained Java on a real JDK compiler. Framework code (Spring, JPA, Kafka…), SQL &amp; shell are marked <strong class="text-slate-300">Reference only</strong> — the public sandbox has no Maven dependencies, so they're for reading, not running.
     </p><div class="space-y-6" id="sandbox-host"></div>`;
     const host = $('#sandbox-host');
     samples.forEach(s => mountEditor(host, s));
@@ -681,8 +744,50 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
   }
 
   const RUNNABLE_LANGS = ['java', 'python', 'javascript'];
+
+  // Frameworks/libraries the public JDK sandbox (Wandbox, bare JDK — no Maven deps)
+  // cannot resolve. Java code referencing these is shown for reference rather than
+  // pretending it will compile and run.
+  const NON_RUNNABLE_HINTS = [
+    'org.springframework', 'jakarta.persistence', 'jakarta.transaction', 'jakarta.validation',
+    'jakarta.servlet', 'jakarta.annotation', 'javax.persistence', 'javax.servlet',
+    'org.hibernate', 'org.apache.kafka', 'io.camunda', 'org.camunda', 'reactor.core',
+    'lombok', 'org.junit', 'org.mockito', 'com.fasterxml.jackson', 'org.slf4j',
+    '@SpringBootApplication', '@RestController', '@Controller', '@Service', '@Repository',
+    '@Component', '@Configuration', '@Autowired', '@Bean', '@Entity', '@Transactional',
+    '@RequestMapping', '@GetMapping', '@PostMapping', '@PutMapping', '@DeleteMapping',
+    '@Async', '@Cacheable', '@Scheduled', '@EnableAutoConfiguration', '@ConfigurationProperties',
+    '@SpringBootTest', '@WebMvcTest', '@Test ', '@Test\n'
+  ];
+
+  // Decide whether a Java sample can actually execute on the bare JDK sandbox.
+  function javaRunnability(code) {
+    const hasMain = /\bstatic\s+void\s+main\s*\(/.test(code);
+    if (!hasMain) {
+      return { runnable: false, reason: 'Snippet only — no runnable main() method. Shown for reference.' };
+    }
+    if (NON_RUNNABLE_HINTS.some(h => code.includes(h))) {
+      return { runnable: false, reason: 'Needs Spring / a framework runtime (not on the bare JDK sandbox) — shown for reference.' };
+    }
+    return { runnable: true, reason: '' };
+  }
+
+  // Resolve runnability + a human reason for any sample.
+  function sampleRunInfo(sample) {
+    if (sample.runnable === false) {
+      return { runnable: false, reason: sample.note || 'Shown for reference — not executed here.' };
+    }
+    if (!RUNNABLE_LANGS.includes(sample.lang)) {
+      const kind = sample.lang === 'sql' ? 'SQL' : sample.lang === 'bash' ? 'Shell' : (sample.lang || 'This');
+      return { runnable: false, reason: `${kind} is shown for reference — not executed here.` };
+    }
+    if (sample.lang === 'java') return javaRunnability(sample.code);
+    return { runnable: true, reason: '' };
+  }
+
   function mountEditor(host, sample) {
-    const runnable = RUNNABLE_LANGS.includes(sample.lang);
+    const runInfo = sampleRunInfo(sample);
+    const runnable = runInfo.runnable;
     const wrap = el('div', { class: 'rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden' });
     wrap.innerHTML = `
       <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-800 bg-slate-900/70">
@@ -696,10 +801,16 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
           </button>
           ${runnable ? `<button class="run-btn text-xs font-semibold inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/90 hover:bg-success text-white transition">
             <i data-lucide="play" class="w-3.5 h-3.5"></i> Run
-          </button>` : `<span class="text-[10px] text-slate-500 italic px-2">illustrative</span>`}
+          </button>` : `<span class="ref-badge inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-slate-800 text-slate-400 border border-slate-700" title="${esc(runInfo.reason)}">
+            <i data-lucide="book-open-text" class="w-3 h-3"></i> Reference only
+          </span>`}
         </div>
       </div>
       <div class="monaco-wrap"></div>
+      ${!runnable ? `<div class="flex items-start gap-2 px-4 py-2 border-t border-slate-800 bg-slate-950/40 text-[11px] text-slate-500">
+        <i data-lucide="info" class="w-3.5 h-3.5 mt-px shrink-0 text-slate-600"></i>
+        <span>${esc(runInfo.reason)} You can still read, copy, and adapt it for a real project.</span>
+      </div>` : ''}
       <div class="output-area hidden border-t border-slate-800">
         <div class="flex items-center justify-between px-4 py-1.5 bg-slate-950/80">
           <span class="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Output</span>
