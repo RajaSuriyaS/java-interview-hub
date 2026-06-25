@@ -2,7 +2,7 @@
    Java Interview Hub — curated interview questions
    Keyed by module id. Rendered click-to-reveal at the bottom of
    each module Study Guide ("Likely interview questions").
-   51 modules · 318 questions. Edit freely.
+   55 modules · 346 questions. Edit freely.
    ============================================================ */
 const INTERVIEW_QUESTIONS = {
   "0.1": [
@@ -1377,6 +1377,126 @@ const INTERVIEW_QUESTIONS = {
     {
       "q": "When do you use method-level security with @PreAuthorize versus URL-based rules, and what are the gotchas?",
       "a": "URL-based authorizeHttpRequests rules are coarse and great for broad gates (permit /actuator/health, require ADMIN for /api/admin/**), while @PreAuthorize/@PostAuthorize (needing @EnableMethodSecurity) express fine-grained, data-aware rules close to the logic, like '#userId == authentication.principal.userId or hasRole(ADMIN).' The gotchas: method security is proxy-based so it doesn't fire on self-invocation within the same bean; @PostAuthorize runs after the method, so it must not have already caused a side effect on data the user shouldn't touch; and SpEL ownership checks are easy to get subtly wrong. Use URL rules for broad strokes and method security for ownership and role checks tied to specific operations, and back both with tests."
+    }
+  ],
+  "12.1": [
+    {
+      "q": "Walk me through implementing a thread-safe Singleton, and why is the GoF Singleton often called an anti-pattern?",
+      "a": "I'd reach for the enum singleton or the lazy-holder idiom rather than hand-rolling double-checked locking, because the holder gets laziness and thread-safety free via the JVM's class-init guarantee and enum is additionally immune to reflection and serialization attacks. The anti-pattern critique is really about the static getInstance() global access point: it is hidden global mutable state that couples callers invisibly, leaks between tests, and resists mocking. The clean modern answer is to let a DI container own the single instance (Spring's default singleton scope) so you keep one-instance economy but inject it, preserving testability."
+    },
+    {
+      "q": "Compare Factory Method, Abstract Factory, and Builder — when would you pick each?",
+      "a": "Factory Method varies one product via inheritance (subclasses override a creation step), Abstract Factory varies a whole family of related products via composition with a consistency guarantee, and Builder isn't about polymorphic choice at all — it's staged construction of one complex, often immutable object with many optional fields. So: pick Factory Method when a base class can't know the concrete subtype but subclasses can; Abstract Factory when products must match (a MySQL dialect with a MySQL pager); Builder when you'd otherwise have a telescoping constructor. In practice DI subsumes most factory needs, leaving Builder as the one you still hand-write frequently."
+    },
+    {
+      "q": "In a Spring application, how often do you actually write GoF creational patterns by hand, and why?",
+      "a": "Rarely, because the container is the factory and the singleton manager: @Component gives you managed-singleton scope, @Bean methods are factory methods, @Profile/@Conditional plus @Qualifier select families like an abstract factory, and @Scope('prototype') gives fresh instances. You still write an explicit factory when you must build objects from runtime data the container can't know in advance — that's where ObjectProvider<T> or a small FactoryBean earns its place. The senior point is knowing the patterns so you can recognize what the container does for you and spot the gap it doesn't cover."
+    },
+    {
+      "q": "You see a Builder on a two-field DTO. What's your reaction, and when is a Builder genuinely warranted?",
+      "a": "That's over-engineering — for two required fields a constructor or static factory reads more clearly and a builder just adds ceremony and a window for a half-built object. Builder earns its keep when there are many parameters with several optional, you want immutability, and you want cross-field validation to run once in build() before publishing. If mandatory fields matter, I'd note that Lombok's @Builder makes everything look optional, so I'd use a required constructor arg or a step builder where the compiler enforces order and required steps."
+    },
+    {
+      "q": "Someone asks you to 'implement clone()' for an object with a mutable list field. How do you respond?",
+      "a": "I'd lead by saying I'd avoid Cloneable and prefer a copy constructor or a static copyOf factory, because Cloneable is a marker with no clone method, Object.clone is protected/native, it bypasses constructors and complicates final fields, and it defaults to shallow copy. The crux is shallow vs deep: a shallow copy shares the list reference so mutating the copy corrupts the original, so I'd deep-copy the mutable field (new ArrayList<>(other.list)). I'd still demonstrate I can write clone() correctly by cloning each mutable field, but frame the copy constructor as the cleaner default."
+    },
+    {
+      "q": "When is Prototype the right choice, and how does Spring's @Scope('prototype') relate to it?",
+      "a": "Prototype fits when constructing an object is expensive and you have a configured exemplar to copy, or you maintain a registry of pre-built prototypes — for cheap or immutable objects just use new, since deep-copying large graphs can cost more than rebuilding. Spring's prototype scope is a different mechanism: it creates a brand-new bean instance per lookup, it does not clone an exemplar, so it scratches the same 'I need fresh instances' itch without GoF copying. Conflating the two is a common slip; the distinction is clone-an-instance versus construct-a-new-one."
+    },
+    {
+      "q": "You're choosing between an object pool and just allocating fresh objects. How do you decide?",
+      "a": "I'd pool only genuinely expensive-to-create resources — DB connections, threads, large buffers — where the creation cost dominates, and accept the real costs: borrow/return discipline, leak risk, validation of stale entries, sizing, and contention. For ordinary short-lived objects like DTOs, pooling is usually a net loss on modern JVMs because TLAB allocation is fast and generational GC handles young garbage cheaply, so a pool just adds complexity and contention. Concretely I'd use HikariCP for connections and an ExecutorService for threads rather than building my own pool."
+    }
+  ],
+  "12.2": [
+    {
+      "q": "Adapter, Decorator, and Proxy all wrap an object. How do you tell them apart, and why does the distinction matter?",
+      "a": "All three share the wrapping structure; the difference is intent. Adapter changes the interface so two incompatible types collaborate (X wraps Y), Decorator keeps the same interface and adds behavior (X wraps X), and Proxy keeps the same interface but controls access — lazy loading, security, remoting, caching. The structural tell is what gets wrapped relative to what gets exposed, and the practical payoff is communication: in a design review saying 'that's really a Proxy, not a Decorator' tells the team whether the wrapper is meant to augment behavior the client wants or to transparently gate access."
+    },
+    {
+      "q": "Explain concretely how Spring AOP and @Transactional use dynamic proxies, including the limitations.",
+      "a": "Spring wraps the bean in a proxy and routes calls through it: for @Transactional the proxy begins a transaction, invokes the real method, then commits or rolls back around it — the same interception mechanism powers @Cacheable, @Async, and @Retryable. It uses a JDK dynamic proxy (Proxy.newProxyInstance routing to an InvocationHandler) when the bean implements an interface, otherwise a CGLIB subclass proxy. Limitations to call out: CGLIB can't proxy final classes or methods, only public methods get advice, and self-invocation (this.b()) bypasses the proxy entirely — the number-one '@Transactional doesn't work' bug."
+    },
+    {
+      "q": "Why are java.io streams the textbook Decorator example, and what should you watch out for when stacking them?",
+      "a": "Each filter stream both is-a InputStream and has-a InputStream — BufferedInputStream, DataInputStream, GZIPInputStream each add behavior and delegate the rest, so you compose features at runtime like new DataInputStream(new BufferedInputStream(new FileInputStream(...))). The gotchas are that order changes semantics (compress-then-encrypt differs from encrypt-then-compress), object identity sees the outermost wrapper rather than the wrapped core, and a deep stack obscures which layer did what when debugging. An abstract base decorator that delegates everything by default keeps concrete decorators from re-implementing the whole wide interface."
+    },
+    {
+      "q": "When would you choose a Facade over an Adapter, and what's the smell to avoid?",
+      "a": "Facade gives one simplified, unified entry point over many subsystem classes for convenience and decoupling — like an OrderFacade orchestrating inventory, payment, shipping, and notification — whereas Adapter converts a single interface into another for compatibility. A facade is additive, not restrictive: it offers an easier path for the common case without forbidding direct subsystem use. The smell is the god-facade that grows into a fifty-method dumping ground and re-couples everything it was meant to decouple; I keep facades thin and use-case oriented, split by bounded context. JdbcTemplate and a @Service over repositories are everyday facades."
+    },
+    {
+      "q": "Bridge and Strategy have nearly identical UML. When is it actually a Bridge, and what problem does Bridge prevent?",
+      "a": "Bridge is for two independent axes of variation that should evolve separately — Shape × Renderer, message × transport, JDBC API × vendor driver — so you make one axis the abstraction and the other the implementor and compose them, avoiding the combinatorial class explosion of VectorCircle/RasterCircle/VectorSquare. Strategy swaps one interchangeable algorithm behind an interface; the structure is the same delegation but the intent is a single pluggable behavior, not a structural separation of two hierarchies. The tell is catching yourself naming classes AdjectiveNoun for every pairing of two adjectives — that's a Bridge. SLF4J is literally called a bridge for exactly this reason."
+    },
+    {
+      "q": "How does the JDK's Integer cache relate to Flyweight, and what bug does it cause?",
+      "a": "Integer.valueOf returns shared, cached, immutable instances for -128..127 (the IntegerCache), which is exactly Flyweight — shared intrinsic state across many uses — and the String literal pool is the same idea. The bug is comparing boxed Integers with ==: it's true for small values because they're shared flyweights but silently false above 127 where new objects are created, so you always compare wrappers with .equals() or unbox to primitives. It's a favorite interview gotcha precisely because it's a side effect of a Flyweight optimization rather than something most people think about as a pattern."
+    },
+    {
+      "q": "Composite gives you a transparency-vs-safety choice. Explain the trade-off and when Composite is the wrong tool.",
+      "a": "Transparent Composite puts add/remove on the shared Component interface so leaves and composites are truly uniform, but leaves must implement child methods (usually throwing); safe Composite puts them only on Composite, preventing add() on a leaf but forcing clients to downcast to add children. GoF leans transparent; I pick per use case. Composite is wrong when the structure isn't genuinely a part-whole tree, or when leaf and container behavior diverge so much that a forced common interface lies — and deep trees can blow the stack, so naive recursion may need an iterative traversal. java.awt.Container and DOM Node are the canonical trees."
+    }
+  ],
+  "12.3": [
+    {
+      "q": "Why do senior interviewers say 'a lambda is a Strategy,' and when should a strategy still be a real class?",
+      "a": "A single-method functional interface — Comparator, Function, Predicate, Runnable — is exactly a strategy object, so passing a lambda is selecting a strategy; Java 8 made the pattern boilerplate-free, which is why most modern Strategy usage no longer needs explicit ConcreteStrategy classes, and a Map<key, lambda> can replace a growing switch. It should stay a real class or interface when the strategy has multiple methods (so it isn't a functional interface), holds non-trivial state, deserves a meaningful name, needs its own injected dependencies, or must be unit-tested as a type — a PaymentGateway with charge/refund/status stays an interface."
+    },
+    {
+      "q": "Observer is everywhere. What's the number-one bug, and how do you prevent it?",
+      "a": "The lapsed-listener memory leak: a long-lived subject (a static bus or singleton) holds strong references to observers that never unregister — typically short-lived ones like a request-scoped object or UI panel — so they can never be garbage-collected. I prevent it by returning an unsubscribe handle (an AutoCloseable) at registration, calling removeListener on close, or holding observers via weak references. Two related hazards: a slow or throwing observer can block or break notifications to the rest, so I isolate errors per-observer in the notify loop, and re-entrant subscription changes call for a snapshot or CopyOnWriteArrayList."
+    },
+    {
+      "q": "Template Method vs Strategy — what's the core difference, and how do you get the Template Method effect without inheritance?",
+      "a": "Template Method fixes the algorithm skeleton in a base class and lets subclasses override specific steps — inheritance, bound at compile time, varying some steps of a fixed flow; Strategy injects the whole algorithm as an object via composition, bound at runtime. The Hollywood Principle captures it: the base class calls down into subclass steps ('don't call us, we'll call you'). You get the effect without inheritance by passing the variant steps as lambdas to a method that owns the fixed skeleton — a functional template — which avoids the fragile-base-class coupling. Spring's JdbcTemplate actually blends both: Template Method for the resource skeleton, RowMapper as a Strategy callback."
+    },
+    {
+      "q": "Walk me through Chain of Responsibility in a Servlet filter chain or Spring Security. What goes wrong in practice?",
+      "a": "Each Filter does pre-work, then calls chain.doFilter() to pass control to the next link or the servlet, then can do post-work on the way back up; short-circuiting means simply not calling doFilter and writing the response (an auth filter returning 401). Spring Security's FilterChainProxy is literally an ordered list of such filters. What goes wrong is ordering — authentication must run before authorization, decompression before parsing, rate-limit before expensive work — and misordering creates security holes or wasted work. The other classic bugs are forgetting to call chain.next() so the request is silently dropped, or calling it twice and double-processing."
+    },
+    {
+      "q": "State and Strategy share identical UML. How do you distinguish them, and when is the State pattern over-engineering?",
+      "a": "The litmus test is who picks the next object: in State the concrete objects transition to one another over the entity's lifetime (state A decides 'now we're in state B') and states know about each other, whereas in Strategy the client or DI selects an independent behavior that's usually set once and the strategies don't know about each other. State shines when behavior varies across a finite set of statuses with illegal-transition rules and a switch(status) is spreading across many methods — and a Java enum with abstract methods is the cleanest implementation for simple machines. It's over-engineering for two-ish states or trivial transitions, where a boolean or simple switch is clearer."
+    },
+    {
+      "q": "When does Command earn its complexity, and why is implementing reliable undo harder than just doing the inverse operation?",
+      "a": "Command earns it when you need undo/redo, queueing, scheduling, retry, logging/replay, or to decouple invoker from receiver — and Runnable/Callable submitted to an ExecutorService is exactly Command, with the executor as invoker. It's ceremony when a plain method call or lambda suffices and you'll never queue or undo it. Reliable undo is hard because the inverse can be lossy: un-deleting loses metadata, un-setting loses the prior value, so undo() must capture enough before-state — effectively a Memento snapshot — rather than just running the reverse op. Logging the command stream is also the seed of event sourcing."
+    },
+    {
+      "q": "Visitor lets you add operations to a type hierarchy, but it has a famous trade-off. Explain it and how Java 21 changes the calculus.",
+      "a": "Visitor moves operations into visitor classes and uses double dispatch (element.accept(visitor) then visitor.visitConcrete(this)) so you can add operations like print/evaluate/typecheck over a stable hierarchy without touching the element classes. The trade-off is the Expression Problem: adding operations is easy but adding a new element type is hard because every visitor must gain a method — the opposite of the usual OO bias toward easy subtype addition. Java 21's sealed hierarchies plus pattern-matching switch give exhaustive, compile-checked dispatch over a closed set of types, expressing the same per-type operation more directly and often removing the need for the accept/visit ceremony entirely."
+    }
+  ],
+  "12.4": [
+    {
+      "q": "Java 8 lambdas didn't add patterns — they made several disappear. Which ones, and what's the heuristic for lambda vs named class?",
+      "a": "Single-method patterns collapse into a lambda: Strategy (Comparator/Predicate), Command (Runnable/Consumer submitted to an executor), Factory (Supplier or a constructor reference like ArrayList::new), and the variant step of Template Method as a higher-order function; Decorator becomes function composition via andThen. The heuristic is to reach for a lambda when the behavior is small, local, stateless, and single-method, and keep a named class when it has state, deserves a name, has multiple methods (so it isn't a functional interface), needs its own injected dependencies, or must be mocked and tested as a type. Watch the pitfalls — capturing this can leak the enclosing object, and checked exceptions don't fit the standard functional interfaces."
+    },
+    {
+      "q": "How would you narrate the patterns inside Spring's everyday machinery — AOP, the *Template classes, Spring Data — without just name-dropping?",
+      "a": "I'd tie each feature to its pattern in passing: @Transactional is a Proxy adding Decorator-style cross-cutting behavior (JDK proxy if there's an interface, CGLIB subclass otherwise); JdbcTemplate and RestTemplate are Template Method providing the fixed acquire-execute-translate-release skeleton with Strategy callbacks like RowMapper; Spring Data repositories are the Repository pattern realized as a runtime-generated proxy implementation. BeanFactory itself is an Abstract Factory plus Service Locator over the bean graph. The point of naming them is communication in design reviews, not GoF trivia — I'd always lead with the problem the feature solves and only attach the label as shorthand."
+    },
+    {
+      "q": "Lay out the Repository / Service / DTO layering and justify each boundary. When would you collapse layers?",
+      "a": "Repository presents a collection-like interface (save/findById) hiding the persistence mechanism so the service treats storage like an in-memory collection and stays swappable and testable; the Service Layer owns use-cases, orchestration, and transaction boundaries — @Transactional lives here, not on the controller or repository; DTOs at the API boundary decouple the contract from the schema, prevent leaking sensitive fields like password hashes, and avoid lazy-init exceptions from serializing JPA entities. I'd collapse layers for a tiny CRUD service — controller calling repository directly, no DTO when the contract equals the schema — because five layers on a 200-line app is cargo-cult ceremony. The smell on the other side is a service that's pure pass-through to the repo."
+    },
+    {
+      "q": "What is the anemic domain model, and is it always a problem?",
+      "a": "Anemic means entities are bags of getters and setters with no behavior while all logic lives in service classes — procedural code in OO clothing — so behavior that belongs with the data is scattered, encapsulation is lost, and anyone can put the object in an illegal state like setBalance(-100). It's a smell, not a crime: for simple CRUD with a transaction-script style it's perfectly fine and simpler. The fix where rich invariants exist is to move behavior onto the entity — account.withdraw(amount) validates and mutates in one place — and reserve services for orchestration across aggregates. I'd only call it out where genuine domain rules are being scattered."
+    },
+    {
+      "q": "Explain the concurrency hazards in Executors.newFixedThreadPool, CompletableFuture's default executor, and ThreadLocal with a pool.",
+      "a": "newFixedThreadPool uses an unbounded LinkedBlockingQueue, so a fast producer is a slow-motion OOM — I'd construct ThreadPoolExecutor directly with a bounded queue and an explicit RejectedExecutionHandler. CompletableFuture's async stages default to the common ForkJoinPool, so running blocking IO there starves CPU-bound work app-wide; I pass an explicit Executor for blocking stages or use virtual threads. ThreadLocal plus a pool is a correctness bug because pooled threads are reused, so a value set during request A bleeds into request B unless you remove() in a finally — on JDK 21 ScopedValue is the safer structured alternative, and for IO-bound work I'd prefer a virtual-thread-per-task executor rather than pooling."
+    },
+    {
+      "q": "Give me a concrete heuristic for recognizing when a pattern is over-engineering, with examples.",
+      "a": "Patterns are responses to forces — present, nameable pain — so if I can't say what varies or couples today, I'm decorating, not designing. Speculative generality is the classic trap: a strategy interface or abstract factory for a second variant that doesn't exist yet (YAGNI), countered by the Rule of Three — stay concrete until the second or third real variation reveals the true axis of change. Symptoms of pattern fever include a factory for a single implementation, DTOs copying entities 1:1, an event bus for two in-process calls, and CQRS on a plain CRUD app where it just buys eventual-consistency tax. Start simple and add structure when pain actually appears."
+    },
+    {
+      "q": "How do you structure a strong answer to an open-ended 'how would you design X' design question?",
+      "a": "I use a four-beat structure: name the force (what varies or couples here), state the choice (the pattern, lightly named, and its realization as a lambda, enum, or class), state the trade-off (what it costs versus buys and why that's justified by a present need), and name the alternative plus the trigger to switch (if it became multi-method or needed runtime swapping I'd move to X). I prefer the lightest tool first — a lambda before a class, an enum before a hierarchy, a Map before a Strategy interface — and patterns the platform already provides like Comparator, BlockingQueue, or @Transactional. The red flags interviewers listen for are name-dropping with no force and absolutism like 'Singletons are always bad'; nuance and trade-off awareness signal seniority far more than reciting the catalog."
     }
   ]
 };
