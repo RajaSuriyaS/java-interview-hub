@@ -30508,355 +30508,2228 @@ enum Plan { FREE, PRO, ENTERPRISE }`,
       {
         id: `5.1`,
         title: `Scalability Fundamentals`,
-        hours: 3,
+        hours: 5,
         sections: [
           {
-            title: `Vertical vs Horizontal Scaling & Load Balancing`,
-            notes: `## Vertical vs Horizontal Scaling & Load Balancing
+            title: `Scaling Axes & Principles: Vertical/Horizontal, AKF Cube, Capacity Estimation`,
+            notes: `## Scalability Is About Slope, Not Size
 
-### Scaling Dimensions
+A senior answer never starts with "add more servers." Scalability is the **relationship between cost and capacity**: how does the system's throughput change as you add resources, and what does that cost? A system "scales" when **N× resources buy you roughly N× capacity** without a rewrite. The whole discipline is keeping that line linear for as long as possible.
 
-\`\`\`
-Vertical Scaling (Scale Up)          Horizontal Scaling (Scale Out)
-────────────────────────────         ──────────────────────────────
-Bigger machine (more CPU/RAM)        More machines (same size)
-Simpler: no code changes needed      Complex: stateless design required
-Limited: hardware ceiling exists     Near-unlimited: add more nodes
-Single point of failure              Redundant: nodes can fail independently
-Downtime to upgrade hardware         No downtime: rolling deploys
-Example: t3.small → t3.2xlarge      Example: 2 t3.small → 10 t3.small
-\`\`\`
+> [!TIP]
+> Interviewers separate juniors from seniors by one reflex: a junior optimizes a single machine; a senior asks *"what breaks when traffic is 100× and the data is 1000×?"* and reasons about the **shape of the cost curve**, not a point on it.
 
-### Load Balancers
+### Vertical vs Horizontal Scaling
 
-\`\`\`
-                    ┌──── Server 1
-Client → Load  ─────┤──── Server 2
-         Balancer   └──── Server 3
+**Vertical (scale up):** bigger box — more cores, RAM, faster NVMe. **Horizontal (scale out):** more boxes behind a load balancer.
 
-Layer 4 (Transport): routes by IP/TCP — fast, no HTTP awareness
-Layer 7 (Application): routes by URL, headers, cookies — smart routing
-\`\`\`
+| Dimension | Vertical (scale up) | Horizontal (scale out) |
+|---|---|---|
+| Mechanism | Bigger instance (e.g. 4→64 vCPU) | More instances (e.g. 3→300) |
+| Ceiling | Hard — biggest cloud VM ≈ 192–448 vCPU, a few TB RAM | Effectively unbounded |
+| Cost curve | Super-linear (top SKUs cost a premium) | ~Linear per node |
+| Failure blast radius | One big SPOF | One node = small fraction |
+| Code changes | None — transparent | Requires statelessness + coordination |
+| Downtime to resize | Usually a reboot/migration | None (rolling) |
+| Best for | DBs, stateful caches, low-latency single-node work | Stateless app tiers, web/API |
 
-\`\`\`
-Load balancing algorithms:
-Round Robin      — requests distributed evenly in rotation
-Least Connections — next request goes to server with fewest active connections
-IP Hash          — same client IP always hits same server (sticky sessions)
-Weighted         — more powerful servers get proportionally more traffic
-Random           — random selection (works surprisingly well at scale)
-\`\`\`
+> [!SUCCESS]
+> The pragmatic playbook: **scale up the stateful tier (DB/cache) as far as is sane, scale out the stateless tier infinitely.** Most real systems do both — a beefy primary DB with a horizontally-scaled, stateless app fleet in front of it.
 
-### Stateless Design — Prerequisite for Horizontal Scaling
+> [!DANGER]
+> Vertical scaling hides architectural debt. A 64-vCPU box running a single-threaded hot path is still bottlenecked at 1 core. Bigger hardware buys time, never linearity.
 
-\`\`\`java
-// STATEFUL (cannot scale horizontally) — session stored in memory
-@RestController
-public class CartController {
-    private final Map<String, Cart> sessions = new ConcurrentHashMap<>(); // in-memory!
+### The First Principle: Statelessness
 
-    @PostMapping("/cart/add")
-    public void addItem(@RequestHeader String sessionId, @RequestBody Item item) {
-        sessions.computeIfAbsent(sessionId, k -> new Cart()).add(item);
-        // If next request hits a DIFFERENT server → cart is empty there!
-    }
-}
+A **stateless** service keeps no client-affinity request state in local memory between requests. Every request carries (or can re-fetch) everything it needs; session/state lives in an external store (Redis, DB, signed JWT). This is the enabler for everything else:
 
-// STATELESS (horizontally scalable) — state in Redis
-@RestController
-public class CartController {
-    private final RedisTemplate<String, Cart> redis;
+- Any node can serve any request ⇒ trivial load balancing, no sticky sessions.
+- Nodes are **cattle, not pets** ⇒ autoscaling, rolling deploys, instant failover.
+- Scaling = changing a replica count, not migrating state.
 
-    @PostMapping("/cart/add")
-    public void addItem(@RequestHeader String sessionId, @RequestBody Item item) {
-        Cart cart = redis.opsForValue().get("cart:" + sessionId);
-        if (cart == null) cart = new Cart();
-        cart.add(item);
-        redis.opsForValue().set("cart:" + sessionId, cart, Duration.ofHours(2));
-        // Any server can handle any request — all read same Redis
-    }
-}
+> [!WARNING]
+> "Stateless" does not mean "no state anywhere" — it means **no critical state on the node**. In-process caches are fine as long as they are a *performance optimization that can be rebuilt*, never the source of truth. The test: *can I kill this pod mid-request and lose nothing but the in-flight request?*
+
+### The AKF Scale Cube (X / Y / Z)
+
+The AKF cube (from *The Art of Scalability*) decomposes scaling into three orthogonal axes. Senior interviews love this because it forces precise vocabulary.
+
+\`\`\`mermaid
+flowchart TD
+  O[Monolith<br/>single instance] -->|X axis| X[X: Horizontal duplication<br/>clone the whole app N times<br/>behind a load balancer]
+  O -->|Y axis| Y[Y: Functional split<br/>split by service/verb<br/>orders, users, payments]
+  O -->|Z axis| Z[Z: Data partition / shard<br/>split by customer/geo/hash<br/>same code, different data slice]
 \`\`\`
 
-### CAP Theorem
+| Axis | What you split | Example | Buys you | Cost |
+|---|---|---|---|---|
+| **X** | Nothing — clone instances | 50 identical API pods | Throughput, redundancy | Cheapest; limited by shared DB |
+| **Y** | Responsibility (functional) | orders-svc, user-svc, payments-svc | Team scaling, independent deploys, fault isolation | Microservice complexity |
+| **Z** | Data (look-alike shards) | shard users 0–9M, 10–19M | Scales data + write throughput | Resharding pain, cross-shard joins |
 
-\`\`\`
-CAP: a distributed system can only guarantee 2 of 3:
-  C — Consistency:   every read returns the most recent write
-  A — Availability:  every request gets a (possibly stale) response
-  P — Partition Tol: system continues despite network partitions
+> [!TIP]
+> Map the cube to a real story in interviews: "We were X-scaled (40 stateless pods) but the **single Postgres primary** was the ceiling. We went Y (extracted the write-heavy ledger into its own service) and then Z (sharded the ledger by account_id) to break the write bottleneck." That sentence signals staff-level thinking.
 
-Real-world: P is non-negotiable (networks DO partition)
-→ Choose between CP or AP:
+### Shared-Nothing Architecture
 
-CP systems (prefer Consistency):    HBase, ZooKeeper, etcd
-  "Return error if can't guarantee latest data"
+Each node owns its slice of data/compute and coordinates with peers only via messages — **no shared mutable resource** (no shared disk, no shared session table, no global lock) on the request path. Shared-nothing is what makes the X-axis truly linear: the moment all nodes contend on one resource (a row lock, a single Redis, a central sequence), you have re-introduced a serial bottleneck (see Universal Scalability Law in §5).
 
-AP systems (prefer Availability):   Cassandra, DynamoDB, CouchDB
-  "Return possibly stale data, never error"
+### Latency vs Throughput — Don't Conflate Them
 
-Most SQL databases: CA (single node) or CP with replicas
-\`\`\``,
+- **Latency** = time for one request (p50/p95/p99, measured in ms). A *per-request* property.
+- **Throughput** = requests completed per unit time (QPS/RPS). A *system* property.
+
+Little's Law ties them together: **L = λ × W** → concurrency = throughput × latency. If average latency is 50 ms and you want 10,000 QPS, you need ~500 requests in flight concurrently (10,000 × 0.05). That number drives your thread-pool / connection-pool sizing.
+
+> [!WARNING]
+> Throughput and latency trade off. Batching, buffering, and queuing raise throughput but *add* latency. At saturation, latency explodes (the hockey-stick) while throughput plateaus — chasing more QPS past the knee just grows the queue and p99.
+
+### Back-of-Envelope Capacity Estimation
+
+This is the most-tested skill in a design loop. Memorize the constants and the method.
+
+> [!EU]
+> **Powers-of-two & latency cheat sheet (Jeff Dean numbers, rounded):**
+> L1 ref ≈ 1 ns · main memory ≈ 100 ns · SSD random read ≈ 16 µs · same-DC round trip ≈ 0.5 ms · disk seek ≈ 2 ms · CA→NL round trip ≈ 150 ms. Sequential memory read of 1 MB ≈ 100 µs; 1 MB over 10 GbE ≈ 1 ms. Seconds/day ≈ **86,400 ≈ 10⁵**.
+
+**Worked example — a Twitter-like timeline service.**
+
+Assume 300 M users, 50% daily active = 150 M DAU. Each user reads their timeline ~20×/day.
+
+- **Read QPS:** 150 M × 20 / 86,400 ≈ 3 × 10⁹ / 8.64 × 10⁴ ≈ **~35,000 QPS average**. Peak ≈ 2–3× average ⇒ plan for **~100,000 QPS**.
+- **Write QPS:** say each user posts 2×/day ⇒ 150 M × 2 / 86,400 ≈ **~3,500 writes/s** average, ~10,000 peak. **Read:write ≈ 10:1** ⇒ this is a *read-heavy* system (drives fan-out-on-write + caching).
+- **Storage:** a tweet ≈ 300 bytes text + metadata ≈ 1 KB stored (indexes, replicas factored separately). 150 M × 2 posts/day = 300 M posts/day × 1 KB = **~300 GB/day** ⇒ ~110 TB/year of raw posts; ×3 for replication ⇒ ~330 TB/yr. Media (images) dwarfs this — push to object storage/CDN.
+- **Bandwidth:** read 100 K QPS × ~5 KB per timeline payload ≈ **~500 MB/s = 4 Gbps egress** at the edge ⇒ mandates a CDN/caching layer, not origin serving.
+- **Cache sizing:** keep the hot timeline (last ~800 tweet IDs) for active users in Redis. 150 M × 800 × 8 bytes (IDs) ≈ **~1 TB** of cache ⇒ a sharded Redis cluster, not one node.
+
+> [!SUCCESS]
+> The method, every time: **(1) state assumptions out loud** (DAU, actions/user/day, payload size), **(2) convert to per-second** (÷86,400), **(3) apply a peak factor** (2–3×), **(4) derive QPS, storage/day, bandwidth, cache size**, **(5) name the architectural consequence** (CDN, sharding, fan-out). Interviewers grade the *method and the consequence*, not the exact digits.`,
             code: [
-              `import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
+              {
+                lang: `java`,
+                title: `Capacity estimator — turn assumptions into QPS / storage / bandwidth`,
+                code: `// CapacityEstimator.java — bare JDK, no libs.  javac CapacityEstimator.java && java CapacityEstimator
+public class CapacityEstimator {
 
-// Simulating load balancer strategies
-public class LoadBalancerDemo {
+    static final long SECONDS_PER_DAY = 86_400L;
 
-    record Server(String id, int weight) {
-        static Server of(String id) { return new Server(id, 1); }
-        static Server weighted(String id, int w) { return new Server(id, w); }
-    }
-
-    // Round Robin
-    static class RoundRobinLB {
-        private final List<Server> servers;
-        private final AtomicInteger counter = new AtomicInteger(0);
-
-        RoundRobinLB(Server... s) { servers = List.of(s); }
-
-        Server next() { return servers.get(counter.getAndIncrement() % servers.size()); }
-    }
-
-    // Least Connections
-    static class LeastConnectionsLB {
-        private final List<Server> servers;
-        private final Map<Server, AtomicInteger> active = new ConcurrentHashMap<>();
-
-        LeastConnectionsLB(Server... s) {
-            servers = List.of(s);
-            servers.forEach(sv -> active.put(sv, new AtomicInteger(0)));
+    // isWrite => the per-day data is PERSISTED (storage); else it is transient READ traffic.
+    static void estimate(String name, long dau, double actionsPerUserPerDay,
+                         int payloadBytes, double peakFactor, boolean isWrite) {
+        double avgQps = (dau * actionsPerUserPerDay) / SECONDS_PER_DAY;
+        double peakQps = avgQps * peakFactor;
+        double bytesPerDay = dau * actionsPerUserPerDay * payloadBytes;
+        double peakBandwidthBps = peakQps * payloadBytes;        // bytes/sec at peak
+        System.out.printf("== %s ==%n", name);
+        System.out.printf("  avg  QPS         : %,.0f%n", avgQps);
+        System.out.printf("  peak QPS (x%.1f)  : %,.0f%n", peakFactor, peakQps);
+        if (isWrite) {                                           // only WRITES persist -> storage
+            System.out.printf("  NEW storage/day  : %.2f GB  (~%.1f TB/yr raw)%n",
+                    bytesPerDay / 1e9, bytesPerDay * 365 / 1e12);
+            System.out.printf("  storage /yr x3   : %.1f TB  (replication factor 3)%n",
+                    bytesPerDay * 365 * 3 / 1e12);
+        } else {                                                 // READS are egress traffic, not storage
+            System.out.printf("  data served/day  : %.2f TB  (transient read traffic, not stored)%n",
+                    bytesPerDay / 1e12);
         }
-
-        Server acquire() {
-            Server min = servers.stream()
-                .min(Comparator.comparingInt(sv -> active.get(sv).get()))
-                .orElseThrow();
-            active.get(min).incrementAndGet();
-            return min;
-        }
-        void release(Server s) { active.get(s).decrementAndGet(); }
-    }
-
-    // Consistent Hashing (for stateless request routing)
-    static class ConsistentHash {
-        private final TreeMap<Integer, Server> ring = new TreeMap<>();
-
-        ConsistentHash(Server... servers) {
-            for (Server s : servers)
-                for (int v = 0; v < 100; v++)  // virtual nodes for even distribution
-                    ring.put((s.id() + "-" + v).hashCode(), s);
-        }
-
-        Server route(String key) {
-            int hash = key.hashCode();
-            var entry = ring.ceilingEntry(hash);
-            if (entry == null) entry = ring.firstEntry();
-            return entry.getValue();
-        }
+        System.out.printf("  peak %-7s    : %.1f MB/s = %.2f Gbps%n%n",
+                isWrite ? "ingest" : "egress", peakBandwidthBps / 1e6, peakBandwidthBps * 8 / 1e9);
     }
 
     public static void main(String[] args) {
-        var servers = new Server[]{Server.of("s1"), Server.of("s2"), Server.of("s3")};
+        long dau = 150_000_000L;                  // 150M daily-active users
+        // Reads: each user refreshes timeline ~20x/day, ~5 KB payload, peak 3x (egress, not stored).
+        estimate("Timeline READ",  dau, 20, 5_000, 3.0, false);
+        // Writes: each user posts ~2x/day, ~1 KB stored, peak 3x (this is what drives storage).
+        estimate("Post WRITE",     dau,  2, 1_000, 3.0, true);
 
-        var rr = new RoundRobinLB(servers);
-        System.out.println("Round Robin:");
-        for (int i = 0; i < 6; i++) System.out.print(rr.next().id() + " ");
-
-        System.out.println("
-Consistent Hash:");
-        var ch = new ConsistentHash(servers);
-        List.of("user:1", "user:2", "user:3", "session:abc").forEach(k ->
-            System.out.printf("  %s → %s%n", k, ch.route(k).id()));
+        // Little's Law: concurrency = throughput x latency.
+        double targetQps = 100_000, avgLatencySec = 0.050;   // 50 ms
+        System.out.printf("Little's Law: at %,.0f QPS and %.0f ms latency -> %,.0f concurrent in flight%n",
+                targetQps, avgLatencySec * 1000, targetQps * avgLatencySec);
     }
-}`
+}`,
+                runnable: true,
+                note: `Runnable on a bare JDK. Shows the exact arithmetic an interviewer wants narrated: assumptions -> per-second -> peak -> storage/bandwidth, then Little’s Law for concurrency sizing.`
+              },
+              {
+                lang: `yaml`,
+                title: `Stateless deployment + HPA — scaling = changing a replica count`,
+                code: `# A stateless app tier scales on the X-axis: bump replicas, no migration.
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api }
+spec:
+  replicas: 6                       # X-axis: identical clones
+  selector: { matchLabels: { app: api } }
+  template:
+    metadata: { labels: { app: api } }
+    spec:
+      containers:
+        - name: api
+          image: registry/api:1.42.0
+          ports: [{ containerPort: 8080 }]
+          env:
+            - { name: SESSION_STORE, value: "redis://sessions:6379" }  # state OFF the node
+          readinessProbe:           # only receive traffic when warm
+            httpGet: { path: /healthz/ready, port: 8080 }
+          resources:
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: api-hpa }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: api }
+  minReplicas: 6
+  maxReplicas: 120
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }`,
+                runnable: false,
+                note: `Statelessness (session in Redis, readiness probe) is what makes the HPA legal — any pod can serve any request and can be killed without data loss.`
+              }
             ],
             flashcards: [
               {
-                q: `What is the difference between vertical and horizontal scaling?`,
-                a: `Vertical scaling (scale up): add more resources to a single machine — more CPU, RAM, disk. Simple (no code changes) but has a hardware ceiling and is a single point of failure. Horizontal scaling (scale out): add more machines of the same size. Requires stateless design (no in-memory session state), but is near-unlimited and redundant. In practice: vertical scaling is the first step (easier); horizontal scaling is needed at internet scale. Cloud: vertical = larger instance type; horizontal = more instances behind a load balancer.`
+                q: `Define scalability precisely (not "handles more load").`,
+                a: `The relationship between cost and capacity: a system scales when N× resources yield ~N× capacity without a rewrite. You care about the slope/shape of the cost curve, not a single throughput number.`
               },
               {
-                q: `What does stateless design mean and why is it required for horizontal scaling?`,
-                a: `Stateless: each request contains all information needed to process it — the server holds no per-user in-memory state between requests. A load balancer can send any request to any server and it works correctly. Stateful: the server stores session/cart/user data in its own memory — the next request MUST hit the same server (sticky sessions) or data is lost. To go stateless: move session state to a shared store (Redis, DB) or encode it in a signed token (JWT). Stateless enables horizontal scaling, rolling deploys without dropping sessions, and fault tolerance.`
+                q: `Vertical vs horizontal scaling — one-line trade-off.`,
+                a: `Vertical = bigger box: no code change but a hard ceiling and super-linear cost and a big SPOF. Horizontal = more boxes: ~linear cost and unbounded, but requires statelessness and coordination.`
               },
               {
-                q: `What is the CAP theorem and what does "P is non-negotiable" mean?`,
-                a: `CAP: a distributed system can guarantee at most 2 of: Consistency (every read returns the latest write), Availability (every request gets a response), Partition Tolerance (system works despite network splits). P (Partition Tolerance) is non-negotiable because network partitions happen in real distributed systems — machines lose connectivity. So the real choice is CP (prefer consistency — reject writes/reads during partition to avoid stale data; e.g. HBase, ZooKeeper) vs AP (prefer availability — serve possibly stale data rather than error; e.g. Cassandra, DynamoDB).`
+                q: `What does "stateless" actually mean, and what is the litmus test?`,
+                a: `No critical client-affinity state on the node between requests; state lives in an external store or the request itself. Test: can I kill this pod mid-request and lose nothing but the in-flight request?`
               },
               {
-                q: `What are the main load balancing algorithms and their trade-offs?`,
-                a: `Round Robin: distributes evenly in rotation — best for uniform request sizes. Least Connections: next request to server with fewest active connections — better for variable request duration. IP Hash/Sticky: same client always hits same server — maintains affinity but can cause hot spots. Weighted: servers get traffic proportional to weight — useful for heterogeneous server sizes. For stateless apps: round robin or least connections. For stateful apps that can't use shared session storage: IP hash (sticky sessions), but this limits horizontal scaling.`
+                q: `Name the three AKF Scale Cube axes.`,
+                a: `X = horizontal duplication (clone instances). Y = functional decomposition (split by service/verb). Z = data partitioning/sharding (split by customer/geo/hash).`
+              },
+              {
+                q: `Which AKF axis breaks a write/data bottleneck that cloning (X) cannot?`,
+                a: `Z-axis (sharding) — and often Y first to isolate the hot service. X only adds read capacity against a shared DB; it does nothing for a single-primary write ceiling.`
+              },
+              {
+                q: `What is shared-nothing and why does it matter for linear scaling?`,
+                a: `Each node owns its slice and coordinates only by messages — no shared mutable resource on the request path. Any shared resource (global lock, single sequence, one Redis) reintroduces a serial bottleneck and kills X-axis linearity.`
+              },
+              {
+                q: `Latency vs throughput — define and relate via Little’s Law.`,
+                a: `Latency = time per request (p99, ms); throughput = requests/sec (QPS). Little’s Law: concurrency L = throughput λ × latency W. e.g. 10k QPS × 50 ms = 500 in-flight.`
+              },
+              {
+                q: `How do throughput and latency trade off near saturation?`,
+                a: `Batching/queuing raise throughput at the cost of added latency. Past the saturation knee, throughput plateaus while p99 latency explodes (hockey-stick) as the queue grows.`
+              },
+              {
+                q: `How many seconds in a day, and why memorize it?`,
+                a: `86,400 ≈ 10⁵. It is the divisor that converts daily action counts into average QPS in every back-of-envelope estimate.`
+              },
+              {
+                q: `Give the 5-step capacity-estimation method.`,
+                a: `(1) State assumptions (DAU, actions/user/day, payload). (2) ÷86,400 → per-second. (3) ×2–3 peak factor. (4) Derive QPS, storage/day, bandwidth, cache size. (5) Name the architectural consequence (CDN, shard, fan-out).`
+              },
+              {
+                q: `Rough same-DC round trip vs cross-continent round trip?`,
+                a: `Same-datacenter RTT ≈ 0.5 ms; California↔Netherlands RTT ≈ 150 ms. SSD random read ≈ 16 µs; main memory ≈ 100 ns; disk seek ≈ 2 ms.`
+              },
+              {
+                q: `Why is "scale up the box" often architectural debt?`,
+                a: `It hides serial bottlenecks. A 64-vCPU machine running a single-threaded hot path is still limited to 1 core of work. Bigger hardware buys time, never linearity.`
               }
             ]
           },
           {
-            title: `Database Scaling — Read Replicas, Sharding & Caching`,
-            notes: `## Database Scaling — Read Replicas, Sharding & Caching
+            title: `Load Balancing & Traffic Management: L4 vs L7, Algorithms, Autoscaling, Thundering Herd`,
+            notes: `## The Load Balancer Is the Front Door of a Scaled System
 
-The database is usually the bottleneck at scale. Strategies from simplest to most complex:
+Once you scale out, *something* must spread traffic across the fleet, detect dead nodes, and keep the illusion of a single endpoint. That something is a load balancer (LB). How it makes decisions — and at which network layer — is a frequent staff-interview probe.
 
-### Read Replicas
-
-\`\`\`
-Primary (read+write) ──replication──→ Replica 1 (read-only)
-                                   └──replication──→ Replica 2 (read-only)
-
-Reads → Replica (90%+ of traffic in most apps)
-Writes → Primary (only)
-Replication lag: 10ms–1s typical — replicas may be slightly stale
-\`\`\`
-
-\`\`\`yaml
-# Spring Boot: route reads to replica, writes to primary
-spring:
-  datasource:
-    primary:
-      url: jdbc:postgresql://primary-db:5432/mydb
-    replica:
-      url: jdbc:postgresql://replica-db:5432/mydb
-
-# Alternatively: use a proxy (PgBouncer, ProxySQL)
-# that automatically routes SELECT → replica, DML → primary
+\`\`\`mermaid
+flowchart TD
+  C[Clients] --> DNS[DNS / Anycast]
+  DNS --> LB1[Edge L7 LB / CDN<br/>TLS term, routing, WAF]
+  LB1 --> A1[app pod 1]
+  LB1 --> A2[app pod 2]
+  LB1 --> A3[app pod 3]
+  LB1 --> A4[app pod N]
+  A1 --> RDB[(Primary DB)]
+  A2 --> RDB
+  A3 --> RR1[(Read replica 1)]
+  A4 --> RR2[(Read replica 2)]
+  LB1 -. health checks .-> A1
+  LB1 -. health checks .-> A4
 \`\`\`
 
-\`\`\`java
-// Route per transaction type
-@Transactional(readOnly = true)   // → routed to replica
-public List<Product> search(String q) { return repo.search(q); }
+### L4 vs L7 Load Balancing
 
-@Transactional                    // → routed to primary
-public Product create(ProductRequest r) { return repo.save(new Product(r)); }
-\`\`\`
+| | **L4 (transport)** | **L7 (application)** |
+|---|---|---|
+| Operates on | TCP/UDP — IP + port | HTTP/gRPC — URL, headers, cookies |
+| Decision data | 5-tuple (src/dst IP+port, proto) | Path, host, method, JWT, cookie |
+| Capabilities | Raw forwarding, fastest, conn-level | Path routing, retries, header rewrite, TLS term, WAF, sticky by cookie |
+| Throughput | Millions of conn/s, µs overhead | Lower (parses each request), ms-range |
+| TLS | Pass-through or terminate | Usually terminates |
+| Examples | AWS NLB, IPVS, MetalLB, ECMP | AWS ALB, Envoy, NGINX, HAProxy, Traefik |
 
-### Sharding (Horizontal Partitioning)
+> [!TIP]
+> The real-world answer is **both, layered**: an L4 LB (or Anycast/ECMP) spreads connections across a fleet of L7 proxies; the L7 proxies do the smart routing, retries, and TLS. "L4 for speed and connection distribution, L7 for application-aware routing" is the soundbite.
 
-\`\`\`
-Sharding: split data across multiple databases by a shard key
-  user_id 1-10M  → Shard A
-  user_id 10M-20M→ Shard B
-  user_id 20M-30M→ Shard C
+### Balancing Algorithms
 
-Benefits: each shard handles 1/N the load and 1/N the data
-Downsides: cross-shard queries are expensive/impossible
-           can't JOIN across shards
-           resharding (rebalancing) is painful
+| Algorithm | How it picks | Best when | Watch out |
+|---|---|---|---|
+| **Round robin** | Next node in rotation | Homogeneous nodes, uniform requests | Ignores load; a slow node still gets its turn |
+| **Weighted RR** | RR biased by capacity weight | Heterogeneous instance sizes | Static weights drift from reality |
+| **Least connections** | Node with fewest active conns | Long-lived/variable requests | Needs accurate conn counts; herd to a fresh node |
+| **Least response time** | Lowest latency × conns | Latency-sensitive APIs | Needs live latency telemetry |
+| **Consistent hashing** | hash(key) → ring position | Cache affinity, sticky-by-key, sharding | Hot keys; needs virtual nodes |
+| **Power of two choices** | Pick 2 random, choose lesser-loaded | Huge fleets, cheap & near-optimal | Slightly worse than full least-conn |
 
-Shard key rules:
-  ✓ High cardinality (many distinct values)
-  ✓ Uniform distribution (no hot shards)
-  ✓ Queries always include the shard key
-  ✗ Sequential IDs (hot shard — new rows always go to same shard)
-  ✗ Columns appearing only in complex queries
-\`\`\`
+> [!SUCCESS]
+> **Power of two random choices** is the senior dark-horse answer: with O(1) state it gets you within a hair of perfect least-connections balancing and avoids the "everyone stampedes the one idle node" pathology of naive least-conn. Great for very large fleets.
 
-### Denormalization & CQRS
+### Consistent Hashing — Why It Exists
 
-\`\`\`
-CQRS: Command Query Responsibility Segregation
-  Write model (Command): normalised relational DB — correctness
-  Read model  (Query):   denormalised, pre-computed, optimised for reads
+Naive sharding by \`hash(key) % N\` remaps **almost every key** when N changes (add/remove a node) — catastrophic for a cache (mass miss storm) or a stateful shard (mass data movement). **Consistent hashing** places nodes and keys on a hash ring; a key maps to the next node clockwise. Adding/removing a node only remaps keys in **one arc (~1/N of keys)**, not all of them.
 
-Example: product search
-  Write side: products + categories + attributes tables (normalised)
-  Read side:  Elasticsearch document { id, name, category, tags, price }
-              updated asynchronously via events (Kafka/outbox pattern)
+- **Virtual nodes (vnodes):** each physical node gets many ring positions ⇒ smooth load distribution and graceful rebalancing when a node leaves. Used by Cassandra, DynamoDB, Riak, Envoy ring-hash, memcached clients.
 
-  Result: search is instant (Elasticsearch), writes are safe (relational)
-\`\`\`
+> [!WARNING]
+> With \`% N\` and N: 4→5, ~80% of keys move. With consistent hashing, ~1/5 (20%) move. That difference is the whole reason the technique exists. (Demo in code.)
 
-### When to Apply Each Strategy
+### Health Checks
 
-\`\`\`
-Problem             Solution                When
-─────────────────────────────────────────────────────
-Reads too slow      Add read replica        First step
-Reads + cache hit%  Add Redis cache         High read/low write ratio
-Writes too slow     Optimise queries/indexes Before sharding
-Too much data       Table partitioning       Single DB still viable
-Too much data       Sharding                After partitioning fails
-Cross-region        Multi-region replicas    Global users
-\`\`\``,
+- **Liveness** = "is the process alive?" (restart if not). **Readiness** = "can it serve traffic right now?" (pull from LB pool if not). Conflating them causes restart loops.
+- **Active checks**: LB probes \`/healthz\` on an interval. **Passive checks**: LB observes real traffic (e.g. eject after N consecutive 5xx — Envoy *outlier detection*).
+- Health endpoints should be **shallow** by default (process up) but optionally **deep** (can reach DB) — a deep check that fails on a transient DB blip can cascade the *entire fleet* out of rotation. Prefer deep checks with hysteresis.
+
+> [!DANGER]
+> A naive deep health check is a fleet-wide footgun: a 2-second DB hiccup marks *every* pod unhealthy simultaneously → LB has zero healthy backends → total outage from a transient blip. Use shallow liveness + readiness gated on a *degraded* (not hard-fail) signal, plus a minimum-healthy floor.
+
+### Sticky Sessions (Session Affinity)
+
+The LB pins a client to one backend (via cookie or source-IP hash). Needed only when the backend holds per-session local state.
+
+> [!WARNING]
+> Sticky sessions are a **scaling smell**. They defeat even load distribution, break on node loss (session evaporates), and complicate deploys. Prefer **stateless + external session store** (Redis/JWT). If you must use affinity, prefer cookie-based over source-IP (NAT collapses many users to one IP).
+
+### Autoscaling
+
+- **Reactive (HPA):** scale on a metric (CPU, QPS, queue depth). Simple but lags — by the time CPU is at 80%, you are already hurting.
+- **Predictive/scheduled:** pre-scale for known peaks (Black Friday, 9am login surge) using forecasts.
+- **Scale-out fast, scale-in slow:** aggressive on the way up, conservative (cooldown) on the way down to avoid flapping.
+- **The cold-start problem:** new instances need JIT warm-up, connection-pool fill, and cache priming before they carry full load — pace ramp-in (slow-start LB) or they brown out on arrival.
+
+> [!TIP]
+> The best autoscaling signal for a request-serving tier is often **not CPU** but a saturation metric: in-flight concurrency, p99 latency, or queue depth. CPU lags I/O-bound workloads. Scale on the thing that actually predicts pain.
+
+### The Thundering Herd
+
+A **thundering herd** is many clients/threads simultaneously waking up to do the same expensive thing, overwhelming a downstream:
+
+1. **Cache stampede:** a hot key expires; 10,000 concurrent requests all miss and hammer the DB at once.
+2. **Retry storm:** a backend blips; every client retries simultaneously, turning a brownout into an outage.
+3. **Reconnect storm:** an LB/DB restarts and the entire fleet reconnects in the same millisecond.
+
+**Mitigations:**
+
+- **Request coalescing / single-flight:** only the *first* miss recomputes; concurrent callers wait on that one in-flight result.
+- **Stale-while-revalidate / early recompute:** serve the slightly-stale value while one worker refreshes before expiry.
+- **Jittered TTLs:** randomize expiry (±10%) so keys don’t all die at the same instant.
+- **Exponential backoff with full jitter** on retries (see §4) and a **circuit breaker** to stop the storm at the source.
+
+> [!SUCCESS]
+> "Single-flight + jittered TTL + capped jittered backoff" is the trifecta for herd control. Name all three and explain *which* herd each solves.`,
             code: [
-              `import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
+              {
+                lang: `java`,
+                title: `Consistent-hashing ring with virtual nodes — proves the ~1/N remap property`,
+                code: `// HashRing.java — bare JDK.  javac HashRing.java && java HashRing
+import java.util.*;
 
-// Simulating a simple consistent-hash sharding router
-public class ShardingDemo {
+public class HashRing {
+    private final SortedMap<Long, String> ring = new TreeMap<>();
+    private final int vnodes;
+    private final Set<String> nodes = new HashSet<>();
 
-    record Shard(String name, Map<String, String> data) {
-        Shard(String name) { this(name, new ConcurrentHashMap<>()); }
-        void put(String key, String value) { data.put(key, value); }
-        Optional<String> get(String key) { return Optional.ofNullable(data.get(key)); }
-        int size() { return data.size(); }
+    HashRing(int vnodes) { this.vnodes = vnodes; }
+
+    // 64-bit FNV-1a hash — deterministic, no external libs.
+    private static long hash(String s) {
+        long h = 0xcbf29ce484222325L;
+        for (int i = 0; i < s.length(); i++) { h ^= s.charAt(i); h *= 0x100000001b3L; }
+        return h & Long.MAX_VALUE;
     }
 
-    static class ShardRouter {
-        private final List<Shard> shards;
-
-        ShardRouter(int count) {
-            shards = new ArrayList<>();
-            for (int i = 0; i < count; i++) shards.add(new Shard("shard-" + i));
-        }
-
-        private Shard shardFor(String key) {
-            int hash = Math.abs(key.hashCode()) % shards.size();
-            return shards.get(hash);
-        }
-
-        void put(String key, String value) { shardFor(key).put(key, value); }
-        Optional<String> get(String key) { return shardFor(key).get(key); }
-
-        void printDistribution() {
-            shards.forEach(s -> System.out.printf("  %s: %d rows%n", s.name(), s.size()));
-        }
+    void addNode(String node) {
+        nodes.add(node);
+        for (int i = 0; i < vnodes; i++) ring.put(hash(node + "#" + i), node);
     }
-
-    // Read replica simulation
-    static class ReplicaRouter {
-        private final String primary = "primary:5432";
-        private final List<String> replicas = List.of("replica1:5432","replica2:5432");
-        private final AtomicInteger rr = new AtomicInteger();
-
-        String routeRead()  { return replicas.get(rr.getAndIncrement() % replicas.size()); }
-        String routeWrite() { return primary; }
+    void removeNode(String node) {
+        nodes.remove(node);
+        for (int i = 0; i < vnodes; i++) ring.remove(hash(node + "#" + i));
+    }
+    String route(String key) {                       // first node clockwise
+        if (ring.isEmpty()) return null;
+        long h = hash(key);
+        SortedMap<Long, String> tail = ring.tailMap(h);
+        Long pos = tail.isEmpty() ? ring.firstKey() : tail.firstKey();
+        return ring.get(pos);
     }
 
     public static void main(String[] args) {
-        // Sharding demo
-        var router = new ShardRouter(4);
-        var users = List.of("alice","bob","carol","dave","eve","frank","grace","hank");
-        users.forEach(u -> router.put("user:" + u, "data-" + u));
+        int KEYS = 100_000;
+        // --- Consistent hashing: how many keys move when we add a 5th node? ---
+        HashRing ch = new HashRing(200);             // 200 vnodes per node
+        for (String n : List.of("n1","n2","n3","n4")) ch.addNode(n);
+        Map<String,String> before = new HashMap<>();
+        for (int k = 0; k < KEYS; k++) before.put("key"+k, ch.route("key"+k));
+        ch.addNode("n5");
+        int moved = 0;
+        for (int k = 0; k < KEYS; k++)
+            if (!before.get("key"+k).equals(ch.route("key"+k))) moved++;
+        System.out.printf("Consistent hashing 4->5 nodes: %.1f%% keys remapped (ideal ~20%%)%n",
+                100.0 * moved / KEYS);
 
-        System.out.println("Shard distribution (4 shards, 8 users):");
-        router.printDistribution();
-        System.out.println("Get user:alice → " + router.get("user:alice").orElse("missing"));
+        // --- Naive modulo for contrast ---
+        int movedMod = 0;
+        for (int k = 0; k < KEYS; k++) {
+            long h = hash("key"+k);
+            if ((h % 4) != (h % 5)) movedMod++;
+        }
+        System.out.printf("Naive hash %%N  4->5 nodes: %.1f%% keys remapped (catastrophic)%n",
+                100.0 * movedMod / KEYS);
 
-        // Read replica routing
-        var replica = new ReplicaRouter();
-        System.out.println("
-Request routing:");
-        System.out.println("  SELECT → " + replica.routeRead());
-        System.out.println("  INSERT → " + replica.routeWrite());
-        System.out.println("  SELECT → " + replica.routeRead());
+        // --- Distribution quality with vnodes ---
+        Map<String,Integer> dist = new TreeMap<>();
+        for (int k = 0; k < KEYS; k++) dist.merge(ch.route("key"+k), 1, Integer::sum);
+        System.out.println("Load per node (5 nodes, want ~20000 each): " + dist);
     }
-}`
+}`,
+                runnable: true,
+                note: `Empirically demonstrates the headline number: consistent hashing remaps ~1/N of keys on a topology change while hash%N remaps ~80%. Vnodes keep the per-node load even.`
+              },
+              {
+                lang: `java`,
+                title: `Single-flight (request coalescing) — kills the cache-stampede herd`,
+                code: `// SingleFlight.java — bare JDK.  javac SingleFlight.java && java SingleFlight
+import java.util.concurrent.*;
+
+public class SingleFlight {
+    private final ConcurrentHashMap<String, CompletableFuture<String>> inflight =
+            new ConcurrentHashMap<>();
+
+    // Only the FIRST caller for a key runs the loader; the rest share its future.
+    String get(String key, Callable<String> loader) throws Exception {
+        CompletableFuture<String> fresh = new CompletableFuture<>();
+        CompletableFuture<String> existing = inflight.putIfAbsent(key, fresh);
+        if (existing != null) return existing.get();        // coalesce: wait on leader
+        try {
+            String v = loader.call();                       // leader does the real work
+            fresh.complete(v);
+            return v;
+        } catch (Exception e) { fresh.completeExceptionally(e); throw e; }
+        finally { inflight.remove(key, fresh); }
+    }
+
+    public static void main(String[] args) throws Exception {
+        SingleFlight sf = new SingleFlight();
+        var dbCalls = new java.util.concurrent.atomic.AtomicInteger();
+        Callable<String> expensiveLoad = () -> {            // simulate a slow DB read
+            dbCalls.incrementAndGet();
+            Thread.sleep(200);
+            return "value-from-db";
+        };
+        var pool = Executors.newFixedThreadPool(64);
+        var done = new CountDownLatch(1000);
+        for (int i = 0; i < 1000; i++)                       // 1000 concurrent misses on ONE key
+            pool.submit(() -> { try { sf.get("hot:key", expensiveLoad); } catch (Exception ignored) {}
+                                finally { done.countDown(); } });
+        done.await();
+        pool.shutdown();
+        System.out.printf("1000 concurrent requests -> %d actual DB call(s) (single-flight)%n",
+                dbCalls.get());
+    }
+}`,
+                runnable: true,
+                note: `Without coalescing, 1000 concurrent misses on a hot key = 1000 DB calls. With single-flight you typically see 1 (occasionally a few as in-flight entries rotate). This is the core defence against cache stampede.`
+              },
+              {
+                lang: `yaml`,
+                title: `Envoy-style L7: least-request, ring-hash affinity, outlier ejection`,
+                code: `# Conceptual L7 config showing the levers an interviewer expects you to name.
+clusters:
+  - name: api
+    lb_policy: LEAST_REQUEST          # ~ power-of-two-choices over active requests
+    # For cache affinity instead, use RING_HASH (consistent hashing) keyed on a header.
+    health_checks:
+      - timeout: 1s
+        interval: 5s
+        unhealthy_threshold: 3        # hysteresis: 3 fails before ejection
+        healthy_threshold: 2
+        http_health_check: { path: /healthz/ready }
+    outlier_detection:                # PASSIVE health: eject on real 5xx
+      consecutive_5xx: 5
+      base_ejection_time: 30s
+      max_ejection_percent: 50        # never eject more than half the fleet (avoid total outage)
+    common_lb_config:
+      healthy_panic_threshold: { value: 50 }   # if <50% healthy, ignore health, load-balance to ALL
+                                               # -> prevents the "0 healthy backends" outage`,
+                runnable: false,
+                note: `The panic threshold and max_ejection_percent are the guardrails that stop a transient downstream blip from ejecting the whole fleet into a total outage.`
+              }
             ],
             flashcards: [
               {
-                q: `What is a read replica and what is its main limitation?`,
-                a: `A read replica is a copy of the primary database that accepts only SELECT queries. Writes go to the primary, which replicates changes asynchronously to replicas. Benefit: read traffic (typically 80-90% of DB load) is distributed across replicas. Limitation: replication lag — replicas may be 10ms to several seconds behind the primary. Reading your own writes after a write may return stale data ("read-your-write" problem). Fix: route writes and their immediate reads to the primary; use replicas for background/reporting reads.`
+                q: `L4 vs L7 load balancing — decision data and trade-off.`,
+                a: `L4 routes on the TCP 5-tuple (IP+port): fast, connection-level, millions of conn/s. L7 routes on HTTP/gRPC content (path, header, cookie): application-aware (path routing, retries, TLS term, WAF) but slower. Real systems layer L4 in front of L7.`
               },
               {
-                q: `What is database sharding and what makes a good shard key?`,
-                a: `Sharding splits data across multiple databases by a shard key. Each shard is an independent DB — 1/N the data and load. Good shard key: high cardinality (many values), uniform distribution (no hot shards), always present in queries (otherwise cross-shard scatter queries). Bad shard key: sequential IDs (all new writes go to one shard — hot spot), low cardinality (status enum). Sharding prevents JOINs across shards, makes transactions spanning shards very complex. Use only when single-DB partitioning is insufficient.`
+                q: `Why does hash(key) % N fail when N changes?`,
+                a: `Changing N remaps almost every key (4→5 moves ~80%), causing a cache-miss storm or mass data migration. Consistent hashing remaps only ~1/N (one ring arc).`
               },
               {
-                q: `What is CQRS and what problem does it solve?`,
-                a: `CQRS (Command Query Responsibility Segregation) uses separate models for writes and reads. Write model: normalised relational DB optimised for correctness (ACID). Read model: denormalised store optimised for queries (Elasticsearch, Redis, materialised views) — pre-joined, pre-aggregated, instantly searchable. The read model is updated asynchronously from write events. Solves: the read model can scale independently from writes; complex read queries don't slow down writes; each side uses the best data store for its access pattern. Trade-off: eventual consistency between write and read models.`
+                q: `What problem do virtual nodes solve in consistent hashing?`,
+                a: `Without vnodes, few ring positions give lumpy load and one node’s whole range dumps onto its single successor on departure. Many vnodes per physical node smooth the distribution and spread rebalancing.`
+              },
+              {
+                q: `Round robin vs least connections — when does each win/lose?`,
+                a: `RR is fine for homogeneous nodes and uniform requests but ignores load. Least-conn suits long/variable requests but needs accurate counts and can herd a burst onto one freshly-added node.`
+              },
+              {
+                q: `What is "power of two choices" and why use it?`,
+                a: `Pick 2 random backends, send to the lesser-loaded. With O(1) state it gets near-optimal balancing and avoids the everyone-stampedes-the-idle-node pathology of naive least-conn. Ideal for huge fleets.`
+              },
+              {
+                q: `Liveness vs readiness probes — and the danger of conflating them.`,
+                a: `Liveness = is the process alive (restart if not). Readiness = can it serve now (pull from LB pool if not). Conflating them causes restart loops; restart does not fix "DB temporarily unreachable."`
+              },
+              {
+                q: `Why can a deep (DB-touching) health check cause a full outage?`,
+                a: `A transient DB blip fails the deep check on EVERY pod simultaneously → LB has zero healthy backends → total outage from a 2-second hiccup. Use shallow liveness + readiness with hysteresis and a minimum-healthy floor / panic threshold.`
+              },
+              {
+                q: `Why are sticky sessions a scaling smell?`,
+                a: `They defeat even load distribution, lose the session when a node dies, and complicate rolling deploys. Prefer stateless services with an external session store (Redis/JWT). If forced, use cookie affinity, not source-IP (NAT collapses users).`
+              },
+              {
+                q: `Best autoscaling signal for a request-serving tier — and why not CPU?`,
+                a: `A saturation metric: in-flight concurrency, p99 latency, or queue depth. CPU lags for I/O-bound work — by the time CPU hits 80% you are already in pain. Scale-out fast, scale-in slow to avoid flapping.`
+              },
+              {
+                q: `What is a thundering herd? Name three flavors.`,
+                a: `Many clients waking simultaneously to do the same expensive thing. Flavors: cache stampede (hot key expires, all miss), retry storm (all retry after a blip), reconnect storm (fleet reconnects after a restart).`
+              },
+              {
+                q: `Three mitigations for cache stampede / thundering herd.`,
+                a: `Single-flight/request coalescing (only the first miss recomputes), jittered TTLs (±10% so keys don’t all expire together), and stale-while-revalidate (serve stale while one worker refreshes). Plus capped jittered backoff + circuit breaker for retry storms.`
+              },
+              {
+                q: `What is the cold-start problem in autoscaling?`,
+                a: `New instances need JIT warm-up, connection-pool fill, and cache priming before carrying full load. Send full traffic immediately and they brown out — use LB slow-start / paced ramp-in.`
+              }
+            ]
+          },
+          {
+            title: `Consistency at Scale: CAP, PACELC, Quorums (R+W>N), Idempotency & Distributed Counters`,
+            notes: `## Consistency Is the Tax You Pay for Distributing State
+
+The moment state lives on more than one machine, you must choose how the copies agree. This is the deepest part of scalability and the part interviewers probe hardest, because most "scaling" answers quietly assume a single source of truth.
+
+### CAP — Stated Correctly
+
+CAP says: when a **network Partition (P)** occurs between replicas, a system must choose between **Consistency (C)** — every read sees the latest write (linearizable) — and **Availability (A)** — every request gets a non-error response. You cannot have both *during a partition*.
+
+> [!DANGER]
+> The single most common CAP mistake in interviews: "you pick 2 of 3." **Wrong.** Partitions are not optional — on a real network they *will* happen. So P is a given, and CAP is really a binary choice **C vs A *during a partition***. The rest of the time you have neither problem.
+
+| During a partition | CP system | AP system |
+|---|---|---|
+| Behavior | Reject/block requests that can’t guarantee consistency | Serve possibly-stale data, reconcile later |
+| You sacrifice | Availability | Strong consistency |
+| Examples | ZooKeeper, etcd, HBase, Spanner (CP-leaning), a single-primary RDBMS | Dynamo/Cassandra (tunable), Riak, DNS, most caches |
+| Use when | Money, locks, leader election, config | Carts, feeds, likes, presence, metrics |
+
+### PACELC — The Grown-Up Version
+
+CAP ignores the 99.9% of time with **no** partition. **PACELC** completes it:
+
+> **If Partition (P) → choose A or C; Else (E, normal operation) → choose Latency (L) or Consistency (C).**
+
+Even with a healthy network, strong consistency costs latency (you must coordinate replicas before answering). So the real taxonomy is e.g. **PA/EL** (Dynamo/Cassandra: available under partition, low-latency otherwise — sacrifices consistency both times) vs **PC/EC** (Spanner, VoltDB: consistent under partition *and* willing to pay latency for it normally).
+
+> [!TIP]
+> Saying "Cassandra is **PA/EL** and Spanner is **PC/EC**" instantly signals you understand that consistency costs latency *even when nothing is broken* — the insight CAP omits. That is a staff-level differentiator.
+
+### Eventual vs Strong Consistency
+
+- **Strong / linearizable:** reads always reflect the most recent write; the system behaves as if there is one copy. Costs coordination → latency, lower availability.
+- **Eventual:** replicas converge *if writes stop*; a read may return a stale value. Add **read-your-writes**, **monotonic reads**, **causal** consistency as stronger-than-eventual session guarantees that cover the common UX papercuts cheaply.
+
+> [!WARNING]
+> "Eventual" is not "eventually maybe never." With anti-entropy (read-repair, Merkle-tree sync, hinted handoff) replicas converge in milliseconds-to-seconds normally. The danger is *application code that assumes strong consistency on an eventually-consistent store* — e.g. read-after-write of your own profile edit returning the old value.
+
+### Quorums — The R + W > N Rule
+
+In a Dynamo-style system, data is replicated to **N** nodes. A write must be acknowledged by **W** replicas; a read must gather from **R** replicas. The core inequality:
+
+> **R + W > N  ⇒  the read and write quorums overlap by at least one node ⇒ every read sees the latest acknowledged write (strong-ish consistency).**
+
+\`\`\`mermaid
+flowchart LR
+  subgraph N5["N = 5 replicas"]
+    R1[R1]; R2[R2]; R3[R3]; R4[R4]; R5[R5]
+  end
+  W["WRITE W=3 acks<br/>R1 R2 R3"] --> N5
+  RD["READ R=3<br/>R3 R4 R5"] --> N5
+  note["R3 overlaps both sets -> R(3)+W(3)=6 > N(5) -> read sees latest"]
+\`\`\`
+
+| Config (N=3) | R | W | Property | Profile |
+|---|---|---|---|---|
+| Strong | 3 | 1 | R+W=4>3, fast write, slow read | read-heavy needing freshness |
+| Strong | 1 | 3 | R+W=4>3, fast read, slow/durable write | write-once read-many |
+| Balanced quorum | 2 | 2 | R+W=4>3, both tolerate 1 failure | the common default |
+| Fast/eventual | 1 | 1 | R+W=2≤3, may read stale | max availability, AP |
+
+> [!SUCCESS]
+> Tunable consistency = you set R, W, N **per operation**. Use W=ALL or quorum for a payment; R=1/W=1 for a like-count. The single most quotable line: **"R + W > N gives quorum overlap, hence strong consistency; R + W ≤ N gives availability and possible staleness."**
+
+> [!WARNING]
+> Quorum overlap guarantees you *read a node that has the latest write*, but with last-write-wins it does not resolve concurrent conflicting writes correctly — clock skew can silently drop a write. Real systems use **version vectors / dotted version vectors** (or CRDTs) to detect and merge conflicts instead of LWW.
+
+### Idempotency at Scale
+
+In a distributed system, **retries are guaranteed** (timeouts, at-least-once delivery, client double-clicks). An operation is **idempotent** if applying it N times equals applying it once. Without idempotency, retries double-charge cards and double-ship orders.
+
+- **Idempotency key:** client sends a unique key (UUID); server records "key → result" and on replay returns the stored result instead of re-executing. Stripe, PayPal, and every serious payments API do this.
+- Natural idempotency: \`SET x = 5\` (idempotent) vs \`x = x + 1\` (not). Prefer **set-to-target** over **delta** semantics where possible.
+- Exactly-once *delivery* is impossible across a network; you get **at-least-once delivery + idempotent processing = effectively-once**.
+
+> [!DANGER]
+> The classic bug: client times out (but the server *did* process), client retries, second request also succeeds → double charge. The fix is server-side dedup on an idempotency key with an atomic "insert-key-or-return-prior-result," not client-side cleverness.
+
+### Distributed Counters — A Microcosm of the Whole Problem
+
+Counting "likes" across a sharded, replicated store is deceptively hard because \`UPDATE counter SET n = n + 1\` is a contended, non-idempotent, single-row hotspot.
+
+Strategies, from strong to scalable:
+
+1. **Single row + lock:** correct, strongly consistent, but a write hotspot that serializes — kills throughput on a viral item.
+2. **Sharded/striped counter:** split into K sub-counters (\`counter:itemId:0..K-1\`), increment a random shard, sum K on read. Spreads write contention K-fold (Google App Engine’s classic pattern). Read cost ↑, write contention ↓.
+3. **CRDT counter (PN/G-Counter):** each replica keeps its own count, merges by taking element-wise max/sum — converges with **no coordination**, AP-friendly, used by Redis CRDT/Riak. Eventually consistent total.
+4. **Approximate (HyperLogLog):** for unique counts (uniques, reach) at billions scale with ~1.6 KB and ~2% error — the right call when "exact" is not worth the cost.
+
+> [!TIP]
+> The interview move: *"Do you need the count to be exact and immediate, or eventually-correct and cheap?"* For a like button: sharded counter or CRDT, eventual, cheap. For an account balance: single authoritative row, strongly consistent, idempotent writes. **Match the consistency model to the business cost of being wrong.**`,
+            code: [
+              {
+                lang: `java`,
+                title: `Quorum simulator + idempotency dedup — R+W>N in action`,
+                code: `// QuorumDemo.java — bare JDK.  javac QuorumDemo.java && java QuorumDemo
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class QuorumDemo {
+
+    // --- A toy replicated register: N replicas, each holds (version,value) ---
+    static class Replica { long version = 0; String value = null; }
+
+    static class Cluster {
+        final List<Replica> replicas;
+        final int N;
+        Cluster(int n) { N = n; replicas = new ArrayList<>(); for (int i=0;i<n;i++) replicas.add(new Replica()); }
+
+        // Write to W replicas (simulate the first W being reachable).
+        void write(int W, long version, String value) {
+            for (int i = 0; i < W; i++) { replicas.get(i).version = version; replicas.get(i).value = value; }
+        }
+        // Read from R replicas, return the value with the highest version (read-repair idea).
+        String read(int[] readSet) {
+            Replica best = null;
+            for (int idx : readSet) {
+                Replica r = replicas.get(idx);
+                if (best == null || r.version > best.version) best = r;
+            }
+            return best == null ? null : best.value;
+        }
+        boolean overlaps(int R, int W) { return R + W > N; }
+    }
+
+    public static void main(String[] args) {
+        int N = 5;
+        Cluster c = new Cluster(N);
+        int W = 3;
+        c.write(W, 1, "v1");          // write acked by replicas 0,1,2
+
+        // A read quorum R=3 over replicas {2,3,4} overlaps the write set at replica 2.
+        int R = 3;
+        System.out.printf("N=%d W=%d R=%d  -> R+W>N ? %b%n", N, W, R, c.overlaps(R, W));
+        System.out.println("Quorum read {2,3,4} sees: " + c.read(new int[]{2,3,4}) + "  (expect v1 - overlap)");
+
+        // A non-overlapping fast read R=1 over a stale replica may miss the write.
+        System.out.printf("N=%d W=%d R=1  -> R+W>N ? %b%n", N, W, 1, c.overlaps(1, W));
+        System.out.println("Fast read {4} sees:    " + c.read(new int[]{4}) + "  (expect null - stale)");
+
+        // --- Idempotency: at-least-once + dedup = effectively-once ---
+        ConcurrentHashMap<String,String> processed = new ConcurrentHashMap<>();
+        var charges = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.function.Function<String,String> charge = key ->
+            processed.computeIfAbsent(key, k -> {            // atomic insert-or-return-prior
+                charges.incrementAndGet();                   // the real side effect happens ONCE
+                return "charged:" + k;
+            });
+        String idemKey = "order-7f3a";
+        charge.apply(idemKey);                               // first try
+        charge.apply(idemKey);                               // client retry after timeout
+        charge.apply(idemKey);                               // duplicate delivery
+        System.out.printf("3 deliveries of idempotency key -> %d actual charge(s) (effectively-once)%n",
+                charges.get());
+    }
+}`,
+                runnable: true,
+                note: `Shows both ideas concretely: an overlapping quorum (R+W>N) always reads the latest write while a non-overlapping fast read can return stale; and an idempotency key collapses 3 retries into one side effect.`
+              },
+              {
+                lang: `java`,
+                title: `Sharded (striped) distributed counter — removes the single-row write hotspot`,
+                code: `// ShardedCounter.java — bare JDK.  javac ShardedCounter.java && java ShardedCounter
+import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.*;
+
+public class ShardedCounter {
+    // Conceptually: counter:itemId:0..K-1 rows. LongAdder is itself an in-JVM
+    // striped counter, mirroring the distributed sharded-counter pattern.
+    private final LongAdder[] shards;
+    ShardedCounter(int k) { shards = new LongAdder[k]; for (int i=0;i<k;i++) shards[i]=new LongAdder(); }
+
+    void increment() {                          // write a RANDOM shard -> contention / K
+        shards[ThreadLocalRandom.current().nextInt(shards.length)].increment();
+    }
+    long sum() { long t=0; for (LongAdder s: shards) t+=s.sum(); return t; }  // read sums all shards
+
+    public static void main(String[] args) throws Exception {
+        ShardedCounter likes = new ShardedCounter(16);        // 16 sub-counters
+        var pool = Executors.newFixedThreadPool(64);
+        var latch = new CountDownLatch(2_000_000);
+        for (int i = 0; i < 2_000_000; i++)
+            pool.submit(() -> { likes.increment(); latch.countDown(); });
+        latch.await(); pool.shutdown();
+        System.out.println("Total likes (16 shards, no single-row hotspot): " + likes.sum());
+        System.out.println("Trade-off: writes contend on 1/16 the hot resource; reads sum 16 shards.");
+    }
+}`,
+                runnable: true,
+                note: `The striped counter is the in-process analog of the distributed sharded-counter pattern: increment a random shard (write contention ÷K), sum all shards on read (read cost ×K). Correct under massive concurrency; eventually-correct totals across replicas.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State CAP correctly — what is the real choice?`,
+                a: `During a network PARTITION you must choose Consistency (reads see latest write) OR Availability (every request gets a non-error response). Partitions are not optional, so it is a binary C-vs-A choice during a partition, not "pick 2 of 3."`
+              },
+              {
+                q: `What does PACELC add over CAP?`,
+                a: `It covers normal operation: if Partition → A or C; Else → Latency or Consistency. Even with a healthy network, strong consistency costs latency. e.g. Cassandra=PA/EL, Spanner=PC/EC.`
+              },
+              {
+                q: `Classify Cassandra and Spanner in PACELC.`,
+                a: `Cassandra/Dynamo = PA/EL (available under partition, low-latency otherwise, sacrifices consistency both times). Spanner/VoltDB = PC/EC (consistent under partition and pays latency for consistency normally).`
+              },
+              {
+                q: `State the quorum inequality and what it guarantees.`,
+                a: `R + W > N. The read and write quorums overlap by ≥1 node, so every read touches a replica holding the latest acknowledged write → strong-ish consistency. R + W ≤ N → may read stale, more available.`
+              },
+              {
+                q: `For N=3, give the common balanced quorum and why.`,
+                a: `R=2, W=2 (R+W=4>3). Both reads and writes tolerate one replica failure while preserving quorum overlap. It is the typical default.`
+              },
+              {
+                q: `Does quorum overlap alone make a system fully correct? What is missing?`,
+                a: `No — overlap guarantees you read a node with the latest write, but last-write-wins can silently drop concurrent conflicting writes on clock skew. You need version vectors / dotted version vectors or CRDTs to detect and merge conflicts.`
+              },
+              {
+                q: `Strong vs eventual consistency, and useful in-between guarantees.`,
+                a: `Strong/linearizable: reads always reflect the latest write (costs coordination/latency). Eventual: replicas converge if writes stop, reads may be stale. In between: read-your-writes, monotonic reads, causal consistency — cheap session guarantees fixing common UX papercuts.`
+              },
+              {
+                q: `Why is exactly-once delivery impossible, and what do we do instead?`,
+                a: `Network failures make a sender unable to know if a message was delivered, so it must retry → at-least-once. We get effectively-once by combining at-least-once DELIVERY with idempotent PROCESSING.`
+              },
+              {
+                q: `How does an idempotency key prevent double charges?`,
+                a: `Client sends a unique key; the server atomically inserts "key→result" or returns the prior result, so a retried/duplicated request returns the stored outcome instead of re-executing the side effect.`
+              },
+              {
+                q: `Why is UPDATE counter SET n=n+1 a scaling problem, and one fix?`,
+                a: `It is a contended, non-idempotent single-row write hotspot that serializes on viral items. Fix: sharded/striped counter — increment a random of K sub-counters (contention ÷K), sum K on read.`
+              },
+              {
+                q: `When would you use a CRDT counter or HyperLogLog instead of a row?`,
+                a: `CRDT (G/PN-counter) when you want coordination-free, AP, eventually-consistent totals (likes, presence). HyperLogLog for approximate unique counts at billions scale (~1.6 KB, ~2% error) when exactness is not worth the cost.`
+              },
+              {
+                q: `How do you choose a consistency model in a design interview?`,
+                a: `Match it to the business cost of being wrong: exact+immediate+idempotent for money/balances (single authoritative row, strong); eventual+cheap for likes/feeds/presence (sharded counter or CRDT, AP).`
+              }
+            ]
+          },
+          {
+            title: `Asynchrony & Decoupling: Queues, Back-Pressure, Bulkheads, Rate Limiting, Graceful Degradation`,
+            notes: `## Asynchrony Is How You Stop Failures From Spreading
+
+Synchronous call chains couple availability multiplicatively: if A calls B calls C and each is 99.9% up, the chain is ~99.7% up, and a slowdown in C blocks threads all the way up to A until everything is saturated. Asynchrony and decoupling break that chain so a slow or dead dependency degrades one feature instead of toppling the system.
+
+\`\`\`mermaid
+flowchart LR
+  P[Producer / API] -->|enqueue| Q[(Message Queue<br/>Kafka / SQS / Rabbit)]
+  Q -->|pull at own pace| C1[Consumer 1]
+  Q --> C2[Consumer 2]
+  Q --> C3[Consumer N]
+  C1 --> DB[(Datastore)]
+  Q -. depth / lag .-> M[Autoscaler<br/>scale consumers on lag]
+  Q -. poison msgs .-> DLQ[(Dead-Letter Queue)]
+\`\`\`
+
+### Why Queues — Decoupling and Buffering
+
+- **Temporal decoupling:** producer and consumer need not be up at the same time. The queue absorbs a burst the consumers can’t yet handle (peak-shaving).
+- **Independent scaling:** scale producers and consumers separately; scale consumers on **queue depth / lag**, the truest saturation signal.
+- **Smoothing:** convert a spiky 50k-burst into a steady drain the database can survive.
+- **Retry & DLQ:** failed messages retry; **poison messages** that always fail go to a dead-letter queue for inspection instead of blocking the partition.
+
+> [!WARNING]
+> A queue does not create capacity; it **defers** load. If arrival rate persistently exceeds drain rate, the queue grows without bound: latency climbs, memory/disk fills, and you eventually fail harder than if you had shed load up front. A growing queue is a *symptom*, not a solution. Watch queue depth and consumer lag like a hawk.
+
+### Back-Pressure
+
+**Back-pressure** is a downstream signaling "slow down" to an upstream rather than silently buffering. Without it, an unbounded buffer turns a transient overload into an OOM. Implementations:
+
+- **Bounded queues** that *block* or *reject* on full (the classic \`ArrayBlockingQueue\` + caller-runs policy).
+- **Reactive Streams / TCP flow control:** consumer requests N items; producer never sends more than demanded.
+- **gRPC/HTTP2 flow-control windows**, Kafka consumer \`max.poll.records\`, DB connection-pool limits.
+
+> [!TIP]
+> The senior framing: **every buffer must be bounded, and every bound must have a defined overflow policy** (block, drop-oldest, drop-newest, reject-with-429). Unbounded \`LinkedBlockingQueue\` in a thread pool is a classic latent OOM — name it if you see it.
+
+### The Bulkhead
+
+Named after a ship’s watertight compartments: **isolate resources so one failing dependency can’t consume the whole pool**. If all 200 threads can call the slow \`recommendations\` service, one slowdown starves \`checkout\` too. Bulkheading gives each dependency its own bounded pool (e.g. 20 threads / 20 connections) so its failure is *contained*.
+
+> [!SUCCESS]
+> Bulkhead + timeout + circuit breaker is the resilience trinity. Bulkhead caps *how much* of you a dependency can consume; timeout caps *how long*; circuit breaker stops calling a known-dead dependency entirely. Resilience4j/Envoy implement all three.
+
+### Rate Limiting — The Algorithms
+
+| Algorithm | Mechanic | Allows bursts? | Memory | Notes |
+|---|---|---|---|---|
+| **Token bucket** | Tokens refill at rate R, cap B; each request spends 1 | Yes, up to B | O(1)/key | Most common; bursty-friendly (APIs, Stripe, AWS) |
+| **Leaky bucket** | Requests queue, drain at fixed rate | No — smooths to constant rate | O(queue) | Traffic shaping; constant output |
+| **Fixed window** | Count per wall-clock window | Boundary spikes (2× at edge) | O(1) | Simple but bursty at window edges |
+| **Sliding window log** | Timestamp log, count last T | Accurate | O(requests) | Exact but memory-heavy |
+| **Sliding window counter** | Weighted prev+current window | Approx, smooth | O(1) | Cloudflare’s choice; great accuracy/cost ratio |
+
+> [!TIP]
+> **Token bucket** is the default senior answer: O(1) state, allows controlled bursts (good UX), trivially distributed via Redis (\`INCR\`+TTL or a Lua script for atomic refill). "Token bucket for burst-friendly API limits, leaky bucket when I need a perfectly smooth output rate to protect a fragile downstream."
+
+### Graceful Degradation & Load Shedding
+
+When overloaded, a senior system **sheds load deliberately** instead of failing randomly:
+
+- **Load shedding:** reject *excess* work early (return 429/503 fast) so accepted work still meets SLA. Far better than accepting everything and missing SLA on *all* of it.
+- **Priority shedding:** drop low-value traffic first (health-check spam, analytics, free tier) and protect revenue/critical paths.
+- **Graceful degradation:** serve a reduced experience — stale cache instead of live data, skip the recommendations carousel, disable non-essential features — rather than a hard error.
+- **Brownout over blackout:** a degraded response beats a 500.
+
+> [!DANGER]
+> The counter-intuitive truth: under extreme overload, **the most available action is to reject some requests**. Accepting everything collapses throughput (the USL retrograde region in §5) and you serve *zero* requests well. A 429 in 1 ms is a better outcome than a 30 s timeout for everyone. Admission control > heroics.
+
+### Timeouts and Retries — With Jitter
+
+- **Every remote call needs a timeout.** No timeout = a hung dependency leaks threads until the caller dies. Set timeouts from the p99 of the dependency, not a guess.
+- **Retries amplify load.** Naive immediate retry of a struggling service = a retry storm that finishes it off. Use **exponential backoff with full jitter**: \`sleep = random(0, min(cap, base × 2^attempt))\`.
+- **Cap total attempts (2–3)**, and use a **retry budget** (e.g. retries ≤ 10% of requests) so retries can never more than ~double load.
+- **Only retry idempotent / safe operations** — see §3.
+
+> [!WARNING]
+> Backoff *without* jitter just synchronizes the herd: all clients back off the same amount and stampede again in lockstep. **Full jitter** is what de-correlates them. This is the single most common retry mistake.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Thread-safe token-bucket rate limiter (no libs) — lazy refill, burst-aware`,
+                code: `// TokenBucket.java — bare JDK.  javac TokenBucket.java && java TokenBucket
+public class TokenBucket {
+    private final double capacity;       // max burst (B)
+    private final double refillPerSec;   // steady rate (R)
+    private double tokens;               // current tokens
+    private long lastNanos;
+
+    TokenBucket(double capacity, double refillPerSec) {
+        this.capacity = capacity;
+        this.refillPerSec = refillPerSec;
+        this.tokens = capacity;          // start full -> allow an initial burst
+        this.lastNanos = System.nanoTime();
+    }
+
+    // Lazy refill: compute tokens accrued since last call, then try to spend one.
+    synchronized boolean tryAcquire() {
+        long now = System.nanoTime();
+        double elapsedSec = (now - lastNanos) / 1_000_000_000.0;
+        tokens = Math.min(capacity, tokens + elapsedSec * refillPerSec);
+        lastNanos = now;
+        if (tokens >= 1.0) { tokens -= 1.0; return true; }
+        return false;                    // shed: caller returns HTTP 429
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        // 5 req/s steady, burst up to 10.
+        TokenBucket tb = new TokenBucket(10, 5);
+        int allowed = 0, rejected = 0;
+        // Burst of 15 instantly: expect ~10 allowed (the bucket), ~5 rejected.
+        for (int i = 0; i < 15; i++) { if (tb.tryAcquire()) allowed++; else rejected++; }
+        System.out.printf("Initial burst of 15 -> allowed=%d rejected=%d (capacity=10)%n", allowed, rejected);
+
+        // Then a steady 5/s should pass: sleep 1s -> ~5 tokens refilled.
+        Thread.sleep(1000);
+        int passAfterRefill = 0;
+        for (int i = 0; i < 6; i++) if (tb.tryAcquire()) passAfterRefill++;
+        System.out.printf("After 1s refill -> %d/6 allowed (rate=5/s)%n", passAfterRefill);
+    }
+}`,
+                runnable: true,
+                note: `Lazy-refill token bucket: O(1) state, allows a controlled burst up to capacity then enforces the steady rate. This is exactly the algorithm behind most API rate limiters; distribute it with a Redis Lua script for atomic refill across nodes.`
+              },
+              {
+                lang: `java`,
+                title: `Exponential backoff with FULL JITTER — de-correlates the retry herd`,
+                code: `// BackoffJitter.java — bare JDK.  javac BackoffJitter.java && java BackoffJitter
+import java.util.concurrent.ThreadLocalRandom;
+
+public class BackoffJitter {
+    static final long BASE_MS = 100, CAP_MS = 5_000;
+    static final int MAX_ATTEMPTS = 5;
+
+    // AWS "full jitter": sleep = random(0, min(cap, base * 2^attempt)).
+    static long fullJitterDelay(int attempt) {
+        long exp = Math.min(CAP_MS, BASE_MS * (1L << attempt));
+        return ThreadLocalRandom.current().nextLong(0, exp + 1);
+    }
+    // For contrast: deterministic backoff (NO jitter) -> all clients sync up.
+    static long noJitterDelay(int attempt) { return Math.min(CAP_MS, BASE_MS * (1L << attempt)); }
+
+    public static void main(String[] args) {
+        System.out.println("attempt | no-jitter | full-jitter sample (ms)");
+        for (int a = 0; a < MAX_ATTEMPTS; a++)
+            System.out.printf("   %d    |   %5d   | %d%n", a, noJitterDelay(a), fullJitterDelay(a));
+
+        // Show that 5 "clients" pick DIFFERENT delays with jitter (no lockstep stampede).
+        System.out.print("5 clients, attempt 3, full-jitter delays: ");
+        for (int c = 0; c < 5; c++) System.out.print(fullJitterDelay(3) + "ms ");
+        System.out.println("\\n-> de-correlated; without jitter all 5 would retry at " + noJitterDelay(3) + "ms together.");
+    }
+}`,
+                runnable: true,
+                note: `No-jitter backoff synchronizes every client to retry at the same instant (a fresh herd). Full jitter spreads them across [0, cap], de-correlating the stampede. Always pair with a max-attempt cap and a retry budget, and only retry idempotent ops.`
+              },
+              {
+                lang: `java`,
+                title: `Bulkhead via a bounded semaphore — contain one slow dependency`,
+                code: `// Bulkhead.java — bare JDK.  javac Bulkhead.java && java Bulkhead
+import java.util.concurrent.*;
+
+public class Bulkhead {
+    // Cap concurrent calls to a dependency so it can't consume the whole thread pool.
+    private final Semaphore permits;
+    Bulkhead(int maxConcurrent) { permits = new Semaphore(maxConcurrent); }
+
+    <T> T call(Callable<T> task, T fallback) {
+        if (!permits.tryAcquire()) return fallback;          // shed immediately if pool full
+        try { return task.call(); }
+        catch (Exception e) { return fallback; }
+        finally { permits.release(); }
+    }
+
+    public static void main(String[] args) throws Exception {
+        Bulkhead recsBulkhead = new Bulkhead(5);             // recommendations may use <=5 threads
+        var rejected = new java.util.concurrent.atomic.AtomicInteger();
+        var served   = new java.util.concurrent.atomic.AtomicInteger();
+        Callable<String> slowRecs = () -> { Thread.sleep(300); served.incrementAndGet(); return "recs"; };
+
+        var pool = Executors.newFixedThreadPool(50);
+        var latch = new CountDownLatch(50);
+        for (int i = 0; i < 50; i++)                          // 50 concurrent callers, bulkhead = 5
+            pool.submit(() -> {
+                String r = recsBulkhead.call(slowRecs, "FALLBACK");   // degrade gracefully
+                if (r.equals("FALLBACK")) rejected.incrementAndGet();
+                latch.countDown();
+            });
+        latch.await(); pool.shutdown();
+        System.out.printf("50 callers, bulkhead=5 -> served=%d, shed-to-fallback=%d%n",
+                served.get(), rejected.get());
+        System.out.println("The slow dependency is contained; checkout's threads are never starved.");
+    }
+}`,
+                runnable: true,
+                note: `A semaphore bulkhead caps how much of the fleet a single dependency can consume; over-limit calls fail fast to a fallback (graceful degradation) instead of queuing and starving unrelated features.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How does synchronous call-chaining hurt availability?`,
+                a: `Availability multiplies: 3 chained 99.9% services ≈ 99.7%. Worse, a slowdown deep in the chain blocks threads all the way up until the whole stack saturates. Async/decoupling contains the failure to one feature.`
+              },
+              {
+                q: `What does a message queue actually buy you?`,
+                a: `Temporal decoupling (producer/consumer need not be up together), peak-shaving/buffering of bursts, independent scaling (scale consumers on lag), and retry+DLQ for failures. It defers load — it does not create capacity.`
+              },
+              {
+                q: `Why is a growing queue a symptom rather than a fix?`,
+                a: `A queue defers load; if arrival rate persistently exceeds drain rate it grows unbounded — latency climbs, memory/disk fills, and you fail harder than if you had shed load up front. Monitor depth/lag and add back-pressure.`
+              },
+              {
+                q: `What is back-pressure and the one rule about buffers?`,
+                a: `Downstream signaling upstream to slow down instead of silently buffering. Rule: every buffer must be bounded and every bound must have a defined overflow policy (block, drop-oldest/newest, reject-429). Unbounded queues are latent OOMs.`
+              },
+              {
+                q: `What is the bulkhead pattern?`,
+                a: `Isolate resources (separate bounded thread/connection pools) per dependency so one slow/failing dependency cannot consume the whole pool and starve unrelated features. Named after ship watertight compartments.`
+              },
+              {
+                q: `Name the resilience trinity and what each caps.`,
+                a: `Bulkhead caps how MUCH of you a dependency can consume; timeout caps how LONG you wait; circuit breaker stops calling a known-dead dependency entirely. Together they contain blast radius.`
+              },
+              {
+                q: `Token bucket vs leaky bucket.`,
+                a: `Token bucket: tokens refill at rate R up to cap B, each request spends one → allows controlled bursts up to B, O(1) state (default API limiter). Leaky bucket: requests drain at a fixed rate → no bursts, perfectly smooth output for protecting a fragile downstream.`
+              },
+              {
+                q: `Why is fixed-window rate limiting flawed, and what fixes it cheaply?`,
+                a: `It allows up to 2× the limit at the window boundary (burst at the edge of one window + start of the next). Sliding-window-counter (weighted previous+current window) fixes it with O(1) state — Cloudflare’s approach.`
+              },
+              {
+                q: `Under extreme overload, why is rejecting requests the MOST available action?`,
+                a: `Accepting everything pushes you past the saturation knee into the USL retrograde region where throughput collapses and everyone times out. Shedding excess (fast 429/503) keeps accepted work within SLA. Admission control beats heroics.`
+              },
+              {
+                q: `Load shedding vs graceful degradation.`,
+                a: `Load shedding: reject excess work early (fast 429/503), ideally lowest-priority first, so accepted work meets SLA. Graceful degradation: serve a reduced experience (stale cache, drop optional features) instead of a hard error. Brownout beats blackout.`
+              },
+              {
+                q: `Why must every remote call have a timeout, set how?`,
+                a: `A hung dependency without a timeout leaks threads/connections until the caller dies and the failure propagates up. Set timeouts from the dependency’s p99, not a guess.`
+              },
+              {
+                q: `Why is exponential backoff WITHOUT jitter dangerous?`,
+                a: `All clients back off by the same amount and stampede again in lockstep — a synchronized retry herd. Full jitter sleep=random(0, min(cap, base·2^attempt)) de-correlates them. Always cap attempts and apply a retry budget; retry only idempotent ops.`
+              }
+            ]
+          },
+          {
+            title: `Bottlenecks & Reliability: USL/Amdahl, SPOFs, Replication, Failover & the Design-Interview Frame`,
+            notes: `## Scaling Is Bottleneck Whack-a-Mole
+
+You never "scale the system" — you find the current bottleneck, move it, and find the next one. The art is *predicting* the next bottleneck and knowing when adding capacity stops helping (or starts hurting). Two laws give you the intuition.
+
+### Amdahl’s Law — The Serial Fraction Caps Speedup
+
+If a fraction **s** of work is inherently serial (can’t parallelize) and (1−s) parallelizes across **p** workers, max speedup is:
+
+> **Speedup(p) = 1 / ( s + (1−s)/p )**, and as p→∞, **Speedup → 1/s**.
+
+If just **5% is serial**, the absolute ceiling is **20×** no matter how many machines you add. 1% serial → 100× ceiling. The lesson: **the serial fraction — a global lock, a single sequence generator, one coordinator — sets a hard ceiling that more hardware cannot break.**
+
+### Universal Scalability Law — Why More Nodes Can Make It SLOWER
+
+Amdahl undersells the danger. Gunther’s **USL** adds a second penalty — **crosstalk / coherency cost** (nodes must coordinate, O(N²)):
+
+> **C(N) = N / ( 1 + α(N−1) + βN(N−1) )**
+>
+> α = contention (serialization, like Amdahl’s s) · β = coherency (coordination/crosstalk between nodes).
+
+\`\`\`mermaid
+flowchart LR
+  A[Add nodes] --> B[Throughput rises<br/>near-linear]
+  B --> C[Knee: contention alpha<br/>flattens the curve]
+  C --> D[Peak N*]
+  D --> E[Coherency beta dominates<br/>RETROGRADE: throughput FALLS]
+\`\`\`
+
+| Region | Behavior | Cause |
+|---|---|---|
+| Linear | ~N× throughput | low α, low β |
+| Sub-linear (knee) | flattens | contention α (serial section) |
+| Peak N* | max throughput | α and β balance |
+| **Retrograde** | throughput **decreases** as you add nodes | coherency β (coordination cost > work) |
+
+> [!DANGER]
+> The non-obvious, interview-gold insight: **adding capacity past the USL peak makes the system slower**, because the marginal node adds more coordination cost than work. This is why "just add servers" can deepen an outage — more app servers hammering one contended DB lock increases lock contention and lowers total throughput. Find α and β, don’t blindly scale.
+
+> [!SUCCESS]
+> Practical takeaway: **minimize α (kill serial sections / global locks → shard, partition, batch) and minimize β (reduce cross-node chatter → caching, locality, async, fewer distributed transactions).** Those two levers, not node count, set your real ceiling.
+
+### Finding the Bottleneck — Method
+
+1. **Measure, don’t guess.** Use USE (Utilization, Saturation, Errors) per resource and RED (Rate, Errors, Duration) per service. The bottleneck is the resource at ~100% utilization or with a growing queue.
+2. **The four classic bottlenecks:** CPU, memory, disk I/O, network — plus the logical ones: locks/contention, connection pools, a single hot row/partition.
+3. **Follow the queue.** Wherever a queue is growing (DB connection wait, thread-pool queue, Kafka lag) is your saturated resource.
+4. **The DB is usually it.** In most web systems the stateless tier scales trivially; the **single-primary database is the wall.** That reframes the whole interview onto data: read replicas, caching, sharding, CQRS.
+
+### Single Points of Failure (SPOF) & Redundancy
+
+A SPOF is any component whose failure takes down the system. Hunt them: single LB, single DB primary, single AZ, single message broker, single config service, a unique leader, even a single DNS provider or one shared library version.
+
+- **Redundancy:** N+1 (one spare), N+2, or 2N (full duplicate). More copies = more cost and more coordination — pick per criticality.
+- **Multi-AZ then multi-region:** survive a rack, an AZ, then a whole region. Each level adds latency and consistency complexity (cross-region replication lag).
+- **Eliminate via replication + automated failover**, never a human in the loop for the critical path.
+
+### Replication & Failover
+
+| Replication | Consistency | Failover risk | Use |
+|---|---|---|---|
+| **Sync** (wait for replica ack) | Strong, no data loss (RPO=0) | Higher write latency; a slow replica stalls writes | Money, ledgers |
+| **Async** (ack before replica) | Eventual; window of data loss on failover | Low latency, may lose last writes (RPO>0) | Most web apps |
+| **Semi-sync** | At least one replica synced | Balanced | Common RDBMS default |
+
+- **Failover** = promote a replica to primary when the primary dies. Needs **failure detection** (heartbeats/leases), **leader election** (Raft/Paxos/ZooKeeper) to avoid **split-brain** (two primaries accepting writes → divergent data), and a **fencing token** so the old primary, if it revives, can’t keep writing.
+- **RPO** (Recovery Point Objective) = max acceptable data loss; **RTO** (Recovery Time Objective) = max acceptable downtime. Sync repl drives RPO→0; automated failover drives RTO down.
+
+> [!DANGER]
+> **Split-brain** is the failover nightmare: a network partition makes a healthy replica think the primary is dead and promote itself, so two primaries accept conflicting writes. Prevent it with quorum-based election (a node needs a majority to lead) and fencing tokens. Never failover on a single missed heartbeat.
+
+### Read-Heavy vs Write-Heavy — The Framing
+
+This single question reorganizes any design answer:
+
+**Read-heavy (e.g. 100:1 — feeds, catalogs, profiles):**
+- **Caching** (CDN → app cache → Redis) absorbs most reads; cache hit ratio is your main lever.
+- **Read replicas** scale read throughput (watch replication lag → read-your-writes issues).
+- **Denormalize / materialized views / fan-out-on-write** to make reads cheap.
+- **CQRS:** separate the read model from the write model.
+
+**Write-heavy (e.g. logs, metrics, IoT, payments ledger):**
+- **Sharding/partitioning** by key spreads write load (the Z-axis); avoid hot partitions.
+- **LSM-tree stores** (Cassandra, RocksDB) optimize for write throughput over read.
+- **Batching & async ingestion** (queue → bulk insert) smooths write spikes.
+- **Append-only / event-sourcing**; avoid read-modify-write hotspots and global secondary indexes on the hot path.
+
+> [!TIP]
+> "Is it read-heavy or write-heavy?" is the second question to ask in any data-system design (after "what’s the QPS and data size?"). It selects your entire toolbox: caching+replicas+CQRS for reads, sharding+LSM+batching for writes.
+
+### How to Reason in the Design Interview — A Repeatable Frame
+
+> [!SUCCESS]
+> **The senior scalability frame, in order:**
+> 1. **Clarify scope & SLAs** — QPS, data size, read:write ratio, latency/availability targets, consistency needs.
+> 2. **Back-of-envelope** — QPS, storage/day, bandwidth, cache size (§1 method). Derive the *consequence*.
+> 3. **High-level design** — stateless app tier behind an LB; identify the data store and access patterns.
+> 4. **Find the bottleneck** — almost always the datastore. State it explicitly.
+> 5. **Scale the bottleneck** — read path: cache + replicas + CQRS; write path: shard + queue + LSM. Pick by read/write ratio.
+> 6. **Consistency choice** — CAP/PACELC and quorum per operation; idempotency for retries.
+> 7. **Resilience** — remove SPOFs (multi-AZ, failover), add timeouts/retries-with-jitter, bulkheads, rate limiting, load shedding.
+> 8. **Address the hot spots** — celebrity/hot-key problem, thundering herd, the tail (p99), and back-pressure.
+> 9. **State trade-offs out loud** — there is no free lunch; every choice (consistency↔latency, cost↔redundancy) is a deliberate trade. Naming them is the staff signal.
+
+> [!WARNING]
+> What interviewers probe at staff level: *Where exactly does this fall over at 10× / 100×? What’s your bottleneck and how do you know? What happens during a partition / an AZ loss / a hot key? What are you trading away?* If your answer has no explicit trade-offs and no named bottleneck, it reads as junior regardless of the buzzwords.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Amdahl & USL — compute the speedup ceiling and the retrograde peak`,
+                code: `// ScalingLaws.java — bare JDK.  javac ScalingLaws.java && java ScalingLaws
+public class ScalingLaws {
+
+    // Amdahl: speedup with serial fraction s across p workers.
+    static double amdahl(double s, int p) { return 1.0 / (s + (1 - s) / p); }
+
+    // USL capacity: C(N) = N / (1 + alpha(N-1) + beta*N(N-1)).
+    static double usl(double alpha, double beta, int n) {
+        return n / (1.0 + alpha * (n - 1) + beta * (double) n * (n - 1));
+    }
+
+    public static void main(String[] args) {
+        System.out.println("== Amdahl's Law: serial fraction caps speedup ==");
+        for (double s : new double[]{0.01, 0.05, 0.10}) {
+            System.out.printf("  serial=%.0f%%: speedup@16=%.1fx, @1024=%.1fx, ceiling(p->inf)=%.0fx%n",
+                    s * 100, amdahl(s, 16), amdahl(s, 1024), 1.0 / s);
+        }
+
+        System.out.println("\\n== Universal Scalability Law: find the retrograde peak ==");
+        double alpha = 0.03, beta = 0.0005;   // 3% contention, small coherency cost
+        double best = -1; int peak = 1;
+        for (int n = 1; n <= 256; n++) {
+            double c = usl(alpha, beta, n);
+            if (c > best) { best = c; peak = n; }
+        }
+        System.out.printf("  alpha=%.3f beta=%.4f -> PEAK at N*=%d nodes (capacity=%.1fx)%n", alpha, beta, peak, best);
+        System.out.printf("  capacity at N=%d : %.1fx   <- past the peak%n", peak * 2, usl(alpha, beta, peak * 2));
+        System.out.println("  Note: capacity FALLS after N* -> adding nodes makes it slower (retrograde).");
+        for (int n : new int[]{1, peak/2, peak, peak*2, 256})
+            System.out.printf("    N=%3d -> capacity %.2fx%n", n, usl(alpha, beta, n));
+    }
+}`,
+                runnable: true,
+                note: `Quantifies both laws: Amdahl shows 5% serial work caps you at 20× forever; USL finds the node count N* where throughput peaks and then goes RETROGRADE — concrete proof that "just add servers" can reduce capacity.`
+              },
+              {
+                lang: `text`,
+                title: `Read-heavy vs write-heavy — the toolbox selector (interview cheat sheet)`,
+                code: `FIRST QUESTIONS (always):  QPS?  data size?  read:write ratio?  latency/availability SLA?  consistency need?
+
+READ-HEAVY  (e.g. 100:1 -- feeds, catalogs, profiles, timelines)
+  Lever 1  CDN / edge cache .............. absorb reads closest to user (biggest win)
+  Lever 2  App + Redis cache ............. cache-hit ratio is THE metric; watch stampede (single-flight)
+  Lever 3  Read replicas ................. scale read QPS; beware replication lag + read-your-writes
+  Lever 4  Denormalize / materialized view fan-out-on-write so reads are O(1)
+  Lever 5  CQRS .......................... separate read model from write model
+  Bottleneck pattern: read fan-out + hot key (celebrity). Fix: cache + replicas + per-key sharding.
+
+WRITE-HEAVY (e.g. logs, metrics, IoT, ledger, chat)
+  Lever 1  Shard / partition by key ...... Z-axis; spread writes; AVOID hot partitions
+  Lever 2  LSM-tree store ................ Cassandra/RocksDB: write-optimized over read
+  Lever 3  Queue + batch ingest .......... absorb spikes, bulk-insert, back-pressure on lag
+  Lever 4  Append-only / event sourcing .. no read-modify-write hotspot; rebuild views async
+  Lever 5  Async secondary indexes ....... keep the hot write path lean
+  Bottleneck pattern: single-primary write ceiling + hot partition. Fix: shard + LSM + batching.
+
+CONSISTENCY KNOB (per operation):  money -> strong + idempotent (R+W>N or single primary)
+                                   likes/feeds -> eventual + cheap (sharded counter / CRDT)
+
+RESILIENCE (both):  remove SPOFs (multi-AZ, failover w/ quorum election + fencing)
+                    timeouts (p99) + retries w/ full jitter + retry budget
+                    bulkhead + circuit breaker + rate limit + load shedding`,
+                runnable: false,
+                note: `A ready-to-recite selector. Stating "is this read- or write-heavy?" early and then naming the matching levers is the structure interviewers reward.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State Amdahl’s Law and its blunt consequence.`,
+                a: `Speedup(p)=1/(s+(1−s)/p); as p→∞ it approaches 1/s. If 5% of work is serial, you can never exceed 20× speedup no matter how many machines. The serial fraction (global lock, single sequence) is a hard ceiling.`
+              },
+              {
+                q: `What does the USL add over Amdahl, and what is the scary region?`,
+                a: `USL adds a coherency/crosstalk term β (O(N²) coordination) on top of contention α: C(N)=N/(1+α(N−1)+βN(N−1)). Past the peak N* it goes RETROGRADE — adding nodes DECREASES throughput.`
+              },
+              {
+                q: `In USL, what do α and β represent and how do you reduce each?`,
+                a: `α = contention/serialization (reduce by killing global locks → shard, partition, batch). β = coherency/coordination between nodes (reduce by caching, locality, async, fewer distributed transactions). These set the real ceiling, not node count.`
+              },
+              {
+                q: `Why can "just add more servers" deepen an outage?`,
+                a: `If the shared resource (e.g. one DB lock) is the bottleneck, more app servers increase contention (α) and coordination (β), pushing you past the USL peak into the retrograde region where total throughput falls.`
+              },
+              {
+                q: `How do you find the bottleneck systematically?`,
+                a: `Measure with USE (Utilization/Saturation/Errors) per resource and RED (Rate/Errors/Duration) per service. The bottleneck is the resource near 100% utilization or with a growing queue. Follow the growing queue.`
+              },
+              {
+                q: `In most web systems, where is the bottleneck, and why does that matter?`,
+                a: `The single-primary database. The stateless tier scales trivially; the data store is the wall. Stating this reframes the design onto caching, read replicas, sharding, and CQRS.`
+              },
+              {
+                q: `Sync vs async replication — RPO trade-off.`,
+                a: `Sync waits for replica ack → strong, RPO=0 (no data loss) but higher write latency and a slow replica stalls writes. Async acks before replicating → low latency but a data-loss window on failover (RPO>0). Semi-sync balances them.`
+              },
+              {
+                q: `Define RPO and RTO.`,
+                a: `RPO (Recovery Point Objective) = max acceptable data loss (drives sync replication). RTO (Recovery Time Objective) = max acceptable downtime (drives automated failover). They are independent dials.`
+              },
+              {
+                q: `What is split-brain and how do you prevent it?`,
+                a: `A partition makes a replica wrongly promote itself, so two primaries accept conflicting writes → divergent data. Prevent with quorum/majority leader election (Raft/Paxos) and fencing tokens so a revived old primary can’t keep writing. Never failover on one missed heartbeat.`
+              },
+              {
+                q: `Read-heavy system — name the main scaling levers.`,
+                a: `CDN/edge cache, app+Redis cache (hit ratio + stampede control), read replicas (mind lag/read-your-writes), denormalization/materialized views/fan-out-on-write, and CQRS to split read from write models.`
+              },
+              {
+                q: `Write-heavy system — name the main scaling levers.`,
+                a: `Shard/partition by key (Z-axis, avoid hot partitions), LSM-tree write-optimized stores (Cassandra/RocksDB), queue+batch ingestion with back-pressure, append-only/event-sourcing, and async secondary indexing off the hot path.`
+              },
+              {
+                q: `Give the ordered senior frame for a scalability design interview.`,
+                a: `1) Clarify scope/SLAs (QPS, data, read:write, latency, consistency). 2) Back-of-envelope + consequence. 3) Stateless tier + LB, identify datastore. 4) Name the bottleneck (usually DB). 5) Scale it (reads: cache/replicas/CQRS; writes: shard/queue/LSM). 6) Consistency per op (CAP/PACELC, quorum, idempotency). 7) Resilience (SPOFs, failover, timeouts/jitter, bulkhead, shedding). 8) Hot keys/herd/p99/back-pressure. 9) State trade-offs out loud.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `5.2`,
+        title: `Caching, Redis & CDNs`,
+        hours: 5,
+        sections: [
+          {
+            title: `Caching Fundamentals: Why, Where & the Latency Numbers`,
+            notes: `## Why cache at all?
+
+Caching trades **memory (and consistency risk)** for **latency and throughput**. You keep a copy of expensive-to-produce data close to where it is consumed so you can skip the expensive path (a DB query, an RPC, a recomputation, a disk seek) on the next read.
+
+Three things make caching pay off:
+1. **Temporal locality** — recently accessed data is likely accessed again soon (sessions, hot product pages).
+2. **Spatial locality** — data near accessed data is likely accessed next (page of rows, adjacent CDN objects).
+3. **Read skew** — most systems are read-heavy (often 10:1 to 1000:1 read:write). A small hot set serves most traffic.
+
+> [!TIP]
+> The single most important cache metric is the **hit ratio**: \`hits / (hits + misses)\`. Effective latency = \`hit_ratio * cache_latency + (1 - hit_ratio) * miss_latency\`. Because miss latency dwarfs hit latency, the curve is brutally non-linear: going from 90% to 99% hit ratio can cut average latency by ~10x even though it only changes 9 percentage points.
+
+### The non-linearity, concretely
+Suppose cache hit = 1ms, miss = 100ms.
+- 90% hit: \`0.9*1 + 0.1*100 = 10.9ms\`
+- 99% hit: \`0.99*1 + 0.01*100 = 1.99ms\`
+- 99.9% hit: \`0.999*1 + 0.001*100 = 1.099ms\`
+
+The last few percent of hit ratio are where the latency lives. This is why interviewers push on *what is your hit ratio and why*.
+
+## Where do you cache? (every layer between user and disk)
+
+\`\`\`mermaid
+flowchart LR
+  U[Browser] -->|1. HTTP cache / localStorage| B[Client Cache]
+  B --> C[CDN / Edge POP]
+  C --> RP[Reverse Proxy<br/>Varnish / Nginx]
+  RP --> A[App-tier Cache<br/>local Caffeine + Redis]
+  A --> DB[(Database)]
+  DB --> BP[DB Buffer Pool<br/>+ OS page cache]
+  classDef warm fill:#1f6feb,color:#fff;
+  class B,C,RP,A warm;
+\`\`\`
+
+| Layer | Example | Scope | TTL feel | Wins | Risk |
+|---|---|---|---|---|---|
+| Client | browser HTTP cache, mobile SQLite | per-user | secs–days | zero network | hard to invalidate, you don't control it |
+| CDN / edge | CloudFront, Fastly, Akamai | global, per-POP | secs–months | offload origin, kill RTT | dynamic/personalized content hard |
+| Reverse proxy | Varnish, Nginx, Envoy | per-datacenter | secs–mins | shields app, micro-caching | shared invalidation |
+| Application | Caffeine (local), Redis/Memcached (shared) | service / cluster | secs–hours | computed objects, fan-out | dual-write & coherence |
+| Database | buffer pool, materialized views, query cache | per-DB | engine-managed | transparent | limited size, MySQL query cache removed in 8.0 |
+
+> [!WARNING]
+> **Local (in-process) vs distributed** is a key axis. A local cache (Caffeine, Guava) has nanosecond access and no network, but each node has its own copy — N nodes means N independent invalidation problems and N cold starts. A distributed cache (Redis) is a single source of truth shared by all nodes, but every access pays a network round trip (~0.5ms intra-AZ). Senior systems usually run a **two-tier (near-cache)**: tiny local L1 in front of a shared L2 Redis.
+
+## Latency numbers every engineer should know
+
+These are order-of-magnitude (Jeff Dean's numbers, modernized). Memorize the *ratios*, not the digits.
+
+| Operation | Latency | Normalized (if L1 = 1s) |
+|---|---|---|
+| L1 cache reference | ~1 ns | 1 second |
+| Branch mispredict | ~3 ns | 3 seconds |
+| L2 cache reference | ~4 ns | 4 seconds |
+| Mutex lock/unlock | ~17 ns | 17 seconds |
+| Main memory (RAM) reference | ~100 ns | 1.5 minutes |
+| Compress 1KB (snappy) | ~2 µs | ~33 minutes |
+| Read 1MB sequentially from RAM | ~3 µs | ~50 minutes |
+| Read 4KB from NVMe SSD | ~16 µs | ~4.4 hours |
+| Round trip within same datacenter / AZ | ~0.5 ms | ~5.8 days |
+| Read 1MB sequentially from SSD | ~50 µs | ~14 hours |
+| Read 1MB sequentially from disk (HDD) | ~1–5 ms | weeks |
+| Disk seek (HDD) | ~3–10 ms | ~months |
+| Cross-region round trip (e.g. US-EU) | ~60–150 ms | ~1.8–4.7 years |
+
+> [!SUCCESS]
+> The punchlines interviewers want: **RAM is ~100,000x faster than a cross-region hop; SSD is ~1000x faster than that hop but ~100x slower than RAM.** A same-AZ Redis call (~0.5ms) is ~5000x slower than a local in-process map (~100ns). That ratio is exactly why you keep an L1 in front of Redis, and why a CDN POP near the user (single-digit ms) beats a cross-region origin (100ms+) by ~20x.
+
+> [!EU]
+> Caching personal data has GDPR implications: cached PII still counts as processing/storage. Honour the **right to erasure** — a user deletion must purge caches and CDN copies, not just the system of record. TTLs on PII should be justified, and edge caches in another jurisdiction can raise data-residency questions.
+
+> [!DANGER]
+> A cache is an **optimization, not a system of record**. If your correctness depends on the cache being present (e.g. you write *only* to the cache, or you can't serve when Redis is down), you have built a fragile database with no durability. Always be able to fall back to the source of truth — degraded, but correct.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Cache-aside simulator with hit/miss ratio + effective-latency math (runnable)`,
+                code: `import java.util.*;
+
+/**
+ * Self-contained demo: simulates a cache-aside lookup over a skewed (Zipf-ish)
+ * key distribution, reports hit ratio, and computes EFFECTIVE latency to show
+ * the non-linear payoff of a high hit ratio. No external libraries.
+ */
+public class CacheFundamentalsDemo {
+
+    // a fixed-capacity cache with simple counters
+    static final class Cache {
+        final int capacity;
+        final LinkedHashMap<Integer, String> map;
+        long hits = 0, misses = 0;
+
+        Cache(int capacity) {
+            this.capacity = capacity;
+            // accessOrder=true makes it LRU on get/put
+            this.map = new LinkedHashMap<>(16, 0.75f, true) {
+                @Override protected boolean removeEldestEntry(Map.Entry<Integer,String> e) {
+                    return size() > Cache.this.capacity;
+                }
+            };
+        }
+
+        String get(int key) {
+            String v = map.get(key);
+            if (v != null) { hits++; return v; }
+            misses++;
+            v = loadFromSourceOfTruth(key); // the expensive path
+            map.put(key, v);
+            return v;
+        }
+
+        static String loadFromSourceOfTruth(int key) { return "row-" + key; }
+        double hitRatio() { long t = hits + misses; return t == 0 ? 0 : (double) hits / t; }
+    }
+
+    public static void main(String[] args) {
+        final int KEYSPACE = 10_000;
+        final int CAP = 500;          // cache holds 5% of keys
+        final int REQUESTS = 200_000;
+        final double HIT_MS = 1.0, MISS_MS = 100.0;
+
+        Cache cache = new Cache(CAP);
+        Random rnd = new Random(42);
+
+        for (int i = 0; i < REQUESTS; i++) {
+            // skewed access: 95% of requests hit the hottest 5% of keys (the cache's capacity)
+            int key;
+            if (rnd.nextDouble() < 0.95) key = rnd.nextInt(KEYSPACE / 20);
+            else key = rnd.nextInt(KEYSPACE);
+            cache.get(key);
+        }
+
+        double hr = cache.hitRatio();
+        double effective = hr * HIT_MS + (1 - hr) * MISS_MS;
+        System.out.printf("requests=%d hits=%d misses=%d%n", REQUESTS, cache.hits, cache.misses);
+        System.out.printf("hit ratio       = %.4f%n", hr);
+        System.out.printf("effective latency= %.3f ms (hit=%.0fms miss=%.0fms)%n", effective, HIT_MS, MISS_MS);
+        System.out.printf("vs no cache      = %.3f ms  -> speedup %.1fx%n", MISS_MS, MISS_MS / effective);
+    }
+}`,
+                runnable: true,
+                note: `javac CacheFundamentalsDemo.java && java CacheFundamentalsDemo — shows how an 80/20 access skew with a cache holding only 5% of keys yields a high hit ratio and a large effective-latency win.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Write the effective-latency formula for a cache and explain why hit ratio is non-linear.`,
+                a: `effective = hit_ratio*cache_latency + (1-hit_ratio)*miss_latency. Because miss latency >> hit latency, the average is dominated by the miss term; shaving the last few percent of misses (e.g. 99% -> 99.9%) removes most of the remaining latency, so improvements are super-linear near 100%.`
+              },
+              {
+                q: `Temporal vs spatial locality?`,
+                a: `Temporal: recently used data is likely reused soon (drives LRU). Spatial: data near accessed data is likely accessed next (drives prefetch / fetching a page of rows / CDN object grouping).`
+              },
+              {
+                q: `Roughly how much faster is RAM than a cross-region round trip?`,
+                a: `~100 ns vs ~60–150 ms, i.e. roughly 100,000x. Same-AZ round trip is ~0.5 ms (~5000x RAM).`
+              },
+              {
+                q: `Local (in-process) cache vs distributed cache — core trade-off?`,
+                a: `Local (Caffeine): nanosecond access, no network, but each node has its own copy -> N invalidation problems and N cold starts, possible incoherence. Distributed (Redis): single shared source of truth, coherent, but every access pays ~0.5ms network. Common answer: two-tier near-cache (local L1 + Redis L2).`
+              },
+              {
+                q: `Name the caching layers from client to disk.`,
+                a: `Client (browser/HTTP cache), CDN/edge POP, reverse proxy (Varnish/Nginx), application cache (local + Redis), database (buffer pool / OS page cache / materialized views).`
+              },
+              {
+                q: `Why is a cache an optimization and not a system of record?`,
+                a: `It is not durable and may be evicted/lost at any time. Correctness must not depend on its presence; you must be able to fall back to the source of truth. Writing only to the cache builds a fragile non-durable database.`
+              },
+              {
+                q: `If hit=1ms and miss=100ms, what effective latency does 99% hit ratio give?`,
+                a: `0.99*1 + 0.01*100 = 1.99 ms — versus 10.9 ms at 90%. ~5x better for 9 extra points.`
+              },
+              {
+                q: `Why are most systems good caching candidates?`,
+                a: `Read skew: read:write ratios are often 10:1 to 1000:1, and access is skewed (a small hot set serves most reads), so a small cache absorbs most traffic.`
+              },
+              {
+                q: `What GDPR concern does caching introduce?`,
+                a: `Cached PII is still processed/stored data: right-to-erasure must purge caches and CDN copies, TTLs on PII need justification, and edge caches in other jurisdictions raise data-residency questions.`
+              },
+              {
+                q: `Roughly: NVMe 4KB read vs same-AZ network round trip?`,
+                a: `NVMe ~16 µs vs same-AZ RTT ~500 µs — the network hop is ~30x slower than a local SSD read, which is why a remote cache call isn't free.`
+              }
+            ]
+          },
+          {
+            title: `Caching Patterns: Aside, Read/Write-Through, Write-Behind, Write-Around`,
+            notes: `## The pattern decides who owns reads, writes, and consistency
+
+A caching pattern is defined by **who talks to the cache and who talks to the DB on read and on write**. Pick the wrong one and you get either stale data, lost writes, or a thundering origin.
+
+### Cache-aside (lazy loading) — the default
+The application is in charge. On read: check cache; on miss, load from DB, populate cache, return. On write: write DB, then **invalidate** (or update) the cache.
+
+\`\`\`mermaid
+sequenceDiagram
+    participant App
+    participant Cache
+    participant DB
+    Note over App,DB: READ (cache-aside)
+    App->>Cache: GET key
+    alt hit
+        Cache-->>App: value
+    else miss
+        Cache-->>App: nil
+        App->>DB: SELECT ...
+        DB-->>App: row
+        App->>Cache: SET key value (TTL)
+        App-->>App: return row
+    end
+    Note over App,DB: WRITE
+    App->>DB: UPDATE ...
+    App->>Cache: DEL key  (invalidate, do NOT just SET)
+\`\`\`
+
+> [!TIP]
+> On write, prefer **delete (invalidate)** over **update (write-through into the cache)** in a cache-aside design. Two concurrent writers that both SET can interleave and leave the *older* value resident; a DEL lets the next reader repopulate from the authoritative DB. The classic race: reader misses, reads old DB value, then a writer updates DB and deletes the key, then the slow reader finally SETs the stale value. Mitigations: short TTL, delete-after-commit, or a small write-delay/double-delete.
+
+### Read-through & write-through — the cache is the facade
+Here the **cache library/provider** owns DB access; the app only ever talks to the cache. Read-through: on miss the cache loads from DB itself. Write-through: the app writes to the cache, which synchronously writes to the DB before returning.
+
+### Write-behind (write-back) — async durability
+App writes to cache; the cache acknowledges immediately and **asynchronously flushes to the DB** (batched/coalesced). Lowest write latency and great write-absorption, but a crash before flush loses data and DB is eventually consistent.
+
+### Write-around — bypass cache on write
+Writes go straight to the DB; the cache is populated only on read misses. Good when written data isn't read soon (write-heavy logs/metrics), avoids polluting the cache with cold writes. Downside: a just-written item is a guaranteed read miss.
+
+## Comparison
+
+| Pattern | Read path | Write path | Consistency | Best for | Main risk |
+|---|---|---|---|---|---|
+| Cache-aside (lazy) | app: cache->DB on miss | write DB, invalidate cache | tunable; brief staleness window | general read-heavy | dual-write race, cold miss storms |
+| Read-through | cache loads on miss | (paired with a write policy) | same as paired write | clean app code, uniform loader | provider lock-in, stampede on miss |
+| Write-through | cache (loaded on miss) | write cache + DB synchronously | strong cache↔DB on success | read-after-write needs | higher write latency, caches unread data |
+| Write-behind (write-back) | cache | write cache, async flush DB | eventual; data-loss window | write-heavy, burst absorption | loss on crash, ordering, harder ops |
+| Write-around | cache loads on read miss | write DB only, skip cache | cache may lag until next read | write-heavy, rarely re-read | guaranteed miss right after write |
+
+> [!WARNING]
+> **Read-after-your-own-write** is the consistency gotcha. Cache-aside with invalidate, write-around, and write-behind can all serve a stale read immediately after a write (because the cache hasn't caught up). If a user must see their own edit instantly, either update the cache synchronously on write, route that user's next read to the DB, or use a versioned/monotonic read token.
+
+## TTL & expiry
+TTL is your **safety net for invalidation bugs** — even if you forget to evict, the entry self-heals after expiry. Trade-offs:
+- **Short TTL** -> fresher data, more misses, more origin load.
+- **Long TTL** -> fewer misses, more staleness, longer blast radius for a bad write.
+
+> [!SUCCESS]
+> Pattern + TTL combos seen in practice: **cache-aside + DEL-on-write + short safety TTL** (most app caches); **write-through + read-through** when you need read-after-write and can pay write latency (catalogs, config); **write-behind** for counters/metrics where a small loss window is acceptable; **write-around** for append-heavy data read rarely.
+
+> [!DANGER]
+> Never use a **bare TTL with no proactive invalidation** for data that must be correct (prices, balances, permissions). TTL bounds staleness but does not eliminate it; a 5-minute TTL means up to 5 minutes of wrong permissions. Combine TTL with event-driven invalidation.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Cache-aside vs write-through demonstrated with an in-memory store (runnable)`,
+                code: `import java.util.*;
+
+/** Contrasts cache-aside (invalidate on write) with write-through (update both). */
+public class CachingPatternsDemo {
+    static final Map<String,String> DB = new HashMap<>();   // source of truth
+    static final Map<String,String> CACHE = new HashMap<>();
+    static long dbReads = 0;
+
+    static String dbGet(String k){ dbReads++; return DB.get(k); }
+    static void   dbPut(String k,String v){ DB.put(k,v); }
+
+    // ---- cache-aside read ----
+    static String readAside(String k){
+        String v = CACHE.get(k);
+        if (v != null) return v;            // hit
+        v = dbGet(k);                        // miss -> load
+        if (v != null) CACHE.put(k, v);     // populate
+        return v;
+    }
+    // cache-aside write: update DB, INVALIDATE cache (do not SET)
+    static void writeAside(String k,String v){ dbPut(k,v); CACHE.remove(k); }
+
+    // ---- write-through write: update cache AND db synchronously ----
+    static void writeThrough(String k,String v){ dbPut(k,v); CACHE.put(k,v); }
+
+    public static void main(String[] args){
+        DB.put("user:1", "Ada");
+
+        System.out.println("-- cache-aside --");
+        System.out.println("read1 = " + readAside("user:1") + "  (miss, hits DB)");
+        System.out.println("read2 = " + readAside("user:1") + "  (hit, no DB)");
+        writeAside("user:1", "Ada Lovelace");
+        System.out.println("after write, read3 = " + readAside("user:1") + "  (miss again, reloads fresh)");
+        System.out.println("dbReads so far = " + dbReads);
+
+        System.out.println("-- write-through --");
+        long before = dbReads;
+        writeThrough("user:1", "A. Lovelace");
+        System.out.println("read4 = " + readAside("user:1") + "  (hit, no DB read; cache was updated)");
+        System.out.println("extra dbReads from read4 = " + (dbReads - before));
+    }
+}`,
+                runnable: true,
+                note: `Shows cache-aside invalidation forcing a reload (read-after-write hits DB) vs write-through keeping the cache warm so the next read is a hit with zero DB reads.`
+              },
+              {
+                lang: `yaml`,
+                title: `Spring Cache + Redis: read-through-ish via @Cacheable, evict on write (reference)`,
+                code: `# application.yml
+spring:
+  cache:
+    type: redis
+  data:
+    redis:
+      host: redis.internal
+      port: 6379
+  redis:
+    time-to-live: 600000   # default TTL 10m (safety net)
+
+# --- Java (reference) ---
+# @Cacheable(value="users", key="#id")        -> read-through style: populates on miss
+# public User find(Long id) { return repo.findById(id); }
+#
+# @CachePut(value="users", key="#u.id")        -> write-through into cache (update entry)
+# @CacheEvict(value="users", key="#u.id")      -> cache-aside invalidate on write
+# public User save(User u) { return repo.save(u); }
+#
+# Prefer @CacheEvict (invalidate) for correctness under concurrent writers.`,
+                runnable: false,
+                note: `@Cacheable = read-through populate; @CacheEvict = cache-aside invalidate; @CachePut = write-through update. Set a default TTL as a self-healing safety net.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `On a write in cache-aside, why delete the key instead of updating it?`,
+                a: `Two concurrent writers that both SET can interleave and leave the older value resident; a slow reader can also SET a stale value it read before the write. DEL avoids resident-stale: the next reader repopulates from the authoritative DB. Pair with short TTL / delete-after-commit / double-delete.`
+              },
+              {
+                q: `Cache-aside vs read-through — who owns DB access?`,
+                a: `Cache-aside: the application checks cache then loads DB on miss. Read-through: the cache provider loads from DB on miss; the app only ever talks to the cache. Read-through gives cleaner code but couples you to the provider's loader.`
+              },
+              {
+                q: `Write-through vs write-behind?`,
+                a: `Write-through: write cache + DB synchronously before ack — strong cache/DB agreement, higher write latency. Write-behind (write-back): write cache, ack immediately, flush to DB async/batched — lowest latency and great burst absorption, but a crash loses unflushed writes and DB is eventually consistent.`
+              },
+              {
+                q: `When is write-around the right pattern?`,
+                a: `Write-heavy data that's rarely read soon after (logs, metrics, audit). Writes bypass the cache (DB only), so you don't pollute it with cold data; downside is a guaranteed cache miss on the first read after a write.`
+              },
+              {
+                q: `What is the read-after-write hazard across patterns?`,
+                a: `Cache-aside-invalidate, write-around, and write-behind can all serve a stale read right after a write because the cache hasn't caught up. Fixes: synchronously update cache on write, route the writer's next read to the DB, or use a monotonic/versioned read token.`
+              },
+              {
+                q: `What does TTL buy you and what does it NOT?`,
+                a: `It's a self-healing safety net: even with a missed invalidation, entries expire and reload. It does NOT guarantee freshness — it only bounds staleness (a 5-min TTL = up to 5 min wrong). For correctness-critical data combine TTL with event-driven invalidation.`
+              },
+              {
+                q: `Short TTL vs long TTL trade-off?`,
+                a: `Short: fresher, more misses, more origin load. Long: fewer misses, more staleness, bigger blast radius for a bad write. Tune to data volatility and origin capacity; consider jitter to avoid synchronized expiry.`
+              },
+              {
+                q: `Map Spring annotations to patterns.`,
+                a: `@Cacheable = read-through populate-on-miss; @CachePut = write-through update-the-entry; @CacheEvict = cache-aside invalidate-on-write. Default to @CacheEvict for write correctness.`
+              },
+              {
+                q: `Which pattern best absorbs a write burst and why?`,
+                a: `Write-behind: it acks the cache write immediately and coalesces/batches flushes to the DB, smoothing spikes. Cost: durability window on crash and ordering complexity.`
+              },
+              {
+                q: `A user edits their profile and must see it immediately; cache-aside with invalidate is used. What's the risk and a fix?`,
+                a: `Risk: between DEL and repopulate, a concurrent read can reload the old DB value (or a slow pre-write reader SETs stale). Fixes: delete after commit, double-delete with a small delay, write-through update of the entry, or route the user's next read to the primary.`
+              }
+            ]
+          },
+          {
+            title: `Eviction & Invalidation: LRU/LFU/FIFO, Stale Cache & the Dual-Write Problem`,
+            notes: `## Two different problems people conflate
+- **Eviction** = *the cache is full, what do I throw out?* (a capacity/space decision).
+- **Invalidation** = *the underlying data changed, this entry is now wrong* (a correctness decision).
+
+> [!TIP]
+> Phil Karlton: *"There are only two hard things in Computer Science: cache invalidation and naming things."* The hard part is *knowing when data went stale* and *finding every place it's cached* — across local caches, Redis, reverse proxies, CDNs, and clients.
+
+## Eviction policies
+
+| Policy | Evicts | Strength | Weakness | Use when |
+|---|---|---|---|---|
+| LRU (least recently used) | oldest *access* | great for temporal locality | a single scan/loop can pollute & evict the hot set (scan resistance) | general default |
+| LFU (least frequently used) | lowest *count* | keeps durable hot keys, scan-resistant | slow to adapt; old popular keys linger (needs aging/decay) | stable hot sets |
+| FIFO | oldest *inserted* | trivial, cheap | ignores access; can evict a hot item | simple/queue-like |
+| Random | a random entry | O(1), no metadata, no contention | can evict hot items | huge caches, Redis allkeys-random |
+| TinyLFU / W-TinyLFU (Caffeine) | admission-controlled (freq sketch) | near-optimal hit ratio, scan-resistant | more complex | modern app caches |
+| TTL-based | anything expired | bounds staleness | not really capacity mgmt | freshness needs |
+
+> [!SUCCESS]
+> Redis \`maxmemory-policy\` options worth naming: \`allkeys-lru\`, \`allkeys-lfu\`, \`volatile-lru\`/\`volatile-lfu\` (only keys with a TTL), \`volatile-ttl\` (shortest TTL first), \`allkeys-random\`, and \`noeviction\` (reject writes when full). Redis LRU/LFU are **approximate** (samples a few keys, default 5) to stay O(1) — they don't track perfect recency.
+
+## Invalidation strategies (the genuinely hard part)
+
+1. **TTL expiry** — passive, simple, bounds staleness but never instant.
+2. **Explicit invalidation on write** — delete the key when you change the row (cache-aside). Requires knowing every cached key derived from that row.
+3. **Versioned / generation keys** — embed a version in the key: \`user:42:v7\`. To invalidate, bump the version (or a namespace counter). Old entries become unreferenced and age out via LRU/TTL. **No deletes needed**, atomic, immune to the dual-write delete race.
+4. **Event-driven invalidation** — the DB / CDC pipeline (Debezium, outbox, Kafka) emits change events; consumers purge the relevant cache keys everywhere. Decouples writers from cache topology and reaches all layers.
+5. **Write-through update** — keep cache and DB in lockstep on write (see §2).
+
+\`\`\`mermaid
+flowchart LR
+  W[Service write] --> DB[(DB)]
+  DB -->|CDC / outbox| K[(Kafka topic)]
+  K --> C1[Invalidator]
+  C1 -->|DEL key| R[(Redis)]
+  C1 -->|purge| CDN[CDN]
+  C1 -->|broadcast evict| L[Local caches]
+\`\`\`
+
+## The dual-write / stale-cache problem
+Updating two stores (DB and cache) is **not atomic**. Any interleaving or partial failure leaves them inconsistent:
+- Write DB ✓ then DEL cache ✗ (network blip) -> cache serves stale until TTL.
+- DEL cache ✓ then write DB ✗ -> next reader repopulates the *old* DB value back into cache.
+- Concurrent reader/writer interleave -> reader writes a stale value *after* the writer's delete.
+
+> [!WARNING]
+> There is no perfectly atomic DB+cache write without a transactional log. Practical mitigations, strongest first: (a) **versioned keys** (sidestep deletes entirely — just bump the generation); (b) **CDC/outbox-driven invalidation** (single source of change events, idempotent, reaches all layers); (c) **delete-after-commit + double-delete** (DEL, write+commit DB, then DEL again after a short delay to catch racing repopulators); (d) short TTL as the floor. Order matters: **write DB first, then invalidate** — never invalidate before the commit is durable.
+
+> [!DANGER]
+> Distributed invalidation across **local (in-process) caches** is its own trap: deleting from Redis does nothing to the copies sitting in each node's Caffeine map. You need a **broadcast invalidation** channel (Redis pub/sub, a Kafka topic, or Redis keyspace notifications) so every node evicts its local L1. Forgetting this is the #1 cause of "works in staging, stale in prod" near-cache bugs.`,
+            code: [
+              {
+                lang: `java`,
+                title: `LRU cache via LinkedHashMap + versioned-key invalidation (runnable)`,
+                code: `import java.util.*;
+
+/** A bounded LRU cache (LinkedHashMap) and a demo of versioned-key invalidation. */
+public class EvictionInvalidationDemo {
+
+    /** Generic fixed-size LRU. accessOrder=true => eviction by least-recently-USED. */
+    static final class LruCache<K,V> extends LinkedHashMap<K,V> {
+        private final int cap;
+        LruCache(int cap){ super(16, 0.75f, true); this.cap = cap; }
+        @Override protected boolean removeEldestEntry(Map.Entry<K,V> e){ return size() > cap; }
+    }
+
+    // versioned-key invalidation: bump a generation instead of deleting
+    static final Map<Long,Integer> versions = new HashMap<>();
+    static String key(long id){ return "user:" + id + ":v" + versions.getOrDefault(id, 0); }
+    static void bump(long id){ versions.merge(id, 1, Integer::sum); } // invalidate
+
+    public static void main(String[] args){
+        System.out.println("-- LRU eviction (cap=3) --");
+        LruCache<Integer,String> c = new LruCache<>(3);
+        c.put(1,"a"); c.put(2,"b"); c.put(3,"c");
+        c.get(1);                 // touch 1 -> now 2 is least-recently-used
+        c.put(4,"d");             // evicts 2
+        System.out.println("keys after inserting 4 (touched 1): " + c.keySet()); // [3,1,4]
+        System.out.println("contains 2? " + c.containsKey(2)); // false
+
+        System.out.println("-- versioned-key invalidation --");
+        LruCache<String,String> redis = new LruCache<>(100);
+        long id = 42;
+        redis.put(key(id), "Ada");
+        System.out.println("current key = " + key(id) + " -> " + redis.get(key(id)));
+        bump(id);                 // data changed: bump generation, old entry now unreferenced
+        System.out.println("after bump, current key = " + key(id) + " -> " + redis.get(key(id)) + " (miss, reload fresh)");
+        System.out.println("stale entry still in store but unreachable; ages out via LRU/TTL");
+    }
+}`,
+                runnable: true,
+                note: `LinkedHashMap with accessOrder=true + removeEldestEntry gives a textbook LRU in ~5 lines. The versioned-key trick invalidates by bumping a generation — no delete, no dual-write delete race.`
+              },
+              {
+                lang: `bash`,
+                title: `Redis eviction policy + keyspace-notification invalidation (reference)`,
+                code: `# choose an eviction policy when maxmemory is hit
+redis-cli CONFIG SET maxmemory 2gb
+redis-cli CONFIG SET maxmemory-policy allkeys-lru   # or allkeys-lfu / volatile-ttl / noeviction
+
+# LRU/LFU are APPROXIMATE; widen the sample for accuracy (cost: CPU)
+redis-cli CONFIG SET maxmemory-samples 10
+
+# enable keyspace notifications so app nodes can evict their local L1 caches
+redis-cli CONFIG SET notify-keyspace-events KEA
+# a node subscribes and drops its in-process copy on change:
+redis-cli PSUBSCRIBE '__keyevent@0__:del' '__keyevent@0__:expired'
+
+# namespace/generation bump = invalidate-by-version (no per-key deletes)
+redis-cli INCR ns:users:gen     # readers build keys as user:{id}:g{gen}`,
+                runnable: false,
+                note: `Keyspace notifications (notify-keyspace-events) let near-cache nodes invalidate their local L1 when Redis keys change. Bumping a namespace generation invalidates a whole class of keys atomically.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Eviction vs invalidation — what's the distinction?`,
+                a: `Eviction is a capacity decision: cache is full, pick a victim (LRU/LFU/FIFO/random). Invalidation is a correctness decision: the source data changed, so the entry is now wrong and must be removed/refreshed regardless of space.`
+              },
+              {
+                q: `Why can LRU be bad and LFU help — and what's LFU's weakness?`,
+                a: `A single scan/loop can touch many cold keys and evict the hot set under LRU (poor scan resistance). LFU keeps durably popular keys and resists scans. LFU's weakness: it adapts slowly and old once-popular keys linger unless you add frequency aging/decay (and a new hot key starts at count 0).`
+              },
+              {
+                q: `What is a versioned/generation key and why is it powerful for invalidation?`,
+                a: `Embed a version in the key (user:42:v7 or namespace gen counter). To invalidate, bump the version; the old key becomes unreferenced and ages out via TTL/LRU. No deletes -> immune to the dual-write delete race, atomic, and one INCR can invalidate a whole class of keys.`
+              },
+              {
+                q: `Describe the dual-write problem and the safe write ordering.`,
+                a: `Writing DB and cache isn't atomic, so any partial failure/interleave leaves them inconsistent. Safe ordering: write+commit DB FIRST, then invalidate the cache (never invalidate before commit, or a reader repopulates the old value). Add double-delete + short TTL, or use CDC/versioned keys.`
+              },
+              {
+                q: `Why doesn't deleting a key from Redis fix a near-cache?`,
+                a: `Local in-process caches (Caffeine) on each node hold their own copies; Redis deletes don't touch them. You need a broadcast invalidation channel (Redis pub/sub, keyspace notifications, or Kafka) so every node evicts its L1. Forgetting this causes 'stale only in prod' bugs.`
+              },
+              {
+                q: `Are Redis LRU/LFU exact? What controls accuracy?`,
+                a: `No — they're approximate, sampling a few keys (maxmemory-samples, default 5) to evict the best-looking victim and stay O(1). Raising maxmemory-samples improves accuracy at CPU cost.`
+              },
+              {
+                q: `Name Redis maxmemory-policy options and the 'reject writes' one.`,
+                a: `allkeys-lru, allkeys-lfu, allkeys-random; volatile-lru/lfu/random (only keys with a TTL), volatile-ttl (evict shortest TTL first). noeviction rejects writes when memory is full (returns errors) — preserving correctness over availability.`
+              },
+              {
+                q: `Phil Karlton's quote and why it's true?`,
+                a: `'There are only two hard things in CS: cache invalidation and naming things.' Invalidation is hard because you must detect exactly when data went stale AND find every place it's cached — local, Redis, reverse proxy, CDN, client — and purge all of them consistently.`
+              },
+              {
+                q: `How does event-driven (CDC/outbox) invalidation beat explicit DEL-on-write?`,
+                a: `It emits a single authoritative stream of change events from the DB log/outbox; idempotent consumers purge all cache layers (Redis, CDN, local). It decouples writers from cache topology, survives writer crashes (events persist), and avoids each writer needing to know every derived key.`
+              },
+              {
+                q: `Implement an LRU in plain Java in one line of intent.`,
+                a: `Subclass LinkedHashMap with accessOrder=true and override removeEldestEntry to return size() > capacity. accessOrder makes get/put reorder by recency; removeEldestEntry evicts the LRU entry on insert.`
+              }
+            ]
+          },
+          {
+            title: `Distributed Caching & Redis: Data Structures, Persistence, Locks, Stampede`,
+            notes: `## Redis is a data-structure server, not just a key/value blob store
+Treating Redis as \`SET k <json>\` wastes most of its power. The data structures *are* the design.
+
+| Type | Ops | Use cases |
+|---|---|---|
+| String | GET/SET/INCR/SETEX | cache blobs, counters, atomic flags, rate-limit tokens |
+| Hash | HSET/HGET/HINCRBY | object fields without re-serializing whole object; session maps |
+| List | LPUSH/RPOP/BLPOP | simple queues, recent-activity feeds |
+| Set | SADD/SISMEMBER/SINTER | uniqueness, tags, social graph intersection |
+| Sorted set (ZSET) | ZADD/ZRANGE/ZRANK | **leaderboards**, priority queues, time-series windows, top-N |
+| Stream | XADD/XREADGROUP | durable event log, consumer groups (Kafka-lite) |
+| Bitmap / HyperLogLog | SETBIT / PFADD | presence bitmaps, cardinality (unique visitors) cheaply |
+| Geo | GEOADD/GEOSEARCH | nearby search |
+
+> [!TIP]
+> **Leaderboard** = one ZSET: \`ZADD board <score> <user>\`, \`ZREVRANK board <user>\` for rank, \`ZREVRANGE board 0 9 WITHSCORES\` for top-10 — all O(log N). **Rate limiting** = \`INCR\` a per-window key with \`EXPIRE\` (fixed window), or a ZSET of timestamps (sliding window), or a token bucket via a Lua script for atomicity.
+
+## Redis vs Memcached
+
+| Dimension | Redis | Memcached |
+|---|---|---|
+| Data model | rich structures (zset/hash/stream...) | opaque key/value blobs |
+| Threading | mostly single-threaded core (+ I/O threads 6.x) | multi-threaded |
+| Persistence | RDB snapshots + AOF | none (pure cache) |
+| Replication/cluster | replicas, Cluster (16384 hash slots), Sentinel | client-side sharding only |
+| Eviction | many policies, LFU option | LRU (slab) |
+| Extras | Lua, pub/sub, transactions, geo, modules | minimal, very fast for simple KV |
+| Pick when | you need structures/persistence/atomic ops | pure, huge, simple multi-threaded KV cache |
+
+## Persistence: RDB vs AOF
+- **RDB**: periodic point-in-time fork+snapshot. Compact, fast restart, but you can lose everything since the last snapshot. Good for backups.
+- **AOF**: append every write command; replay on restart. \`appendfsync everysec\` (default) loses ≤1s; \`always\` is safest/slowest. AOF rewrites compact the log.
+- **Both together** is common: AOF for durability, RDB for fast restart/backups.
+
+> [!WARNING]
+> Even with \`appendfsync always\`, Redis is **not a durable database** — a replica failover can lose acknowledged writes (async replication), and \`WAIT\`/\`WAITAOF\` only reduces, not eliminates, the window. Don't store the only copy of money in Redis.
+
+## Clustering & replication
+- **Replication**: one primary, N replicas (async). Scales reads, enables failover. Replicas can serve stale reads.
+- **Sentinel**: monitors + automatic failover for a single primary/replica set (no sharding).
+- **Cluster**: data sharded across 16384 hash slots; each shard is a primary+replicas. Multi-key ops must share a slot -> use **hash tags** \`{user:42}:profile\` to colocate.
+
+## Distributed locks & the Redlock caveat
+A single-Redis lock: \`SET lock:res <token> NX PX 30000\` (atomic acquire with TTL); release via a Lua compare-and-delete so you only delete *your* token. **Redlock** acquires on N independent masters needing a quorum.
+
+> [!DANGER]
+> Redlock is contested (Kleppmann vs antirez). Failure modes: a **GC pause or clock skew** can make a holder believe it still owns the lock after the TTL expired and another client acquired it -> two holders. The robust fix is a **fencing token**: the lock service hands out a monotonically increasing number; the protected resource rejects any write with a token lower than the highest it has seen. Without fencing, no distributed lock (Redlock included) is safe for strict mutual exclusion. For correctness-critical locks prefer a consensus store (ZooKeeper/etcd) with fencing; use Redis locks for best-effort coordination.
+
+## Cache stampede / thundering herd
+A hot key expires (or cold start) and **thousands of concurrent requests miss simultaneously**, all hammering the origin to recompute the same value — often melting the DB.
+
+\`\`\`mermaid
+sequenceDiagram
+    participant R1 as Req1..ReqN
+    participant C as Cache
+    participant DB as Origin
+    Note over R1,DB: hot key TTL expires
+    R1->>C: GET hot (all miss)
+    C-->>R1: nil
+    Note over R1,DB: WITHOUT coalescing: N concurrent recomputes hammer origin
+    R1->>DB: recompute x N  (overload!)
+    Note over R1,DB: WITH single-flight lock: only the winner recomputes
+    R1->>C: SET lock NX  (one winner)
+    R1->>DB: recompute x1
+    DB-->>C: SET hot value
+    C-->>R1: others read fresh value
+\`\`\`
+
+**Mitigations:**
+- **Request coalescing / single-flight**: a per-key in-process lock so only one thread recomputes; others wait and read the result.
+- **Distributed lock on recompute** (\`SET NX\`): only the lock winner hits the origin; others briefly serve stale or wait.
+- **Early/probabilistic recomputation (XFetch)**: refresh *before* expiry with a probability that rises as TTL approaches, so the herd never all expires at once.
+- **TTL jitter**: randomize expiries so keys don't expire in lockstep (also fixes avalanche, see §5).
+- **Stale-while-revalidate**: serve the old value while one worker refreshes in the background.
+
+## Hot keys
+One key so popular it saturates a single shard/CPU (a celebrity user, a flash-sale SKU). Fixes: **client-side local cache** of that key (near-cache), **key replication/splitting** (\`hot:{0..9}\` round-robin and merge), read from replicas, or a tiny in-process L1 with very short TTL to absorb the burst.
+
+> [!SUCCESS]
+> Interview-ready stampede answer: "Add **TTL jitter** so keys don't expire together, **single-flight** so only one request recomputes a missing key, and **stale-while-revalidate / early recompute** so users never wait on a cold origin. For hot keys, put a short-TTL **local L1** in front of Redis to absorb the per-key burst."`,
+            code: [
+              {
+                lang: `java`,
+                title: `Single-flight (request coalescing) that stops a cache stampede (runnable)`,
+                code: `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+/**
+ * Demonstrates a cache stampede and its fix via single-flight coalescing.
+ * loadCount = how many times the expensive origin was actually called.
+ */
+public class StampedeDemo {
+    static final ConcurrentHashMap<String,String> cache = new ConcurrentHashMap<>();
+    static final ConcurrentHashMap<String,CompletableFuture<String>> inflight = new ConcurrentHashMap<>();
+    static final AtomicInteger loadCount = new AtomicInteger();
+
+    static String expensiveLoad(String key) {
+        loadCount.incrementAndGet();
+        try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        return "value-of-" + key;
+    }
+
+    // single-flight: only ONE caller computes a missing key; others await the same future
+    static String getCoalesced(String key) {
+        String v = cache.get(key);
+        if (v != null) return v;
+        CompletableFuture<String> fresh = new CompletableFuture<>();
+        CompletableFuture<String> existing = inflight.putIfAbsent(key, fresh);
+        if (existing != null) return existing.join();   // someone else is loading -> wait
+        try {
+            String loaded = expensiveLoad(key);
+            cache.put(key, loaded);
+            fresh.complete(loaded);
+            return loaded;
+        } finally {
+            inflight.remove(key);
+        }
+    }
+
+    // naive: every concurrent miss loads -> stampede
+    static String getNaive(String key) {
+        String v = cache.get(key);
+        if (v != null) return v;
+        String loaded = expensiveLoad(key);
+        cache.put(key, loaded);
+        return loaded;
+    }
+
+    static int blast(java.util.function.Function<String,String> getter) throws Exception {
+        cache.clear(); inflight.clear(); loadCount.set(0);
+        int N = 200;
+        ExecutorService pool = Executors.newFixedThreadPool(64);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<?>> fs = new ArrayList<>();
+        for (int i = 0; i < N; i++) fs.add(pool.submit(() -> {
+            try { start.await(); } catch (InterruptedException e) { return; }
+            getter.apply("hot");
+        }));
+        start.countDown();
+        for (Future<?> f : fs) f.get();
+        pool.shutdown();
+        return loadCount.get();
+    }
+
+    public static void main(String[] args) throws Exception {
+        System.out.println("naive origin loads      = " + blast(StampedeDemo::getNaive) + "  (stampede!)");
+        System.out.println("single-flight loads     = " + blast(StampedeDemo::getCoalesced) + "  (coalesced to ~1)");
+    }
+}`,
+                runnable: true,
+                note: `200 concurrent requests for one cold key: naive hits the origin many times; single-flight coalesces them so the origin is called ~once. This is the in-process version of the SET-NX recompute lock.`
+              },
+              {
+                lang: `bash`,
+                title: `Redis: leaderboard, atomic lock, sliding-window rate limit (reference)`,
+                code: `# ---- leaderboard (sorted set) ----
+redis-cli ZADD game:board 4200 ada 3900 grace 5100 alan
+redis-cli ZREVRANGE game:board 0 2 WITHSCORES   # top 3
+redis-cli ZREVRANK game:board ada               # ada's rank (0-based)
+
+# ---- distributed lock with TTL + safe release ----
+redis-cli SET lock:order:42 $TOKEN NX PX 30000  # acquire (atomic, auto-expire)
+# release ONLY if we still own it (Lua compare-and-delete):
+#   if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) else return 0 end
+# NOTE: add a FENCING TOKEN for strict mutual exclusion (Redlock alone isn't enough).
+
+# ---- fixed-window rate limit (100 req / 60s per user) ----
+redis-cli INCR rl:user:42
+redis-cli EXPIRE rl:user:42 60 NX   # set TTL only on first hit
+# if INCR result > 100 -> reject
+
+# ---- sliding window via ZSET of timestamps ----
+#   ZADD rl:u42 <now> <now>; ZREMRANGEBYSCORE rl:u42 0 <now-60s>; ZCARD rl:u42 <= limit`,
+                runnable: false,
+                note: `ZSET = leaderboard in 3 commands. SET NX PX = atomic lock with auto-expiry; release with Lua CAS and add a fencing token for safety. INCR+EXPIRE = fixed window; ZSET-of-timestamps = sliding window.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Which Redis structure builds a leaderboard and what's the complexity?`,
+                a: `Sorted set (ZSET): ZADD to set score, ZREVRANK for a player's rank, ZREVRANGE 0 9 WITHSCORES for top-10 — all O(log N). The score ordering is maintained automatically.`
+              },
+              {
+                q: `Redis vs Memcached — when pick each?`,
+                a: `Redis: rich data structures, persistence (RDB/AOF), replication/Cluster, Lua/atomic ops, pub/sub — pick when you need more than blobs. Memcached: multi-threaded, dead-simple opaque KV, no persistence — pick for a pure, very large, simple LRU cache.`
+              },
+              {
+                q: `RDB vs AOF persistence?`,
+                a: `RDB: periodic fork+snapshot, compact, fast restart, but loses everything since last snapshot. AOF: append every write command, replay on restart; appendfsync everysec loses <=1s, always is safest/slowest. Often run both: AOF for durability, RDB for fast restart/backup.`
+              },
+              {
+                q: `Why is Redis not a durable database even with appendfsync always?`,
+                a: `Replication is asynchronous, so a primary failover can lose acknowledged writes; WAIT/WAITAOF shrink but don't eliminate the window. Never keep the only copy of critical/financial data in Redis.`
+              },
+              {
+                q: `What is the Redlock caveat and the robust fix?`,
+                a: `GC pauses/clock skew can let a holder think it still owns a lock after TTL expiry while another client acquires it -> two holders. Fix: fencing tokens — a monotonically increasing number the resource checks, rejecting writes with a lower token than the max seen. For strict mutex prefer ZooKeeper/etcd; use Redis locks for best-effort coordination.`
+              },
+              {
+                q: `What is a cache stampede / thundering herd?`,
+                a: `A hot key expires (or cold start) and thousands of concurrent requests miss at once, all recomputing the same value against the origin simultaneously, potentially overloading the DB.`
+              },
+              {
+                q: `List four stampede mitigations.`,
+                a: `(1) Single-flight/request coalescing (only one recompute per key, others wait). (2) Distributed SET-NX recompute lock. (3) Early/probabilistic recompute (XFetch) before TTL hits. (4) TTL jitter so keys don't expire together. Plus stale-while-revalidate.`
+              },
+              {
+                q: `What is a hot key and how do you mitigate it?`,
+                a: `A single key so popular it saturates one shard/CPU (celebrity, flash-sale SKU). Fixes: short-TTL local L1 (near-cache) to absorb the burst, key splitting/replication (hot:{0..9}), reading from replicas.`
+              },
+              {
+                q: `How do hash tags relate to Redis Cluster multi-key ops?`,
+                a: `Cluster shards by hashing the key into 16384 slots; multi-key commands require all keys in the same slot. A hash tag {user:42} forces only the braced substring to be hashed, colocating user:42's keys on one shard so MGET/transactions work.`
+              },
+              {
+                q: `Implement an atomic single-Redis lock with safe release.`,
+                a: `Acquire: SET lock:res <uniqueToken> NX PX <ttl> (atomic set-if-absent with expiry). Release via Lua compare-and-delete: only DEL if GET == your token, so you never delete a lock another client acquired after your TTL lapsed. Add a fencing token for strict correctness.`
+              },
+              {
+                q: `Fixed-window vs sliding-window rate limiting in Redis?`,
+                a: `Fixed: INCR a per-window key + EXPIRE; simple but allows 2x burst at window boundaries. Sliding: a ZSET of request timestamps — ZADD now, ZREMRANGEBYSCORE to drop old, ZCARD to count — smoother but more memory/ops. Token bucket via Lua gives atomic burst+refill.`
+              }
+            ]
+          },
+          {
+            title: `CDN & Edge: POPs, Cache-Control/ETag, Penetration / Avalanche / Breakdown`,
+            notes: `## How a CDN works
+A CDN is a globally distributed set of **edge POPs (points of presence)** that cache your content close to users. The user resolves your hostname (via anycast DNS or BGP anycast) to the nearest POP; the POP serves from its cache or, on a miss, fetches from **origin** and caches the response.
+
+\`\`\`mermaid
+flowchart TB
+  subgraph Users
+    U1[User EU]:::u
+    U2[User US]:::u
+    U3[User APAC]:::u
+  end
+  U1 --> P1[Edge POP Frankfurt]
+  U2 --> P2[Edge POP Virginia]
+  U3 --> P3[Edge POP Singapore]
+  P1 -->|miss: origin pull| SH[Regional Shield / Mid-tier]
+  P2 --> SH
+  P3 --> SH
+  SH -->|miss| O[(Origin)]
+  classDef u fill:#2ea043,color:#fff;
+\`\`\`
+
+- **Origin pull**: POP fetches on first miss and caches (lazy, default).
+- **Origin push / pre-warm**: you upload/pre-populate content to edges ahead of a launch (avoids first-visitor miss storm).
+- **Shield / mid-tier (cache hierarchy)**: a designated regional POP that all edges miss *through*, so the origin sees one request per object instead of one-per-POP. Critical for origin offload and for stampede control at the edge.
+
+## Controlling the edge: Cache-Control, ETag, Vary
+The edge obeys (mostly) the same HTTP semantics as the browser:
+- \`Cache-Control: public, max-age=31536000, immutable\` — long-lived static asset.
+- \`Cache-Control: s-maxage=60\` — TTL for *shared* (CDN/proxy) caches, distinct from browser \`max-age\`.
+- \`Cache-Control: no-store\` (never cache, e.g. PII), \`private\` (browser only, not the CDN), \`no-cache\` (cache but revalidate every time).
+- \`stale-while-revalidate\` / \`stale-if-error\` — serve stale while refreshing or when origin is down (huge for resilience).
+- **ETag / If-None-Match** and **Last-Modified / If-Modified-Since** -> conditional GET -> \`304 Not Modified\` (revalidate cheaply without re-sending the body).
+- **Vary** (e.g. \`Vary: Accept-Encoding\`) — splits the cache by header. \`Vary: Cookie\`/\`Vary: *\` effectively kills caching; avoid for cacheable content.
+
+> [!TIP]
+> **Cache-key design** is where edge engineering lives. The default key is method+host+path+query, but you tune it: strip tracking query params (\`utm_*\`) so they don't fragment the cache; normalize/sort query strings; cache by device class or country (geo) deliberately; and use **content-hashed filenames** (\`app.9f2c.js\`) so you can set \`immutable, max-age=1y\` and never invalidate — a deploy just references a new hash.
+
+## Static vs dynamic content at the edge
+- **Static** (images, JS/CSS, video segments): ideal — long TTL, content-hashed, near-100% hit ratio.
+- **Dynamic / personalized**: harder. Options: **micro-caching** (cache for 1–5s — even tiny TTLs slash origin load under high RPS), **Edge Side Includes (ESI)** to cache the page shell and fill personalized fragments, **edge compute** (Cloudflare Workers / Lambda@Edge) to assemble at the edge, or cache the **API layer** with careful Vary/auth handling.
+
+## Invalidation / purge at the edge
+- **Purge by URL** (single object), **by tag/surrogate-key** (Fastly: purge all objects tagged \`product-42\`), or **purge all** (nuclear, causes an origin-pull storm).
+- **Versioned URLs** (content hash) are the best invalidation: you never purge, you just point to a new URL. Old objects age out.
+- Purges are eventually consistent across POPs (seconds), not instant globally.
+
+## The three famous failure modes (and fixes)
+
+| Failure | What happens | Root cause | Fix |
+|---|---|---|---|
+| **Cache penetration** | Requests for keys that **don't exist** always miss cache and hammer the DB (often malicious: random IDs) | nothing to cache; null results not cached | **cache the null/empty result** (short TTL) + a **Bloom filter** of existing keys to reject unknown keys before the DB |
+| **Cache avalanche** | **Many keys expire at the same instant** (or the whole cache restarts) -> mass misses -> origin overload | synchronized TTLs / cache cluster outage | **TTL jitter** (random spread), staggered warm-up, HA cache + circuit breaker, request throttling at origin |
+| **Cache breakdown** (hotspot invalidation) | **One very hot key** expires and a herd recomputes it at once | single hot key + hard expiry | **single-flight lock** on recompute, **logical expiry / early recompute**, never hard-expire hot keys (refresh in background) |
+
+> [!WARNING]
+> **Penetration** (non-existent keys), **avalanche** (mass simultaneous expiry), and **breakdown** (one hot key) are distinct — interviewers love to check you don't conflate them. Penetration is about *keys that were never valid*; avalanche is *many keys at once*; breakdown is *one key, many requests*. Their fixes (null-caching/Bloom; jitter/HA; single-flight/early-recompute) map one-to-one.
+
+> [!DANGER]
+> **Never cache personalized or authenticated responses at a shared CDN edge with a public cache key.** A misconfigured \`Cache-Control: public\` (or caching with \`Set-Cookie\`/\`Authorization\` ignored in the key) leaks one user's account page to the next visitor of that POP — a real, recurring incident class. Use \`private\`/\`no-store\` for authenticated responses, and include the auth/session dimension in the cache key only if you truly intend per-user edge caching.
+
+> [!SUCCESS]
+> CDN mental model for interviews: "Static, content-hashed assets get \`immutable, max-age=1y\` and ~100% edge hit ratio; dynamic content uses micro-caching, ESI, or edge compute; a **shield POP** collapses origin misses; invalidate via **surrogate-key purge or versioned URLs**; and I defend the origin with **null-caching + Bloom filter (penetration)**, **TTL jitter (avalanche)**, and **single-flight (breakdown)**."
+
+> [!EU]
+> CDN POPs are global: if you serve EU users from a POP, your cached payloads may be stored outside the original region. For PII/regulated data prefer \`no-store\` at the edge, or use providers/configurations that pin caching to EU POPs and support purge-on-erasure to satisfy GDPR data-residency and right-to-erasure.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Bloom filter to stop cache penetration + null-caching (runnable)`,
+                code: `import java.util.*;
+
+/**
+ * Defends against cache penetration: a Bloom filter quickly rejects keys that
+ * definitely do not exist (so they never reach the DB), and we null-cache misses.
+ * No libraries; a tiny hand-rolled Bloom filter.
+ */
+public class CdnFailureDemo {
+
+    static final class BloomFilter {
+        private final long[] bits;
+        private final int m;        // number of bits
+        private final int k;        // number of hash functions
+        BloomFilter(int m, int k){ this.m = m; this.k = k; this.bits = new long[(m >> 6) + 1]; }
+        private int hash(String s, int i){
+            int h = s.hashCode() ^ (i * 0x9E3779B1);
+            h ^= (h >>> 16);
+            return Math.floorMod(h, m);
+        }
+        void add(String s){ for (int i=0;i<k;i++){ int b=hash(s,i); bits[b>>6] |= (1L << (b & 63)); } }
+        boolean mightContain(String s){
+            for (int i=0;i<k;i++){ int b=hash(s,i); if ((bits[b>>6] & (1L << (b & 63))) == 0) return false; }
+            return true; // maybe (false positives possible, false negatives never)
+        }
+    }
+
+    static final Map<String,String> DB = new HashMap<>();
+    static final Map<String,String> cache = new HashMap<>();
+    static final Set<String> NULL_CACHED = new HashSet<>();   // remembers known-missing keys
+    static long dbHits = 0;
+    static BloomFilter bloom = new BloomFilter(1 << 16, 4);
+
+    static String get(String key){
+        String v = cache.get(key);
+        if (v != null) return v;
+        if (NULL_CACHED.contains(key)) return null;          // null-caching: known absent
+        if (!bloom.mightContain(key)) return null;           // Bloom: definitely absent, skip DB
+        dbHits++;
+        v = DB.get(key);
+        if (v != null) cache.put(key, v); else NULL_CACHED.add(key); // cache the null too
+        return v;
+    }
+
+    public static void main(String[] args){
+        for (int i=0;i<1000;i++){ String k="item:"+i; DB.put(k,"v"+i); bloom.add(k); }
+
+        // attacker requests 100k non-existent random keys
+        Random r = new Random(7);
+        int requests = 100_000;
+        for (int i=0;i<requests;i++) get("item:" + (1000 + r.nextInt(10_000_000)));
+        System.out.printf("%d penetration requests -> only %d reached the DB (Bloom blocked the rest)%n", requests, dbHits);
+
+        // legit traffic still works
+        System.out.println("legit get item:42 = " + get("item:42"));
+    }
+}`,
+                runnable: true,
+                note: `100k requests for non-existent keys: the Bloom filter (no false negatives) rejects almost all before they touch the DB; the few false positives get null-cached. This is the canonical cache-penetration defense.`
+              },
+              {
+                lang: `text`,
+                title: `Edge cache headers, cache-key tuning & TTL jitter (reference)`,
+                code: `# --- long-lived, content-hashed static asset (never invalidate) ---
+GET /static/app.9f2c1b.js
+Cache-Control: public, max-age=31536000, immutable
+ETag: "9f2c1b"
+
+# --- shared-cache TTL distinct from browser; revalidate cheaply ---
+Cache-Control: public, s-maxage=60, max-age=10, stale-while-revalidate=30, stale-if-error=86400
+ETag: "abc123"            # conditional GET -> 304 Not Modified on revalidate
+Vary: Accept-Encoding      # split cache by encoding only; avoid Vary: Cookie
+
+# --- authenticated / personalized: do NOT share at the edge ---
+Cache-Control: private, no-store
+
+# --- cache-key design (provider config, conceptual) ---
+cache_key = method + host + normalized(path) + sorted(query - {utm_*, fbclid})
+#   + content-hashed filenames so deploys never need a purge
+
+# --- invalidation ---
+PURGE /static/logo.png                 # single object
+PURGE-TAG product-42                   # surrogate-key/tag purge (Fastly-style)
+# prefer versioned URLs over purge-all (purge-all triggers an origin-pull storm)
+
+# --- TTL jitter to prevent avalanche (pseudo) ---
+ttl = base_ttl + random(0, base_ttl * 0.2)   # spread expiries so keys don't expire together`,
+                runnable: false,
+                note: `s-maxage tunes the shared (CDN) TTL separately from browser max-age; stale-while-revalidate/stale-if-error add resilience; content-hashed immutable assets avoid purges; TTL jitter prevents avalanche.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is a CDN shield/mid-tier and why does it matter?`,
+                a: `A designated regional POP that all edge POPs miss *through* before going to origin. It collapses N per-POP misses into one origin request per object, dramatically reducing origin load and acting as edge-level stampede protection.`
+              },
+              {
+                q: `Origin pull vs origin push?`,
+                a: `Pull: the POP fetches from origin lazily on the first miss and caches (default). Push/pre-warm: you pre-populate edges before a launch so the first visitors don't trigger a miss storm.`
+              },
+              {
+                q: `Difference between Cache-Control max-age and s-maxage?`,
+                a: `max-age sets TTL for all caches (incl. browser); s-maxage overrides TTL for SHARED caches (CDN/proxy) only. This lets you cache long at the edge but short (or private) in the browser.`
+              },
+              {
+                q: `What do stale-while-revalidate and stale-if-error do?`,
+                a: `stale-while-revalidate: serve the stale cached copy immediately while asynchronously revalidating with origin (no user wait, no stampede). stale-if-error: serve stale if origin errors/times out — resilience against origin outages.`
+              },
+              {
+                q: `Why are content-hashed filenames the best CDN invalidation strategy?`,
+                a: `Each content change produces a new URL (app.9f2c.js), so you can mark assets immutable, max-age=1y and never purge; a deploy just references the new hash and old objects age out. Avoids slow/eventually-consistent purges.`
+              },
+              {
+                q: `What is cache penetration and how do you fix it?`,
+                a: `Requests for keys that don't exist always miss the cache and hit the DB (often malicious random IDs). Fix: null-cache the empty result with a short TTL, and put a Bloom filter of existing keys in front to reject unknown keys before they reach the DB (no false negatives).`
+              },
+              {
+                q: `What is cache avalanche and how do you fix it?`,
+                a: `Many keys expire at the same instant (synchronized TTLs) or the cache cluster restarts, causing mass simultaneous misses that overload the origin. Fix: TTL jitter (randomize expiries), staggered warm-up, HA cache, circuit breaker / origin throttling.`
+              },
+              {
+                q: `What is cache breakdown and how does it differ from avalanche?`,
+                a: `Breakdown (hotspot invalidation): ONE very hot key expires and a herd recomputes it at once. Avalanche is MANY keys at once. Breakdown fix: single-flight lock on recompute, logical/early expiry, never hard-expire hot keys (refresh in background).`
+              },
+              {
+                q: `Why is Vary: Cookie dangerous for cacheable content?`,
+                a: `Vary splits the cache by that header's value; since cookies are nearly unique per user, Vary: Cookie creates a separate cache entry per user, destroying the hit ratio (effectively no caching). Use narrow Vary like Accept-Encoding only.`
+              },
+              {
+                q: `What's the classic CDN security incident with authenticated responses?`,
+                a: `Caching personalized/authenticated content with a public cache key (e.g. Cache-Control: public, or Set-Cookie/Authorization not in the key) leaks one user's account page to the next visitor of that POP. Use private/no-store for authenticated responses.`
+              },
+              {
+                q: `How does micro-caching help dynamic content?`,
+                a: `Caching dynamic responses for just 1–5 seconds still collapses massive concurrent load at high RPS (e.g. 10k req/s with 1s TTL = ~1 origin hit/s/object) while keeping content nearly fresh — a cheap origin shield for content that can't be cached long.`
+              },
+              {
+                q: `Why does a Bloom filter never produce false negatives, and why does that property matter here?`,
+                a: `Adding a key sets specific bits; if any of a key's bits is 0 it was definitely never added, so 'absent' is certain. False positives (all bits set by chance) only cause an unnecessary DB lookup — safe. This guarantees you never wrongly reject a key that actually exists.`
               }
             ]
           }
@@ -30865,297 +32738,1403 @@ Request routing:");
       {
         id: `5.3`,
         title: `API Design: REST, gRPC & Idempotency`,
-        hours: 3,
+        hours: 5,
         sections: [
           {
-            title: `REST API Design — Principles & Best Practices`,
-            notes: `## REST API Design — Principles & Best Practices
+            title: `REST Done Right — Resources, Methods, Status Codes & Maturity`,
+            notes: `## REST Done Right — The Senior Mental Model
 
-### REST Constraints
+REST is not "JSON over HTTP." It is an architectural style built on **resources** identified by **URIs**, manipulated through a **uniform interface** (the HTTP verbs), with **stateless** requests and **representations** (JSON/XML/protobuf) flowing between client and server. At staff level you are expected to design APIs that are *predictable*, *evolvable*, and *correct under retries* — not just functional.
 
-\`\`\`
-REST (Representational State Transfer) defines 6 architectural constraints:
-1. Client-Server: separation of concerns — UI and data are independent
-2. Stateless: each request contains all needed info — no server-side session
-3. Cacheable: responses declare whether they can be cached
-4. Uniform Interface: consistent resource-based URLs + HTTP methods
-5. Layered System: client doesn't know if it's talking to origin or proxy
-6. Code on Demand (optional): server can send executable code (JavaScript)
-\`\`\`
+### Resources & URIs — model nouns, not verbs
 
-### Resource Naming
+A URI names a **thing**. Verbs live in the HTTP method, not the path.
 
-\`\`\`
-✓ Nouns (resources), not verbs
-  GET  /users           list users
-  POST /users           create user
-  GET  /users/{id}      get one user
-  PUT  /users/{id}      replace user
-  PATCH /users/{id}     partial update
-  DELETE /users/{id}    delete user
-
-✗ Verb-based (wrong)
-  GET /getUsers
-  POST /createUser
-  GET /deleteUser?id=1
-
-✓ Hierarchical sub-resources
-  GET  /users/{id}/orders        user's orders
-  POST /users/{id}/orders        create order for user
-  GET  /users/{id}/orders/{oid}  specific order
-
-✓ Plural nouns, lowercase, hyphens
-  /order-items   not /orderItems or /OrderItems
-
-✓ Filter via query params, not URL segments
-  GET /orders?status=PENDING&customerId=42&sort=createdAt&page=0&size=20
-  not /orders/pending/customer/42
+\`\`\`text
+GOOD                                BAD
+GET    /orders/42                   GET  /getOrder?id=42
+POST   /orders                      POST /createOrder
+DELETE /orders/42                   POST /deleteOrder
+GET    /orders/42/lines             GET  /getOrderLines?orderId=42
 \`\`\`
 
-### HTTP Status Codes
+Rules of thumb:
+- **Plural collection nouns**: \`/orders\`, \`/customers\`. A collection is itself a resource.
+- **Lowercase, hyphenated** path segments (\`/purchase-orders\`), no trailing slash.
+- **IDs are opaque** — clients must not parse them. Prefer UUIDs/ULIDs over auto-increment to avoid leaking volume & enabling enumeration (IDOR).
+- **Hierarchy via nesting** only when the child cannot exist without the parent: \`/orders/42/lines/7\`. Don't nest more than ~2 levels; deep nesting couples clients to your data model.
 
+> [!TIP]
+> **Collection vs singleton.** \`/users/me\`, \`/account/settings\`, \`/config\` are *singleton* resources — there's exactly one per context. They're legitimate; not everything is a collection. Use them for "the current X."
+
+### HTTP methods — safe & idempotent semantics
+
+This table is interview gold. **Safe** = no observable server state change (cacheable, prefetchable). **Idempotent** = doing it N times == doing it once (in *effect* on server state).
+
+| Method | Safe | Idempotent | Body | Typical use | Notes |
+|---|---|---|---|---|---|
+| GET | Yes | Yes | No | Read resource/collection | Cacheable; never mutate |
+| HEAD | Yes | Yes | No | Headers only (existence, size) | Like GET, no body |
+| OPTIONS | Yes | Yes | No | Capabilities / CORS preflight | |
+| POST | No | **No** | Yes | Create, or non-CRUD action | Each call may create a new resource → needs idempotency keys |
+| PUT | No | **Yes** | Yes | Full replace at a known URI | Re-sending same body = same end state |
+| PATCH | No | **No*** | Yes | Partial update | *Idempotent only if the patch is absolute, not relative (see below) |
+| DELETE | No | **Yes** | No | Remove resource | 2nd delete → 404 but state is identical |
+
+> [!WARNING]
+> **PATCH is NOT inherently idempotent.** \`PATCH {"balance": 100}\` (set) is idempotent. \`PATCH {"op":"increment","by":10}\` (JSON Patch relative op) is **not** — two retries add 20. This is a classic senior trap: "Is PATCH idempotent?" → "It depends on whether the patch is absolute or relative."
+
+> [!DANGER]
+> **PUT vs POST for create.** PUT to a *client-chosen* URI (\`PUT /files/report.pdf\`) is idempotent and great for upserts. POST to a *collection* (\`POST /orders\`) lets the **server** assign the ID and is non-idempotent — which is exactly why POST creates need idempotency keys (Section 3).
+
+### Status codes — the senior set
+
+Returning the right code is a correctness contract; clients branch on it.
+
+| Code | Meaning | Use it when |
+|---|---|---|
+| 200 OK | Success w/ body | GET, PUT/PATCH returning the resource |
+| 201 Created | Resource created | POST create; set \`Location\` header to the new URI |
+| 202 Accepted | Async accepted, not done | Long-running job; return a status URL |
+| 204 No Content | Success, no body | DELETE, or PUT/PATCH with no body returned |
+| 301/308 | Moved permanently | URI migration (308 keeps method/body) |
+| 304 Not Modified | Conditional GET hit | \`If-None-Match\`/\`If-Modified-Since\` matched |
+| 400 Bad Request | Malformed syntax | Unparseable JSON, missing required field |
+| 401 Unauthorized | Not authenticated | Missing/invalid credentials (really "unauthenticated") |
+| 403 Forbidden | Authenticated, not allowed | Valid token, lacks permission |
+| 404 Not Found | No such resource | Also used to hide existence from unauthorized users |
+| 405 Method Not Allowed | Verb not supported here | Include \`Allow\` header |
+| 409 Conflict | State conflict | Duplicate, optimistic-lock failure, business-rule clash |
+| 412 Precondition Failed | \`If-Match\`/\`If-Unmodified-Since\` failed | Optimistic concurrency |
+| 415 Unsupported Media Type | Bad \`Content-Type\` | Sent XML to a JSON-only endpoint |
+| 422 Unprocessable Entity | Syntactically valid, semantically wrong | Validation errors (well-formed JSON, invalid values) |
+| 428 Precondition Required | Must send \`If-Match\` | Force conditional writes |
+| 429 Too Many Requests | Rate limited | Include \`Retry-After\` |
+| 500 Internal Server Error | Unhandled server fault | Never leak stack traces |
+| 502/503/504 | Upstream/overloaded/timeout | 503 + \`Retry-After\` when shedding load |
+
+> [!TIP]
+> **400 vs 422.** 400 = the request is malformed (bad JSON, can't even parse). 422 = it parsed fine but failed business/semantic validation ("email already taken", "endDate before startDate"). Many teams use 400 for both; the senior nuance is knowing the distinction and being consistent. **401 vs 403**: 401 = "who are you?" (authn), 403 = "I know you, you can't" (authz).
+
+### Richardson Maturity Model — how "RESTful" are you?
+
+\`\`\`mermaid
+flowchart TD
+  L0["Level 0 — RPC over HTTP<br/>One URI, POST everything<br/>e.g. SOAP, /api endpoint"] --> L1
+  L1["Level 1 — Resources<br/>Many URIs, still mostly POST"] --> L2
+  L2["Level 2 — HTTP Verbs + Status<br/>GET/POST/PUT/DELETE + 2xx/4xx<br/>**Where 99% of 'REST' APIs live**"] --> L3
+  L3["Level 3 — HATEOAS<br/>Responses carry links to next actions<br/>(self-describing, discoverable)"]
 \`\`\`
-2xx Success
-  200 OK           — GET, PUT, PATCH success
-  201 Created      — POST success; include Location header
-  204 No Content   — DELETE success (no body)
 
-3xx Redirect
-  301 Moved Permanently  — resource URL changed permanently
-  304 Not Modified       — cached response still valid (ETag/If-None-Match)
+**Level 2 is the pragmatic target.** Be honest in interviews: most production "REST" APIs are Level 2, and that's fine.
 
-4xx Client Error
-  400 Bad Request        — invalid input / validation failure
-  401 Unauthorized       — not authenticated (no/invalid token)
-  403 Forbidden          — authenticated but not authorised
-  404 Not Found          — resource doesn't exist
-  409 Conflict           — optimistic lock failure, duplicate key
-  422 Unprocessable      — semantically invalid (e.g. business rule violation)
-  429 Too Many Requests  — rate limited
+### HATEOAS — and why most teams skip it
 
-5xx Server Error
-  500 Internal Server Error  — unexpected server fault
-  502 Bad Gateway            — upstream service error
-  503 Service Unavailable    — overloaded or down
-  504 Gateway Timeout        — upstream timeout
-\`\`\`
+HATEOAS (Hypermedia As The Engine Of Application State) means responses embed **links** to valid next actions, so clients navigate by following links rather than hard-coding URIs.
 
-### Versioning
-
-\`\`\`
-URL versioning (most common):
-  /api/v1/users     /api/v2/users
-
-Header versioning:
-  Accept: application/vnd.myapp.v2+json
-  API-Version: 2
-
-URL versioning: explicit, cacheable, easy to test in browser
-Header versioning: clean URLs, harder to test manually
-
-Avoid: breaking changes in same version
-Define "breaking change": removing fields, changing types, removing endpoints
-Non-breaking: adding optional fields, adding endpoints
-\`\`\`
-
-### Request/Response Design
-
-\`\`\`java
-// Consistent error response shape
-record ErrorResponse(
-    int status,
-    String code,      // machine-readable: "INSUFFICIENT_FUNDS"
-    String message,   // human-readable: "Account balance too low"
-    String traceId,   // for correlating logs
-    List<FieldError> errors  // for validation failures
-) {}
-
-record FieldError(String field, String message) {}
-
-// Paginated response envelope
-record Page<T>(
-    List<T> content,
-    int page,
-    int size,
-    long totalElements,
-    int totalPages,
-    boolean hasNext,
-    boolean hasPrevious
-) {}
-
-// Example Spring controller
-@RestController @RequestMapping("/api/v1")
-public class OrderController {
-    @GetMapping("/orders")
-    public ResponseEntity<Page<OrderDto>> list(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String status) {
-        return ResponseEntity.ok(orderService.list(page, size, status));
-    }
-
-    @PostMapping("/orders")
-    public ResponseEntity<OrderDto> create(@Valid @RequestBody CreateOrderRequest req) {
-        OrderDto order = orderService.create(req);
-        URI location = URI.create("/api/v1/orders/" + order.id());
-        return ResponseEntity.created(location).body(order);
-    }
+\`\`\`json
+{
+  "id": 42, "status": "PENDING", "total": 99.90,
+  "_links": {
+    "self":   { "href": "/orders/42" },
+    "cancel": { "href": "/orders/42/cancel", "method": "POST" },
+    "pay":    { "href": "/orders/42/payment", "method": "PUT" }
+  }
 }
+\`\`\`
+
+> [!WARNING]
+> **Why teams skip HATEOAS:** most clients are first-party SPAs/mobile apps written by the same org — they hard-code routes and read an OpenAPI spec anyway, so the discoverability payoff is small while the payload bloat and server complexity are real. HATEOAS shines for *long-lived public hypermedia APIs* with many third-party consumers (PayPal, GitHub partially). Know the trade-off; don't dogmatically demand Level 3.
+
+### Filtering, sorting, pagination
+
+\`\`\`text
+GET /orders?status=PENDING&minTotal=50          # filtering
+GET /orders?sort=-createdAt,total               # sort: '-' = desc
+GET /orders?page=2&size=20                       # offset pagination
+GET /orders?cursor=eyJpZCI6NDJ9&limit=20         # cursor pagination
+GET /orders/42?fields=id,status,total            # partial response / sparse fieldsets
+\`\`\`
+
+**Offset vs cursor** (full treatment with stability in Section 3):
+
+| | Offset (\`page\`/\`offset\`) | Cursor (keyset) |
+|---|---|---|
+| How | \`LIMIT 20 OFFSET 40\` | \`WHERE (createdAt,id) < (?, ?) ORDER BY ... LIMIT 20\` |
+| Random page access | Yes (jump to page 7) | No (sequential only) |
+| Deep-page performance | Degrades (DB scans+skips) | Constant time (indexed seek) |
+| Stable under inserts/deletes | **No** (items shift, dupes/skips) | **Yes** (anchored to a value) |
+| Total count | Easy | Hard/expensive |
+| Best for | Small admin tables, UIs needing page numbers | Large/infinite feeds, public APIs |
+
+> [!SUCCESS]
+> Default to **cursor pagination** for any large or frequently-mutated collection. Cursors are opaque (base64 the keyset) so you can change the underlying ordering without breaking clients.
+
+### Bulk operations
+
+\`POST /orders/batch\` or \`POST /orders:batchCreate\` with an array. Decide your **partial-failure** semantics up front and return **207 Multi-Status**-style per-item results:
+
+\`\`\`json
+POST /orders/batch
+{ "items": [ {...}, {...}, {...} ] }
+
+HTTP/1.1 207 Multi-Status
+{ "results": [
+  { "index":0, "status":201, "id":"o-1" },
+  { "index":1, "status":422, "error":{ "code":"INVALID_SKU" } },
+  { "index":2, "status":201, "id":"o-3" }
+] }
+\`\`\`
+
+The interview probe: *"all-or-nothing vs best-effort?"* — be explicit, and make bulk endpoints idempotent too.
+
+### A complete request/response example
+
+\`\`\`text
+POST /orders HTTP/1.1
+Host: api.shop.com
+Authorization: Bearer eyJ...
+Content-Type: application/json
+Idempotency-Key: 8e1d...c3
+Accept: application/json
+
+{ "customerId": "c-99", "lines": [ { "sku": "BOOK-1", "qty": 2 } ] }
+
+HTTP/1.1 201 Created
+Location: /orders/42
+Content-Type: application/json
+ETag: "v1"
+
+{ "id": 42, "status": "PENDING", "customerId": "c-99",
+  "lines": [ { "sku": "BOOK-1", "qty": 2, "price": 19.99 } ],
+  "total": 39.98, "createdAt": "2026-06-25T10:00:00Z" }
 \`\`\``,
             code: [
-              `import org.springframework.web.bind.annotation.*;
+              {
+                lang: `java`,
+                title: `Spring REST controller — correct status codes, ETag, RFC7807 errors`,
+                runnable: false,
+                note: `needs Spring (spring-boot-starter-web, validation)`,
+                code: `// Senior-grade REST controller: proper verbs, status codes, ETag/If-Match
+// optimistic concurrency, Location header, RFC7807 errors, idempotency hook.
 import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
-import java.util.*;
 import java.net.URI;
+import java.util.*;
 
-// Production-quality REST controller patterns
 @RestController
-@RequestMapping("/api/v1/products")
-public class ProductController {
+@RequestMapping("/orders")
+public class OrderController {
 
-    // GET /api/v1/products?category=Electronics&minPrice=10&page=0&size=20
+    private final OrderService service;
+    private final IdempotencyStore idem;       // see Section 3
+    OrderController(OrderService s, IdempotencyStore i) { this.service = s; this.idem = i; }
+
+    // --- LIST: filtering + cursor pagination + partial response ---
     @GetMapping
-    public ResponseEntity<PageResponse<ProductDto>> list(
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) Double minPrice,
-            @RequestParam(required = false) Double maxPrice,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        // Service handles filtering + pagination
-        var result = productService.list(category, minPrice, maxPrice, page, size);
-        return ResponseEntity.ok(result);
+    public ResponseEntity<PageResponse<OrderDto>> list(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") @Max(100) int limit) {
+        var page = service.list(status, cursor, limit);   // keyset query
+        return ResponseEntity.ok(page);
     }
 
-    // GET /api/v1/products/{id}
+    // --- READ ONE: 200 + ETag, or 304 on conditional GET ---
     @GetMapping("/{id}")
-    public ResponseEntity<ProductDto> get(@PathVariable Long id) {
-        return productService.findById(id)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<OrderDto> get(@PathVariable long id,
+                                        @RequestHeader(value = "If-None-Match", required = false) String inm) {
+        OrderDto dto = service.findById(id)
+            .orElseThrow(() -> new NotFoundException("order", id));
+        String etag = "\\"" + dto.version() + "\\"";
+        if (etag.equals(inm)) return ResponseEntity.status(HttpStatus.NOT_MODIFIED).eTag(etag).build();
+        return ResponseEntity.ok().eTag(etag).body(dto);
     }
 
-    // POST /api/v1/products → 201 Created + Location header
+    // --- CREATE: 201 + Location, idempotency key dedupes retries ---
     @PostMapping
-    public ResponseEntity<ProductDto> create(@Valid @RequestBody CreateProductRequest req) {
-        ProductDto created = productService.create(req);
-        URI location = URI.create("/api/v1/products/" + created.id());
-        return ResponseEntity.created(location).body(created);
+    public ResponseEntity<OrderDto> create(
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
+            @Valid @RequestBody CreateOrderRequest req) {
+
+        if (key != null) {
+            var cached = idem.find(key);
+            if (cached.isPresent()) return cached.get().toResponse();  // replay same result
+        }
+        OrderDto created = service.create(req);
+        URI loc = ServletUriComponentsBuilder.fromCurrentRequest()
+                    .path("/{id}").buildAndExpand(created.id()).toUri();
+        ResponseEntity<OrderDto> resp = ResponseEntity.created(loc)
+                    .eTag("\\"" + created.version() + "\\"").body(created);
+        if (key != null) idem.save(key, resp);
+        return resp;
     }
 
-    // PATCH /api/v1/products/{id} — partial update
-    @PatchMapping("/{id}")
-    public ResponseEntity<ProductDto> patch(
-            @PathVariable Long id,
-            @RequestBody Map<String, Object> updates) {
-        return productService.patch(id, updates)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+    // --- FULL REPLACE with optimistic concurrency: If-Match required ---
+    @PutMapping("/{id}")
+    public ResponseEntity<OrderDto> replace(@PathVariable long id,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch,
+            @Valid @RequestBody UpdateOrderRequest req) {
+        if (ifMatch == null) throw new PreconditionRequiredException();  // 428
+        OrderDto current = service.findById(id).orElseThrow(() -> new NotFoundException("order", id));
+        if (!("\\"" + current.version() + "\\"").equals(ifMatch))
+            throw new VersionConflictException();                       // 412
+        OrderDto updated = service.replace(id, req);
+        return ResponseEntity.ok().eTag("\\"" + updated.version() + "\\"").body(updated);
     }
 
-    // DELETE /api/v1/products/{id} → 204 No Content
+    // --- DELETE: 204 ---
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        productService.delete(id);
+    public ResponseEntity<Void> delete(@PathVariable long id) {
+        service.delete(id);
         return ResponseEntity.noContent().build();
     }
-}
 
-// Consistent error handling
-@RestControllerAdvice
-class GlobalExceptionHandler {
-    record ErrorBody(int status, String code, String message, String traceId) {}
-
-    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
-    ResponseEntity<ErrorBody> onValidation(jakarta.validation.ConstraintViolationException e,
-                                            jakarta.servlet.http.HttpServletRequest req) {
-        return ResponseEntity.badRequest().body(new ErrorBody(400, "VALIDATION_ERROR",
-            e.getMessage(), req.getHeader("X-Request-Id")));
-    }
-
-    @ExceptionHandler(RuntimeException.class)
-    ResponseEntity<ErrorBody> onRuntime(RuntimeException e,
-                                        jakarta.servlet.http.HttpServletRequest req) {
-        return ResponseEntity.internalServerError().body(new ErrorBody(500,
-            "INTERNAL_ERROR", "An unexpected error occurred", req.getHeader("X-Request-Id")));
-    }
-}
-
-// Stubs
-record ProductDto(Long id, String name, double price) {}
-record CreateProductRequest(@NotBlank String name, @Positive double price) {}
-record PageResponse<T>(List<T> content, int page, long totalElements) {}
-class productService { static Object list(Object...a){return null;} static java.util.Optional<ProductDto> findById(Long id){return java.util.Optional.empty();} static ProductDto create(CreateProductRequest r){return null;} static java.util.Optional<ProductDto> patch(Long id,Map<String,Object> u){return java.util.Optional.empty();} static void delete(Long id){} }`,
-              `// Idempotency keys — safe retries for non-idempotent operations
-import java.util.*;
-import java.util.concurrent.*;
-
-public class IdempotencyDemo {
-    // Problem: client retries a POST /payments → charges twice!
-    // Solution: client sends Idempotency-Key header; server deduplicates
-
-    record PaymentRequest(String customerId, double amount, String currency) {}
-    record PaymentResult(String paymentId, String status, double amount) {}
-
-    static class IdempotentPaymentService {
-        // In production: store in Redis/DB with TTL (24-48h)
-        private final Map<String, PaymentResult> processed = new ConcurrentHashMap<>();
-
-        PaymentResult processPayment(String idempotencyKey, PaymentRequest req) {
-            // Check if already processed
-            PaymentResult existing = processed.get(idempotencyKey);
-            if (existing != null) {
-                System.out.println("[IDEMPOTENT] Returning cached result for key: " + idempotencyKey);
-                return existing;  // return same result as first call
-            }
-
-            // Process only once
-            String paymentId = "PAY-" + UUID.randomUUID().toString().substring(0,8).toUpperCase();
-            PaymentResult result = new PaymentResult(paymentId, "COMPLETED", req.amount());
-            processed.put(idempotencyKey, result);
-            System.out.println("[NEW] Payment processed: " + paymentId);
-            return result;
-        }
-    }
-
-    public static void main(String[] args) {
-        var service = new IdempotentPaymentService();
-        var req = new PaymentRequest("customer-1", 99.99, "USD");
-        String key = UUID.randomUUID().toString();  // client generates once, reuses on retry
-
-        // First attempt
-        var r1 = service.processPayment(key, req);
-        // Simulated network failure → client retries with same key
-        var r2 = service.processPayment(key, req);
-        // Third retry
-        var r3 = service.processPayment(key, req);
-
-        System.out.println("All results same paymentId? " +
-            r1.paymentId().equals(r2.paymentId()) + " & " + r2.paymentId().equals(r3.paymentId()));
-        System.out.println("Payment: " + r1.paymentId() + " $" + r1.amount());
-    }
+    // ---- supporting types (sketch) ----
+    record CreateOrderRequest(@NotBlank String customerId,
+                              @NotEmpty List<@Valid LineDto> lines) {}
+    record UpdateOrderRequest(@NotEmpty List<@Valid LineDto> lines) {}
+    record LineDto(@NotBlank String sku, @Positive int qty) {}
+    record OrderDto(long id, String status, String customerId, List<LineDto> lines,
+                    double total, long version, String createdAt) {}
+    record PageResponse<T>(List<T> items, String nextCursor) {}
 }`
+              },
+              {
+                lang: `text`,
+                title: `HTTP wire examples — conditional GET (ETag) & 304`,
+                runnable: false,
+                code: `# First read returns an ETag
+GET /orders/42 HTTP/1.1
+Accept: application/json
+
+HTTP/1.1 200 OK
+ETag: "7"
+Cache-Control: private, max-age=60
+Content-Type: application/json
+{ "id":42, "status":"PENDING", "version":7, ... }
+
+# Client re-validates with If-None-Match -> server short-circuits, saves bandwidth
+GET /orders/42 HTTP/1.1
+If-None-Match: "7"
+
+HTTP/1.1 304 Not Modified
+ETag: "7"
+# (no body)
+
+# Optimistic write: client must echo the version it read
+PUT /orders/42 HTTP/1.1
+If-Match: "7"
+Content-Type: application/json
+{ "lines":[ ... ] }
+
+# Someone else updated it first -> version is now "8"
+HTTP/1.1 412 Precondition Failed
+Content-Type: application/problem+json
+{ "type":"https://api.shop.com/errors/version-conflict",
+  "title":"Stale write", "status":412,
+  "detail":"Resource changed since you read it; re-fetch and retry." }`
+              }
             ],
             flashcards: [
               {
-                q: `What are the HTTP methods and their expected behaviour (safe vs idempotent)?`,
-                a: `GET: safe + idempotent — read only, no side effects, can be cached. HEAD: safe + idempotent — like GET but no body. OPTIONS: safe + idempotent — describe allowed methods. PUT: idempotent — replace resource; calling twice has same result as once. DELETE: idempotent — same result whether called once or multiple times (404 on second call is acceptable). POST: neither safe nor idempotent — creates a new resource each call; use idempotency keys for safe retries. PATCH: not necessarily idempotent — depends on implementation (absolute vs relative changes).`
+                q: `Define "safe" vs "idempotent" HTTP methods.`,
+                a: `Safe = no observable server state change (GET, HEAD, OPTIONS) — cacheable/prefetchable. Idempotent = N identical calls have the same effect as one (GET, HEAD, PUT, DELETE). All safe methods are idempotent; not all idempotent methods are safe (PUT/DELETE mutate but are idempotent).`
               },
               {
-                q: `What is the difference between 401 and 403?`,
-                a: `401 Unauthorized: the request lacks valid authentication credentials — the client is not identified. Despite the name, it means "not authenticated." Response should include WWW-Authenticate header. The client should re-authenticate (login, refresh token). 403 Forbidden: the client IS authenticated but does NOT have permission to access the resource. Re-authenticating won't help. Example: logged-in user trying to access another user's data.`
+                q: `Is PATCH idempotent?`,
+                a: `It depends. PATCH that *sets* absolute values (PATCH {balance:100}) is idempotent. PATCH with *relative* ops (JSON Patch increment-by-10) is NOT — two retries apply the change twice. The spec does not require PATCH to be idempotent.`
               },
               {
-                q: `What is an idempotency key and why is it critical for POST /payments?`,
-                a: `An idempotency key is a client-generated unique ID (UUID) sent in a header (Idempotency-Key: <uuid>) that makes a non-idempotent operation safe to retry. The server stores the key + result; on retry, it returns the cached result instead of processing again. Critical for POST /payments: if the client times out after sending but before receiving the response, it doesn't know if the payment was processed. Without idempotency keys, a retry charges twice. Standard: client generates one UUID per operation intent, reuses it on all retries.`
+                q: `POST vs PUT for creating a resource?`,
+                a: `POST to a collection lets the SERVER assign the ID — non-idempotent, so retries can create duplicates (needs idempotency keys). PUT to a CLIENT-chosen URI is idempotent and acts as an upsert (same body = same end state).`
               },
               {
-                q: `How should you version a REST API and what constitutes a breaking change?`,
-                a: `Most common: URL versioning (/api/v1/, /api/v2/) — explicit, cacheable, easy to test. Alternative: header versioning (API-Version: 2 or Accept: application/vnd.app.v2+json) — cleaner URLs. Breaking changes requiring a new version: removing a field, changing a field's type, removing an endpoint, changing URL structure, changing error format. Non-breaking (can do in same version): adding optional request fields, adding response fields, adding new endpoints. Strategy: run multiple versions in parallel, set a deprecation timeline (6-12 months), inform clients via deprecation headers.`
+                q: `201 vs 202 vs 204 — when each?`,
+                a: `201 Created: synchronous create succeeded; set Location header. 202 Accepted: request accepted but processed asynchronously; return a status URL. 204 No Content: success with no body (DELETE, or PUT/PATCH not echoing the resource).`
               },
               {
-                q: `What should a REST API error response contain?`,
-                a: `Minimum: HTTP status code (in the response status line, not just a 200 with "error" body), machine-readable error code (string like "INSUFFICIENT_FUNDS" — for programmatic handling), human-readable message (for developers), traceId/requestId (to correlate with server logs). For validation errors: a list of field-level errors with field name and message. Avoid: returning 200 for errors, revealing stack traces in production, using generic "error: true" without code, changing error shape between endpoints. Consistent error envelope across ALL endpoints is critical.`
+                q: `400 vs 422 — what is the distinction?`,
+                a: `400 Bad Request: the request is malformed/unparseable (bad JSON, missing required field at syntax level). 422 Unprocessable Entity: syntactically valid but semantically invalid (failed business validation, e.g. email already taken, endDate < startDate).`
+              },
+              {
+                q: `401 vs 403?`,
+                a: `401 Unauthorized = unauthenticated ("who are you?" — missing/invalid credentials, often with WWW-Authenticate). 403 Forbidden = authenticated but not permitted ("I know you, you cannot do this"). 404 is sometimes returned instead of 403 to avoid leaking existence.`
+              },
+              {
+                q: `What is 409 Conflict typically used for?`,
+                a: `A state conflict: duplicate creation, optimistic-lock failure, or a business-rule clash (e.g. cancelling an already-shipped order). For optimistic concurrency specifically, 412 Precondition Failed (If-Match) is more precise than 409.`
+              },
+              {
+                q: `Describe the Richardson Maturity Model levels.`,
+                a: `L0: single URI, POST-everything RPC (SOAP-style). L1: multiple resource URIs. L2: proper HTTP verbs + status codes (where ~99% of "REST" APIs live). L3: HATEOAS — responses carry hypermedia links to next actions. L2 is the pragmatic target.`
+              },
+              {
+                q: `What is HATEOAS and why do most teams skip it?`,
+                a: `Hypermedia As The Engine Of Application State: responses embed links to valid next actions so clients navigate by following links. Teams skip it because first-party SPA/mobile clients hard-code routes and use OpenAPI anyway, so discoverability gains rarely justify the payload/complexity. It pays off for long-lived public hypermedia APIs.`
+              },
+              {
+                q: `Offset vs cursor pagination trade-offs?`,
+                a: `Offset (LIMIT/OFFSET): allows random page jumps and easy totals, but degrades on deep pages and is UNSTABLE under inserts/deletes (items shift -> dupes/skips). Cursor/keyset (WHERE (sortKey,id) < ...): constant-time deep paging, stable under mutation, but only sequential and totals are expensive. Prefer cursor for large/changing feeds.`
+              },
+              {
+                q: `How do you model nested vs singleton resources?`,
+                a: `Nest a child under a parent only when it cannot exist independently (/orders/42/lines/7); keep nesting <=2 levels. Singleton resources (/users/me, /account/settings, /config) represent exactly-one-per-context and are legitimate — not everything must be a collection.`
+              },
+              {
+                q: `How should bulk endpoints handle partial failure?`,
+                a: `Decide all-or-nothing vs best-effort up front. For best-effort, return per-item results (207 Multi-Status style) with each item index, status, and error, so the client can retry only the failed items. Make bulk ops idempotent too.`
+              }
+            ]
+          },
+          {
+            title: `API Contracts & Evolution — Versioning, Compatibility & RFC 7807`,
+            notes: `## API Contracts & Evolution — Changing Without Breaking Anyone
+
+An API is a **published contract**. Once a third party (or another team) depends on it, you cannot quietly change it. Senior API design is mostly the discipline of **evolving** a contract while keeping existing clients working.
+
+### What is breaking vs non-breaking?
+
+\`\`\`text
+NON-BREAKING (additive, safe to ship anytime)        BREAKING (needs a new version)
+- Add a new endpoint / resource                      - Remove or rename a field/endpoint
+- Add an OPTIONAL request field (with default)       - Make an optional field required
+- Add a field to a RESPONSE                          - Change a field's type or units
+- Add a new optional query param                     - Change validation to be stricter
+- Add a new enum value (if clients tolerate it)      - Change semantics of an existing field
+- Relax validation (accept more)                     - Change default values / pagination behavior
+                                                     - Remove an enum value clients may send
+\`\`\`
+
+> [!WARNING]
+> **"Add a field to a response" is only non-breaking if clients ignore unknown fields.** Mandate tolerant readers (\`@JsonIgnoreProperties(ignoreUnknown=true)\` in Jackson; \`additionalProperties\` allowed in your schema). A strict consumer that rejects unknown fields turns every additive change into a break — that is the consumer's bug, but you must still account for it.
+
+> [!DANGER]
+> **Adding an enum value is sneaky-breaking.** Old clients with an exhaustive switch on the enum may crash on a new value. Treat new enum values as breaking for response enums unless you documented "clients must handle unknown values." For *request* enums, accepting a new value is additive.
+
+### Versioning strategies
+
+\`\`\`mermaid
+flowchart LR
+  C[Client] -->|URI: /v2/orders| A[API]
+  C -->|Header: X-API-Version: 2| A
+  C -->|Media type:<br/>Accept: application/vnd.shop.v2+json| A
+\`\`\`
+
+| Strategy | Example | Pros | Cons |
+|---|---|---|---|
+| **URI** | \`/v2/orders\` | Dead simple, visible, cache/browser/curl-friendly, easy routing | "Not RESTful" (URI should name a resource, not a version); version sprawl in paths |
+| **Header** | \`X-API-Version: 2\` | Clean URIs | Invisible, easy to forget, harder to test in a browser, caching needs Vary |
+| **Media type** (content negotiation) | \`Accept: application/vnd.shop.v2+json\` | Pure REST; per-representation versioning | Complex, poor tooling/cache support, steep client learning curve |
+
+> [!SUCCESS]
+> **Pragmatic default: URI versioning at the major level only** (\`/v1\`, \`/v2\`). It's the most operable: trivial routing, visible in logs/dashboards, works in a browser. Reserve a new major version for *breaking* changes; ship everything non-breaking into the current version. Many large APIs (Stripe) use a **date-based version pinned per account** instead of \`/vN\` — clients pin \`2024-06-01\` and you transform older requests on the way in.
+
+### Deprecation discipline
+
+You version *and* you sunset old versions on a published timeline.
+
+\`\`\`text
+HTTP/1.1 200 OK
+Deprecation: true
+Sunset: Wed, 31 Dec 2026 23:59:59 GMT
+Link: <https://api.shop.com/docs/migrating-v1-to-v2>; rel="deprecation"
+Warning: 299 - "v1 is deprecated; migrate to v2 before 2026-12-31"
+\`\`\`
+
+The senior playbook: announce → emit \`Deprecation\`/\`Sunset\` headers → dashboard the remaining callers → email the top consumers → brownout (intermittent 410s) → remove. Never hard-cut without telemetry on who still calls.
+
+### OpenAPI / Swagger — the contract artifact
+
+OpenAPI (formerly Swagger) is the machine-readable spec. It drives: docs (Swagger UI/Redoc), client/server **codegen**, request validation, mock servers, and contract tests. **Design-first** (write the spec, review it, generate code) beats **code-first** for public APIs because the contract is reviewed before implementation.
+
+### Consumer-Driven Contracts (CDC)
+
+In microservices, the *consumer* declares what it actually needs; the *provider* runs those expectations as tests in CI (Pact / Spring Cloud Contract). This catches breaking changes **before** deploy, without full end-to-end integration environments.
+
+\`\`\`mermaid
+flowchart LR
+  Co[Consumer test] -->|publishes pact| B[(Pact Broker)]
+  B -->|provider verifies pact in CI| Pr[Provider]
+  Pr -->|can-i-deploy?| B
+\`\`\`
+
+> [!TIP]
+> CDC answers the deploy-safety question: *"if I ship this provider change, does any registered consumer break?"* — \`pact can-i-deploy\`. This is how you decouple deploys across teams.
+
+### Error response design — RFC 7807 (problem+json)
+
+Stop inventing a new error shape per endpoint. **RFC 7807** (\`application/problem+json\`, now superseded in name by RFC 9457 but identical shape) standardizes errors:
+
+\`\`\`json
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/problem+json
+
+{
+  "type":   "https://api.shop.com/errors/validation",
+  "title":  "Your request parameters did not validate.",
+  "status": 422,
+  "detail": "2 fields failed validation.",
+  "instance": "/orders",
+  "traceId": "b7ad6b7169203331",
+  "errors": [
+    { "field": "lines[0].qty", "code": "POSITIVE", "message": "must be > 0" },
+    { "field": "customerId",   "code": "REQUIRED", "message": "must not be blank" }
+  ]
+}
+\`\`\`
+
+- \`type\` is a stable URI (clients branch on it — NOT on \`title\`/\`detail\` which are human-readable and may change).
+- Add a \`traceId\`/correlation ID so support can find the request in logs.
+- The \`errors\` array (an extension member) carries field-level validation detail.
+
+> [!SUCCESS]
+> Pick ONE error envelope (RFC 7807) and use it across every service. A stable, machine-readable \`type\` URI per error class is what lets clients write robust error handling instead of string-matching messages.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `OpenAPI 3.1 snippet — endpoint, schema, RFC7807 error, versioning`,
+                runnable: false,
+                code: `openapi: 3.1.0
+info:
+  title: Shop API
+  version: "2.0.0"
+servers:
+  - url: https://api.shop.com/v2        # URI versioning at the major level
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrderRequest' }
+      responses:
+        "201":
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+            ETag:     { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        "422":
+          description: Validation failed
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+components:
+  schemas:
+    CreateOrderRequest:
+      type: object
+      additionalProperties: false      # forbid unknown -> strict on INPUT
+      required: [customerId, lines]
+      properties:
+        customerId: { type: string }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, qty]
+            properties:
+              sku: { type: string }
+              qty: { type: integer, minimum: 1 }
+    Order:
+      type: object
+      properties:
+        id:       { type: integer }
+        status:   { type: string, enum: [PENDING, PAID, SHIPPED, CANCELLED] }
+        total:    { type: number }
+        version:  { type: integer }
+    Problem:                            # RFC 7807 / 9457
+      type: object
+      properties:
+        type:    { type: string, format: uri }
+        title:   { type: string }
+        status:  { type: integer }
+        detail:  { type: string }
+        instance:{ type: string }
+        traceId: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:   { type: string }
+              code:    { type: string }
+              message: { type: string }`
+              },
+              {
+                lang: `java`,
+                title: `Spring @RestControllerAdvice — global RFC7807 error mapping`,
+                runnable: false,
+                note: `needs Spring (Spring Boot 3 ships ProblemDetail / RFC7807 support)`,
+                code: `import org.springframework.http.*;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.*;
+import java.net.URI;
+import java.util.*;
+
+@RestControllerAdvice
+class ApiExceptionHandler {
+
+    // 422 — bean validation failures, as RFC 7807 problem+json
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    ProblemDetail onValidation(MethodArgumentNotValidException ex) {
+        var pd = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
+        pd.setType(URI.create("https://api.shop.com/errors/validation"));
+        pd.setTitle("Your request parameters did not validate.");
+        var errors = ex.getBindingResult().getFieldErrors().stream()
+            .map(fe -> Map.of("field", fe.getField(),
+                              "code", Optional.ofNullable(fe.getCode()).orElse("INVALID"),
+                              "message", Optional.ofNullable(fe.getDefaultMessage()).orElse("")))
+            .toList();
+        pd.setProperty("errors", errors);
+        pd.setProperty("traceId", MDC_traceId());   // pull from MDC / tracing context
+        return pd;                                   // Spring serializes as application/problem+json
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    ProblemDetail onNotFound(NotFoundException ex) {
+        var pd = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        pd.setType(URI.create("https://api.shop.com/errors/not-found"));
+        pd.setTitle("Resource not found");
+        pd.setProperty("traceId", MDC_traceId());
+        return pd;
+    }
+
+    @ExceptionHandler(VersionConflictException.class)
+    ProblemDetail onConflict(VersionConflictException ex) {
+        var pd = ProblemDetail.forStatusAndDetail(HttpStatus.PRECONDITION_FAILED,
+                 "Resource changed since you read it; re-fetch and retry.");
+        pd.setType(URI.create("https://api.shop.com/errors/version-conflict"));
+        pd.setTitle("Stale write");
+        return pd;
+    }
+
+    private static String MDC_traceId() { return org.slf4j.MDC.get("traceId"); }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Name three non-breaking (additive) API changes.`,
+                a: `Add a new endpoint; add an OPTIONAL request field with a default; add a field to a response (assuming tolerant readers); add a new optional query param; relax validation to accept more. These can ship into the current version without a new one.`
+              },
+              {
+                q: `Why is adding a response field "only conditionally" non-breaking?`,
+                a: `It is safe only if clients are tolerant readers that ignore unknown fields (@JsonIgnoreProperties(ignoreUnknown=true), additionalProperties allowed). A strict consumer that rejects unknown fields breaks on additive changes — so mandate tolerant readers in your guidelines.`
+              },
+              {
+                q: `Why can adding an enum value be breaking?`,
+                a: `For RESPONSE enums, old clients with an exhaustive switch can crash on an unrecognized value. Treat new response-enum values as breaking unless you documented that clients must handle unknown values. For REQUEST enums, accepting a new value is additive/non-breaking.`
+              },
+              {
+                q: `Compare URI vs header vs media-type versioning.`,
+                a: `URI (/v2): simplest, visible, cache/curl-friendly, but "impure". Header (X-API-Version): clean URIs but invisible/forgettable, needs Vary for caching. Media-type (Accept: vnd.shop.v2+json): purest REST, per-representation, but complex and poorly tooled. Pragmatic default: URI at major level.`
+              },
+              {
+                q: `How does Stripe-style date versioning work?`,
+                a: `Each account/key is pinned to a release date (e.g. 2024-06-01). The server transforms requests/responses to match the pinned version on the way in/out, so you avoid /vN path sprawl and let consumers upgrade on their own schedule by changing one pinned date.`
+              },
+              {
+                q: `What headers signal deprecation/sunset?`,
+                a: `Deprecation: true, Sunset: <date> (RFC 8594), a Link rel="deprecation"/"sunset" to migration docs, and optionally a Warning header. The process: announce, emit headers, dashboard remaining callers, email top consumers, brownout, then remove.`
+              },
+              {
+                q: `What does OpenAPI drive beyond documentation?`,
+                a: `Client/server codegen, request/response validation, mock servers, contract tests, and reviewable design-first contracts. Design-first (spec reviewed before code) is preferred for public APIs over code-first generation.`
+              },
+              {
+                q: `What problem do Consumer-Driven Contracts solve?`,
+                a: `They let a provider know — in CI, before deploy — whether a change breaks any real consumer. Consumers publish pacts (expected request/response) to a broker; providers verify them; pact can-i-deploy gates the deploy. This decouples team deploys without full E2E environments.`
+              },
+              {
+                q: `What is RFC 7807 (problem+json) and its key fields?`,
+                a: `A standard error format (Content-Type application/problem+json) with type (stable URI identifying the error class), title, status, detail, instance, plus extension members. Clients should branch on the type URI, not the human-readable title/detail.`
+              },
+              {
+                q: `Why branch on RFC7807 type, not title/detail?`,
+                a: `type is a stable, machine-readable URI that uniquely identifies the error class. title and detail are human-readable and may be reworded/localized over time, so matching on them is brittle. Branching on type keeps client error handling robust.`
+              },
+              {
+                q: `How do you safely retire an old API version?`,
+                a: `Publish a sunset timeline, emit Deprecation/Sunset/Link headers, instrument who still calls it, proactively contact top consumers, run brownouts (intermittent failures) to surface hidden callers, then remove. Never hard-cut without telemetry.`
+              },
+              {
+                q: `Why version at the MAJOR level only?`,
+                a: `Non-breaking changes ship into the current version freely (tolerant readers absorb them). Only breaking changes warrant a new major (/v2). Minor/patch versioning in the URI causes needless version sprawl and forces clients to chase versions for changes that did not affect them.`
+              }
+            ]
+          },
+          {
+            title: `Idempotency & Reliability — Keys, Retries, Concurrency & Rate Limits`,
+            notes: `## Idempotency & Reliability — Making Retries Safe
+
+Networks are unreliable. A client that doesn't get a response **cannot tell** whether the server processed the request and the *response* was lost, or the *request* never arrived. So clients retry — and **at-least-once delivery is the only achievable guarantee**. Your job is to turn at-least-once *delivery* into **exactly-once *effect***.
+
+> [!DANGER]
+> **The two-generals truth.** You can never guarantee a message is delivered exactly once across a network. Don't try. Instead: make every mutating operation **idempotent** so duplicates are harmless. "Exactly-once delivery" is a marketing phrase; "exactly-once effect via idempotency + dedup" is the engineering reality.
+
+### Idempotency keys for POST
+
+GET/PUT/DELETE are already idempotent. The dangerous one is **POST** (create / charge / send). Fix it with a client-supplied **Idempotency-Key**:
+
+1. Client generates a UUID, sends it as \`Idempotency-Key: <uuid>\`, and **reuses the same key on every retry** of that logical request.
+2. Server, in a single transaction, checks a key store:
+   - **Unseen key** → process the work, persist \`(key → response, status)\`, return result.
+   - **Seen key, completed** → return the **stored** response (replay), do NOT redo the work.
+   - **Seen key, in-flight** → return **409 Conflict** (or 425 Too Early) — a concurrent duplicate is still running.
+3. Keys expire (e.g. 24h TTL) — long enough to cover client retry windows.
+
+> [!WARNING]
+> **Bind the key to the request body.** Store a hash of the request alongside the key. If the same key arrives with a *different* body, reject with **422** — that's a client bug (key reuse for a different operation), not a retry.
+
+\`\`\`mermaid
+sequenceDiagram
+  participant C as Client
+  participant S as API Server
+  participant DB as Idem Store + Domain DB
+
+  C->>S: POST /payments  Idempotency-Key: K1  (amount 50)
+  S->>DB: BEGIN; INSERT key K1 (status=IN_PROGRESS) [unique]
+  DB-->>S: ok (new key)
+  S->>DB: charge card, create payment row
+  S->>DB: UPDATE key K1 -> COMPLETED, store response
+  DB-->>S: COMMIT
+  S-->>C: 201 Created { paymentId: P1 }
+
+  Note over C,S: response lost / client times out -> client RETRIES same K1
+
+  C->>S: POST /payments  Idempotency-Key: K1  (amount 50)
+  S->>DB: INSERT key K1  -> UNIQUE VIOLATION (already exists)
+  S->>DB: SELECT stored response for K1 (COMPLETED)
+  DB-->>S: { paymentId: P1 }
+  S-->>C: 201 Created { paymentId: P1 }   (replay, NO second charge)
+\`\`\`
+
+The **unique constraint on the key** is what makes this race-safe: two concurrent retries can't both insert; the loser reads the winner's result (or gets 409 if still in-flight).
+
+### Retries & at-least-once — client-side discipline
+
+Clients should retry only on transient failures and with **exponential backoff + jitter**:
+
+\`\`\`text
+Retry on:    429 (honor Retry-After), 502, 503, 504, connection reset/timeout
+Do NOT retry: 400, 401, 403, 404, 409, 422  (deterministic — retry won't help)
+Backoff:     base * 2^attempt + random_jitter, capped; total budget bounded
+\`\`\`
+
+> [!TIP]
+> Pair retries with idempotency keys on writes. **Retrying a non-idempotent POST without an idempotency key is how you double-charge customers.** Also bound the total retry budget so retries don't amplify an outage into a retry storm (use a circuit breaker — Section 4/5).
+
+### Optimistic concurrency — ETag / If-Match
+
+For *updates*, the lost-update problem (two clients read v7, both write, one silently wins) is solved with **optimistic concurrency**:
+
+- Server returns a version as an **ETag** (\`ETag: "7"\`) — derived from a version column or content hash.
+- Client echoes it on write: \`If-Match: "7"\`.
+- If the current version still matches → apply, bump to "8". If not → **412 Precondition Failed**; client re-reads and retries.
+- Require it with **428 Precondition Required** to force conditional writes (prevents blind overwrites).
+
+\`\`\`sql
+-- The DB-level equivalent (version column / @Version in JPA):
+UPDATE orders SET status = ?, version = version + 1
+WHERE id = ? AND version = ?;     -- 0 rows updated => someone else won => 412
+\`\`\`
+
+This is **optimistic** (assume no conflict, detect at write) vs **pessimistic** locking (SELECT ... FOR UPDATE, hold a lock). Optimistic scales far better for low-contention REST workloads.
+
+### Rate limiting — 429 + Retry-After
+
+Protect the service and signal clients clearly:
+
+\`\`\`text
+HTTP/1.1 429 Too Many Requests
+Retry-After: 30
+RateLimit-Limit: 100
+RateLimit-Remaining: 0
+RateLimit-Reset: 30
+
+{ "type":"https://api.shop.com/errors/rate-limited",
+  "title":"Too Many Requests", "status":429,
+  "detail":"100 req/min exceeded. Retry after 30s." }
+\`\`\`
+
+Algorithms: **token bucket** (allows bursts up to bucket size, then steady refill — most common), **sliding window** (smooth, more accurate), fixed window (simple but boundary-bursty). Apply per API key / per user / per IP, often at the gateway.
+
+### Pagination stability
+
+Tie-back to Section 1: **cursor pagination is the reliability story for paging.** Offset pagination over a mutating collection drops or duplicates rows as items shift between page requests. Keyset/cursor anchors each page to a concrete \`(sortKey, id)\` value, so concurrent inserts/deletes never cause skips or dupes. For "infinite scroll" and any public list endpoint, cursors are the correct, stable default.
+
+> [!SUCCESS]
+> **The reliability bundle:** idempotency keys (safe POST retries) + ETag/If-Match (safe concurrent updates) + 429/Retry-After (backpressure) + cursor pagination (stable reads) + bounded retries with backoff/jitter. Together these make an API correct under the chaos of real networks.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Runnable: in-memory Idempotency-Key store simulator (bare JDK)`,
+                runnable: true,
+                note: `Plain Java, no libs. Demonstrates dedup, replay, in-flight 409, and body-mismatch 422 under concurrency.`,
+                code: `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+/** Simulates a race-safe idempotency-key store guarding a non-idempotent "charge". */
+public class IdempotencyDemo {
+
+    enum State { IN_PROGRESS, COMPLETED }
+
+    record Record(State state, int requestHash, String response) {}
+
+    // The key store. A real impl is a DB table with a UNIQUE(key) constraint;
+    // here a ConcurrentHashMap with putIfAbsent gives the same "first insert wins".
+    static final ConcurrentHashMap<String, Record> store = new ConcurrentHashMap<>();
+
+    // Side-effect counter: how many times the "card was actually charged".
+    static final AtomicInteger charges = new AtomicInteger();
+    static final AtomicInteger paymentSeq = new AtomicInteger();
+
+    /** Returns an HTTP-like "status body" string. */
+    static String handlePayment(String idemKey, String body) {
+        int hash = body.hashCode();
+
+        // Step 1: try to claim the key (atomic, like INSERT with UNIQUE).
+        Record existing = store.putIfAbsent(idemKey, new Record(State.IN_PROGRESS, hash, null));
+
+        if (existing != null) {
+            // Key already seen.
+            if (existing.requestHash() != hash)
+                return "422 key reused with different body";          // client bug
+            if (existing.state() == State.IN_PROGRESS)
+                return "409 duplicate in-flight";                     // concurrent retry
+            return "201 REPLAY " + existing.response();               // replay stored result
+        }
+
+        // Step 2: we own the key -> do the (non-idempotent) work exactly once.
+        charges.incrementAndGet();                                    // <- the dangerous side effect
+        sleep(20);                                                    // simulate latency
+        String paymentId = "P" + paymentSeq.incrementAndGet();
+
+        // Step 3: persist the response against the key (COMPLETED).
+        store.put(idemKey, new Record(State.COMPLETED, hash, paymentId));
+        return "201 CREATED " + paymentId;
+    }
+
+    public static void main(String[] args) throws Exception {
+        // Fire 8 concurrent requests that ALL carry the same idempotency key K1
+        // and the same body -> exactly ONE charge must happen.
+        String key = "K1", body = "{amount:50}";
+        var pool = Executors.newFixedThreadPool(8);
+        var results = new CopyOnWriteArrayList<String>();
+        var latch = new CountDownLatch(8);
+        for (int i = 0; i < 8; i++) {
+            pool.submit(() -> { results.add(handlePayment(key, body)); latch.countDown(); });
+        }
+        latch.await();
+
+        // A later honest retry (after completion) must REPLAY, not recharge.
+        results.add("[late retry] " + handlePayment(key, body));
+        // Same key, different body -> 422.
+        results.add("[bad reuse]  " + handlePayment(key, "{amount:999}"));
+        // A different logical request gets its own key -> its own charge.
+        results.add("[new key K2] " + handlePayment("K2", "{amount:10}"));
+
+        results.forEach(System.out::println);
+        System.out.println("-------------------------------------------");
+        System.out.println("Total real charges = " + charges.get()
+                + "  (expected 2: one for K1, one for K2)");
+        pool.shutdown();
+    }
+
+    static void sleep(long ms) { try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } }
+}`
+              },
+              {
+                lang: `text`,
+                title: `Wire example — idempotent POST retry replays the same result`,
+                runnable: false,
+                code: `# Attempt 1 — request reaches server, response is LOST in the network
+POST /payments HTTP/1.1
+Idempotency-Key: 9b2f4c10-...-a1
+Content-Type: application/json
+{ "amount": 50.00, "currency": "EUR", "source": "card_x" }
+
+HTTP/1.1 201 Created          <-- this response never arrives at the client
+Location: /payments/P1
+{ "id": "P1", "status": "SUCCEEDED", "amount": 50.00 }
+
+# Attempt 2 — client retries with the SAME key. Server replays, no 2nd charge.
+POST /payments HTTP/1.1
+Idempotency-Key: 9b2f4c10-...-a1
+{ "amount": 50.00, "currency": "EUR", "source": "card_x" }
+
+HTTP/1.1 201 Created
+Idempotency-Replayed: true
+Location: /payments/P1
+{ "id": "P1", "status": "SUCCEEDED", "amount": 50.00 }   # SAME P1
+
+# Same key, DIFFERENT body -> client misuse
+POST /payments  Idempotency-Key: 9b2f4c10-...-a1
+{ "amount": 999.00, ... }
+
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/problem+json
+{ "type":"https://api.shop.com/errors/idempotency-key-reuse",
+  "title":"Idempotency key reused with a different payload", "status":422 }`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why can a client never know if its request succeeded after a timeout?`,
+                a: `A timeout is ambiguous: the server may have processed the request and the RESPONSE was lost, or the REQUEST never arrived. The client cannot distinguish these, so it must retry — making at-least-once the only achievable delivery guarantee.`
+              },
+              {
+                q: `How does an idempotency key make POST safe?`,
+                a: `The client sends a unique Idempotency-Key and reuses it on every retry. The server atomically claims the key (unique constraint): unseen -> do the work once and store the response; seen+completed -> replay the stored response without redoing work; seen+in-flight -> 409. Duplicates become harmless.`
+              },
+              {
+                q: `What makes the idempotency-key flow race-safe under concurrency?`,
+                a: `A UNIQUE constraint on the key (or atomic putIfAbsent): two concurrent retries cannot both insert the key. The winner does the work; the loser hits the violation and either replays the stored result or gets 409 if the winner is still in-flight.`
+              },
+              {
+                q: `What should happen if the same idempotency key arrives with a different body?`,
+                a: `Reject with 422 (or 400). Store a hash of the request body with the key; a mismatch means the client reused a key for a different operation — a client bug, not a legitimate retry. This prevents one key from masking two distinct requests.`
+              },
+              {
+                q: `Exactly-once delivery vs exactly-once effect?`,
+                a: `Exactly-once delivery across a network is impossible (two-generals). The achievable goal is exactly-once EFFECT: accept at-least-once delivery and make operations idempotent (keys, dedup, unique constraints, upserts) so duplicates produce no extra effect.`
+              },
+              {
+                q: `Which HTTP status codes are safe to retry, and which are not?`,
+                a: `Retry transient: 429 (honor Retry-After), 502, 503, 504, connection timeouts/resets — with exponential backoff + jitter. Do NOT retry deterministic 4xx: 400, 401, 403, 404, 409, 422 — a retry will not change the outcome.`
+              },
+              {
+                q: `How does ETag/If-Match implement optimistic concurrency?`,
+                a: `Server returns a version as an ETag; client echoes it as If-Match on writes. If the current version still matches, apply and bump it; if not, return 412 Precondition Failed and the client re-reads. The DB equivalent is UPDATE ... WHERE version = ? (0 rows = conflict).`
+              },
+              {
+                q: `When return 428 Precondition Required?`,
+                a: `When you want to FORCE clients to send a conditional header (If-Match) before a write, preventing blind overwrites/lost updates. The client must read, capture the ETag, and resend the write with If-Match.`
+              },
+              {
+                q: `Optimistic vs pessimistic concurrency — trade-off?`,
+                a: `Optimistic (version check at write, 412 on conflict) holds no locks and scales well for low-contention REST workloads; conflicts cost a retry. Pessimistic (SELECT ... FOR UPDATE) holds a lock to prevent conflict but reduces throughput and risks deadlocks; use it only under high contention.`
+              },
+              {
+                q: `What does a good 429 response include?`,
+                a: `429 Too Many Requests with Retry-After (seconds or HTTP date) so the client backs off correctly, plus optional RateLimit-Limit/Remaining/Reset headers and an RFC7807 body. Common algorithms: token bucket (bursty), sliding window (smooth), fixed window (boundary-bursty).`
+              },
+              {
+                q: `Why is cursor pagination the "reliable" choice?`,
+                a: `Offset pagination over a changing collection skips or duplicates rows as items shift between page fetches. Cursor/keyset anchors each page to a concrete (sortKey, id), so concurrent inserts/deletes never cause skips or dupes — making it stable for infinite scroll and public list endpoints.`
+              },
+              {
+                q: `Why bound the total retry budget?`,
+                a: `Unbounded retries amplify an outage into a retry storm that keeps a struggling service down. Cap attempts and total time, add jitter to de-synchronize clients, and combine with a circuit breaker so clients stop hammering a failing dependency.`
+              }
+            ]
+          },
+          {
+            title: `REST vs gRPC vs GraphQL — Choosing the Right Protocol`,
+            notes: `## REST vs gRPC vs GraphQL — Picking the Right Tool
+
+There is no universally best API style; there's a best fit for a given consumer, network, and team. Staff interviews probe whether you can *justify* a choice, not recite buzzwords.
+
+### The decision at a glance
+
+\`\`\`mermaid
+flowchart TD
+  Q{Who is the caller?} -->|Public / third-party / browser| REST[REST + JSON]
+  Q -->|Internal service-to-service| G{Need streaming or<br/>strict low-latency contract?}
+  G -->|Yes| GRPC[gRPC]
+  G -->|No, simple CRUD| REST
+  Q -->|Many clients, varied data needs<br/>aggregating many sources| GQL{Over/under-fetching<br/>a real pain?}
+  GQL -->|Yes, client-driven shapes| GRAPHQL[GraphQL / BFF]
+  GQL -->|No| REST
+\`\`\`
+
+### REST (+ JSON)
+
+Strengths: ubiquitous, human-readable, browser-native, cache-friendly (HTTP caching), great tooling, easy debugging (curl), loosely coupled. Weaknesses: over/under-fetching (fixed response shapes), chatty for nested data (N requests), no built-in streaming, larger payloads than binary. **Default for public APIs and browser clients.**
+
+### gRPC
+
+Contract-first with **Protocol Buffers** (a \`.proto\` schema), transported over **HTTP/2** with a compact binary wire format and generated client/server stubs in many languages.
+
+- **HTTP/2**: multiplexed streams over one connection, header compression, binary framing → low latency, high throughput.
+- **Four call types**: unary, **server-streaming**, **client-streaming**, **bidirectional streaming**.
+- **Codegen**: the \`.proto\` is the single source of truth; \`protoc\` generates type-safe stubs → no hand-written client.
+- **Strong typing & evolution**: field numbers (not names) are the contract; add fields safely, never reuse/renumber.
+
+Weaknesses: not browser-native (needs gRPC-Web + a proxy), binary payloads are not human-readable, less mature HTTP caching, steeper ops/debug story. **Default for internal east-west microservice calls and streaming.**
+
+### GraphQL
+
+A **query language**: clients ask for exactly the fields they want from a typed **schema**; a single endpoint resolves arbitrary shapes.
+
+- Solves **over-fetching** (don't get fields you don't need) and **under-fetching** (one round trip instead of N) — great for mobile and aggregating BFFs.
+- Strongly typed schema; introspection; one endpoint.
+
+> [!DANGER]
+> **The GraphQL N+1 trap.** A naive resolver fetches the list, then issues one query per item for a nested field (\`order -> customer\`). 100 orders => 1 + 100 queries. **Fix with DataLoader** (per-request batching + caching) so nested fields are resolved in batched round trips. Also: arbitrary client queries make caching, rate-limiting, query-cost analysis, and auth harder — you need depth/complexity limits and persisted queries.
+
+### Trade-offs table
+
+| Dimension | REST | gRPC | GraphQL |
+|---|---|---|---|
+| Wire format | JSON (text) | Protobuf (binary) | JSON (text) |
+| Transport | HTTP/1.1 or 2 | HTTP/2 | HTTP (usually POST) |
+| Contract | OpenAPI (optional) | \`.proto\` (mandatory) | SDL schema (mandatory) |
+| Browser support | Native | Needs gRPC-Web/proxy | Native |
+| Streaming | No (SSE/WS bolt-on) | Yes (4 modes) | Subscriptions (WS) |
+| Over/under-fetching | Yes (fixed shapes) | Mostly fixed | **Solved** (client picks fields) |
+| HTTP caching | **Excellent** (ETag, etc.) | Poor | Poor (one POST URL) |
+| Codegen / typing | Optional | **First-class** | Strong (schema) |
+| Payload size | Larger | **Smallest** | Variable |
+| Best for | Public APIs, browser, CRUD | Internal microservices, low-latency, streaming | Many clients, varied/aggregated data, mobile BFF |
+| Debuggability | **Easiest** (curl) | Hardest (binary) | Medium (GraphiQL) |
+
+> [!SUCCESS]
+> A common mature architecture mixes all three: **REST** at the public edge, **gRPC** for internal service-to-service, and a **GraphQL BFF** when many client types need tailored, aggregated views. "It depends" is the right answer — but back it with these dimensions.
+
+### Sync vs async APIs
+
+Not every interaction should be a blocking request/response. For long-running or fan-out work, prefer **async**:
+
+- **202 Accepted + polling**: return a job URL, client polls \`GET /jobs/{id}\` until done.
+- **Webhooks**: the server calls *you back* at a registered URL when an event occurs (payment settled, file processed). Push, not poll.
+- **Message queues / event streams**: fully decoupled producers/consumers (Kafka, SQS) — covered in the messaging modules.
+
+### Webhooks — the senior checklist
+
+\`\`\`text
+- Sign payloads (HMAC over body + timestamp) so receivers can VERIFY authenticity.
+- Include an event id; receivers must DEDUPE (webhooks are at-least-once -> idempotency again).
+- Retry with backoff on non-2xx; expose a replay/redelivery mechanism.
+- Keep handlers fast: ACK 2xx immediately, process async (don't block the sender's retry timer).
+- Document a stable event schema + versioning (events evolve like APIs).
+\`\`\`
+
+### BFF (Backend-for-Frontend)
+
+\`\`\`mermaid
+flowchart LR
+  Web[Web SPA] --> WBFF[Web BFF]
+  Mob[Mobile app] --> MBFF[Mobile BFF]
+  WBFF --> S1[Orders svc]
+  WBFF --> S2[Catalog svc]
+  MBFF --> S1
+  MBFF --> S3[Inventory svc]
+  S1 -. gRPC .- S2
+  S1 -. gRPC .- S3
+\`\`\`
+
+A BFF is a thin API tailored to **one** frontend: it aggregates/reshapes downstream (often gRPC) services into exactly what that client needs, handles client-specific auth/session, and avoids leaking microservice topology to the client. Each frontend (web, iOS, Android) can have its own BFF so a mobile change never destabilizes web. GraphQL is a popular BFF implementation.`,
+            code: [
+              {
+                lang: `text`,
+                title: `order.proto — protobuf service definition (gRPC)`,
+                runnable: false,
+                note: `Compiled by protoc into typed stubs. Field NUMBERS are the contract.`,
+                code: `syntax = "proto3";
+package shop.v1;
+option java_multiple_files = true;
+option java_package = "com.shop.grpc";
+
+import "google/protobuf/timestamp.proto";
+
+// A unary RPC + a server-streaming RPC.
+service OrderService {
+  rpc GetOrder    (GetOrderRequest)    returns (Order);
+  rpc CreateOrder (CreateOrderRequest) returns (Order);
+  rpc WatchOrders (WatchRequest)       returns (stream Order);   // server-streaming
+}
+
+message GetOrderRequest { int64 id = 1; }
+
+message CreateOrderRequest {
+  string customer_id      = 1;
+  repeated OrderLine lines = 2;
+  string idempotency_key  = 3;    // reliability still applies in gRPC
+}
+
+message OrderLine {
+  string sku = 1;
+  int32  qty = 2;
+}
+
+message Order {
+  int64  id          = 1;
+  string customer_id = 2;
+  Status status      = 4;         // note: tag 3 intentionally reserved/skipped
+  double total       = 5;
+  repeated OrderLine lines = 6;
+  google.protobuf.Timestamp created_at = 7;
+
+  enum Status { PENDING = 0; PAID = 1; SHIPPED = 2; CANCELLED = 3; }
+}
+
+message WatchRequest { string customer_id = 1; }
+
+// EVOLUTION RULES:
+//  - NEVER change or reuse a field number; add new fields with NEW numbers.
+//  - Removing a field? mark it 'reserved 3;' so the number is never recycled.
+//  - proto3 fields are optional by default; absence is the zero value.`
+              },
+              {
+                lang: `text`,
+                title: `GraphQL — schema, a query, and the N+1 problem`,
+                runnable: false,
+                code: `# ---- schema (SDL) ----
+type Query {
+  order(id: ID!): Order
+  orders(first: Int!, after: String): OrderConnection!   # cursor pagination
+}
+type Order {
+  id: ID!
+  status: OrderStatus!
+  total: Float!
+  customer: Customer!        # nested -> N+1 risk
+  lines: [OrderLine!]!
+}
+type Customer { id: ID!  name: String!  tier: String! }
+type OrderLine { sku: String!  qty: Int! }
+enum OrderStatus { PENDING PAID SHIPPED CANCELLED }
+
+# ---- client query: ask for EXACTLY the fields needed (no over-fetch) ----
+query {
+  orders(first: 20, after: "cursorX") {
+    edges {
+      node {
+        id
+        total
+        customer { name }     # nested field per order
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+
+# ---- THE N+1 PROBLEM ----
+# Naive resolver: 1 query for 20 orders, then 1 query per order for customer = 21 queries.
+# FIX with DataLoader: collect all customerIds in the tick, issue ONE batched
+#   SELECT * FROM customers WHERE id IN (...), cache per-request. => 2 queries total.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `When choose REST over gRPC/GraphQL?`,
+                a: `For public/third-party APIs, browser clients, and straightforward CRUD: REST is ubiquitous, human-readable, browser-native, cache-friendly (ETag/Cache-Control), and trivial to debug with curl. Its weaknesses (fixed shapes, no native streaming) rarely matter at the public edge.`
+              },
+              {
+                q: `What does gRPC give you that REST does not?`,
+                a: `A mandatory protobuf contract with multi-language codegen, compact binary payloads, HTTP/2 multiplexing + header compression for low latency, and four streaming modes (unary, server-, client-, bidirectional). Best for internal low-latency service-to-service calls and streaming.`
+              },
+              {
+                q: `Why is gRPC a poor fit for browsers?`,
+                a: `Browsers cannot speak raw gRPC over HTTP/2 trailers; you need gRPC-Web plus a proxy (Envoy) to translate. Payloads are also binary (not human-readable) and HTTP caching is weak, making it awkward for public browser-facing APIs.`
+              },
+              {
+                q: `In protobuf, what is the actual contract — names or numbers?`,
+                a: `Field NUMBERS (tags), not names. The wire format encodes field numbers, so you can rename a field freely but must never change or reuse a number. To remove a field, mark its number reserved so it is never recycled.`
+              },
+              {
+                q: `What problems does GraphQL solve?`,
+                a: `Over-fetching (clients request only the fields they need) and under-fetching (one round trip returns nested/aggregated data instead of N REST calls). With a strongly typed schema and single endpoint, it is ideal for mobile and aggregating BFFs serving varied clients.`
+              },
+              {
+                q: `What is the GraphQL N+1 problem and its fix?`,
+                a: `A naive resolver fetches a list then issues one query per item for a nested field (100 orders -> 1 + 100 queries). Fix with DataLoader: batch all child keys collected in a tick into one query (IN clause) and cache per request, collapsing N+1 into ~2 queries.`
+              },
+              {
+                q: `Why is caching harder with GraphQL?`,
+                a: `Queries are arbitrary client-defined shapes sent (usually) as POST to one URL, so HTTP-level caching (ETag/Cache-Control keyed by URL+method) does not apply. You need application-level caching, persisted queries, and query cost/depth limits — caching/rate-limiting/authz all get harder.`
+              },
+              {
+                q: `Give a mature architecture that mixes the three.`,
+                a: `REST at the public edge (browser/third-party), gRPC for internal east-west service-to-service calls and streaming, and a GraphQL BFF when many client types need tailored, aggregated views. The right answer is "it depends," justified by transport/caching/streaming/typing dimensions.`
+              },
+              {
+                q: `When use an async API (202/webhooks) instead of sync?`,
+                a: `For long-running or fan-out work: return 202 Accepted with a job URL to poll, or register a webhook so the server pushes the result when ready. Avoids holding a connection open and times out, and decouples client liveness from processing time.`
+              },
+              {
+                q: `List the webhook reliability essentials.`,
+                a: `Sign payloads (HMAC over body+timestamp) for authenticity; include an event id so receivers dedupe (webhooks are at-least-once); retry with backoff on non-2xx and offer redelivery; receivers ACK 2xx fast and process async; version the event schema.`
+              },
+              {
+                q: `What is the BFF (Backend-for-Frontend) pattern?`,
+                a: `A thin per-frontend API that aggregates/reshapes downstream (often gRPC) services into exactly what one client (web/iOS/Android) needs, handling client-specific auth/session and hiding microservice topology. Each frontend can own its BFF so changes for one client do not destabilize others; GraphQL is a common implementation.`
+              },
+              {
+                q: `gRPC streaming modes — name them.`,
+                a: `Unary (one request/one response), server-streaming (one request, a stream of responses), client-streaming (a stream of requests, one response), and bidirectional streaming (independent request/response streams over one HTTP/2 connection).`
+              }
+            ]
+          },
+          {
+            title: `Security, Performance & Operability — Shipping a Public API`,
+            notes: `## Security, Performance & Operability — Production-Grade API Concerns
+
+A working API is half the job. The other half is making it **secure, fast, and operable** — the concerns a senior owns end-to-end.
+
+### AuthN / AuthZ at the API
+
+- **Authentication** ("who are you?"): for service/SPA APIs use **OAuth2 + JWT bearer tokens** (or opaque tokens with introspection). The client gets an access token from an identity provider (Keycloak/Auth0/Cognito) and sends \`Authorization: Bearer <jwt>\`. The resource server validates signature (JWKS), \`exp\`, \`iss\`, \`aud\`.
+- **Authorization** ("what may you do?"): enforce scopes/roles/claims on each endpoint. Prefer **least privilege** scopes (\`orders:read\`, \`orders:write\`). For per-resource ownership, check the subject against the resource (prevents IDOR).
+- **API keys** for server-to-server / partner traffic (coarse), often *plus* OAuth for user context.
+
+> [!DANGER]
+> **Never put secrets or authorization decisions in the client.** JWTs are signed, not encrypted (by default) — don't put sensitive data in the payload; anyone can base64-decode it. Validate \`aud\`/\`iss\` to stop token-replay across services. (OAuth2/OIDC flows themselves are covered in the security module — this is the API-surface pointer.)
+
+### Input validation — never trust the client
+
+Validate **every** input at the edge: types, ranges, lengths, formats, allow-lists for enums. Reject early with 400/422 (+ RFC7807). This is your first line against injection (SQLi via parameterized queries, never string-concat), oversized payloads (cap body size), and mass-assignment (whitelist bindable fields; never bind the raw request straight onto your entity).
+
+### CORS — for browser callers
+
+Browsers enforce the **same-origin policy**; cross-origin XHR/fetch needs the server to opt in via CORS headers. A non-simple request triggers a **preflight** \`OPTIONS\`:
+
+\`\`\`text
+OPTIONS /orders HTTP/1.1
+Origin: https://app.shop.com
+Access-Control-Request-Method: POST
+Access-Control-Request-Headers: authorization, idempotency-key
+
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://app.shop.com   # echo specific origin, NOT '*' with credentials
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE
+Access-Control-Allow-Headers: authorization, idempotency-key
+Access-Control-Allow-Credentials: true
+Access-Control-Max-Age: 600                          # cache the preflight
+\`\`\`
+
+> [!WARNING]
+> **\`Access-Control-Allow-Origin: *\` with \`Allow-Credentials: true\` is forbidden** by the spec and is a footgun anyway. Echo a *specific* allow-listed origin. CORS is a browser protection, not server authorization — it does not replace authn/authz.
+
+### Caching — ETag & Cache-Control
+
+\`\`\`text
+Cache-Control: public, max-age=300, stale-while-revalidate=60
+ETag: "7"
+Vary: Accept, Authorization
+\`\`\`
+
+- \`max-age\` for freshness; \`public\` vs \`private\` (don't let shared caches store per-user data — use \`private\` or \`no-store\`).
+- **ETag + If-None-Match** for cheap revalidation (304, no body) — same machinery as optimistic concurrency.
+- \`Vary\` so caches key on the headers that change the representation (e.g. \`Authorization\`, \`Accept\`, \`Accept-Encoding\`).
+
+### Compression
+
+Negotiate with \`Accept-Encoding: gzip, br\`; respond \`Content-Encoding: br\`. Big JSON compresses 70-90%. Watch the **BREACH/CRIME** caveat: don't compress responses that mix secrets with attacker-controlled input over TLS.
+
+### Timeouts & circuit breaking
+
+Every outbound call needs a **timeout** (no infinite waits) and a **circuit breaker** so a failing dependency fails fast instead of exhausting your threads/connections. Add **bulkheads** (isolated pools per dependency) and **load shedding** (return 503 + Retry-After when overloaded). (Resilience patterns are deep in the resilience module — here they're an API-design obligation.)
+
+\`\`\`text
+- connect timeout + read timeout on EVERY client (DB, HTTP, gRPC).
+- circuit breaker: open after error-rate threshold -> fail fast -> half-open probe.
+- bounded thread/connection pools (bulkhead) so one slow dep can't sink the service.
+- shed load (503 + Retry-After) past capacity instead of queueing to death.
+\`\`\`
+
+### Observability — correlation IDs
+
+\`\`\`text
+- Accept/generate a correlation ID at the edge: 'X-Request-Id' or W3C 'traceparent'.
+- Propagate it on EVERY downstream call; put it in MDC so every log line carries it.
+- Return it (or its trace id) in responses + error bodies so support can find the request.
+- Emit RED metrics per endpoint: Rate, Errors, Duration (p50/p95/p99).
+- Structured JSON logs; distributed tracing (OpenTelemetry) across services.
+\`\`\`
+
+### API gateway concerns
+
+\`\`\`mermaid
+flowchart LR
+  Client --> GW[API Gateway]
+  GW -->|authn/JWT validate| GW
+  GW -->|rate limit / quota| GW
+  GW -->|route + version| S1[Orders svc]
+  GW --> S2[Catalog svc]
+  GW --> BFF[GraphQL BFF]
+  GW -->|emit access logs<br/>+ trace headers| Obs[(Telemetry)]
+\`\`\`
+
+A gateway centralizes cross-cutting concerns so services don't each reimplement them: TLS termination, **authn/JWT validation**, **rate limiting/quotas**, routing & version dispatch, request/response transformation, **CORS**, and access logging/tracing. Keep *business* logic out of the gateway — it's plumbing, not a service.
+
+### Designing a public API — good-practices checklist
+
+\`\`\`text
+[ ] Consistent resource naming (plural nouns, hyphen-case, opaque IDs).
+[ ] Correct HTTP methods + status codes; safe/idempotent semantics honored.
+[ ] One error format everywhere (RFC 7807 problem+json) with stable type URIs.
+[ ] Versioning policy published (URI /v1) + deprecation/sunset process.
+[ ] Cursor pagination, filtering, sorting, sparse fieldsets — documented & consistent.
+[ ] Idempotency-Key on all unsafe POSTs; ETag/If-Match for concurrent updates.
+[ ] OAuth2/JWT authn; least-privilege scopes; per-resource ownership checks.
+[ ] Strict input validation; body-size limits; parameterized queries.
+[ ] Rate limiting (429 + Retry-After + RateLimit-* headers).
+[ ] HTTP caching (ETag, Cache-Control, Vary) + compression.
+[ ] Timeouts + circuit breakers + bulkheads on every dependency.
+[ ] Correlation IDs propagated; RED metrics; structured logs; tracing.
+[ ] OpenAPI spec is the source of truth; SDK/docs generated from it.
+[ ] CORS locked to allow-listed origins; HTTPS only; HSTS.
+[ ] Backward-compatible by default; breaking changes only on a new major.
+\`\`\`
+
+> [!SUCCESS]
+> **What separates a senior answer:** you don't just "return JSON." You name the status code, the idempotency strategy, the concurrency control, the error envelope, the versioning + deprecation policy, the auth model, and the observability hooks — and you can defend each trade-off. That holistic ownership is exactly what staff interviews probe.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Spring Security + caching/CORS config — API surface essentials`,
+                runnable: false,
+                note: `needs Spring (spring-boot-starter-security, oauth2-resource-server)`,
+                code: `import org.springframework.context.annotation.*;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.*;
+import java.util.List;
+
+@Configuration
+class ApiSecurityConfig {
+
+    @Bean
+    SecurityFilterChain api(HttpSecurity http) throws Exception {
+        http
+          .csrf(csrf -> csrf.disable())                       // stateless token API, no cookies
+          .cors(c -> c.configurationSource(corsSource()))
+          .authorizeHttpRequests(reg -> reg
+              .requestMatchers("/health", "/v2/public/**").permitAll()
+              .requestMatchers(org.springframework.http.HttpMethod.GET, "/orders/**").hasAuthority("SCOPE_orders:read")
+              .requestMatchers("/orders/**").hasAuthority("SCOPE_orders:write")
+              .anyRequest().authenticated())
+          // Validate JWT signature/exp/iss/aud against the IdP's JWKS:
+          .oauth2ResourceServer(o -> o.jwt(jwt -> {}));
+        return http.build();
+    }
+
+    @Bean
+    CorsConfigurationSource corsSource() {
+        var cfg = new CorsConfiguration();
+        cfg.setAllowedOrigins(List.of("https://app.shop.com"));   // allow-list, never "*" w/ creds
+        cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE"));
+        cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "If-Match"));
+        cfg.setExposedHeaders(List.of("ETag", "Location", "RateLimit-Remaining"));
+        cfg.setAllowCredentials(true);
+        cfg.setMaxAge(600L);                                       // cache preflight 10 min
+        var src = new UrlBasedCorsConfigurationSource();
+        src.registerCorsConfiguration("/**", cfg);
+        return src;
+    }
+}
+
+// --- Correlation ID filter: propagate X-Request-Id into MDC + responses ---
+@org.springframework.stereotype.Component
+class CorrelationIdFilter extends org.springframework.web.filter.OncePerRequestFilter {
+    @Override protected void doFilterInternal(jakarta.servlet.http.HttpServletRequest req,
+            jakarta.servlet.http.HttpServletResponse res, jakarta.servlet.FilterChain chain)
+            throws java.io.IOException, jakarta.servlet.ServletException {
+        String id = req.getHeader("X-Request-Id");
+        if (id == null || id.isBlank()) id = java.util.UUID.randomUUID().toString();
+        org.slf4j.MDC.put("traceId", id);
+        res.setHeader("X-Request-Id", id);                        // echo back for support/tracing
+        try { chain.doFilter(req, res); } finally { org.slf4j.MDC.clear(); }
+    }
+}`
+              },
+              {
+                lang: `bash`,
+                title: `curl — exercising auth, conditional GET, idempotent POST, rate limit`,
+                runnable: false,
+                code: `# Authenticated GET with conditional revalidation
+curl -i https://api.shop.com/v2/orders/42 \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H 'If-None-Match: "7"'
+# -> HTTP/1.1 304 Not Modified   (no body, saved bandwidth)
+
+# Idempotent create: same key on retry -> same result, no double charge
+KEY=$(uuidgen)
+curl -i -X POST https://api.shop.com/v2/orders \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Idempotency-Key: $KEY" \\
+  -H 'Content-Type: application/json' \\
+  -d '{ "customerId":"c-99", "lines":[ {"sku":"BOOK-1","qty":2} ] }'
+# -> 201 Created, Location: /v2/orders/42, ETag: "1"
+
+# Optimistic update: must echo the version (If-Match)
+curl -i -X PUT https://api.shop.com/v2/orders/42 \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H 'If-Match: "1"' -H 'Content-Type: application/json' \\
+  -d '{ "lines":[ {"sku":"BOOK-1","qty":3} ] }'
+# -> 200 OK ETag: "2"   (or 412 Precondition Failed if someone else won)
+
+# Hit the rate limit
+for i in $(seq 1 200); do curl -s -o /dev/null -w "%{http_code} " \\
+  -H "Authorization: Bearer $TOKEN" https://api.shop.com/v2/orders; done
+# -> ... 200 200 429 429 ...   then back off using the Retry-After header`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How is authentication typically done for a token-based API?`,
+                a: `OAuth2 + JWT (or opaque) bearer tokens: the client obtains an access token from an IdP and sends Authorization: Bearer <jwt>. The resource server validates the signature via JWKS plus exp, iss, and aud claims. Authorization then enforces scopes/roles/ownership per endpoint.`
+              },
+              {
+                q: `Why must you validate aud and iss on a JWT?`,
+                a: `iss confirms the token came from the trusted issuer; aud confirms it was minted for THIS service. Skipping aud lets a token issued for service A be replayed against service B. Also note JWTs are signed, not encrypted by default — never put secrets in the payload.`
+              },
+              {
+                q: `What is mass-assignment and how do you prevent it?`,
+                a: `Binding a raw request body directly onto a domain entity lets a client set fields they should not (e.g. role, isAdmin, balance). Prevent it by binding to an explicit request DTO with only the allowed fields (allow-list), never the entity itself.`
+              },
+              {
+                q: `What is a CORS preflight and when does it fire?`,
+                a: `For non-simple cross-origin requests (custom headers like Authorization/Idempotency-Key, methods like PUT/DELETE), the browser first sends an OPTIONS preflight; the server must respond with Access-Control-Allow-Origin/Methods/Headers. Only then does the real request go out. Max-Age caches the preflight.`
+              },
+              {
+                q: `Why is Allow-Origin "*" with Allow-Credentials true disallowed?`,
+                a: `The CORS spec forbids combining a wildcard origin with credentials because it would let any site make authenticated cross-origin requests. Echo a specific allow-listed origin instead. CORS is browser protection, not server-side authorization.`
+              },
+              {
+                q: `What does the Vary header do for caching?`,
+                a: `It tells caches which request headers change the response representation, so they key cache entries correctly — e.g. Vary: Accept, Accept-Encoding, Authorization. Without it, a cache could serve one user a representation negotiated for a different header set.`
+              },
+              {
+                q: `public vs private vs no-store in Cache-Control?`,
+                a: `public: any cache (including shared/CDN) may store it. private: only the end-user browser cache, not shared caches — use for per-user data. no-store: do not cache at all (sensitive responses). Pair with max-age for freshness and ETag for revalidation.`
+              },
+              {
+                q: `Why does every outbound call need a timeout and circuit breaker?`,
+                a: `Without timeouts, a slow dependency ties up threads/connections until the whole service stalls (cascading failure). A circuit breaker fails fast once error rates spike, giving the dependency room to recover; bulkheads isolate pools so one bad dependency cannot sink everything.`
+              },
+              {
+                q: `How do correlation IDs aid operability?`,
+                a: `Accept or generate an ID (X-Request-Id / W3C traceparent) at the edge, propagate it on every downstream call, and put it in the logging MDC so all log lines and traces share it. Returning it lets support locate a specific request across services in logs/traces.`
+              },
+              {
+                q: `What cross-cutting concerns belong in an API gateway?`,
+                a: `TLS termination, authn/JWT validation, rate limiting/quotas, routing and version dispatch, request/response transformation, CORS, and access logging/tracing. Business logic does NOT belong there — the gateway is plumbing that keeps services from each reimplementing these.`
+              },
+              {
+                q: `What is the compression footgun to watch for?`,
+                a: `BREACH/CRIME: compressing a TLS response that mixes a secret (e.g. a token) with attacker-controlled reflected input can leak the secret via response-size side channels. Avoid compressing such sensitive, reflective responses.`
+              },
+              {
+                q: `Name five items from a public-API design checklist.`,
+                a: `Consistent resource naming; correct status codes with safe/idempotent semantics; one error format (RFC7807) with stable type URIs; published versioning + deprecation policy; cursor pagination; idempotency keys on unsafe POSTs; ETag/If-Match concurrency; OAuth2 least-privilege scopes; strict input validation; rate limiting; HTTP caching + compression; timeouts/circuit breakers; correlation IDs + RED metrics; OpenAPI as source of truth; CORS allow-list + HTTPS.`
               }
             ]
           }
@@ -43590,209 +46569,1063 @@ EOF
       {
         id: `9.2`,
         title: `Networking & HTTP`,
-        hours: 3,
+        hours: 6,
         sections: [
           {
-            title: `Networking & HTTP — What Java Developers Must Know`,
-            notes: `## Networking & HTTP — What Java Developers Must Know
+            title: `The Network Stack & IP — what happens when you hit a URL`,
+            notes: `## The two mental models: OSI vs TCP/IP
 
-### TCP/IP — How HTTP Works Under the Hood
+The **OSI 7-layer model** is the textbook abstraction; the **TCP/IP model** is what actually ships packets. Interviewers want you to map a real concept (a SYN packet, a TLS record, an HTTP header) onto the right layer and explain *encapsulation* — each layer wraps the layer above in its own header.
 
-\`\`\`
-HTTP request journey:
-1. DNS resolution: "api.example.com" → 93.184.216.34 (IP lookup)
-2. TCP 3-way handshake: SYN → SYN-ACK → ACK (establish connection)
-3. TLS handshake (HTTPS): certificate exchange, cipher negotiation
-4. HTTP request sent: "GET /api/users HTTP/1.1\r
-Host: api.example.com\r
-\r
-"
-5. Server processes request, sends HTTP response
-6. TCP connection: closed (HTTP/1.0) or kept alive (HTTP/1.1 keep-alive)
+| OSI layer | TCP/IP layer | Lives where | Real example | PDU |
+|---|---|---|---|---|
+| 7 Application | Application | Process | HTTP, DNS, gRPC, TLS* | Message |
+| 6 Presentation | (folded in) | Process | TLS encryption, gzip | — |
+| 5 Session | (folded in) | Process | TLS session, RPC | — |
+| 4 Transport | Transport | Kernel | **TCP / UDP** (ports) | Segment / Datagram |
+| 3 Network | Internet | Kernel | **IP**, ICMP, routing | Packet |
+| 2 Data Link | Link | NIC/driver | Ethernet, ARP, MAC, VLAN | Frame |
+| 1 Physical | Link | Hardware | copper, fiber, Wi-Fi radio | Bits |
 
-HTTP versions:
-  HTTP/1.0  — new connection per request (slow)
-  HTTP/1.1  — persistent connections, pipelining, chunked transfer
-  HTTP/2    — binary protocol, multiplexing (multiple requests per connection), header compression
-  HTTP/3    — QUIC (UDP-based), built-in encryption, better packet loss handling
-\`\`\`
+> [!TIP]
+> TLS technically straddles "presentation" but interviewers accept "application layer security sitting on top of TCP." Don't die on the OSI-purist hill — explain *what it does* (encrypt the byte stream) and *where* (between TCP and HTTP).
 
-### HTTP Headers — Most Important for Java
-
-\`\`\`
-Request headers:
-  Content-Type: application/json        — body format
-  Accept: application/json              — expected response format
-  Authorization: Bearer <token>         — JWT auth
-  X-Request-Id: <uuid>                  — correlation ID for tracing
-  Cache-Control: no-cache               — bypass cache
-  If-None-Match: "etag-value"           — conditional GET (caching)
-  Idempotency-Key: <uuid>               — safe retries
-
-Response headers:
-  Content-Type: application/json
-  X-Request-Id: <uuid>                  — echo back for correlation
-  ETag: "abc123"                        — resource version fingerprint
-  Cache-Control: max-age=3600           — cache for 1 hour
-  Retry-After: 60                       — rate limit: retry in 60s
-  Location: /api/users/42               — after 201 Created
-  Strict-Transport-Security: max-age=31536000; includeSubDomains  — HSTS
+\`\`\`mermaid
+flowchart TB
+  subgraph TX["Sender — encapsulation (wrap)"]
+    A1["HTTP message<br/>GET /index.html"] --> A2["+ TCP header<br/>src/dst port, seq, flags"]
+    A2 --> A3["+ IP header<br/>src/dst IP, TTL"]
+    A3 --> A4["+ Ethernet frame<br/>src/dst MAC, FCS"]
+    A4 --> A5(("bits on wire"))
+  end
+  A5 --> R{{"Router: strips L2,<br/>reads dst IP,<br/>re-frames for next hop"}}
+  R --> B5(("bits"))
+  subgraph RX["Receiver — decapsulation (unwrap)"]
+    B5 --> B4["strip Ethernet"] --> B3["strip IP"] --> B2["strip TCP"] --> B1["HTTP message"]
+  end
 \`\`\`
 
-### HTTPS & TLS
+## IP addressing, subnets & CIDR
 
+An **IPv4** address is 32 bits (4 octets, e.g. \`10.20.30.40\`). **CIDR** notation \`a.b.c.d/n\` says the first **n** bits are the *network prefix*; the rest identify hosts.
+
+- \`/24\` → 24 network bits, 8 host bits → **256** addresses (254 usable; .0 network, .255 broadcast). Mask \`255.255.255.0\`.
+- \`/16\` → 65,536 addresses. \`/32\` → exactly one host (used in firewall rules, route targets).
+- **Subnetting** = borrowing host bits to make more, smaller networks. \`10.0.0.0/8\` split into \`/24\`s gives you 65k subnets of 254 hosts.
+
+**Private (RFC 1918) ranges** — never routed on the public internet:
+- \`10.0.0.0/8\`, \`172.16.0.0/12\`, \`192.168.0.0/16\`
+- Plus \`100.64.0.0/10\` (CGNAT), \`127.0.0.0/8\` (loopback), \`169.254.0.0/16\` (link-local/APIPA).
+
+**IPv6** is 128 bits (\`2001:db8::1\`), eliminates NAT-by-necessity, uses NDP instead of ARP. Senior point: dual-stack hosts use **Happy Eyeballs** (RFC 8305) — race A and AAAA, use whichever connects first, to dodge broken IPv6 paths.
+
+> [!WARNING]
+> A classic VPC bug: two peered networks both use \`10.0.0.0/16\`. Overlapping CIDR = routing ambiguity and dropped/misrouted traffic. Always allocate non-overlapping private space across environments.
+
+## Routing, NAT, ports & ARP
+
+- **Routing**: each hop consults its routing table (longest-prefix match) to pick the next hop. The **default route** \`0.0.0.0/0\` is "anything I don't have a more specific route for → send to the gateway." TTL decrements per hop; hits 0 → ICMP Time Exceeded (this is how \`traceroute\` works).
+- **NAT** (Network Address Translation): your router rewrites the private source IP+port to its public IP+port and tracks the mapping in a translation table, so many internal hosts share one public IP. **PAT/NAPT** multiplexes on port. Breaks the end-to-end principle — inbound connections need port-forwarding or hole-punching (STUN/TURN).
+- **Ports**: 16-bit (0–65535). Well-known < 1024 (80, 443, 22, 53). The 4-tuple \`(srcIP, srcPort, dstIP, dstPort)\` uniquely identifies a TCP connection — that's why one server port can hold thousands of simultaneous client connections.
+- **ARP** (Address Resolution Protocol): maps an IP to a MAC *within a LAN*. "Who has 10.0.0.5? Tell 10.0.0.1." Broadcast question, unicast answer, cached. Layer 2/3 glue.
+
+> [!DANGER]
+> **Ephemeral port exhaustion** is a real production incident. An outbound-heavy service (proxy, connection pool that doesn't reuse) burns through the ~28k ephemeral port range, especially with sockets stuck in TIME_WAIT. Symptom: \`Cannot assign requested address\`. Fixes: connection pooling/keep-alive, widen \`ip_local_port_range\`, enable \`tcp_tw_reuse\`.
+
+## End-to-end: what happens when you type \`https://www.example.com\` and hit Enter
+
+\`\`\`mermaid
+sequenceDiagram
+  participant B as Browser
+  participant R as DNS Resolver
+  participant T as TCP/Server
+  participant S as TLS/Server
+  B->>B: 1. URL parse, HSTS check, cache lookup
+  B->>R: 2. DNS: A/AAAA for www.example.com?
+  R-->>B: 93.184.216.34 (TTL 300)
+  B->>T: 3. TCP SYN to 93.184.216.34:443
+  T-->>B: SYN-ACK
+  B->>T: ACK (connection established)
+  B->>S: 4. TLS ClientHello (SNI=www.example.com)
+  S-->>B: ServerHello + cert + Finished
+  B->>S: Finished (keys derived)
+  B->>S: 5. HTTP GET / (encrypted)
+  S-->>B: 200 OK + HTML
+  B->>B: 6. Parse HTML, fetch sub-resources, render
 \`\`\`
-TLS (Transport Layer Security) — encrypts HTTP:
-  1. Client → Server: ClientHello (supported cipher suites, TLS version)
-  2. Server → Client: ServerHello, Certificate (contains public key + CA signature)
-  3. Client: verifies certificate against trusted CAs
-  4. Key exchange: ECDHE — both sides derive same session key without transmitting it
-  5. Symmetric encryption (AES-256) for the rest of the session
 
-Certificate types:
-  DV (Domain Validation): just proves domain ownership (Let's Encrypt, fast)
-  OV (Org Validation):    confirms organisation identity
-  EV (Extended Validation): highest assurance, shown in browser address bar
+The full journey: **URL parse → HSTS → DNS → ARP for gateway → TCP 3-way handshake → TLS handshake → HTTP request → response → render**. A senior answer names the layer at each step and the failure mode (NXDOMAIN, connection refused/RST, cert error, 5xx).
 
-Let's Encrypt + Caddy/nginx: auto-renews certificates via ACME protocol
-\`\`\`
-
-### REST Client Best Practices in Java
-
-\`\`\`java
-// Spring RestTemplate — configure timeouts (default = no timeout!)
-@Bean
-public RestTemplate restTemplate() {
-    var factory = new SimpleClientHttpRequestFactory();
-    factory.setConnectTimeout(2_000);   // 2s to establish connection
-    factory.setReadTimeout(10_000);     // 10s to receive full response
-    return new RestTemplate(factory);
-}
-
-// Spring WebClient (reactive, async)
-@Bean
-public WebClient webClient() {
-    return WebClient.builder()
-        .baseUrl("https://api.example.com")
-        .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-        .codecs(c -> c.defaultCodecs().maxInMemorySize(1 * 1024 * 1024))
-        .build();
-}
-
-// OkHttp with connection pooling
-OkHttpClient client = new OkHttpClient.Builder()
-    .connectTimeout(2, TimeUnit.SECONDS)
-    .readTimeout(10, TimeUnit.SECONDS)
-    .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))
-    .build();
-\`\`\`
-
-### DNS & Load Balancing
-
-\`\`\`
-DNS round-robin: A record has multiple IPs → different client each time
-  api.example.com → 10.0.0.1, 10.0.0.2, 10.0.0.3 (rotated per query)
-
-Load balancer types:
-  L4 (TCP/UDP): routes by IP:port — fast, no HTTP awareness
-  L7 (HTTP): routes by URL path, headers, cookies — smarter routing
-    → Can route /api/v2/* to new cluster, /api/v1/* to old cluster
-    → Can sticky session on user ID
-    → Can do SSL termination (L7 sees plaintext, backend speaks HTTP)
-
-Service mesh (Envoy/Istio): sidecar proxy per pod handles:
-  - mTLS between services
-  - Circuit breaking
-  - Retry logic
-  - Observability (request tracing)
-  - Traffic shifting (canary, blue-green)
-\`\`\``,
+> [!SUCCESS]
+> Strong framing for interviews: "Every step is a place latency and failure can hide. DNS adds a round trip (cacheable via TTL), TCP adds one RTT, TLS adds one more (1.3) — that's why CDNs terminate close to the user and why we measure TTFB."`,
             code: [
-              `import org.springframework.web.client.*;
-import org.springframework.http.*;
-import java.util.*;
-import java.time.*;
+              {
+                lang: `bash`,
+                title: `Inspecting addressing, routes & ARP (Linux)`,
+                code: `# IP + CIDR on each interface
+$ ip -brief addr
+lo    UNKNOWN  127.0.0.1/8 ::1/128
+eth0  UP       10.0.12.34/24 fe80::5054:ff:fe12:3456/64
 
-// HTTP client patterns for Spring Boot
+# Routing table — note the default route 0.0.0.0/0 -> gateway
+$ ip route
+default via 10.0.12.1 dev eth0          # catch-all
+10.0.12.0/24 dev eth0 proto kernel scope link src 10.0.12.34
 
-// 1. RestTemplate with proper timeout + error handling
-public class HttpClientExamples {
+# ARP / neighbour cache (IP -> MAC on the LAN)
+$ ip neigh
+10.0.12.1 dev eth0 lladdr 52:54:00:ab:cd:ef REACHABLE
 
-    RestTemplate restTemplate = createRestTemplate();
-    WebClientWrapper webClient = new WebClientWrapper();
+# Trace the L3 path hop-by-hop (TTL trick)
+$ traceroute -n example.com
+ 1  10.0.12.1     0.4 ms
+ 2  100.64.0.1    1.2 ms   # CGNAT
+ 3  203.0.113.9   8.7 ms
+ ...`,
+                runnable: false
+              },
+              {
+                lang: `text`,
+                title: `CIDR cheat-sheet (host counts)`,
+                code: `/32  -> 1 host        (single host route / firewall rule)
+/31  -> 2 hosts       (point-to-point link, RFC 3021)
+/30  -> 4   (2 usable)
+/29  -> 8   (6 usable)
+/28  -> 16  (14)
+/27  -> 32  (30)
+/26  -> 64  (62)
+/25  -> 128 (126)
+/24  -> 256 (254 usable)   mask 255.255.255.0
+/16  -> 65,536            mask 255.255.0.0
+/8   -> 16,777,216        mask 255.0.0.0
 
-    private RestTemplate createRestTemplate() {
-        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(2_000);
-        factory.setReadTimeout(10_000);
-        var rt = new RestTemplate(factory);
-        // Add correlation ID interceptor
-        rt.getInterceptors().add((request, body, execution) -> {
-            request.getHeaders().set("X-Request-Id",
-                UUID.randomUUID().toString());
-            return execution.execute(request, body);
-        });
-        return rt;
-    }
-
-    // GET with error handling
-    public Optional<UserDto> getUser(Long id) {
-        try {
-            ResponseEntity<UserDto> resp = restTemplate.getForEntity(
-                "https://api.example.com/users/{id}", UserDto.class, id);
-            return Optional.ofNullable(resp.getBody());
-        } catch (HttpClientErrorException.NotFound e) {
-            return Optional.empty();     // 404 — resource doesn't exist
-        } catch (HttpClientErrorException e) {
-            throw new RuntimeException("Client error: " + e.getStatusCode(), e);
-        } catch (HttpServerErrorException e) {
-            throw new RuntimeException("Server error (retryable): " + e.getStatusCode(), e);
-        } catch (ResourceAccessException e) {
-            throw new RuntimeException("Network error (timeout/connection): " + e.getMessage(), e);
-        }
-    }
-
-    // POST with request body
-    public UserDto createUser(CreateUserRequest req) {
-        HttpEntity<CreateUserRequest> entity = new HttpEntity<>(req,
-            new HttpHeaders() {{ set("Content-Type", "application/json"); }});
-        return restTemplate.postForObject(
-            "https://api.example.com/users", entity, UserDto.class);
-    }
-}
-
-// 2. WebClient (reactive) — non-blocking
-class WebClientWrapper {
-    // Simulated WebClient usage (requires Spring WebFlux dependency)
-    // WebClient client = WebClient.builder().baseUrl("https://api.example.com").build();
-
-    // Fetch with retry
-    // Mono<UserDto> getUser(Long id) {
-    //     return client.get().uri("/users/{id}", id)
-    //         .retrieve()
-    //         .onStatus(HttpStatus::is4xxClientError,
-    //             r -> Mono.error(new RuntimeException("Client error: " + r.statusCode())))
-    //         .bodyToMono(UserDto.class)
-    //         .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))
-    //             .filter(ex -> ex instanceof java.net.ConnectException));
-    // }
-}
-
-record UserDto(Long id, String name, String email) {}
-record CreateUserRequest(String name, String email) {}`
+Usable = total - 2 (network address .0 + broadcast .255), except /31 and /32.
+Rule of thumb: each step DOWN in prefix length DOUBLES the address count.`,
+                runnable: false
+              }
             ],
             flashcards: [
               {
-                q: `What happens at the network level when a browser calls an HTTPS API?`,
-                a: `1. DNS resolution: browser looks up hostname → IP address (checks local cache first, then recursive DNS). 2. TCP 3-way handshake: SYN → SYN-ACK → ACK to establish connection to IP:443. 3. TLS handshake: client sends supported cipher suites; server sends its certificate; client verifies certificate against trusted CAs; both derive a shared symmetric session key (via ECDHE). 4. HTTP request sent encrypted over TLS. 5. Server processes, sends encrypted response. 6. Connection kept alive (HTTP/1.1+) for subsequent requests. Total latency: new connection ~100-300ms (DNS + TCP + TLS). Subsequent requests on same connection: just the request/response time.`
+                q: `In the TCP/IP model, which layer owns ports, and which owns IP addresses?`,
+                a: `Transport (TCP/UDP) owns ports; the Internet/Network layer (IP) owns IP addresses. A connection is identified by the 4-tuple srcIP:srcPort -> dstIP:dstPort spanning both.`
               },
               {
-                q: `What is the difference between HTTP/1.1, HTTP/2, and HTTP/3?`,
-                a: `HTTP/1.1: persistent connections (multiple requests on one TCP connection), but head-of-line blocking (second request waits for first to complete on same connection). HTTP/2: binary protocol. Multiplexing: multiple concurrent requests on ONE connection with no head-of-line blocking. Header compression (HPACK). Server push (server can send resources before client asks). Major perf improvement for many small requests. HTTP/3: QUIC protocol (UDP-based). Eliminates TCP head-of-line blocking at transport layer. Built-in TLS 1.3. Better on lossy connections (mobile). Faster connection establishment (0-RTT). Still maturing in production use.`
+                q: `How many usable host addresses are in a /26?`,
+                a: `2^(32-26)=64 total, minus network + broadcast = 62 usable.`
               },
               {
-                q: `Why must you always set timeouts on HTTP clients in Java?`,
-                a: `Default RestTemplate has NO timeout — a slow upstream service causes the calling thread to block forever. In a Tomcat server with 200 threads: if all threads are waiting on a slow API, the entire application stops responding to all other requests (cascade failure). Connect timeout: max time to establish the TCP connection (2-5s typically). Read timeout: max time to wait for data after connection established (5-30s depending on the API). Without these: one slow dependency can bring down your whole service. Also: set circuit breakers (Resilience4j) to open after N timeouts, preventing all threads from queuing up.`
+                q: `What does NAT break, and how do peer-to-peer apps work around it?`,
+                a: `It breaks the end-to-end principle — inbound connections to a private host aren't directly addressable. Workarounds: port forwarding, UPnP, or NAT hole-punching via STUN/TURN/ICE.`
+              },
+              {
+                q: `What is ARP and at which layer does it operate?`,
+                a: `Address Resolution Protocol maps an IP address to a MAC address within a local LAN segment. It bridges L3 (IP) to L2 (Ethernet); broadcast request, unicast reply, cached in the neighbour table.`
+              },
+              {
+                q: `Why can a single server port 443 hold thousands of concurrent connections?`,
+                a: `Each connection is keyed by the full 4-tuple (srcIP, srcPort, dstIP, dstPort). The server's dstIP:dstPort is fixed, but every client brings a distinct srcIP+ephemeral srcPort, so the tuples are unique.`
+              },
+              {
+                q: `What is the default route 0.0.0.0/0 and how is it chosen over other routes?`,
+                a: `It's the catch-all — used when no more-specific route matches. Routing uses longest-prefix match, so a /24 beats the /0 default; the default is the last resort to the gateway.`
+              },
+              {
+                q: `Name the three RFC 1918 private ranges.`,
+                a: `10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16. (Bonus: 100.64.0.0/10 CGNAT, 169.254.0.0/16 link-local, 127.0.0.0/8 loopback.)`
+              },
+              {
+                q: `What causes 'Cannot assign requested address' under load and how do you fix it?`,
+                a: `Ephemeral source-port exhaustion — too many outbound sockets, often piling up in TIME_WAIT. Fix with connection pooling/keep-alive, widening ip_local_port_range, and tcp_tw_reuse.`
+              },
+              {
+                q: `How does traceroute discover each hop?`,
+                a: `It sends packets with increasing TTL (1,2,3...). Each router that decrements TTL to 0 returns an ICMP Time Exceeded, revealing its address; the final hop returns the real response.`
+              },
+              {
+                q: `What is Happy Eyeballs and why does it exist?`,
+                a: `RFC 8305: a dual-stack client races IPv6 (AAAA) and IPv4 (A) connection attempts in parallel and uses whichever completes first, hiding broken/slow IPv6 paths from the user.`
+              },
+              {
+                q: `Walk the layers a GET request passes through on the way out (encapsulation).`,
+                a: `HTTP message -> wrapped in TCP segment (ports/seq) -> wrapped in IP packet (src/dst IP, TTL) -> wrapped in Ethernet frame (MAC, FCS) -> bits on the wire. Each layer adds its own header.`
+              },
+              {
+                q: `Two peered VPCs both use 10.0.0.0/16 — what's the problem?`,
+                a: `Overlapping CIDR means destination IPs are ambiguous across the peer; routes can't disambiguate, so traffic is dropped or misrouted. Always allocate non-overlapping private address space.`
+              }
+            ]
+          },
+          {
+            title: `TCP vs UDP — handshakes, reliability & when UDP wins`,
+            notes: `## TCP: connection-oriented, reliable, ordered
+
+TCP turns the unreliable packet-switched IP network into a reliable, ordered byte stream. It pays for that with a handshake, per-byte sequence numbers, acknowledgements, retransmission, flow control and congestion control.
+
+### The 3-way handshake (connection setup)
+
+\`\`\`mermaid
+sequenceDiagram
+  participant C as Client
+  participant S as Server
+  Note over C: CLOSED
+  C->>S: SYN (seq=x)
+  Note over C: SYN_SENT
+  Note over S: LISTEN -> SYN_RCVD
+  S->>C: SYN-ACK (seq=y, ack=x+1)
+  Note over C: ESTABLISHED
+  C->>S: ACK (ack=y+1)
+  Note over S: ESTABLISHED
+  Note over C,S: data may now flow (1 RTT cost)
+\`\`\`
+
+The handshake synchronises **initial sequence numbers (ISN)** in each direction and proves both sides can send *and* receive. A server that gets a SYN to a closed port replies with **RST** ("connection refused"); a silent drop (firewall) makes the client retry/time out — interviewers love the difference.
+
+> [!TIP]
+> **SYN flood** is the classic DoS: spoofed SYNs fill the half-open queue. **SYN cookies** defend by encoding handshake state into the ISN so the server keeps *no* state until the ACK returns.
+
+### Teardown & the infamous TIME_WAIT
+
+\`\`\`mermaid
+sequenceDiagram
+  participant A as Initiator
+  participant B as Peer
+  A->>B: FIN
+  Note over A: FIN_WAIT_1
+  B->>A: ACK
+  Note over B: CLOSE_WAIT
+  B->>A: FIN
+  A->>B: ACK
+  Note over A: TIME_WAIT (2*MSL ~ 60s)
+  Note over B: CLOSED
+  Note over A: CLOSED (after timer)
+\`\`\`
+
+Four-way teardown (each direction closes independently). The side that closes *first* (usually the client) enters **TIME_WAIT** for 2×MSL (~60s on Linux).
+
+> [!WARNING]
+> **Why TIME_WAIT matters at scale:** it exists to (1) absorb delayed/duplicate segments from the old connection so they don't corrupt a *new* connection reusing the same 4-tuple, and (2) ensure the final ACK is delivered. A busy proxy that initiates and closes millions of short connections accumulates huge TIME_WAIT counts and can exhaust local ports. Mitigation: keep-alive/connection reuse, make the *server* close first when possible, \`tcp_tw_reuse\`. Avoid the deprecated \`tcp_tw_recycle\` (breaks NAT).
+
+### Reliability machinery
+- **Sequencing & ACKs**: every byte numbered; receiver ACKs the next expected byte. Lost segment ⇒ retransmit (fast retransmit on 3 duplicate ACKs, or RTO timeout).
+- **Flow control**: the **receive window (rwnd)** advertised in each ACK throttles the sender to what the receiver can buffer. Window=0 stalls the sender (zero-window probes).
+- **Congestion control**: protects the *network*. Slow start (exponential cwnd growth), congestion avoidance (linear), then react to loss. Algorithms: CUBIC (Linux default), **BBR** (Google, models bandwidth+RTT instead of treating loss as congestion).
+- **Head-of-line (HOL) blocking**: because TCP guarantees in-order delivery, one lost segment stalls *all* bytes behind it even if they already arrived. This is TCP's structural weakness and the reason HTTP/2-over-TCP still suffers HOL blocking (solved by HTTP/3 over QUIC).
+- **Nagle's algorithm** coalesces small writes; combined with delayed ACKs it can add latency — disable with \`TCP_NODELAY\` for chatty low-latency protocols.
+
+## UDP: connectionless, unreliable, fast
+
+No handshake, no ordering, no retransmission, no congestion control — just "send datagram, hope it arrives." 8-byte header vs TCP's 20+. The app builds whatever reliability it needs.
+
+| Dimension | TCP | UDP |
+|---|---|---|
+| Connection | Handshake (stateful) | Connectionless |
+| Reliability | Guaranteed (ACK + retransmit) | None (app's job) |
+| Ordering | In-order byte stream | None |
+| Flow / congestion control | Yes | No (app must) |
+| Header size | 20–60 bytes | 8 bytes |
+| Head-of-line blocking | Yes | No (per-datagram) |
+| Multicast/broadcast | No | Yes |
+| Typical use | HTTP, SSH, DB, email | DNS, DHCP, VoIP, video, QUIC, gaming |
+
+> [!SUCCESS]
+> **When UDP wins:** (1) latency over completeness — VoIP/video would rather drop a frame than wait for a retransmit; (2) tiny one-shot request/response — DNS avoids 1.5 RTT of handshake overhead; (3) you want your *own* reliability/multiplexing — **QUIC** is built on UDP precisely to escape TCP's kernel HOL blocking and ossification, while reimplementing reliability + congestion control in userspace.
+
+### Keep-alive
+- **TCP keep-alive** (kernel): probes an idle connection to detect dead peers — but defaults are huge (2 hours). Useful to reap zombie connections; tune \`tcp_keepalive_time\`.
+- **HTTP keep-alive** (\`Connection: keep-alive\`, default in HTTP/1.1): reuse one TCP connection for many requests, amortising the handshake. Different layer, same word — don't conflate them in an interview.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `Watching a handshake & connection states`,
+                code: `# Capture the 3-way handshake + teardown flags
+$ sudo tcpdump -ni eth0 'tcp port 443 and (tcp[tcpflags] & (tcp-syn|tcp-fin|tcp-rst) != 0)'
+IP 10.0.12.34.51514 > 93.184.216.34.443: Flags [S],  seq 100   # SYN
+IP 93.184.216.34.443 > 10.0.12.34.51514: Flags [S.], seq 900, ack 101  # SYN-ACK
+IP 10.0.12.34.51514 > 93.184.216.34.443: Flags [.],  ack 901   # ACK
+...
+IP 10.0.12.34.51514 > 93.184.216.34.443: Flags [F.], seq 540   # FIN
+
+# Count sockets by state — spot TIME_WAIT pileups
+$ ss -tan state time-wait | wc -l
+18423
+$ ss -s
+TCP:  19011 (estab 412, closed 18000, timewait 18423/0)
+
+# See the local ephemeral port range you can exhaust
+$ cat /proc/sys/net/ipv4/ip_local_port_range
+32768   60999`,
+                runnable: false
+              },
+              {
+                lang: `java`,
+                title: `Localhost TCP echo: see the raw bytes (bare JDK 21)`,
+                code: `import java.io.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+
+// Self-contained: starts a localhost echo server, connects a client,
+// sends a raw line, prints what came back. No external network needed.
+public class TcpEchoDemo {
+    public static void main(String[] args) throws Exception {
+        try (ServerSocket server = new ServerSocket(0)) {        // OS-assigned free port
+            int port = server.getLocalPort();
+            System.out.println("Server listening on 127.0.0.1:" + port);
+
+            Thread serverThread = new Thread(() -> {
+                try (Socket conn = server.accept()) {            // completes the 3-way handshake
+                    var in  = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                    var out = new BufferedWriter(new OutputStreamWriter(conn.getOutputStream(), StandardCharsets.UTF_8));
+                    String line = in.readLine();
+                    System.out.println("[server] received: " + line);
+                    out.write("ECHO: " + line + "\\n");
+                    out.flush();
+                } catch (IOException e) { e.printStackTrace(); }
+            });
+            serverThread.start();
+
+            try (Socket client = new Socket("127.0.0.1", port)) { // SYN/SYN-ACK/ACK under the hood
+                client.setTcpNoDelay(true);                      // disable Nagle for low latency
+                var out = new BufferedWriter(new OutputStreamWriter(client.getOutputStream(), StandardCharsets.UTF_8));
+                var in  = new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
+                out.write("hello tcp\\n");
+                out.flush();
+                System.out.println("[client] got back: " + in.readLine());
+            }
+            serverThread.join();
+        }
+    }
+}`,
+                runnable: true,
+                note: `Compile/run on bare JDK 21: javac TcpEchoDemo.java && java TcpEchoDemo. Uses only java.net; binds loopback only, so it works in a sandbox with no external connectivity.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is the TCP handshake 3 packets and not 2?`,
+                a: `Both directions must synchronise their initial sequence numbers AND prove they can send and receive. SYN, SYN-ACK, ACK accomplishes mutual ISN exchange + confirmation; two packets can't confirm the client received the server's ISN.`
+              },
+              {
+                q: `What is TIME_WAIT and why does it last 2*MSL?`,
+                a: `After the active closer sends the final ACK it waits ~2x Maximum Segment Lifetime so (1) any delayed duplicate segments from the old connection die out before the 4-tuple is reused, and (2) the final ACK can be retransmitted if lost.`
+              },
+              {
+                q: `Which side enters TIME_WAIT, and how do you avoid pileups on a busy proxy?`,
+                a: `The side that initiates the close (active closer). Avoid pileups by reusing connections (keep-alive), having the server close first, or enabling tcp_tw_reuse. Avoid deprecated tcp_tw_recycle (breaks NAT).`
+              },
+              {
+                q: `What is TCP head-of-line blocking?`,
+                a: `Because TCP delivers bytes strictly in order, a single lost/delayed segment stalls delivery of all already-arrived bytes behind it. This is why HTTP/2 over TCP still suffers HOL blocking and HTTP/3 moves to QUIC.`
+              },
+              {
+                q: `Difference between flow control and congestion control in TCP?`,
+                a: `Flow control (receive window) protects the RECEIVER from being overrun. Congestion control (cwnd, slow start, CUBIC/BBR) protects the NETWORK from overload. Sender uses min(rwnd, cwnd).`
+              },
+              {
+                q: `What does a RST in response to a SYN mean vs a silent drop?`,
+                a: `RST = connection refused: the port is closed but the host is reachable (fast failure). A silent drop usually means a firewall is dropping packets, so the client retransmits and eventually times out (slow failure).`
+              },
+              {
+                q: `What is a SYN flood and how do SYN cookies defend against it?`,
+                a: `Attacker sends many spoofed SYNs to fill the half-open connection queue. SYN cookies encode handshake state into the server's ISN so the server stores no state until a valid ACK returns, defeating the resource exhaustion.`
+              },
+              {
+                q: `When does UDP beat TCP?`,
+                a: `When latency matters more than completeness (VoIP/video drop-vs-wait), for tiny one-shot exchanges (DNS avoids handshake cost), for multicast, or when you want custom reliability/multiplexing in userspace (QUIC).`
+              },
+              {
+                q: `Why was QUIC built on UDP instead of TCP?`,
+                a: `To escape kernel TCP's per-connection HOL blocking and protocol ossification by middleboxes. QUIC reimplements reliability, ordering, multiplexed streams, and congestion control in userspace, with streams independent so loss in one doesn't stall others.`
+              },
+              {
+                q: `What do Nagle's algorithm and TCP_NODELAY do?`,
+                a: `Nagle coalesces small outgoing writes into fewer larger segments to reduce overhead, but adds latency (worsened by delayed ACKs). TCP_NODELAY disables it for chatty, latency-sensitive protocols.`
+              },
+              {
+                q: `Distinguish TCP keep-alive from HTTP keep-alive.`,
+                a: `TCP keep-alive is a kernel feature probing idle connections to detect dead peers (default ~2h). HTTP keep-alive (Connection header, default in HTTP/1.1) reuses one TCP connection for multiple HTTP requests to amortise the handshake. Different layers.`
+              },
+              {
+                q: `What triggers a TCP fast retransmit?`,
+                a: `Three duplicate ACKs for the same sequence number signal a single missing segment; the sender retransmits immediately without waiting for the (slower) retransmission timeout (RTO).`
+              }
+            ]
+          },
+          {
+            title: `DNS — resolution, records, TTL & failover`,
+            notes: `## What DNS actually does
+
+DNS turns a name (\`www.example.com\`) into an address and other metadata. It's a globally distributed, hierarchically delegated, cached key-value lookup. Mostly UDP/53 (falls back to TCP/53 for large responses or zone transfers; DoT/DoH ride 853/443).
+
+## Recursive vs authoritative
+
+- **Stub resolver** — the tiny client in your OS/app.
+- **Recursive resolver** (your ISP, 8.8.8.8, 1.1.1.1) — does the legwork, caches results, returns the final answer.
+- **Authoritative server** — holds the actual zone data; it's the source of truth for its domain. *Root* → *TLD* (\`.com\`) → *domain* authoritative.
+
+\`\`\`mermaid
+sequenceDiagram
+  participant App
+  participant Res as Recursive Resolver
+  participant Root as Root (.)
+  participant TLD as TLD (.com)
+  participant Auth as Authoritative (example.com)
+  App->>Res: A? www.example.com
+  Res->>Root: A? www.example.com
+  Root-->>Res: refer to .com NS
+  Res->>TLD: A? www.example.com
+  TLD-->>Res: refer to example.com NS
+  Res->>Auth: A? www.example.com
+  Auth-->>Res: 93.184.216.34 (TTL 300)
+  Res-->>App: 93.184.216.34
+  Note over Res: caches each step for its TTL
+\`\`\`
+
+> [!TIP]
+> The recursive resolver does the iterative walk (root → TLD → authoritative); the app just asks once. "Recursive" describes the *service contract* (give me the final answer); "iterative" describes the *walk* the resolver performs. Senior candidates keep these straight.
+
+## Record types you must know
+
+| Record | Maps | Notes |
+|---|---|---|
+| **A** | name → IPv4 | the workhorse |
+| **AAAA** | name → IPv6 | quad-A |
+| **CNAME** | name → another name (alias) | cannot coexist with other records at same node; not allowed at zone apex |
+| **MX** | domain → mail servers (+ priority) | lower priority value wins |
+| **TXT** | name → free text | SPF, DKIM, domain ownership verification |
+| **NS** | zone → authoritative name servers | the delegation glue |
+| **SOA** | zone → start-of-authority (serial, refresh, TTL) | one per zone |
+| **PTR** | IP → name | reverse DNS (in-addr.arpa) |
+| **SRV** | service → host:port | used by SIP, LDAP, Kubernetes |
+| **CAA** | domain → which CAs may issue certs | hardening |
+
+> [!WARNING]
+> **CNAME at the apex** (\`example.com\` itself) is illegal because the apex must carry SOA/NS records and CNAME can't coexist. Providers fake it with ALIAS/ANAME/flattening. Bite a lot of teams pointing a root domain at a CDN.
+
+## TTL & caching — the latency/failover trade-off
+
+Every record carries a **TTL**. Resolvers cache for that long. TTL is a dial:
+
+- **High TTL** (hours/days): fewer lookups, lower latency, but slow to propagate changes — a failover or IP change is invisible until caches expire.
+- **Low TTL** (30–60s): fast failover and traffic shifting, but more DNS query load and more dependence on resolver availability.
+
+> [!DANGER]
+> DNS is a *probabilistic* failover mechanism, not instant: clients, OS, browsers and resolvers all cache, and some ignore your TTL. **Don't rely on DNS for sub-second failover.** For fast failover use anycast + health-checked VIPs / load balancers; use DNS (with low TTL + weighted/geo/latency routing like Route 53) for coarse, regional steering.
+
+> [!SUCCESS]
+> **Why DNS matters for performance:** it's the first round trip before *anything* else. Cold DNS adds 20–120ms. Mitigate with caching, \`dns-prefetch\`/\`preconnect\` hints, fewer distinct hostnames (avoid domain sharding on HTTP/2), and resolvers close to users (anycast). It's also a top SPOF and DDoS target — which is why big sites use multiple independent DNS providers.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `dig: trace, record types & TTL`,
+                code: `# Watch the full recursive walk root -> TLD -> authoritative
+$ dig +trace www.example.com
+
+# Just the answer, short
+$ dig +short A www.example.com
+93.184.216.34
+
+# Inspect TTL (the number before IN) — counts DOWN in a cached resolver
+$ dig www.example.com
+;; ANSWER SECTION:
+www.example.com.   300   IN   A   93.184.216.34   # TTL = 300s
+
+# Other record types
+$ dig +short MX example.com          # 10 mail.example.com.
+$ dig +short TXT example.com         # "v=spf1 include:_spf.example.com ~all"
+$ dig +short NS example.com
+$ dig -x 93.184.216.34               # reverse (PTR)
+
+# Query a specific resolver, bypass local cache
+$ dig @1.1.1.1 www.example.com`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `Difference between a recursive resolver and an authoritative server?`,
+                a: `The recursive resolver does the iterative walk (root -> TLD -> authoritative) on the client's behalf and caches the result. The authoritative server holds the actual zone data and is the source of truth for its domain.`
+              },
+              {
+                q: `Recursive vs iterative — what's the distinction?`,
+                a: `Recursive = the resolver promises to return the final answer to the client. Iterative = the step-by-step walk the resolver itself performs against root, TLD, and authoritative servers.`
+              },
+              {
+                q: `Why can't you put a CNAME at a zone apex (root domain)?`,
+                a: `The apex must hold SOA and NS records, and a CNAME cannot coexist with any other record at the same name. Providers work around it with ALIAS/ANAME/CNAME-flattening.`
+              },
+              {
+                q: `What's an MX record and how is priority interpreted?`,
+                a: `Maps a domain to its mail servers with a numeric priority; the LOWER priority value is preferred. Equal values load-balance.`
+              },
+              {
+                q: `What are TXT records commonly used for?`,
+                a: `Free-form text used for SPF, DKIM, DMARC email auth, and domain-ownership verification challenges.`
+              },
+              {
+                q: `How does DNS TTL trade off against failover speed?`,
+                a: `High TTL = fewer lookups + lower latency but slow propagation/failover. Low TTL = fast failover and traffic shifting but more query load and resolver dependence.`
+              },
+              {
+                q: `Why is DNS unreliable for sub-second failover?`,
+                a: `Caching happens at the OS, browser, app, and resolver layers, and some clients ignore TTL. Propagation is best-effort, so DNS is coarse regional steering, not instant failover. Use anycast + health-checked VIPs for fast failover.`
+              },
+              {
+                q: `Which transport and port does DNS use, and when does it switch?`,
+                a: `UDP/53 by default; switches to TCP/53 when the response is too large (truncated, TC bit set) or for zone transfers. DoT uses 853, DoH uses 443.`
+              },
+              {
+                q: `What does an NS record do?`,
+                a: `Delegates a zone to its authoritative name servers — it's the glue that lets the parent (e.g. .com) point queries at your domain's servers.`
+              },
+              {
+                q: `How can DNS improve global latency and availability?`,
+                a: `Anycast routes users to the nearest resolver/edge; geo/latency/weighted routing (e.g. Route 53) steers traffic regionally; multiple independent DNS providers mitigate it being a SPOF/DDoS target.`
+              },
+              {
+                q: `What is a PTR record?`,
+                a: `Reverse DNS — maps an IP back to a name via the in-addr.arpa (IPv4) or ip6.arpa (IPv6) tree. Used by mail servers for sender reputation checks.`
+              },
+              {
+                q: `What does a SOA record contain and why does it matter?`,
+                a: `Start Of Authority: the primary NS, admin email, zone serial number, and refresh/retry/expire/minimum-TTL timers. The serial drives secondary-server zone synchronisation.`
+              }
+            ]
+          },
+          {
+            title: `TLS / HTTPS — handshake, certificates & trust`,
+            notes: `## What HTTPS actually buys you
+
+Three guarantees, in order of how interviewers probe them:
+1. **Confidentiality** — symmetric encryption of the byte stream (eavesdroppers see ciphertext).
+2. **Integrity** — AEAD/MAC detects tampering in flight.
+3. **Authentication** — the certificate proves you're talking to the *real* server (not a man-in-the-middle). This is the part that matters most and the part beginners forget.
+
+> [!WARNING]
+> Encryption *without* authentication is near-useless against an active attacker — you'd have a perfectly private channel to the attacker. The certificate + chain of trust is what makes HTTPS meaningful.
+
+## The TLS 1.3 handshake (1-RTT)
+
+\`\`\`mermaid
+sequenceDiagram
+  participant C as Client
+  participant S as Server
+  C->>S: ClientHello<br/>(supported ciphers, key_share, SNI=host)
+  Note over C,S: client guesses params, sends its DH key share
+  S->>C: ServerHello (key_share, selected cipher)<br/>{EncryptedExtensions, Certificate,<br/>CertificateVerify, Finished}
+  Note over C: verify cert chain + signature,<br/>derive session keys
+  C->>S: {Finished}
+  Note over C,S: application data flows — 1 RTT total
+\`\`\`
+
+TLS 1.3 is a major upgrade interviewers care about:
+- **1-RTT** handshake (down from 2 in TLS 1.2) — the client sends its key share in the *first* flight, so keys are ready after one round trip.
+- **0-RTT resumption** — a returning client can send data in the very first packet using a pre-shared key (PSK). **Caveat: 0-RTT data is replayable**, so only use it for idempotent requests.
+- **Forward secrecy is mandatory** — ephemeral Diffie-Hellman (ECDHE) only; compromising the server's long-term key later can't decrypt past captured traffic.
+- Dropped all the legacy weak crypto (RSA key exchange, RC4, CBC, SHA-1). Cipher suites are slimmed to AEAD (e.g. \`TLS_AES_128_GCM_SHA256\`, \`TLS_CHACHA20_POLY1305_SHA256\`).
+
+> [!TIP]
+> Memorise the RTT line: **TLS 1.2 = 2-RTT, TLS 1.3 = 1-RTT, TLS 1.3 resumption / QUIC = 0-RTT.** Each saved round trip is real latency, especially on mobile (high RTT). Plus the TCP handshake underneath; QUIC folds transport+TLS into one.
+
+## Certificates, CA & the chain of trust (PKI)
+
+A certificate binds a **public key** to an **identity** (domain), **signed** by a Certificate Authority.
+
+\`\`\`mermaid
+flowchart TB
+  Root["Root CA cert<br/>(self-signed, in OS/browser trust store)"]
+  Inter["Intermediate CA cert<br/>(signed by Root)"]
+  Leaf["Leaf / server cert<br/>(signed by Intermediate, CN/SAN=example.com)"]
+  Root -->|signs| Inter -->|signs| Leaf
+  Leaf -.served by server + intermediate.-> Client
+  Client((Client validates:<br/>chain to a trusted root,<br/>not expired, not revoked,<br/>name matches SNI))
+\`\`\`
+
+Validation the client performs:
+1. Build the chain leaf → intermediate(s) → a root in its **trust store**.
+2. Verify each signature, validity dates, **name match** (SAN must include the hostname; CN is legacy).
+3. Check **revocation** (CRL, or OCSP / OCSP stapling — server staples a fresh signed "still valid" proof to avoid a client-side OCSP round trip).
+
+> [!DANGER]
+> Common production pitfalls: (1) **missing intermediate** — works in your browser (it caches intermediates) but fails for strict clients like Java/curl; always serve the full chain. (2) **hostname mismatch** — cert SAN doesn't include the name you connected to. (3) **expired cert** — the #1 outage; automate renewal (ACME/Let's Encrypt). (4) **clock skew** breaks validity checks.
+
+## SNI & mutual TLS
+
+- **SNI (Server Name Indication)**: the client puts the target hostname in the ClientHello (in cleartext in TLS ≤1.3, unless ECH) so a server hosting many domains on one IP picks the right cert. Without SNI, virtual hosting over HTTPS is impossible. **ECH (Encrypted Client Hello)** is the emerging fix to hide SNI from on-path observers.
+- **Mutual TLS (mTLS)**: the *client* also presents a certificate and the server validates it. Used for service-to-service auth in zero-trust meshes (Istio/Linkerd), high-security APIs. Authentication becomes bidirectional — no bearer tokens to leak.
+
+> [!EU]
+> For EU/regulated workloads, TLS is table stakes but not sufficient: GDPR/eIDAS and sector rules push toward **encryption in transit *and* at rest**, mTLS for internal service auth, and sometimes data-residency-aware termination (terminate TLS inside the region, not at a foreign edge). Be ready to discuss where TLS is terminated relative to the data-protection boundary.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `openssl s_client — inspect the handshake & chain`,
+                code: `# Full handshake, cert chain, negotiated protocol/cipher, SNI
+$ openssl s_client -connect example.com:443 -servername example.com </dev/null
+...
+---
+Certificate chain
+ 0 s:CN=example.com                 # leaf
+   i:C=US, O=DigiCert, CN=DigiCert TLS RSA SHA256 2020 CA1   # issuer = intermediate
+ 1 s:C=US, O=DigiCert, CN=DigiCert TLS RSA SHA256 2020 CA1   # intermediate
+   i:C=US, O=DigiCert Inc, CN=DigiCert Global Root CA        # issuer = root
+---
+SSL-Session:
+    Protocol  : TLSv1.3
+    Cipher    : TLS_AES_256_GCM_SHA384
+    Verify return code: 0 (ok)
+
+# Just expiry dates (catch the #1 outage before it happens)
+$ echo | openssl s_client -connect example.com:443 2>/dev/null \\
+    | openssl x509 -noout -dates -subject
+notBefore=Jan 30 00:00:00 2026 GMT
+notAfter=Apr 30 23:59:59 2026 GMT
+subject=CN=example.com
+
+# Was the full chain served? (omit -showcerts intermediates => clients may fail)
+$ openssl s_client -connect example.com:443 -showcerts </dev/null | grep -c 'BEGIN CERT'`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `What three guarantees does TLS provide, and which is most overlooked?`,
+                a: `Confidentiality (encryption), integrity (tamper detection), and authentication (the cert proves server identity). Authentication is most overlooked — encryption without it just gives you a private channel to an attacker.`
+              },
+              {
+                q: `How many round trips does the TLS 1.3 handshake take vs 1.2?`,
+                a: `TLS 1.3 = 1-RTT (client sends its key share in ClientHello). TLS 1.2 = 2-RTT. Resumption / QUIC can do 0-RTT.`
+              },
+              {
+                q: `What is 0-RTT in TLS 1.3 and what's its danger?`,
+                a: `A resuming client sends application data in its first flight using a pre-shared key, saving a round trip. The danger is replay: 0-RTT early data can be replayed by an attacker, so restrict it to idempotent requests.`
+              },
+              {
+                q: `What does 'forward secrecy' mean and how does TLS 1.3 enforce it?`,
+                a: `Compromising the server's long-term private key later cannot decrypt previously captured sessions, because each session uses ephemeral Diffie-Hellman (ECDHE) keys. TLS 1.3 mandates ephemeral key exchange (no static RSA).`
+              },
+              {
+                q: `Walk the certificate chain of trust.`,
+                a: `Leaf (server) cert is signed by an intermediate CA, which is signed (transitively) by a root CA whose self-signed cert sits in the client's trust store. The client builds and verifies the chain leaf -> intermediate -> trusted root.`
+              },
+              {
+                q: `Why does a site work in the browser but fail in Java/curl with a cert error?`,
+                a: `Usually a missing intermediate certificate. Browsers cache/fetch intermediates (AIA), but stricter clients require the server to send the full chain. Always serve leaf + intermediates.`
+              },
+              {
+                q: `What is SNI and why is it required for HTTPS virtual hosting?`,
+                a: `Server Name Indication carries the target hostname in the ClientHello so a server with many certs on one IP can select the right one. Without it, the server can't know which cert to present before the encrypted request.`
+              },
+              {
+                q: `What is mutual TLS and where is it used?`,
+                a: `Both client and server present and validate certificates, making authentication bidirectional. Common for service-to-service auth in zero-trust service meshes (Istio/Linkerd) and high-security APIs, removing reliance on bearer tokens.`
+              },
+              {
+                q: `What does OCSP stapling solve?`,
+                a: `Instead of each client making its own OCSP request to check revocation (latency + privacy leak + CA availability dependency), the server periodically fetches a signed 'not revoked' proof and staples it into the handshake.`
+              },
+              {
+                q: `How does the client verify the cert matches the site?`,
+                a: `The connected hostname must appear in the certificate's Subject Alternative Name (SAN) list; CN is legacy/deprecated for this. Mismatch => name-mismatch error even if the chain is valid.`
+              },
+              {
+                q: `Name two TLS 1.3 cipher suites and what AEAD gives you.`,
+                a: `TLS_AES_128_GCM_SHA256 and TLS_CHACHA20_POLY1305_SHA256. AEAD (Authenticated Encryption with Associated Data) combines confidentiality and integrity in one primitive, eliminating insecure MAC-then-encrypt mistakes.`
+              },
+              {
+                q: `What is the single most common TLS-related outage and the fix?`,
+                a: `Expired certificates. Fix by automating issuance/renewal with ACME (e.g. Let's Encrypt) and alerting well before expiry; also serve the full chain and keep clocks in sync.`
+              }
+            ]
+          },
+          {
+            title: `HTTP deep dive — methods, status, headers & HTTP/1.1 vs 2 vs 3`,
+            notes: `## Request / response anatomy
+
+\`\`\`text
+GET /api/orders/42 HTTP/1.1        <- request line: METHOD PATH VERSION
+Host: api.example.com              <- mandatory header in HTTP/1.1
+Accept: application/json           <- content negotiation
+Authorization: Bearer eyJ...
+If-None-Match: "v3-abc"            <- conditional (caching)
+                                   <- blank line ends headers
+(body, for POST/PUT)
+
+HTTP/1.1 200 OK                    <- status line: VERSION CODE REASON
+Content-Type: application/json
+ETag: "v3-abc"
+Cache-Control: max-age=60
+Content-Length: 57
+
+{"id":42,"status":"shipped"}
+\`\`\`
+
+## Methods: safety & idempotency (a favourite probe)
+
+- **Safe** = no server state change (read-only): GET, HEAD, OPTIONS.
+- **Idempotent** = N identical requests have the same effect as 1: GET, HEAD, PUT, DELETE, OPTIONS. **POST is NOT idempotent**; **PATCH generally isn't** either.
+
+| Method | Safe | Idempotent | Typical use |
+|---|---|---|---|
+| GET | ✅ | ✅ | read |
+| HEAD | ✅ | ✅ | metadata only |
+| OPTIONS | ✅ | ✅ | capabilities / CORS preflight |
+| PUT | ❌ | ✅ | full replace (create-or-overwrite at known URI) |
+| DELETE | ❌ | ✅ | remove (2nd delete = already gone, same end state) |
+| POST | ❌ | ❌ | create / non-idempotent action |
+| PATCH | ❌ | usually ❌ | partial update |
+
+> [!TIP]
+> Idempotency drives **retry safety**. A client/proxy can safely retry GET/PUT/DELETE on a timeout; retrying POST risks double-charging. For at-least-once delivery, give POST an **Idempotency-Key** header so the server dedupes — standard senior answer for payment APIs.
+
+## Status codes the senior interview probes
+
+| Code | Meaning | The nuance they want |
+|---|---|---|
+| 201 Created | resource created | return \`Location\` header pointing to it |
+| 204 No Content | success, empty body | PUT/DELETE that returns nothing |
+| 301 vs 308 | permanent redirect | 301 historically lets clients switch POST→GET; **308 preserves method+body** |
+| 302 vs 307 | temporary redirect | 307 **preserves method+body**, 302 often degrades POST→GET |
+| 304 Not Modified | conditional GET hit | revalidation via ETag/If-None-Match — saves bandwidth, keeps caching |
+| 401 vs 403 | auth | 401 = *not authenticated* (who are you?); 403 = *authenticated but not allowed* |
+| 409 Conflict | state conflict | optimistic-concurrency / version clash |
+| 422 Unprocessable | semantic validation failed | syntactically valid JSON, business rule broke (vs 400 malformed) |
+| 429 Too Many Requests | rate limited | pair with \`Retry-After\` |
+| 503 Service Unavailable | overloaded/down | transient; \`Retry-After\`; backoff target |
+
+> [!WARNING]
+> **301/308 are cached aggressively** by browsers — a wrong permanent redirect is sticky and painful to undo. Use 302/307 while unsure. And **401 vs 403** trips people up: 401 means "authenticate (and here's the challenge)", 403 means "I know who you are and you still can't."
+
+## Headers that matter
+
+- **Caching**: \`Cache-Control: max-age=60, must-revalidate, no-store, private/public\`; \`ETag\` + \`If-None-Match\` (validation token) or \`Last-Modified\` + \`If-Modified-Since\` → **304**. \`Vary\` tells caches which request headers change the response.
+- **Content negotiation**: \`Accept\`, \`Accept-Encoding\` (gzip/br), \`Accept-Language\`, \`Content-Type\`.
+- **CORS**: browser same-origin policy gate. Simple requests check \`Access-Control-Allow-Origin\`; non-simple ones do an **OPTIONS preflight** checking \`Allow-Methods/Headers\`. CORS is enforced by the *browser*, not the server — it's not a server-side security boundary.
+- **Cookies**: \`Set-Cookie: id=…; Secure; HttpOnly; SameSite=Lax\`. HttpOnly hides from JS (XSS mitigation), Secure = HTTPS-only, SameSite mitigates CSRF.
+
+## HTTP/1.1 vs HTTP/2 vs HTTP/3
+
+\`\`\`mermaid
+flowchart LR
+  subgraph H1["HTTP/1.1 — head-of-line at the app layer"]
+    direction TB
+    c1["1 request per connection at a time<br/>(pipelining unused).<br/>Browsers open ~6 TCP conns to parallelise"]
+  end
+  subgraph H2["HTTP/2 — one TCP conn, many streams"]
+    direction TB
+    c2["Multiplexed streams (interleaved frames),<br/>HPACK header compression, server push,<br/>BUT one TCP loss stalls ALL streams (TCP HOL)"]
+  end
+  subgraph H3["HTTP/3 — over QUIC (UDP)"]
+    direction TB
+    c3["Independent streams in QUIC:<br/>loss in one stream doesn't block others.<br/>0/1-RTT setup, conn migration"]
+  end
+  H1 --> H2 --> H3
+\`\`\`
+
+| Feature | HTTP/1.1 | HTTP/2 | HTTP/3 |
+|---|---|---|---|
+| Transport | TCP | TCP | **QUIC over UDP** |
+| Concurrency | 1/conn (≈6 conns) | multiplexed streams | multiplexed streams |
+| Header compression | none (plaintext) | **HPACK** | QPACK |
+| Server push | no | yes (largely deprecated) | yes (rare) |
+| HOL blocking | app + TCP | **TCP-level only** | **none** |
+| Handshake | TCP(+TLS) | TCP+TLS | **QUIC 1-RTT / 0-RTT** |
+| Setup latency | highest | medium | lowest |
+
+> [!SUCCESS]
+> The crisp senior summary: **HTTP/2 fixed application-layer HOL blocking (multiplexing) but inherited TCP-layer HOL blocking. HTTP/3 fixes that by moving to QUIC, where streams are independent**, so a lost packet only stalls its own stream. HTTP/2 multiplexing also killed the old HTTP/1 hacks — domain sharding, sprites, inlining — which can now *hurt* (they fragment one efficient connection).
+
+> [!DANGER]
+> Don't enable **HTTP/2 server push** reflexively — it's deprecated by browsers (Chrome removed it) because it often pushes resources the client already cached, wasting bandwidth. Use \`<link rel=preload>\` / \`103 Early Hints\` instead.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `curl -v: see the real request/response + a 304 revalidation`,
+                code: `$ curl -v https://api.example.com/orders/42
+* Connected to api.example.com (93.184.216.34) port 443
+* using HTTP/2
+> GET /orders/42 HTTP/2
+> host: api.example.com
+> accept: */*
+>
+< HTTP/2 200
+< content-type: application/json
+< etag: "v3-abc"
+< cache-control: max-age=60
+<
+{"id":42,"status":"shipped"}
+
+# Conditional GET -> 304 (server sends NO body, saves bandwidth)
+$ curl -v -H 'If-None-Match: "v3-abc"' https://api.example.com/orders/42
+> if-none-match: "v3-abc"
+< HTTP/2 304          # Not Modified — use your cached copy
+
+# Force HTTP version + show timing breakdown
+$ curl --http3 -o /dev/null -s -w 'dns:%{time_namelookup} connect:%{time_connect} tls:%{time_appconnect} ttfb:%{time_starttransfer}\\n' https://api.example.com/`,
+                runnable: false
+              },
+              {
+                lang: `text`,
+                title: `Raw HTTP/1.1 over a socket (what's actually on the wire)`,
+                code: `# You can type this by hand against a server (plaintext :80):
+#   $ printf 'GET / HTTP/1.1\\r\\nHost: example.com\\r\\nConnection: close\\r\\n\\r\\n' | nc example.com 80
+
+GET / HTTP/1.1\\r\\n
+Host: example.com\\r\\n          <- REQUIRED in 1.1 (enables virtual hosting)
+User-Agent: manual/1.0\\r\\n
+Accept: */*\\r\\n
+Connection: close\\r\\n          <- ask server to close after response
+\\r\\n                            <- blank line terminates the header block
+
+HTTP/1.1 200 OK\\r\\n
+Content-Type: text/html\\r\\n
+Content-Length: 1256\\r\\n
+\\r\\n
+<!doctype html>...              <- exactly Content-Length bytes of body
+
+# Notes: lines end with CRLF (\\r\\n). Without Content-Length the server
+# uses chunked transfer-encoding or closes the connection to signal EOF.`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `Which HTTP methods are idempotent, and is POST one of them?`,
+                a: `GET, HEAD, OPTIONS, PUT, DELETE are idempotent. POST is NOT (and PATCH usually isn't). Idempotency means repeating the request yields the same end state.`
+              },
+              {
+                q: `Difference between 'safe' and 'idempotent' methods?`,
+                a: `Safe = no server state change at all (GET/HEAD/OPTIONS). Idempotent = repeating has the same effect as doing it once (adds PUT/DELETE). All safe methods are idempotent, but not vice versa.`
+              },
+              {
+                q: `301 vs 308 redirect?`,
+                a: `Both are permanent. 301 historically allows clients to change POST->GET on redirect; 308 guarantees the method and body are preserved. Both are cached aggressively.`
+              },
+              {
+                q: `302 vs 307 redirect?`,
+                a: `Both temporary. 307 strictly preserves method and body; 302 is often (mis)handled by changing POST->GET. Prefer 307 when you must keep a POST a POST.`
+              },
+              {
+                q: `How does a 304 Not Modified work and why is it valuable?`,
+                a: `Client sends a conditional GET with If-None-Match (ETag) or If-Modified-Since. If unchanged, the server returns 304 with no body, so the client reuses its cache — saving bandwidth while still revalidating freshness.`
+              },
+              {
+                q: `401 vs 403?`,
+                a: `401 Unauthorized = not authenticated (credentials missing/invalid; comes with a WWW-Authenticate challenge). 403 Forbidden = authenticated but not permitted to do this.`
+              },
+              {
+                q: `When do you use 409 vs 422?`,
+                a: `409 Conflict = the request conflicts with current resource state (e.g. version/optimistic-concurrency clash). 422 Unprocessable Entity = syntactically valid but fails business/semantic validation (vs 400 for malformed syntax).`
+              },
+              {
+                q: `What pairs with 429 and 503?`,
+                a: `A Retry-After header telling the client when to retry. 429 = client hit a rate limit; 503 = server transiently unavailable/overloaded. Clients should back off (ideally exponential + jitter).`
+              },
+              {
+                q: `Is CORS a server-side security control?`,
+                a: `No. CORS is enforced by the browser to relax the same-origin policy for cross-origin JS. It does not protect the server from non-browser clients (curl ignores it); real authorization must be server-side.`
+              },
+              {
+                q: `What problem did HTTP/2 multiplexing solve, and what did it NOT solve?`,
+                a: `It solved application-layer head-of-line blocking by interleaving many streams over one TCP connection (plus HPACK header compression). It did NOT solve TCP-layer HOL blocking — one lost TCP segment still stalls all streams.`
+              },
+              {
+                q: `How does HTTP/3 eliminate transport-layer HOL blocking?`,
+                a: `It runs over QUIC (UDP) where each stream has independent delivery; a lost packet only stalls its own stream, not the others. QUIC also folds the TLS handshake in for 0/1-RTT setup and supports connection migration.`
+              },
+              {
+                q: `Why are old HTTP/1 optimizations (domain sharding, sprites) harmful on HTTP/2?`,
+                a: `HTTP/2 multiplexes everything efficiently over one connection; sharding opens extra connections that fragment that efficiency and duplicate TLS/handshake cost. Concatenation/inlining defeat fine-grained caching.`
+              },
+              {
+                q: `What's the standard way to make POST safe to retry?`,
+                a: `Use an Idempotency-Key header: the client sends a unique key, the server stores the result per key and returns the same response on retry, deduping at-least-once delivery (the payment-API pattern).`
+              }
+            ]
+          },
+          {
+            title: `APIs & application protocols — REST, realtime, gRPC, LBs & resilience`,
+            notes: `## REST maturity (Richardson Model)
+
+- **Level 0** — one URI, one verb (RPC-over-HTTP / SOAP-ish).
+- **Level 1** — resources (many URIs), still one verb.
+- **Level 2** — HTTP verbs + status codes used properly (where most "REST" APIs actually live — and that's fine).
+- **Level 3** — HATEOAS: responses embed hypermedia links to next actions. Rare in practice; be honest that Level 2 is the pragmatic norm.
+
+> [!TIP]
+> A senior take: "Most real APIs are Level 2 REST, and that's a deliberate trade-off, not a failure. Add idempotency keys, pagination (cursor over offset for stable paging), versioning (URI vs header), and consistent error envelopes — those matter more day-to-day than HATEOAS purity."
+
+## Realtime: WebSockets vs SSE vs long-polling
+
+| Approach | Direction | Transport | Best for | Watch out |
+|---|---|---|---|---|
+| **Long-polling** | client pulls | repeated HTTP | legacy fallback | latency, connection churn |
+| **SSE** (Server-Sent Events) | server → client only | one HTTP/1.1+ stream | live feeds, notifications, token streaming | one-way; ~6-conn limit on HTTP/1.1; auto-reconnect built in |
+| **WebSocket** | full duplex | \`Upgrade\` from HTTP to ws/wss | chat, games, collaborative editing | not request/response; needs its own auth, backpressure, LB stickiness |
+
+> [!SUCCESS]
+> Decision rule: **server-push only? use SSE** (simpler, rides plain HTTP, reconnects itself, great for LLM token streams). **Need bidirectional low-latency? use WebSockets.** Reach for long-polling only as a fallback for ancient clients.
+
+## gRPC / HTTP-2
+
+gRPC = RPC over HTTP/2 with Protobuf. Strengths: binary + schema (small/fast), HTTP/2 multiplexing, **streaming** (unary, server-, client-, bidi-stream), strong codegen contracts. Weaknesses: not natively browser-callable (needs grpc-web/proxy), harder to debug than JSON, intermediaries must speak HTTP/2. Use it for **internal service-to-service**; expose REST/JSON or GraphQL at the edge.
+
+## Load balancers: L4 vs L7
+
+\`\`\`mermaid
+flowchart LR
+  Client --> LB
+  subgraph LB["Load Balancer"]
+    direction TB
+    L4["L4 (transport):<br/>routes by IP:port,<br/>no payload inspection,<br/>fast, protocol-agnostic"]
+    L7["L7 (application):<br/>reads HTTP path/host/headers,<br/>TLS termination, routing,<br/>retries, sticky sessions"]
+  end
+  LB --> S1[svc A]
+  LB --> S2[svc B]
+\`\`\`
+
+| | L4 (e.g. NLB, HAProxy TCP) | L7 (e.g. ALB, nginx, Envoy) |
+|---|---|---|
+| Operates on | IP + port (TCP/UDP) | HTTP/gRPC semantics |
+| Sees payload | no (can passthrough TLS) | yes (usually terminates TLS) |
+| Routing | by connection 4-tuple | by host/path/header/cookie |
+| Features | raw speed, any protocol | path routing, retries, rewrites, WAF, sticky |
+| Cost | low overhead, low latency | more CPU, richer control |
+
+> [!WARNING]
+> **Preserving the client IP** behind an L7 proxy: the backend sees the proxy's IP, not the user's. Use \`X-Forwarded-For\` / \`Forwarded\` (L7) or the **PROXY protocol** (L4) — and only trust those headers from your own load balancers, never from the open internet (spoofable).
+
+## Proxies & reverse proxies
+
+- **Forward proxy** sits in front of *clients* (egress control, caching, anonymity).
+- **Reverse proxy** sits in front of *servers* (nginx/Envoy/HAProxy): TLS termination, load balancing, caching, compression, routing, rate limiting, the security edge. This is where you implement cross-cutting concerns once instead of per-service.
+
+## Resilience at the network edge
+
+The senior set-piece — name them and how they interact:
+- **Timeouts** — *every* network call needs one (connect + read/overall). No timeout = a slow dependency exhausts your threads/connections (cascading failure). Set them shorter than your caller's timeout (timeout budgets).
+- **Retries** — only for idempotent ops or with idempotency keys; always with **exponential backoff + jitter** to avoid retry storms / thundering herds. Cap total attempts and the time budget.
+- **Circuit breaker** — after N failures, "open" the circuit and fail fast for a cooldown instead of hammering a sick dependency; "half-open" probes recovery. Stops cascading failures and gives the dependency room to recover.
+- **Rate limiting / load shedding** — token bucket / sliding window; return **429 + Retry-After**. Shed load (drop low-priority traffic) before you fall over. Bulkheads isolate pools so one dependency can't drown the rest.
+
+> [!DANGER]
+> **Retries + missing timeouts = built-in amplification attack on yourself.** A blip causes everyone to retry simultaneously, multiplying load on an already-struggling service (retry storm). Always combine: bounded timeout → bounded retries with jittered backoff → circuit breaker → 429/load-shed. Interviewers specifically probe whether you know retries alone are dangerous.
+
+> [!EU]
+> When designing the edge for EU traffic, terminate TLS and apply rate limiting/WAF within the data-residency region, and ensure observability (logs with IPs, headers) respects GDPR — pseudonymise/limit retention of client IPs captured via X-Forwarded-For.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `nginx reverse proxy: TLS term, headers, rate limit, timeouts`,
+                code: `# /etc/nginx/nginx.conf (excerpt) — an L7 reverse proxy edge
+http {
+  # token-bucket rate limit: 10 req/s per client IP, burst 20
+  limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+
+  upstream orders { server 10.0.1.10:8080; server 10.0.1.11:8080; }
+
+  server {
+    listen 443 ssl http2;
+    server_name api.example.com;
+    ssl_certificate     /etc/ssl/fullchain.pem;   # leaf + intermediates!
+    ssl_certificate_key /etc/ssl/privkey.pem;
+
+    location /orders/ {
+      limit_req zone=api burst=20 nodelay;          # -> 503/429 when exceeded
+      proxy_pass http://orders;
+
+      # preserve real client identity to the backend
+      proxy_set_header Host              $host;
+      proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+
+      # bounded timeouts — never leave a call open forever
+      proxy_connect_timeout 2s;
+      proxy_read_timeout    5s;
+      proxy_next_upstream   error timeout http_502;  # retry next backend
+    }
+  }
+}`,
+                runnable: false
+              },
+              {
+                lang: `text`,
+                title: `HAProxy: L4 vs L7 backends side by side`,
+                code: `# L4 (mode tcp): routes by connection only, can pass TLS through untouched
+frontend tls_passthrough
+    bind :443
+    mode tcp
+    default_backend db_tcp
+backend db_tcp
+    mode tcp
+    balance leastconn
+    server db1 10.0.2.10:5432 check
+
+# L7 (mode http): inspects host/path, terminates TLS, smart routing + health
+frontend web
+    bind :443 ssl crt /etc/haproxy/cert.pem alpn h2,http/1.1
+    mode http
+    use_backend orders if { path_beg /orders }
+    default_backend web_pool
+backend orders
+    mode http
+    balance roundrobin
+    option httpchk GET /health           # active L7 health check
+    timeout connect 2s
+    timeout server  5s
+    http-request set-header X-Forwarded-For %[src]
+    server o1 10.0.1.10:8080 check
+    server o2 10.0.1.11:8080 check`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is Richardson Maturity Level 2 vs Level 3, and where do real APIs sit?`,
+                a: `Level 2 = proper use of multiple resources, HTTP verbs, and status codes. Level 3 adds HATEOAS (hypermedia links to next actions). Most production APIs are pragmatic Level 2; Level 3 is rare.`
+              },
+              {
+                q: `When choose SSE over WebSockets?`,
+                a: `SSE when you only need server->client push (live feeds, notifications, LLM token streaming): it rides plain HTTP, auto-reconnects, and is simpler. WebSockets when you need full-duplex, low-latency bidirectional traffic (chat, games).`
+              },
+              {
+                q: `What are the trade-offs of gRPC, and where do you use it?`,
+                a: `Pros: binary Protobuf (small/fast), HTTP/2 multiplexing, streaming, strong codegen contracts. Cons: not natively browser-callable, harder to debug, needs HTTP/2-aware intermediaries. Use internally service-to-service; expose REST/GraphQL at the edge.`
+              },
+              {
+                q: `L4 vs L7 load balancer — the core difference?`,
+                a: `L4 routes by IP:port without reading the payload (fast, protocol-agnostic, can passthrough TLS). L7 understands HTTP/gRPC, so it can route by host/path/header, terminate TLS, retry, and do sticky sessions — at higher CPU cost.`
+              },
+              {
+                q: `How do you preserve the client's real IP behind a proxy, and what's the risk?`,
+                a: `X-Forwarded-For / Forwarded header at L7, or the PROXY protocol at L4. Risk: these headers are spoofable, so only trust them from your own load balancers, never from arbitrary internet clients.`
+              },
+              {
+                q: `Forward proxy vs reverse proxy?`,
+                a: `A forward proxy sits in front of clients (egress control, caching, anonymity). A reverse proxy sits in front of servers (TLS termination, load balancing, routing, rate limiting) — the place to implement cross-cutting concerns once.`
+              },
+              {
+                q: `Why must every network call have a timeout?`,
+                a: `Without one, a slow/hung dependency holds threads and connections indefinitely, exhausting the pool and cascading the failure upstream. Bounded timeouts (shorter than the caller's) contain the blast radius.`
+              },
+              {
+                q: `Why are retries without backoff and jitter dangerous?`,
+                a: `Synchronized retries from many clients create a retry storm / thundering herd that amplifies load on an already-struggling service. Exponential backoff plus random jitter spreads attempts out; cap attempts and total time budget.`
+              },
+              {
+                q: `How does a circuit breaker work and what does it prevent?`,
+                a: `After a failure threshold it 'opens' and fails fast for a cooldown instead of calling a sick dependency; 'half-open' lets a probe test recovery before 'closing'. It prevents cascading failures and gives the dependency room to recover.`
+              },
+              {
+                q: `Which operations are safe to retry automatically?`,
+                a: `Idempotent ones (GET/PUT/DELETE), or non-idempotent ones (POST) only when paired with an idempotency key so the server dedupes. Blindly retrying POST risks duplicate side effects (double charge).`
+              },
+              {
+                q: `How should a service signal it's rate-limited or overloaded, and what should clients do?`,
+                a: `Return 429 (rate limited) or 503 (overloaded) with a Retry-After header. Clients should back off (exponential + jitter) and respect the hint rather than hammering. Servers should load-shed low-priority traffic before collapsing.`
+              },
+              {
+                q: `What is a timeout budget across a call chain?`,
+                a: `Each hop's timeout must be shorter than its caller's remaining budget, so inner calls fail and surface before the outer call gives up — preventing wasted work and ensuring deterministic failure rather than pile-ups.`
               }
             ]
           }
@@ -44961,318 +48794,1643 @@ myapp.example.com {
       },
       {
         id: `11.3`,
-        title: `Spring Security, OAuth2 & Per-User Data Isolation`,
-        hours: 4,
+        title: `Spring Security, OAuth2 & Authn/Authz`,
+        hours: 7,
         sections: [
           {
-            title: `Spring Security — JWT, OAuth2 & Multi-Tenant Isolation`,
-            notes: `## Spring Security — JWT, OAuth2 & Multi-Tenant Isolation
+            title: `Authentication vs Authorization: the mental model`,
+            notes: `# Authentication vs Authorization
 
-### Spring Security Architecture
+These two words get blurred in casual speech but are **architecturally distinct** and are enforced at **different points** in the request lifecycle. Getting the vocabulary precise is the first thing a staff interviewer probes.
 
-\`\`\`
-Request → FilterChain → SecurityContextHolder → Controller
+| Concept | Question it answers | HTTP failure | When it runs |
+|---|---|---|---|
+| **Authentication (AuthN)** | *Who are you?* | **401 Unauthorized** | Early — establishes identity |
+| **Authorization (AuthZ)** | *What are you allowed to do?* | **403 Forbidden** | Late — after identity is known |
 
-Key filters (in order):
-  1. SecurityContextPersistenceFilter  — loads SecurityContext for request
-  2. UsernamePasswordAuthenticationFilter — handles form login
-  3. BearerTokenAuthenticationFilter  — handles JWT/Bearer token
-  4. ExceptionTranslationFilter        — converts AuthException → 401/403
-  5. FilterSecurityInterceptor          — enforces method/URL authorization
-\`\`\`
+> [!TIP]
+> Mnemonic: **AuthN = identity** (the *N* in *identification*), **AuthZ = privileges** (the *Z* in *authoriZe*). 401 means "I don't know who you are." 403 means "I know exactly who you are, and you still can't do this."
 
-### JWT Authentication Flow
+## 401 vs 403 — the part people get wrong
 
-\`\`\`
-1. Client: POST /auth/login {username, password}
-2. Server: authenticate, generate JWT:
-   Header: {"alg":"HS256","typ":"JWT"}
-   Payload: {"sub":"user@email.com","roles":["ROLE_USER"],"exp":1234567890}
-   Signature: HMAC-SHA256(base64(header) + "." + base64(payload), secret)
-3. Client: stores JWT (localStorage or httpOnly cookie)
-4. Client: every request → Authorization: Bearer <token>
-5. Server: validate signature + expiry → extract user from claims → SecurityContext
+| | 401 Unauthorized | 403 Forbidden |
+|---|---|---|
+| Meaning | Not authenticated (or bad/expired credentials) | Authenticated but lacks permission |
+| Client fix | (Re-)authenticate, refresh token | Nothing — escalate or give up |
+| \`WWW-Authenticate\` header | **Required by RFC 7235** | Not applicable |
+| Spring entry point | \`AuthenticationEntryPoint\` | \`AccessDeniedHandler\` |
+| Triggered by | \`AuthenticationException\` | \`AccessDeniedException\` |
 
-JWT is stateless: server doesn't store sessions.
-Trade-off: can't revoke a JWT before expiry (use refresh tokens + short expiry)
-\`\`\`
+> [!WARNING]
+> The HTTP spec naming is historically backwards: **401 is literally named "Unauthorized" but actually means "unauthenticated."** Don't let the name fool you. A senior engineer who returns 401 when they mean 403 (or vice-versa) leaks information and confuses clients/retries.
 
-### Spring Security Configuration (Spring Boot 3.x)
+## The three nouns: Principal, Credentials, Authorities
 
-\`\`\`java
-@Configuration @EnableWebSecurity @EnableMethodSecurity
-public class SecurityConfig {
+Spring Security's \`Authentication\` object holds three things:
 
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        return http
-            .csrf(AbstractHttpConfigurer::disable)      // disable for stateless REST
-            .sessionManagement(s ->
-                s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**", "/actuator/health").permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .anyRequest().authenticated()
-            )
-            .addFilterBefore(jwtAuthFilter(), UsernamePasswordAuthenticationFilter.class)
-            .build();
-    }
+- **Principal** — *who* (usually a \`UserDetails\` or the username/subject). Available via \`SecurityContextHolder.getContext().getAuthentication().getPrincipal()\`.
+- **Credentials** — *proof* (password, token). Cleared after successful authentication so it isn't kept in memory longer than needed.
+- **Authorities** — *what they can do* (\`GrantedAuthority\` collection: \`ROLE_ADMIN\`, \`SCOPE_orders:read\`, ...). This is the raw material AuthZ checks against.
 
-    @Bean
-    public JwtAuthenticationFilter jwtAuthFilter() {
-        return new JwtAuthenticationFilter(jwtService, userDetailsService);
-    }
-}
+\`\`\`mermaid
+flowchart LR
+  A[Incoming request] --> B{Authenticated?}
+  B -- No --> C[401 + WWW-Authenticate<br/>AuthenticationEntryPoint]
+  B -- Yes --> D[SecurityContext has Authentication<br/>principal + authorities]
+  D --> E{Authorized for this resource?}
+  E -- No --> F[403 Forbidden<br/>AccessDeniedHandler]
+  E -- Yes --> G[Controller / business logic]
 \`\`\`
 
-### Google OAuth2 Flow
+## Where each is enforced
 
-\`\`\`
-1. User clicks "Sign in with Google"
-2. Browser → GET /oauth2/authorization/google (Spring redirects to Google)
-3. Google → user consents → redirect to /login/oauth2/code/google?code=XXX
-4. Spring → exchanges code for access token (server-to-server call to Google)
-5. Spring → fetches user info (email, name) from Google
-6. OAuth2UserService: look up or create user in DB
-7. Generate JWT, return to client
+- **AuthN** is enforced once, early, by an authentication filter (form login, bearer token, etc.). Its output is an authenticated \`Authentication\` placed in the \`SecurityContext\`.
+- **AuthZ** is enforced in (at least) two layers:
+  1. **Web/URL layer** — \`authorizeHttpRequests\` (the \`AuthorizationFilter\`, formerly \`FilterSecurityInterceptor\`).
+  2. **Method layer** — \`@PreAuthorize\`/\`@PostAuthorize\` around service/controller methods.
+  3. **Domain/data layer** — ownership filtering inside queries (covered in the multi-tenant section).
 
-Spring Boot config:
-spring.security.oauth2.client.registration.google:
-  client-id: \${GOOGLE_CLIENT_ID}
-  client-secret: \${GOOGLE_CLIENT_SECRET}
-  scope: [openid, email, profile]
-  redirect-uri: https://myapp.com/login/oauth2/code/google
-\`\`\`
+> [!SUCCESS]
+> **Defense in depth:** never rely on a single AuthZ layer. URL rules guard coarse access; method security guards business operations; data-layer ownership checks guard *which rows* a user may touch. A staff candidate is expected to argue for all three.
 
-### Per-User Data Isolation Patterns
-
-\`\`\`java
-// Row-Level Security (RLS) — enforce at query level
-// Every query automatically scoped to current user
-
-@Repository
-public interface OrderRepository extends JpaRepository<Order, Long> {
-    // Always filter by userId — no way to accidentally fetch all users' orders
-    List<Order> findByUserId(Long userId);
-
-    @Query("SELECT o FROM Order o WHERE o.userId = :userId AND o.id = :id")
-    Optional<Order> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
-}
-
-// Service layer: always pass userId from SecurityContext
-@Service
-public class OrderService {
-    private Long currentUserId() {
-        var auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((UserPrincipal) auth.getPrincipal()).getUserId();
-    }
-
-    public Order getOrder(Long orderId) {
-        Long userId = currentUserId();
-        return orderRepo.findByIdAndUserId(orderId, userId)
-            .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderId));
-        // 404 not 403 — don't reveal existence of resources to other users
-    }
-}
-
-// PostgreSQL RLS (database-level enforcement):
-// CREATE POLICY user_isolation ON orders
-//   USING (user_id = current_setting('app.current_user_id')::bigint);
-// ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-// → Even a broken query can't return another user's data
-\`\`\`
-
-### Method-Level Security
-
-\`\`\`java
-// @EnableMethodSecurity required in SecurityConfig
-
-@Service
-public class AdminService {
-    @PreAuthorize("hasRole('ADMIN')")
-    public List<User> getAllUsers() { ... }
-
-    @PostAuthorize("returnObject.userId == authentication.principal.userId or hasRole('ADMIN')")
-    public UserProfile getUserProfile(Long userId) { ... }
-
-    @PreAuthorize("#userId == authentication.principal.userId or hasRole('ADMIN')")
-    public void deleteUser(Long userId) { ... }
-}
-\`\`\``,
+> [!DANGER]
+> A classic bug: enforcing AuthZ only in the UI (hiding a button) while the API endpoint is wide open. AuthZ MUST be server-side. The button is UX; the filter/method check is security.`,
             code: [
-              `import io.jsonwebtoken.*;
-import io.jsonwebtoken.security.Keys;
-import org.springframework.security.core.*;
-import org.springframework.security.authentication.*;
-import org.springframework.web.filter.OncePerRequestFilter;
-import jakarta.servlet.http.*;
-import java.security.Key;
-import java.util.*;
+              {
+                lang: `java`,
+                title: `Custom 401 entry point and 403 handler (distinguishing the two)`,
+                code: `import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.stereotype.Component;
 
-// JWT Service
-public class JwtService {
-    private final Key key;
-    private final long expirationMs;
+import java.time.Instant;
+import java.util.Map;
 
-    public JwtService(String secret, long expirationMs) {
-        this.key = Keys.hmacShaKeyFor(secret.getBytes());
-        this.expirationMs = expirationMs;
-    }
-
-    public String generateToken(String email, List<String> roles) {
-        return Jwts.builder()
-            .subject(email)
-            .claim("roles", roles)
-            .issuedAt(new Date())
-            .expiration(new Date(System.currentTimeMillis() + expirationMs))
-            .signWith(key)
-            .compact();
-    }
-
-    public Claims extractClaims(String token) {
-        return Jwts.parser()
-            .verifyWith((javax.crypto.SecretKey) key)
-            .build()
-            .parseSignedClaims(token)
-            .getPayload();
-    }
-
-    public boolean isValid(String token) {
-        try {
-            extractClaims(token);
-            return true;
-        } catch (JwtException e) {
-            return false;
-        }
-    }
-
-    public String extractEmail(String token) { return extractClaims(token).getSubject(); }
-}
-
-// JWT Filter — runs on every request
-class JwtAuthenticationFilter extends OncePerRequestFilter {
-    private final JwtService jwtService;
-    private final org.springframework.security.core.userdetails.UserDetailsService uds;
-
-    JwtAuthenticationFilter(JwtService js,
-            org.springframework.security.core.userdetails.UserDetailsService uds) {
-        this.jwtService = js;
-        this.uds = uds;
-    }
+/** Returns 401 when the caller is NOT authenticated (unknown / bad / expired credentials). */
+@Component
+class Json401EntryPoint implements AuthenticationEntryPoint {
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
-    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res,
-            jakarta.servlet.FilterChain chain) throws Exception {
-        String header = req.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
-            chain.doFilter(req, res);
-            return;
-        }
+    public void commence(HttpServletRequest req, HttpServletResponse res,
+                         AuthenticationException ex) throws java.io.IOException {
+        // RFC 7235: a 401 MUST carry a WWW-Authenticate challenge.
+        res.setHeader("WWW-Authenticate", "Bearer realm=\\"api\\", error=\\"invalid_token\\"");
+        write(res, HttpStatus.UNAUTHORIZED, "unauthenticated", ex.getMessage(), req);
+    }
 
-        String token = header.substring(7);
-        if (!jwtService.isValid(token)) {
-            chain.doFilter(req, res);
-            return;
-        }
+    private void write(HttpServletResponse res, HttpStatus status, String code,
+                       String msg, HttpServletRequest req) throws java.io.IOException {
+        res.setStatus(status.value());
+        res.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        mapper.writeValue(res.getOutputStream(), Map.of(
+            "timestamp", Instant.now().toString(),
+            "status", status.value(),
+            "error", code,
+            "message", msg,
+            "path", req.getRequestURI()));
+    }
+}
 
-        String email = jwtService.extractEmail(token);
-        var userDetails = uds.loadUserByUsername(email);
-        var auth = new UsernamePasswordAuthenticationToken(
-            userDetails, null, userDetails.getAuthorities());
-        auth.setDetails(new org.springframework.security.web.authentication
-            .WebAuthenticationDetailsSource().buildDetails(req));
-        org.springframework.security.core.context.SecurityContextHolder
-            .getContext().setAuthentication(auth);
+/** Returns 403 when the caller IS authenticated but lacks the required authority. */
+@Component
+class Json403Handler implements AccessDeniedHandler {
+    private final ObjectMapper mapper = new ObjectMapper();
 
-        chain.doFilter(req, res);
+    @Override
+    public void handle(HttpServletRequest req, HttpServletResponse res,
+                       AccessDeniedException ex) throws java.io.IOException {
+        res.setStatus(HttpStatus.FORBIDDEN.value());
+        res.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        mapper.writeValue(res.getOutputStream(), Map.of(
+            "timestamp", Instant.now().toString(),
+            "status", 403,
+            "error", "forbidden",
+            "message", "You are authenticated but not permitted to perform this action",
+            "path", req.getRequestURI()));
     }
 }`,
-              `import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.*;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.web.*;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.context.annotation.Bean;
+                runnable: false,
+                note: `Requires Spring Security 6 / Spring Boot 3 + Jackson on the classpath. Wire these into the SecurityFilterChain via .exceptionHandling(e -> e.authenticationEntryPoint(...).accessDeniedHandler(...)).`
+              },
+              {
+                lang: `java`,
+                title: `Reading the current principal & authorities from the SecurityContext`,
+                code: `import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.GrantedAuthority;
 
-// Complete Spring Security config for JWT + OAuth2 hybrid
-@EnableWebSecurity
-@org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
-@org.springframework.context.annotation.Configuration
-public class SecurityConfig {
+public final class CurrentUser {
 
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http,
-            JwtAuthenticationFilter jwtFilter) throws Exception {
-        return http
-            // Stateless REST — no CSRF needed, no sessions
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+    private CurrentUser() {}
 
-            // URL authorization
-            .authorizeHttpRequests(auth -> auth
-                // Public
-                .requestMatchers("/api/auth/**",
-                                 "/actuator/health", "/actuator/info",
-                                 "/oauth2/**", "/login/**").permitAll()
-                // Admin only
-                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                // Any authenticated user
-                .anyRequest().authenticated()
-            )
-
-            // JWT filter before Spring's auth filter
-            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-
-            // OAuth2 login (Google)
-            .oauth2Login(oauth2 -> oauth2
-                .userInfoEndpoint(u -> u.userService(customOAuth2UserService()))
-                .successHandler(oAuth2SuccessHandler())  // generates JWT after Google login
-            )
-
-            // Custom 401/403 responses (JSON, not redirect)
-            .exceptionHandling(ex -> ex
-                .authenticationEntryPoint((req, res, e) -> {
-                    res.setStatus(401);
-                    res.setContentType("application/json");
-                    res.getWriter().write("{"error":"Unauthorized"}");
-                })
-                .accessDeniedHandler((req, res, e) -> {
-                    res.setStatus(403);
-                    res.setContentType("application/json");
-                    res.getWriter().write("{"error":"Forbidden"}");
-                })
-            )
-            .build();
+    /** The authenticated username/subject, or null if anonymous. */
+    public static String username() {
+        Authentication a = SecurityContextHolder.getContext().getAuthentication();
+        if (a == null || !a.isAuthenticated() || "anonymousUser".equals(a.getPrincipal())) {
+            return null;
+        }
+        return a.getName();           // principal's identifier
     }
 
-    private org.springframework.security.oauth2.client.userinfo.OAuth2UserService<
-        org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest,
-        org.springframework.security.oauth2.core.user.OAuth2User> customOAuth2UserService() {
-        return new org.springframework.security.oauth2.client.userinfo
-            .DefaultOAuth2UserService(); // override to save user to DB
+    public static boolean hasAuthority(String authority) {
+        Authentication a = SecurityContextHolder.getContext().getAuthentication();
+        if (a == null) return false;
+        for (GrantedAuthority ga : a.getAuthorities()) {
+            if (ga.getAuthority().equals(authority)) return true;   // e.g. "ROLE_ADMIN"
+        }
+        return false;
     }
+}
 
-    private org.springframework.security.web.authentication.AuthenticationSuccessHandler
-            oAuth2SuccessHandler() {
-        return (req, res, auth) -> {
-            // Extract email from OAuth2 principal, generate JWT, redirect to UI
-            res.sendRedirect("/v2/?token=<jwt>");
-        };
-    }
-}`
+// In a controller you can also inject identity directly:
+//   public Foo me(@org.springframework.security.core.annotation.AuthenticationPrincipal
+//                 org.springframework.security.core.userdetails.UserDetails user) { ... }`,
+                runnable: false,
+                note: `SecurityContextHolder uses a ThreadLocal by default (MODE_THREADLOCAL). In reactive/async code you must propagate the context explicitly.`
+              }
             ],
             flashcards: [
               {
-                q: `What is the difference between authentication and authorization in Spring Security?`,
-                a: `Authentication: verifying WHO you are — "is this user who they claim to be?" Spring Security handles this via AuthenticationManager, supporting: username/password (UserDetailsService), JWT (BearerTokenAuthenticationFilter), OAuth2 (social login). Result: a populated SecurityContext with an Authentication object. Authorization: verifying WHAT you're allowed to do — "can this authenticated user access this resource?" Spring enforces this via: URL patterns (authorizeHttpRequests), method annotations (@PreAuthorize), domain object security (@PostAuthorize). 401 = not authenticated. 403 = authenticated but not authorized.`
+                q: `What does HTTP 401 actually mean, despite being named "Unauthorized"?`,
+                a: `It means *unauthenticated* — the server does not know who you are (no credentials, or bad/expired ones). The fix is to (re-)authenticate. Per RFC 7235 a 401 MUST include a WWW-Authenticate header.`
               },
               {
-                q: `What are the security trade-offs of JWT vs server-side sessions?`,
-                a: `JWT (stateless): server stores nothing — scales horizontally easily, no shared session store needed. Trade-off: can't revoke a JWT before expiry. If a JWT is stolen or user is banned, the token remains valid until expiry. Mitigation: short expiry (15-60 min) + refresh tokens stored in DB (can be revoked). Server-side sessions (stateful): server stores session in DB/Redis — can revoke instantly (delete session), but requires sticky sessions or shared session store in multi-node deployments. For most APIs: JWT with short expiry + refresh token rotation is the right choice. For high-security (banking): server-side sessions or short JWT + refresh token revocation list.`
+                q: `What does HTTP 403 mean and how does the client recover?`,
+                a: `403 means the caller IS authenticated but lacks permission for this resource. There is no client-side recovery — re-authenticating will not help. (Some apps deliberately return 404 instead to avoid leaking existence.)`
               },
               {
-                q: `How do you implement per-user data isolation in a multi-tenant Spring Boot app?`,
-                a: `Three layers of defense: (1) Query-level: always filter by userId in repository methods — findByIdAndUserId() not findById(). Inject current user from SecurityContextHolder, never trust userId from request body. (2) Service-level: extract userId from SecurityContext in service methods. Return 404 (not 403) if a user tries to access another user's resource — don't reveal existence. (3) Database-level (optional): PostgreSQL Row Level Security (RLS) — CREATE POLICY on tables that automatically filters by current_setting('app.user_id'). Even a flawed query can't leak cross-tenant data. Method security (@PreAuthorize) provides a fourth layer for admin operations.`
+                q: `Name the three components of a Spring Security Authentication object.`,
+                a: `Principal (who — usually UserDetails/subject), Credentials (proof — password/token, cleared after auth), and Authorities (a GrantedAuthority collection describing what the user can do).`
+              },
+              {
+                q: `Which Spring component handles a 401 and which handles a 403?`,
+                a: `AuthenticationEntryPoint handles authentication failures (401, on AuthenticationException). AccessDeniedHandler handles authorization failures (403, on AccessDeniedException). Both wired via exceptionHandling().`
+              },
+              {
+                q: `Why is enforcing authorization only in the UI a security bug?`,
+                a: `Hiding a button is UX, not security. The API endpoint is independently callable. AuthZ must be enforced server-side at the URL/method/data layer; otherwise an attacker just calls the endpoint directly.`
+              },
+              {
+                q: `What are the three layers of defense-in-depth for authorization?`,
+                a: `URL/web layer (authorizeHttpRequests / AuthorizationFilter), method layer (@PreAuthorize/@PostAuthorize), and data/domain layer (ownership filtering inside queries, optionally DB row-level security).`
+              },
+              {
+                q: `What is the difference between a "role" and an "authority" in Spring Security?`,
+                a: `An authority is any granted permission string. A role is just an authority by convention prefixed with ROLE_. hasRole("ADMIN") checks for the authority "ROLE_ADMIN"; hasAuthority("ROLE_ADMIN") is equivalent.`
+              },
+              {
+                q: `Where does Spring store the Authentication for the current request by default?`,
+                a: `In SecurityContextHolder, which by default uses a ThreadLocal (MODE_THREADLOCAL). The SecurityContextPersistenceFilter / SecurityContextHolderFilter loads and clears it per request.`
+              },
+              {
+                q: `When is AuthN enforced relative to AuthZ in the request lifecycle?`,
+                a: `AuthN runs early (an authentication filter establishes identity once). AuthZ runs later, after identity is known, at the AuthorizationFilter and again at method invocation.`
+              },
+              {
+                q: `Why are credentials cleared from the Authentication after successful login?`,
+                a: `To minimize the window the raw password/token sits in memory (reducing exposure via heap dumps/logs). eraseCredentials is true by default on the ProviderManager.`
+              },
+              {
+                q: `A request arrives with no token to a protected endpoint. 401 or 403?`,
+                a: `401 — there are no credentials so the user is unauthenticated. 403 is reserved for authenticated-but-not-permitted.`
+              },
+              {
+                q: `What header is mandatory on a 401 response and what does it convey?`,
+                a: `WWW-Authenticate. It tells the client which authentication scheme/realm to use (e.g. Bearer realm="api"). Omitting it on a 401 violates RFC 7235.`
+              }
+            ]
+          },
+          {
+            title: `The Spring Security filter chain`,
+            notes: `# The Spring Security filter chain
+
+Spring Security is, at its core, **a single servlet \`Filter\` (\`FilterChainProxy\`) that delegates to an ordered list of internal filters**. Everything — login, CSRF, session handling, bearer-token parsing, authorization — is a filter in this chain. Understanding the order is the single most-probed Spring Security topic at senior level.
+
+\`\`\`mermaid
+flowchart TD
+  REQ[HTTP request] --> DF[DelegatingFilterProxy<br/>bridges servlet to Spring]
+  DF --> FCP[FilterChainProxy<br/>picks matching SecurityFilterChain]
+  FCP --> F1[1. SecurityContextHolderFilter<br/>load SecurityContext from session]
+  F1 --> F2[2. CsrfFilter<br/>validate CSRF token for mutating requests]
+  F2 --> F3[3. UsernamePasswordAuthenticationFilter<br/>handles POST /login form submit]
+  F3 --> F4[4. BearerTokenAuthenticationFilter<br/>parse Authorization: Bearer for resource server]
+  F4 --> F5[5. ExceptionTranslationFilter<br/>catches AuthN/AuthZ exceptions to 401/403]
+  F5 --> F6[6. AuthorizationFilter<br/>URL authorization rules]
+  F6 --> SERVLET[DispatcherServlet to Controller]
+\`\`\`
+
+> [!TIP]
+> The mnemonic for the *critical pairing*: **\`ExceptionTranslationFilter\` sits immediately BEFORE \`AuthorizationFilter\`.** When AuthZ throws \`AccessDeniedException\` (or AuthN throws), it bubbles up to \`ExceptionTranslationFilter\`, which decides 401 (entry point) vs 403 (denied handler). If you put a custom filter *after* \`AuthorizationFilter\`, its exceptions won't be translated.
+
+## The key filters (ordered)
+
+| # | Filter | Job |
+|---|---|---|
+| 1 | \`DisableEncodeUrlFilter\` | Stop session id leaking into URLs |
+| 2 | \`SecurityContextHolderFilter\` | Load \`SecurityContext\` from the repository (session) at start, clear at end |
+| 3 | \`HeaderWriterFilter\` | Security headers (X-Content-Type-Options, etc.) |
+| 4 | \`CorsFilter\` | CORS preflight handling |
+| 5 | \`CsrfFilter\` | Reject mutating requests without a valid CSRF token (stateful apps) |
+| 6 | \`LogoutFilter\` | Handle \`/logout\` |
+| 7 | \`UsernamePasswordAuthenticationFilter\` | Form login: turn username+password into an \`Authentication\` |
+| 8 | \`BearerTokenAuthenticationFilter\` | Resource server: parse \`Authorization: Bearer <jwt>\` |
+| 9 | \`RequestCacheAwareFilter\` | Replay the original request after login |
+| 10 | \`AnonymousAuthenticationFilter\` | Give unauthenticated requests an "anonymous" Authentication |
+| 11 | \`SessionManagementFilter\` | Session fixation protection, concurrency control |
+| 12 | \`ExceptionTranslationFilter\` | Translate AuthN/AuthZ exceptions → 401/403 |
+| 13 | \`AuthorizationFilter\` | Apply \`authorizeHttpRequests\` rules (replaced \`FilterSecurityInterceptor\` in SS6) |
+
+> [!WARNING]
+> In **Spring Security 6** the old \`FilterSecurityInterceptor\` was replaced by \`AuthorizationFilter\`, and \`SecurityContextPersistenceFilter\` was replaced by \`SecurityContextHolderFilter\` (which no longer *saves* the context automatically — you save explicitly, important for performance). Interviewers love asking what changed from SS5 → SS6.
+
+## How authentication is performed inside a filter
+
+\`\`\`mermaid
+flowchart LR
+  AF[Auth filter] -->|builds unauth token| AM[AuthenticationManager<br/>ProviderManager]
+  AM -->|delegates| AP[AuthenticationProvider<br/>DaoAuthenticationProvider]
+  AP -->|loadUserByUsername| UDS[UserDetailsService]
+  UDS -->|UserDetails w/ hashed pw| AP
+  AP -->|matches?| PE[PasswordEncoder<br/>BCrypt]
+  PE -->|ok| AP
+  AP -->|authenticated token| AM
+  AM -->|store| SC[SecurityContext]
+\`\`\`
+
+- **\`AuthenticationManager\`** (impl \`ProviderManager\`) is the entry point. It loops over...
+- **\`AuthenticationProvider\`s** until one supports the token. \`DaoAuthenticationProvider\` is the standard username/password one.
+- It calls **\`UserDetailsService.loadUserByUsername\`** to fetch the stored user (with the hashed password + authorities).
+- It verifies the submitted password against the stored hash with the **\`PasswordEncoder\`** — use **\`BCryptPasswordEncoder\`** (adaptive, salted) or \`DelegatingPasswordEncoder\` (the default, prefix \`{bcrypt}\`).
+
+> [!DANGER]
+> Never store plaintext passwords and never use fast hashes (MD5/SHA-256 raw) for passwords. BCrypt/Argon2/PBKDF2 are deliberately slow and salted. The default Spring \`PasswordEncoderFactories.createDelegatingPasswordEncoder()\` stores an \`{id}\` prefix so you can rotate algorithms over time.
+
+> [!SUCCESS]
+> Each \`http\` configuration produces one \`SecurityFilterChain\` bean. You can register **multiple** chains with \`@Order\` and \`securityMatcher(...)\` — e.g. one stateless chain for \`/api/**\` and one stateful form-login chain for \`/app/**\`. The first chain whose matcher matches wins.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Complete SecurityConfig: DaoAuthenticationProvider + BCrypt + custom handlers`,
+                code: `import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.core.userdetails.*;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+public class SecurityConfig {
+
+    /** UserDetailsService: where Spring looks up users. Swap for a JDBC/JPA-backed impl. */
+    @Bean
+    UserDetailsService userDetailsService(PasswordEncoder encoder) {
+        UserDetails admin = User.withUsername("admin")
+            .password(encoder.encode("admin-secret"))   // stored as BCrypt hash
+            .roles("ADMIN", "USER")                       // -> ROLE_ADMIN, ROLE_USER
+            .build();
+        UserDetails user = User.withUsername("alice")
+            .password(encoder.encode("alice-secret"))
+            .roles("USER")
+            .build();
+        return new InMemoryUserDetailsManager(admin, user);
+    }
+
+    /** BCrypt: adaptive, salted, slow-by-design. Cost factor 10 default; bump for stronger machines. */
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(12);
+    }
+
+    /** The provider that ties UserDetailsService + PasswordEncoder together. */
+    @Bean
+    DaoAuthenticationProvider daoAuthenticationProvider(UserDetailsService uds, PasswordEncoder pe) {
+        DaoAuthenticationProvider p = new DaoAuthenticationProvider();
+        p.setUserDetailsService(uds);
+        p.setPasswordEncoder(pe);
+        return p;
+    }
+
+    /** Expose the AuthenticationManager (needed by a custom login endpoint, see JWT section). */
+    @Bean
+    AuthenticationManager authenticationManager(AuthenticationConfiguration cfg) throws Exception {
+        return cfg.getAuthenticationManager();
+    }
+
+    @Bean
+    SecurityFilterChain filterChain(HttpSecurity http,
+                                    Json401EntryPoint entryPoint,
+                                    Json403Handler deniedHandler) throws Exception {
+        http
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/public/**", "/login", "/error").permitAll()
+                .requestMatchers("/admin/**").hasRole("ADMIN")
+                .anyRequest().authenticated())
+            .httpBasic(AbstractHttpConfigurer::disable)   // turn off / on per your needs
+            .formLogin(form -> form.loginProcessingUrl("/login").permitAll())
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(entryPoint)     // 401
+                .accessDeniedHandler(deniedHandler));     // 403
+        return http.build();
+    }
+}`,
+                runnable: false,
+                note: `Spring Boot 3 / Spring Security 6. Uses the lambda DSL (the only style in SS6). InMemoryUserDetailsManager is for demos; use a JPA/JDBC-backed UserDetailsService in production.`
+              },
+              {
+                lang: `java`,
+                title: `JPA-backed UserDetailsService (production pattern)`,
+                code: `import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.*;
+import org.springframework.stereotype.Service;
+import java.util.List;
+
+@Service
+class JpaUserDetailsService implements UserDetailsService {
+
+    private final AppUserRepository users;   // a Spring Data JPA repository
+
+    JpaUserDetailsService(AppUserRepository users) { this.users = users; }
+
+    @Override
+    public UserDetails loadUserByUsername(String username) {
+        AppUser u = users.findByUsernameIgnoreCase(username)
+            .orElseThrow(() -> new UsernameNotFoundException("No user: " + username));
+
+        var authorities = u.getRoles().stream()
+            .map(role -> new SimpleGrantedAuthority("ROLE_" + role))   // role -> authority
+            .toList();
+
+        return org.springframework.security.core.userdetails.User
+            .withUsername(u.getUsername())
+            .password(u.getPasswordHash())     // already a BCrypt hash in DB
+            .authorities(authorities)
+            .accountLocked(!u.isEnabled())
+            .build();
+    }
+}
+
+// JPA entity & repo sketch:
+// @Entity class AppUser { String username; String passwordHash; boolean enabled;
+//                         @ElementCollection Set<String> roles; ... }
+// interface AppUserRepository extends JpaRepository<AppUser, Long> {
+//     Optional<AppUser> findByUsernameIgnoreCase(String username);
+// }`,
+                runnable: false,
+                note: `Returns Spring Security UserDetails from your domain user. Never load the raw password into logs; the hash stays in the DB column.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is FilterChainProxy and how does it relate to the servlet container?`,
+                a: `It is the single servlet Filter (bridged in via DelegatingFilterProxy) that Spring Security registers. It holds one or more SecurityFilterChains and delegates each request to the first chain whose matcher matches, running that chain's ordered internal filters.`
+              },
+              {
+                q: `Give the rough order of the core Spring Security 6 filters.`,
+                a: `SecurityContextHolderFilter → HeaderWriterFilter → CorsFilter → CsrfFilter → LogoutFilter → UsernamePasswordAuthenticationFilter → BearerTokenAuthenticationFilter → AnonymousAuthenticationFilter → SessionManagementFilter → ExceptionTranslationFilter → AuthorizationFilter.`
+              },
+              {
+                q: `Why must ExceptionTranslationFilter sit immediately before AuthorizationFilter?`,
+                a: `Because it catches the AuthenticationException/AccessDeniedException thrown downstream (by AuthorizationFilter or method security) and translates them into 401 (entry point) or 403 (denied handler). A filter placed after AuthorizationFilter would have its exceptions untranslated.`
+              },
+              {
+                q: `What replaced FilterSecurityInterceptor and SecurityContextPersistenceFilter in Spring Security 6?`,
+                a: `AuthorizationFilter replaced FilterSecurityInterceptor for URL authorization. SecurityContextHolderFilter replaced SecurityContextPersistenceFilter and no longer auto-saves the context (you save explicitly), which improves performance for stateless apps.`
+              },
+              {
+                q: `Walk through how DaoAuthenticationProvider authenticates a username/password.`,
+                a: `It calls UserDetailsService.loadUserByUsername to fetch the stored UserDetails (hashed password + authorities), then uses the PasswordEncoder to match the submitted password against the stored hash. On success it returns a fully authenticated token with authorities.`
+              },
+              {
+                q: `What is the role of ProviderManager?`,
+                a: `ProviderManager is the default AuthenticationManager. It iterates over a list of AuthenticationProviders, delegating to the first whose supports() returns true for the Authentication type, and (by default) erases credentials after success.`
+              },
+              {
+                q: `Why use BCrypt instead of SHA-256 for passwords?`,
+                a: `BCrypt is adaptive (configurable work factor), salted per-hash, and deliberately slow, resisting brute-force/GPU attacks. Raw SHA-256/MD5 are fast and unsalted, making password cracking trivial.`
+              },
+              {
+                q: `What is DelegatingPasswordEncoder and why is it the default?`,
+                a: `It stores an {id} prefix (e.g. {bcrypt}, {argon2}) with each hash so multiple algorithms coexist and can be rotated over time without breaking existing users. It is the default from PasswordEncoderFactories.createDelegatingPasswordEncoder().`
+              },
+              {
+                q: `How do you run a stateless chain for /api/** and a stateful chain for the rest?`,
+                a: `Define two SecurityFilterChain beans, each annotated with @Order, using http.securityMatcher("/api/**") on one. The first chain whose matcher matches a request handles it.`
+              },
+              {
+                q: `What does AnonymousAuthenticationFilter do and why does it matter?`,
+                a: `For requests with no authentication it sets an "anonymousUser" Authentication so downstream code never sees null. This is why you check for "anonymousUser"/isAuthenticated rather than just null when reading the principal.`
+              },
+              {
+                q: `In SS6 why doesn't SecurityContextHolderFilter automatically save the context?`,
+                a: `To avoid an unnecessary session write on every request (which forced session creation). You now save explicitly via the SecurityContextRepository when needed, which is a big win for stateless APIs that don't want sessions.`
+              },
+              {
+                q: `Which filter applies your authorizeHttpRequests() rules?`,
+                a: `AuthorizationFilter (SS6). It evaluates the AuthorizationManager built from your request matchers and throws AccessDeniedException on failure, which ExceptionTranslationFilter converts to 403.`
+              }
+            ]
+          },
+          {
+            title: `Stateful sessions vs stateless JWT`,
+            notes: `# Stateful sessions vs stateless JWT
+
+The first architectural fork: does the server **remember** the logged-in user (session) or does each request **carry self-contained proof** (token)?
+
+| Dimension | Stateful session (cookie + server session) | Stateless JWT (bearer token) |
+|---|---|---|
+| Server stores state? | **Yes** — session in memory/Redis | **No** — token is self-contained |
+| Credential transport | \`Set-Cookie: JSESSIONID\` (httpOnly) | \`Authorization: Bearer <jwt>\` (or cookie) |
+| Horizontal scaling | Needs sticky sessions or shared store | Trivial — any node can verify |
+| Revocation | Easy — delete the session | **Hard** — token valid until expiry |
+| CSRF risk | **Yes** (cookie auto-sent by browser) | No, if token in header (not auto-sent) |
+| XSS risk | Lower if cookie is httpOnly | High if token stored in JS-readable storage |
+| Token size on the wire | Small (just the id) | Larger (full claims every request) |
+| Best for | Classic server-rendered web apps, BFF | SPAs, mobile, microservice-to-microservice |
+
+> [!TIP]
+> The decision is mostly about **revocation vs scale**. Sessions give instant logout/revoke but need shared state. JWTs scale effortlessly but you can't easily "un-issue" a leaked token before it expires. Most mature systems land on **short-lived JWTs + a refresh mechanism + a small revocation list**, or a **BFF that holds the session and proxies to APIs**.
+
+## CSRF — why sessions need it and tokens (often) don't
+
+CSRF works because **browsers automatically attach cookies** to any request to a domain — including a forged \`<form>\` POST from a malicious site. The server sees a valid \`JSESSIONID\` and trusts it.
+
+- **Cookie/session auth → CSRF protection required.** Spring's \`CsrfFilter\` issues a synchronizer token (or double-submit cookie) that the attacker's site can't read or guess.
+- **Bearer-token-in-header auth → no CSRF needed.** A cross-site \`<form>\` can't set an \`Authorization\` header, and a malicious site can't read your token to add it. Hence the common \`csrf.disable()\` on stateless \`/api/**\` chains.
+
+> [!WARNING]
+> If you store a JWT in a **cookie**, you re-introduce CSRF risk and MUST re-enable CSRF protection (or use \`SameSite=Strict/Lax\`). "Stateless JWT" only avoids CSRF when the token travels in a header the browser does NOT auto-send.
+
+> [!DANGER]
+> Storing tokens in \`localStorage\` is XSS-vulnerable: any injected script can read it. Storing in an \`httpOnly\` cookie defeats XSS reads but reopens CSRF. There is no free lunch — the modern recommendation is httpOnly + SameSite cookies via a **BFF**, or short-lived in-memory tokens with refresh in an httpOnly cookie.
+
+> [!SUCCESS]
+> For a server-rendered monolith, **stateful form-login + sessions is simpler and safer** (instant revocation, CSRF handled for you). Don't reach for JWT reflexively — interviewers respect a candidate who picks sessions when sessions fit.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Full stateful form-login + session config (with CSRF, session fixation, concurrency)`,
+                code: `import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+
+@Configuration
+public class StatefulSecurityConfig {
+
+    @Bean
+    SecurityFilterChain web(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/", "/login", "/css/**", "/js/**").permitAll()
+                .anyRequest().authenticated())
+
+            // Form login renders Spring's default page (or point to your own)
+            .formLogin(form -> form
+                .loginPage("/login").permitAll()
+                .defaultSuccessUrl("/dashboard", true)
+                .failureUrl("/login?error"))
+
+            .logout(logout -> logout
+                .logoutUrl("/logout")
+                .invalidateHttpSession(true)        // server-side revocation: drop the session
+                .deleteCookies("JSESSIONID")
+                .logoutSuccessUrl("/login?logout"))
+
+            // CSRF IS ON by default for stateful apps. Cookie repo exposes the token to a SPA.
+            .csrf(csrf -> csrf
+                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                .sessionFixation(sf -> sf.migrateSession())   // new session id on login (anti-fixation)
+                .maximumSessions(1)                            // 1 concurrent session per user
+                .maxSessionsPreventsLogin(false));            // newest login wins, old one expires
+
+        return http.build();
+    }
+}`,
+                runnable: false,
+                note: `Spring Boot 3 / SS6. CSRF stays ON for cookie/session auth. sessionFixation().migrateSession() rotates the session id on login to defeat fixation attacks.`
+              },
+              {
+                lang: `yaml`,
+                title: `Spring session externalized to Redis (so any node can serve a session)`,
+                code: `# application.yml — makes sessions survive across a horizontally scaled fleet
+spring:
+  session:
+    store-type: redis
+    timeout: 30m
+    redis:
+      namespace: "myapp:sessions"
+      flush-mode: on_save
+  data:
+    redis:
+      host: redis.internal
+      port: 6379
+
+server:
+  servlet:
+    session:
+      cookie:
+        http-only: true       # JS cannot read it (XSS mitigation)
+        secure: true          # HTTPS only
+        same-site: lax        # CSRF mitigation for top-level navigations
+        name: SESSION
+# Dependency: org.springframework.session:spring-session-data-redis`,
+                runnable: false,
+                note: `Externalizing the session store removes the need for sticky load balancing while keeping instant server-side revocation — the pragmatic middle ground vs JWT.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the core trade-off between stateful sessions and stateless JWTs?`,
+                a: `Revocation vs scale. Sessions allow instant logout/revoke but require server-side shared state. JWTs scale trivially (any node verifies) but cannot be easily revoked before expiry.`
+              },
+              {
+                q: `Why are cookie/session apps vulnerable to CSRF but header-based bearer tokens generally are not?`,
+                a: `Browsers auto-attach cookies to every request to a domain, so a forged cross-site request carries the valid session. They do not auto-attach an Authorization header, and a malicious site cannot read your token to add it.`
+              },
+              {
+                q: `If you store a JWT in a cookie, what security control must you re-enable?`,
+                a: `CSRF protection (or rely on SameSite=Strict/Lax), because the JWT is now auto-sent by the browser just like a session cookie, reintroducing CSRF risk.`
+              },
+              {
+                q: `Why is storing a token in localStorage discouraged?`,
+                a: `localStorage is readable by any JavaScript on the page, so an XSS injection can exfiltrate the token. An httpOnly cookie is not JS-readable, mitigating XSS theft (but reintroducing CSRF).`
+              },
+              {
+                q: `What does sessionFixation().migrateSession() protect against?`,
+                a: `Session fixation: an attacker who pre-sets a victim's session id cannot reuse it after login because Spring issues a brand-new session id (migrating attributes) upon successful authentication.`
+              },
+              {
+                q: `How can you keep stateful sessions while scaling horizontally without sticky sessions?`,
+                a: `Externalize the session store (e.g. Spring Session backed by Redis) so any node can read/write the session; the cookie carries only the id. You keep instant revocation and gain stateless load balancing.`
+              },
+              {
+                q: `What is a BFF and why does it help with token storage?`,
+                a: `A Backend-For-Frontend holds the session/tokens server-side and exposes only an httpOnly+SameSite session cookie to the browser, proxying to downstream APIs. The browser never holds a bearer token, avoiding both XSS token theft and the JWT revocation problem.`
+              },
+              {
+                q: `Why might you deliberately disable CSRF on a /api/** chain?`,
+                a: `If the API is stateless and authenticates exclusively via a bearer token in the Authorization header (not a cookie), CSRF is not applicable, so the CsrfFilter is unnecessary overhead.`
+              },
+              {
+                q: `What does SameSite=Lax do for a session cookie?`,
+                a: `It prevents the cookie from being sent on most cross-site subrequests (e.g. forged POSTs) while still sending it on top-level navigations, mitigating CSRF without a synchronizer token in many cases.`
+              },
+              {
+                q: `Which auth model is generally better for a classic server-rendered monolith and why?`,
+                a: `Stateful form-login + sessions: simpler, CSRF handled automatically, and instant server-side logout/revocation. JWT adds complexity (refresh, revocation lists) that a single deployment rarely needs.`
+              },
+              {
+                q: `What is maxSessionsPreventsLogin(false) versus true?`,
+                a: `With maximumSessions(1): false means a new login is allowed and the oldest session is expired ("newest wins"); true means the new login is rejected while an existing session is active.`
+              },
+              {
+                q: `Why does a self-contained JWT make the request larger than a session cookie?`,
+                a: `A session cookie carries only a short opaque id; the server holds the data. A JWT carries all claims (subject, authorities, expiry, etc.) plus a signature on every request, so more bytes travel each time.`
+              }
+            ]
+          },
+          {
+            title: `JWT end-to-end: issue, validate, refresh, revoke`,
+            notes: `# JWT end-to-end
+
+A **JSON Web Token** is three Base64URL-encoded parts joined by dots:
+
+\`\`\`text
+header.payload.signature
+
+header   = {"alg":"HS256","typ":"JWT"}
+payload  = {"sub":"alice","authorities":["ROLE_USER"],"iat":...,"exp":...}
+signature = HMACSHA256( base64url(header) + "." + base64url(payload), secret )
+\`\`\`
+
+The signature binds the header+payload. Anyone can **read** a JWT (it's not encrypted — it's *signed*), but only the holder of the secret/private key can **forge** a valid one.
+
+## HMAC vs RSA signing
+
+| | HMAC (HS256) | RSA / ECDSA (RS256/ES256) |
+|---|---|---|
+| Key model | One shared secret | Private key signs, public key verifies |
+| Who can verify | Anyone with the secret (= anyone who can also forge) | Anyone with the public key (cannot forge) |
+| Best for | Single service issuing & verifying | Issuer separate from many verifiers (OAuth2 / JWKS) |
+| Key distribution | Must protect the shared secret everywhere | Publish public key via JWKS endpoint |
+
+> [!TIP]
+> Use **HMAC** when one service both issues and verifies. Use **RSA/ECDSA** when an authorization server issues tokens that *many independent* resource servers must verify — they only need the public key (typically fetched from a JWKS \`/.well-known/jwks.json\` endpoint).
+
+## Issue + validate sequence
+
+\`\`\`mermaid
+sequenceDiagram
+  participant C as Client
+  participant L as Login endpoint
+  participant AM as AuthenticationManager
+  participant API as Protected API
+  participant F as JwtAuthFilter
+
+  C->>L: POST /auth/login {user, pass}
+  L->>AM: authenticate(user, pass)
+  AM-->>L: authenticated (authorities)
+  L->>L: sign access JWT (exp 15m) + refresh JWT (exp 7d)
+  L-->>C: {accessToken, refreshToken}
+  Note over C: store access in memory,<br/>refresh in httpOnly cookie
+  C->>API: GET /orders  Authorization: Bearer <access>
+  API->>F: filter intercepts
+  F->>F: verify signature + exp + claims
+  F->>F: build Authentication, set SecurityContext
+  F-->>API: continue
+  API-->>C: 200 orders
+  Note over C,API: when access expires (401)...
+  C->>L: POST /auth/refresh (refresh token)
+  L-->>C: new access token
+\`\`\`
+
+## Access vs refresh tokens
+
+- **Access token** — short-lived (5–15 min), sent on every API call, carries authorities/scopes. Short life limits the blast radius of a leak.
+- **Refresh token** — long-lived (days/weeks), stored securely (httpOnly cookie), used *only* against the auth server to mint new access tokens. Should be **rotated** on each use (issue a new one, invalidate the old — detects theft via reuse).
+
+## Revocation strategies (the hard part)
+
+> [!WARNING]
+> A signed JWT is valid until \`exp\` no matter what — there's no built-in "logout." Strategies:
+
+1. **Short expiry + refresh** — accept that an access token can't be revoked; keep it short.
+2. **Denylist / blocklist** — store revoked token ids (\`jti\`) in Redis until their \`exp\`; the filter checks membership. Reintroduces a tiny bit of state.
+3. **Token version / "tokens-valid-after" timestamp** — store a per-user counter or timestamp; reject tokens issued before it. Logout/"log out everywhere" bumps the value.
+4. **Refresh-token rotation + reuse detection** — if an already-used refresh token reappears, revoke the whole family (signals theft).
+
+## Common JWT mistakes (interviewers WILL ask)
+
+> [!DANGER]
+> - **\`alg: none\`** — some libraries accepted an unsigned token if the header said \`alg:none\`. Always pin the expected algorithm; never let the token's header choose.
+> - **Algorithm confusion (RS256 → HS256)** — attacker changes \`alg\` to HS256 and signs with your *public* key as the HMAC secret. Mitigation: pin the algorithm, don't auto-select from the header.
+> - **No \`exp\` claim** — a token that never expires can never be revoked.
+> - **Trusting unverified claims / not checking signature** — decoding is not verifying.
+> - **Putting secrets/PII in the payload** — it's only Base64, fully readable.
+> - **Storing in localStorage** — XSS-readable (see previous section).
+> - **Not validating \`iss\`/\`aud\`** — a token minted for another service may be replayed against yours.`,
+            code: [
+              {
+                lang: `java`,
+                title: `COMPLETE: login endpoint that issues access + refresh JWTs (jjwt)`,
+                code: `import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import org.springframework.security.authentication.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.web.bind.annotation.*;
+import javax.crypto.SecretKey;
+import io.jsonwebtoken.security.Keys;
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/auth")
+class AuthController {
+
+    private final AuthenticationManager authManager;
+    private final SecretKey key;                  // HMAC secret (>= 256 bits for HS256)
+    private static final long ACCESS_TTL  = 15 * 60;            // 15 minutes
+    private static final long REFRESH_TTL = 7 * 24 * 60 * 60;   // 7 days
+
+    AuthController(AuthenticationManager am,
+                   @org.springframework.beans.factory.annotation.Value("\${jwt.secret}") String secret) {
+        this.authManager = am;
+        this.key = Keys.hmacShaKeyFor(secret.getBytes());       // throws if secret too short
+    }
+
+    record LoginRequest(String username, String password) {}
+    record TokenResponse(String accessToken, String refreshToken, long expiresIn) {}
+
+    @PostMapping("/login")
+    TokenResponse login(@RequestBody LoginRequest req) {
+        Authentication auth = authManager.authenticate(
+            new UsernamePasswordAuthenticationToken(req.username(), req.password()));
+
+        String roles = auth.getAuthorities().stream()
+            .map(GrantedAuthority::getAuthority)
+            .collect(Collectors.joining(","));
+
+        Instant now = Instant.now();
+        String access = Jwts.builder()
+            .setSubject(auth.getName())
+            .claim("authorities", roles)
+            .setId(UUID.randomUUID().toString())   // jti for revocation
+            .setIssuer("my-app")
+            .setAudience("my-api")
+            .setIssuedAt(Date.from(now))
+            .setExpiration(Date.from(now.plusSeconds(ACCESS_TTL)))
+            .signWith(key, SignatureAlgorithm.HS256)
+            .compact();
+
+        String refresh = Jwts.builder()
+            .setSubject(auth.getName())
+            .claim("type", "refresh")
+            .setId(UUID.randomUUID().toString())
+            .setIssuedAt(Date.from(now))
+            .setExpiration(Date.from(now.plusSeconds(REFRESH_TTL)))
+            .signWith(key, SignatureAlgorithm.HS256)
+            .compact();
+
+        return new TokenResponse(access, refresh, ACCESS_TTL);
+    }
+}`,
+                runnable: false,
+                note: `Needs io.jsonwebtoken:jjwt-api/jjwt-impl/jjwt-jackson and Spring. Store refresh tokens in an httpOnly cookie in practice; here returned in body for brevity.`
+              },
+              {
+                lang: `java`,
+                title: `COMPLETE: JWT validation filter that populates the SecurityContext`,
+                code: `import io.jsonwebtoken.*;
+import io.jsonwebtoken.security.Keys;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.*;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.web.filter.OncePerRequestFilter;
+import javax.crypto.SecretKey;
+
+class JwtAuthFilter extends OncePerRequestFilter {
+
+    private final SecretKey key;
+    private final RevocationStore revocations;   // e.g. Redis-backed jti denylist
+
+    JwtAuthFilter(String secret, RevocationStore revocations) {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+        this.revocations = revocations;
+    }
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+            throws java.io.IOException, jakarta.servlet.ServletException {
+
+        String header = req.getHeader("Authorization");
+        if (header == null || !header.startsWith("Bearer ")) {
+            chain.doFilter(req, res);   // no token -> let AuthorizationFilter decide (likely 401)
+            return;
+        }
+        String token = header.substring(7);
+        try {
+            Jws<Claims> jws = Jwts.parserBuilder()
+                .setSigningKey(key)
+                .requireIssuer("my-app")        // validate iss
+                .requireAudience("my-api")      // validate aud
+                .build()
+                .parseClaimsJws(token);         // verifies signature + exp; throws otherwise
+
+            Claims c = jws.getBody();
+            if (revocations.isRevoked(c.getId())) {       // jti denylist check (logout/revoke)
+                res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "token revoked");
+                return;
+            }
+
+            var authorities = AuthorityUtils.commaSeparatedStringToAuthorityList(
+                String.valueOf(c.get("authorities")));
+            var authentication = new UsernamePasswordAuthenticationToken(
+                c.getSubject(), null, authorities);
+            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(req));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        } catch (JwtException ex) {
+            // expired, bad signature, alg mismatch, wrong iss/aud -> stay unauthenticated -> 401
+            SecurityContextHolder.clearContext();
+        }
+        chain.doFilter(req, res);
+    }
+}
+
+interface RevocationStore { boolean isRevoked(String jti); }`,
+                runnable: false,
+                note: `OncePerRequestFilter guarantees one execution per request. parseClaimsJws verifies signature AND expiry; pinning iss/aud blocks token replay. Register with http.addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class).`
+              },
+              {
+                lang: `java`,
+                title: `RUNNABLE: build & verify an HMAC-SHA256 JWT with ONLY the JDK (no libraries)`,
+                code: `import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
+/**
+ * Self-contained HS256 JWT demo. Compiles and runs on a bare JDK:
+ *   javac JwtDemo.java && java JwtDemo
+ * Proves: a JWT = base64url(header) + "." + base64url(payload) + "." + base64url(HMACSHA256(...)).
+ */
+public class JwtDemo {
+
+    private static final Base64.Encoder B64 = Base64.getUrlEncoder().withoutPadding();
+
+    static String b64url(byte[] data) { return B64.encodeToString(data); }
+    static String b64url(String s)    { return b64url(s.getBytes(StandardCharsets.UTF_8)); }
+
+    static byte[] hmacSha256(String data, String secret) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+    }
+
+    static String sign(String headerJson, String payloadJson, String secret) throws Exception {
+        String signingInput = b64url(headerJson) + "." + b64url(payloadJson);
+        String sig = b64url(hmacSha256(signingInput, secret));
+        return signingInput + "." + sig;
+    }
+
+    /** Constant-time-ish verification: recompute signature over header.payload and compare. */
+    static boolean verify(String jwt, String secret) throws Exception {
+        String[] parts = jwt.split("\\\\.");
+        if (parts.length != 3) return false;
+        String signingInput = parts[0] + "." + parts[1];
+        String expected = b64url(hmacSha256(signingInput, secret));
+        return constantTimeEquals(expected, parts[2]);
+    }
+
+    static boolean constantTimeEquals(String a, String b) {
+        if (a.length() != b.length()) return false;
+        int diff = 0;
+        for (int i = 0; i < a.length(); i++) diff |= a.charAt(i) ^ b.charAt(i);
+        return diff == 0;
+    }
+
+    public static void main(String[] args) throws Exception {
+        String secret  = "my-super-secret-key-which-is-long-enough-256bits!";
+        String header  = "{\\"alg\\":\\"HS256\\",\\"typ\\":\\"JWT\\"}";
+        long exp = (System.currentTimeMillis() / 1000) + 900;   // now + 15 min
+        String payload = "{\\"sub\\":\\"alice\\",\\"authorities\\":[\\"ROLE_USER\\"],\\"exp\\":" + exp + "}";
+
+        String jwt = sign(header, payload, secret);
+        System.out.println("JWT      = " + jwt);
+        System.out.println("verify   = " + verify(jwt, secret));          // true
+
+        // Tamper: flip the payload -> signature no longer matches
+        String tampered = jwt.substring(0, jwt.indexOf('.') + 1)
+            + b64url("{\\"sub\\":\\"admin\\"}") + jwt.substring(jwt.lastIndexOf('.'));
+        System.out.println("tampered = " + verify(tampered, secret));     // false
+
+        // Decode payload to show it is NOT encrypted, only signed
+        String decoded = new String(Base64.getUrlDecoder().decode(jwt.split("\\\\.")[1]),
+            StandardCharsets.UTF_8);
+        System.out.println("payload  = " + decoded);
+    }
+}`,
+                runnable: true,
+                note: `Pure JDK: javax.crypto + java.util.Base64 only. Run with: javac JwtDemo.java && java JwtDemo. Demonstrates signing, verification, tamper detection, and that the payload is readable (signed, not encrypted).`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What are the three parts of a JWT and how is the signature computed?`,
+                a: `header.payload.signature, all Base64URL-encoded. signature = sign(base64url(header) + "." + base64url(payload)) using HMAC with a secret or RSA/ECDSA with a private key.`
+              },
+              {
+                q: `Is a JWT encrypted? What is the implication?`,
+                a: `No — a standard JWT (JWS) is signed, not encrypted. Anyone can Base64-decode and read the payload, so never put secrets or sensitive PII in it.`
+              },
+              {
+                q: `When should you choose HMAC (HS256) over RSA (RS256) for JWT signing?`,
+                a: `HMAC when a single service both issues and verifies (one shared secret). RSA/ECDSA when an issuer is separate from many verifiers — verifiers only need the public key (via a JWKS endpoint) and cannot forge tokens.`
+              },
+              {
+                q: `What is the alg=none attack and how do you prevent it?`,
+                a: `A token sets header alg:none claiming it is unsigned; vulnerable libraries accept it without verifying. Prevent by pinning the expected algorithm server-side and never letting the token header choose the verification algorithm.`
+              },
+              {
+                q: `Explain the RS256→HS256 algorithm-confusion attack.`,
+                a: `The attacker changes alg to HS256 and signs the token using the server's public RSA key as the HMAC secret. If the server blindly verifies per the header alg, it treats the public key as the shared secret and accepts the forgery. Fix: pin the algorithm.`
+              },
+              {
+                q: `Why is revoking a JWT hard, and name two revocation strategies.`,
+                a: `A signed JWT is valid until its exp with no server lookup. Strategies: (1) a jti denylist in Redis checked by the filter; (2) a per-user "valid-after" timestamp/token-version that logout bumps so older tokens are rejected.`
+              },
+              {
+                q: `What is the purpose of access vs refresh tokens?`,
+                a: `Access tokens are short-lived (minutes) and sent on every API call, limiting leak blast radius. Refresh tokens are long-lived, stored securely, and used only against the auth server to mint new access tokens.`
+              },
+              {
+                q: `What is refresh-token rotation with reuse detection?`,
+                a: `Each refresh issues a new refresh token and invalidates the old one. If a previously-used (now invalid) refresh token is presented again, it signals theft, so the entire token family is revoked.`
+              },
+              {
+                q: `Why validate the iss and aud claims?`,
+                a: `iss confirms the token came from your trusted issuer; aud confirms it was minted for your service. Without these checks, a valid token issued for a different audience could be replayed against your API.`
+              },
+              {
+                q: `What is the difference between decoding and verifying a JWT?`,
+                a: `Decoding just Base64-decodes the parts (anyone can do it). Verifying recomputes/checks the signature with the key and validates exp/iss/aud. Trusting a decoded-but-unverified token is a critical vulnerability.`
+              },
+              {
+                q: `Why use OncePerRequestFilter for a JWT filter?`,
+                a: `It guarantees the filter runs exactly once per request even across forwards/includes/async dispatches, preventing duplicate authentication work or inconsistent SecurityContext state.`
+              },
+              {
+                q: `Where should access and refresh tokens be stored in a browser SPA?`,
+                a: `Keep the access token in memory (short-lived, lost on reload) and the refresh token in an httpOnly, Secure, SameSite cookie so JS-based XSS cannot read it. Avoid localStorage for either.`
+              },
+              {
+                q: `What does pinning .requireIssuer/.requireAudience in the jjwt parser accomplish?`,
+                a: `It rejects tokens whose iss/aud do not match the expected values during parsing, blocking cross-service token replay in addition to the signature and expiry checks.`
+              }
+            ]
+          },
+          {
+            title: `OAuth2 & OpenID Connect`,
+            notes: `# OAuth2 & OpenID Connect
+
+**OAuth2 is an authorization framework** (delegated access — "let app X act on resource Y on my behalf"). **OpenID Connect (OIDC)** is a thin identity layer on top of OAuth2 that adds an **ID token** (a JWT describing *who the user is*). "Login with Google" = OIDC.
+
+## The four roles
+
+| Role | Who it is | Example |
+|---|---|---|
+| **Resource Owner** | The user who owns the data | You |
+| **Client** | The app wanting access | Your web/mobile app |
+| **Authorization Server** | Issues tokens after auth/consent | Google, Keycloak, Okta |
+| **Resource Server** | Hosts the protected API | Your Spring \`oauth2ResourceServer\` |
+
+> [!TIP]
+> Tokens: **access token** (authorize API calls, carries *scopes*), **refresh token** (renew access), **ID token** (OIDC only — identity claims about the user: \`sub\`, \`email\`, \`name\`). Scopes (e.g. \`orders:read\`) express *what* the client may do; they become Spring authorities like \`SCOPE_orders:read\`.
+
+## Authorization Code + PKCE (the modern default for user-facing apps)
+
+PKCE (Proof Key for Code Exchange) stops an attacker who intercepts the authorization \`code\` from exchanging it: the client generates a random \`code_verifier\`, sends its SHA-256 hash (\`code_challenge\`) up front, and must present the original verifier at token exchange.
+
+\`\`\`mermaid
+sequenceDiagram
+  participant U as User-Agent (Browser)
+  participant C as Client App
+  participant AS as Authorization Server
+  participant RS as Resource Server (API)
+
+  C->>C: generate code_verifier + code_challenge=SHA256(verifier)
+  C->>U: redirect to /authorize?response_type=code&code_challenge=...&scope=openid orders:read
+  U->>AS: GET /authorize (user logs in + consents)
+  AS-->>U: redirect back with ?code=AUTH_CODE
+  U->>C: deliver AUTH_CODE
+  C->>AS: POST /token {code, code_verifier, client_id}
+  AS->>AS: verify SHA256(verifier)==stored challenge
+  AS-->>C: {access_token, id_token, refresh_token}
+  C->>RS: GET /orders  Authorization: Bearer <access_token>
+  RS->>RS: validate token via JWKS / introspection
+  RS-->>C: 200 data
+\`\`\`
+
+> [!WARNING]
+> The **Implicit flow** (token returned directly in the redirect fragment) is **deprecated** by OAuth 2.1. The **Resource Owner Password Credentials** grant (app collects the user's password) is also discouraged. Modern guidance: **Authorization Code + PKCE for all user-facing clients** (SPAs, mobile, and even confidential web apps).
+
+## Client-credentials flow (machine-to-machine)
+
+No user involved. A service authenticates with its own \`client_id\`/\`client_secret\` to get an access token for service-to-service calls.
+
+\`\`\`text
+POST /token
+  grant_type=client_credentials
+  client_id=billing-service
+  client_secret=...
+  scope=payments:write
+-> { "access_token": "...", "expires_in": 3600 }
+\`\`\`
+
+| Flow | User present? | Use case |
+|---|---|---|
+| Authorization Code + PKCE | Yes | SPA / mobile / web login |
+| Client Credentials | No | Service-to-service |
+| Refresh Token | (renewal) | Get new access token silently |
+| Device Code | Yes (other device) | TVs, CLIs, IoT |
+| Implicit / ROPC | — | **Deprecated, avoid** |
+
+> [!SUCCESS]
+> As a **resource server**, Spring validates incoming JWTs against the authorization server's **JWKS endpoint** (\`issuer-uri\` auto-discovers it) — no shared secret, no DB call, fully stateless verification. As a **client** (\`oauth2Login\`), Spring runs the auth-code+PKCE dance for you.
+
+> [!EU]
+> Under GDPR, an OIDC ID token's \`email\`/\`name\` are personal data. Log token \`sub\` (a pseudonymous id) rather than raw email, request only the scopes you need (data minimisation), and ensure consent screens are honoured. Storing access/refresh tokens server-side counts as processing personal data and must be secured and retention-bounded.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Acting as a Resource Server: validate JWTs + map scopes & roles to authorities`,
+                code: `import org.springframework.context.annotation.*;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.*;
+import org.springframework.security.oauth2.server.resource.authentication.*;
+import org.springframework.security.web.SecurityFilterChain;
+import java.util.*;
+import java.util.stream.*;
+
+@Configuration
+public class ResourceServerConfig {
+
+    @Bean
+    SecurityFilterChain api(HttpSecurity http) throws Exception {
+        http
+            .securityMatcher("/api/**")
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .csrf(c -> c.disable())                    // bearer-token API, no cookies
+            .authorizeHttpRequests(a -> a
+                .requestMatchers("/api/orders/**").hasAuthority("SCOPE_orders:read")
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .anyRequest().authenticated())
+            .oauth2ResourceServer(oauth -> oauth
+                .jwt(jwt -> jwt.jwtAuthenticationConverter(converter())));
+        return http.build();
+    }
+
+    /** Combine OAuth2 'scope' claim (SCOPE_*) with a custom 'roles' claim (ROLE_*). */
+    private JwtAuthenticationConverter converter() {
+        JwtGrantedAuthoritiesConverter scopes = new JwtGrantedAuthoritiesConverter(); // SCOPE_*
+        JwtAuthenticationConverter conv = new JwtAuthenticationConverter();
+        conv.setJwtGrantedAuthoritiesConverter(jwt -> {
+            Collection<org.springframework.security.core.GrantedAuthority> auth =
+                new ArrayList<>(scopes.convert(jwt));
+            List<String> roles = jwt.getClaimAsStringList("roles");
+            if (roles != null) {
+                roles.stream().map(r -> new SimpleGrantedAuthority("ROLE_" + r)).forEach(auth::add);
+            }
+            return auth;
+        });
+        return conv;
+    }
+}`,
+                runnable: false,
+                note: `Requires spring-boot-starter-oauth2-resource-server. Set spring.security.oauth2.resourceserver.jwt.issuer-uri so Spring auto-discovers the JWKS for stateless signature validation.`
+              },
+              {
+                lang: `yaml`,
+                title: `application.yml — resource server (JWKS) AND OIDC client ("Login with Google")`,
+                code: `spring:
+  security:
+    oauth2:
+      # --- As a RESOURCE SERVER: validate incoming bearer JWTs ---
+      resourceserver:
+        jwt:
+          # Auto-discovers /.well-known/openid-configuration -> jwks_uri (public keys)
+          issuer-uri: https://accounts.google.com
+          # or point at your own auth server, e.g. https://keycloak.example.com/realms/myrealm
+
+      # --- As a CLIENT: enable oauth2Login() with Google (OIDC) ---
+      client:
+        registration:
+          google:
+            client-id: \${GOOGLE_CLIENT_ID}
+            client-secret: \${GOOGLE_CLIENT_SECRET}
+            scope: openid, profile, email
+            # Spring uses Authorization Code; PKCE is auto-enabled for public clients
+        provider:
+          google:
+            issuer-uri: https://accounts.google.com`,
+                runnable: false,
+                note: `issuer-uri triggers OIDC discovery so you do not hard-code authorization/token/jwks URLs. Keep client-secret out of source control (env vars / secrets manager).`
+              },
+              {
+                lang: `java`,
+                title: `Acting as an OIDC Client: oauth2Login() and reading the logged-in user`,
+                code: `import org.springframework.context.annotation.*;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.bind.annotation.*;
+import java.util.Map;
+
+@Configuration
+class OidcClientConfig {
+    @Bean
+    SecurityFilterChain webLogin(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(a -> a
+                .requestMatchers("/", "/login**", "/error").permitAll()
+                .anyRequest().authenticated())
+            // Runs the full Authorization Code + PKCE flow against Google, creates a session
+            .oauth2Login(login -> login.defaultSuccessUrl("/profile", true));
+        return http.build();
+    }
+}
+
+@RestController
+class ProfileController {
+    @GetMapping("/profile")
+    Map<String, Object> profile(@AuthenticationPrincipal OidcUser user) {
+        // ID-token claims provided by the OIDC provider
+        return Map.of(
+            "subject", user.getSubject(),       // stable pseudonymous id (log this, not email)
+            "email",   user.getEmail(),
+            "name",    user.getFullName(),
+            "claims",  user.getClaims());
+    }
+}`,
+                runnable: false,
+                note: `oauth2Login() makes the app a confidential OIDC client and stores the result in a session. The OidcUser exposes ID-token claims; prefer logging the pseudonymous subject over the email (GDPR data minimisation).`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between OAuth2 and OpenID Connect?`,
+                a: `OAuth2 is an authorization framework for delegated API access (issues access tokens). OIDC is an identity layer on top that adds an ID token (a JWT describing who the user is). "Login with X" is OIDC.`
+              },
+              {
+                q: `Name the four OAuth2 roles.`,
+                a: `Resource Owner (the user), Client (the app wanting access), Authorization Server (issues tokens after auth/consent), and Resource Server (hosts the protected API).`
+              },
+              {
+                q: `What problem does PKCE solve and how?`,
+                a: `It prevents an attacker who intercepts the authorization code from exchanging it. The client sends code_challenge = SHA256(code_verifier) at /authorize and must present the original code_verifier at /token, which the server re-hashes and compares.`
+              },
+              {
+                q: `Why are the Implicit and ROPC grants discouraged in OAuth 2.1?`,
+                a: `Implicit returns the token in the redirect fragment (exposed to the browser/history, no client auth). ROPC requires the client to handle the user's raw password. Both are insecure; Authorization Code + PKCE is the modern replacement.`
+              },
+              {
+                q: `When do you use the client-credentials flow?`,
+                a: `Machine-to-machine calls with no user present. A service authenticates with its own client_id/client_secret to obtain an access token scoped to what it needs (e.g. payments:write).`
+              },
+              {
+                q: `How does a Spring resource server validate a JWT statelessly?`,
+                a: `It fetches the authorization server's public keys from the JWKS endpoint (auto-discovered from issuer-uri) and verifies the token signature + exp/iss/aud locally — no shared secret and no per-request call to the auth server.`
+              },
+              {
+                q: `How do OAuth2 scopes map to Spring authorities?`,
+                a: `By default the scope/scp claim values become authorities prefixed with SCOPE_ (e.g. scope "orders:read" → authority "SCOPE_orders:read"), checkable via hasAuthority("SCOPE_orders:read").`
+              },
+              {
+                q: `What is an ID token and how does it differ from an access token?`,
+                a: `An ID token (OIDC) is a JWT carrying identity claims about the authenticated user (sub, email, name) meant for the client. An access token authorizes API calls and carries scopes, meant for the resource server.`
+              },
+              {
+                q: `What does setting issuer-uri enable in Spring?`,
+                a: `OIDC discovery: Spring fetches /.well-known/openid-configuration to learn the authorization, token, and JWKS endpoints automatically, so you do not hard-code them — for both resource-server validation and client login.`
+              },
+              {
+                q: `What does oauth2Login() do in a Spring app?`,
+                a: `It makes the app an OAuth2/OIDC client, running the Authorization Code (+PKCE) flow against the configured provider, then establishing an authenticated session with the resulting OidcUser/OAuth2User principal.`
+              },
+              {
+                q: `How do you combine OAuth2 scopes with custom roles from a JWT in Spring?`,
+                a: `Provide a JwtAuthenticationConverter with a custom JwtGrantedAuthoritiesConverter that emits SCOPE_* from the scope claim and adds ROLE_* derived from a custom roles claim, returning the merged authority collection.`
+              },
+              {
+                q: `From a GDPR standpoint, what should you prefer logging from an OIDC token?`,
+                a: `The pseudonymous subject (sub) rather than the raw email/name, request only needed scopes (data minimisation), and secure/retention-bound any stored tokens since they constitute personal data processing.`
+              }
+            ]
+          },
+          {
+            title: `Authorization models: URL, method, RBAC/ABAC, ACL`,
+            notes: `# Authorization models
+
+Once identity is established, you decide *what they may do*. Spring offers several complementary mechanisms — staff candidates are expected to know when to reach for each.
+
+## 1. URL-based authorization (\`authorizeHttpRequests\`)
+
+Coarse-grained, path/HTTP-method based. Evaluated by \`AuthorizationFilter\` before the controller.
+
+> [!WARNING]
+> **Order matters** — rules are evaluated top-to-bottom and the first match wins. Always put specific rules before broad ones and end with \`anyRequest()\`. Also: \`hasRole("ADMIN")\` checks the authority \`ROLE_ADMIN\` (the prefix is added for you); \`hasAuthority("ROLE_ADMIN")\` is the explicit equivalent.
+
+## 2. Method security (\`@PreAuthorize\` / \`@PostAuthorize\` / \`@Secured\`)
+
+Fine-grained, on service/controller methods. Enable with \`@EnableMethodSecurity\`. Uses **SpEL** so you can reference arguments, the principal, and return values.
+
+| Annotation | When it runs | Can reference |
+|---|---|---|
+| \`@PreAuthorize\` | Before the method | method args (\`#id\`), \`authentication\`, \`principal\` |
+| \`@PostAuthorize\` | After the method | the **return value** (\`returnObject\`) |
+| \`@PreFilter\` | Before — filters a collection arg | each element (\`filterObject\`) |
+| \`@PostFilter\` | After — filters the returned collection | each element (\`filterObject\`) |
+| \`@Secured\` / \`@RolesAllowed\` | Before | role names only (no SpEL) |
+
+> [!TIP]
+> \`@PostAuthorize\` is the natural place for **ownership checks on a fetched object**: \`@PostAuthorize("returnObject.ownerId == authentication.name")\` — load it, then deny if it isn't yours. (For *not leaking existence*, prefer a query-level ownership filter that returns 404; see the next section.)
+
+## 3. RBAC vs ABAC
+
+| | RBAC (Role-Based) | ABAC (Attribute-Based) |
+|---|---|---|
+| Decision based on | The user's **roles** | **Attributes** of user, resource, environment |
+| Example | "Admins can delete" | "Managers can approve invoices < their limit during business hours in their region" |
+| Pros | Simple, auditable | Expressive, fine-grained |
+| Cons | Role explosion at scale | Harder to reason about/audit |
+| In Spring | \`hasRole\`, \`@Secured\` | SpEL in \`@PreAuthorize\`, custom \`PermissionEvaluator\`/\`AuthorizationManager\` |
+
+> [!SUCCESS]
+> Real systems are usually **RBAC with ABAC touches**: roles for coarse buckets, plus attribute checks (ownership, tenant, limits) in SpEL or a custom \`AuthorizationManager\`. Pure ABAC is powerful but hard to audit; pure RBAC explodes into hundreds of micro-roles.
+
+## 4. Hierarchical roles
+
+\`ADMIN > STAFF > USER\`: granting \`ADMIN\` implies the lower roles so you don't repeat them everywhere. Configure a \`RoleHierarchy\` bean.
+
+## 5. Domain-object / ACL security
+
+When permissions are **per object** ("Alice can edit document 42, Bob can only read it") and not expressible as roles, use Spring Security **ACLs** (\`AclService\`, ACL tables) or a custom \`PermissionEvaluator\` driving \`@PreAuthorize("hasPermission(#id, 'Document', 'WRITE')")\`.
+
+\`\`\`mermaid
+flowchart TD
+  R[Request needs authorization] --> Q{Coarse path rule?}
+  Q -->|yes| URL[authorizeHttpRequests / hasRole]
+  Q -->|business operation| M[@PreAuthorize SpEL]
+  M --> A{Attribute/ownership?}
+  A -->|simple| SpEL[#id == authentication.name]
+  A -->|per-object ACL| ACL[hasPermission via PermissionEvaluator/ACL]
+\`\`\`
+
+> [!DANGER]
+> Method security via Spring AOP only applies to **proxied bean calls**. A \`@PreAuthorize\` method called **from within the same class** (self-invocation) bypasses the proxy and is NOT checked. Inject the bean or restructure so the call crosses the proxy boundary.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Method security: @PreAuthorize / @PostAuthorize / @PostFilter with SpEL`,
+                code: `import org.springframework.security.access.prepost.*;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import java.util.List;
+
+@Service
+public class DocumentService {
+
+    // RBAC: only admins
+    @PreAuthorize("hasRole('ADMIN')")
+    public void purgeAll() { /* ... */ }
+
+    // RBAC + scope mix
+    @PreAuthorize("hasAuthority('SCOPE_docs:write')")
+    public void importBatch() { /* ... */ }
+
+    // ABAC: argument-based ownership check using the principal name
+    @PreAuthorize("#ownerId == authentication.name or hasRole('ADMIN')")
+    public List<Document> listFor(String ownerId) { /* ... */ return List.of(); }
+
+    // PostAuthorize: load then verify the RETURNED object belongs to the caller
+    @PostAuthorize("returnObject == null or returnObject.ownerId == authentication.name or hasRole('ADMIN')")
+    public Document getById(long id) { /* ... */ return null; }
+
+    // PostFilter: prune the returned collection to elements the caller may see
+    @PostFilter("filterObject.ownerId == authentication.name or hasRole('ADMIN')")
+    public List<Document> findAll() { /* ... */ return List.of(); }
+
+    // Custom ACL-style per-object permission
+    @PreAuthorize("hasPermission(#id, 'Document', 'WRITE')")
+    public void edit(long id, String body) { /* ... */ }
+}`,
+                runnable: false,
+                note: `Requires @EnableMethodSecurity (see next snippet). SpEL exposes authentication, principal, method args (#name), and (for @Post*) returnObject/filterObject. Self-invocation bypasses these checks.`
+              },
+              {
+                lang: `java`,
+                title: `Enable method security, role hierarchy, and a custom PermissionEvaluator`,
+                code: `import org.springframework.context.annotation.*;
+import org.springframework.security.access.PermissionEvaluator;
+import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
+import org.springframework.security.access.hierarchicalroles.*;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.core.Authentication;
+import java.io.Serializable;
+
+@Configuration
+@EnableMethodSecurity                 // turns on @PreAuthorize/@PostAuthorize/@PostFilter
+public class MethodSecurityConfig {
+
+    // ADMIN implies STAFF implies USER -> no need to list lower roles everywhere
+    @Bean
+    RoleHierarchy roleHierarchy() {
+        return RoleHierarchyImpl.fromHierarchy("""
+            ROLE_ADMIN > ROLE_STAFF
+            ROLE_STAFF > ROLE_USER
+            """);
+    }
+
+    // Wire the hierarchy + custom permission evaluator into SpEL
+    @Bean
+    static DefaultMethodSecurityExpressionHandler expressionHandler(
+            RoleHierarchy roleHierarchy, PermissionEvaluator evaluator) {
+        var handler = new DefaultMethodSecurityExpressionHandler();
+        handler.setRoleHierarchy(roleHierarchy);
+        handler.setPermissionEvaluator(evaluator);   // backs hasPermission(...)
+        return handler;
+    }
+
+    @Bean
+    PermissionEvaluator permissionEvaluator() {
+        return new PermissionEvaluator() {
+            @Override public boolean hasPermission(Authentication auth, Object target, Object perm) {
+                return false; // implement object-instance checks
+            }
+            @Override public boolean hasPermission(Authentication auth, Serializable targetId,
+                                                   String targetType, Object permission) {
+                // e.g. look up ACL: does auth.getName() have 'permission' on targetType#targetId?
+                return "Document".equals(targetType) && "WRITE".equals(permission)
+                       && AclLookup.canWrite(auth.getName(), (Long) targetId);
+            }
+        };
+    }
+}
+
+class AclLookup { static boolean canWrite(String user, long docId) { return true; /* query ACL */ } }`,
+                runnable: false,
+                note: `RoleHierarchyImpl.fromHierarchy is the SS6 builder. The PermissionEvaluator backs hasPermission(...) in SpEL — the hook for ACL/ABAC per-object decisions.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why does ordering matter in authorizeHttpRequests?`,
+                a: `Rules are matched top-to-bottom and the first match wins. Specific matchers must precede broad ones; a misplaced anyRequest() or broad pattern can shadow later, stricter rules and open or close access unintentionally.`
+              },
+              {
+                q: `Difference between @PreAuthorize and @PostAuthorize?`,
+                a: `@PreAuthorize runs before the method using args/principal; @PostAuthorize runs after and can inspect the return value via returnObject (useful for ownership checks on a fetched object). PostAuthorize still executes the method first.`
+              },
+              {
+                q: `What do @PreFilter and @PostFilter do?`,
+                a: `They filter collections rather than allow/deny the whole call. @PreFilter prunes a collection argument; @PostFilter prunes the returned collection, keeping only elements where the SpEL on filterObject is true.`
+              },
+              {
+                q: `Contrast RBAC and ABAC.`,
+                a: `RBAC decides on the user's roles (simple, auditable, but role-explosion-prone). ABAC decides on attributes of user/resource/environment (expressive and fine-grained but harder to audit). Most systems are RBAC with ABAC touches.`
+              },
+              {
+                q: `How do you implement attribute/ownership checks in Spring method security?`,
+                a: `Use SpEL in @PreAuthorize/@PostAuthorize referencing args and the principal, e.g. @PreAuthorize("#ownerId == authentication.name or hasRole('ADMIN')"), or a custom AuthorizationManager/PermissionEvaluator for complex cases.`
+              },
+              {
+                q: `What is a role hierarchy and how is it configured in SS6?`,
+                a: `A declaration that higher roles imply lower ones (ROLE_ADMIN > ROLE_STAFF > ROLE_USER) so a check for ROLE_USER passes for an admin. Configure a RoleHierarchy bean (RoleHierarchyImpl.fromHierarchy) wired into the expression handler.`
+              },
+              {
+                q: `What backs the SpEL hasPermission(...) expression?`,
+                a: `A PermissionEvaluator bean wired into the DefaultMethodSecurityExpressionHandler. It is the hook for ACL/domain-object or ABAC per-object decisions (e.g. hasPermission(#id, 'Document', 'WRITE')).`
+              },
+              {
+                q: `When would you use Spring Security ACLs / domain-object security?`,
+                a: `When permissions are per individual object and not expressible as roles ("Alice can edit doc 42, read doc 43"). ACLs store per-object/per-principal permission entries queried via AclService or a PermissionEvaluator.`
+              },
+              {
+                q: `Why can a @PreAuthorize check be silently bypassed?`,
+                a: `Method security is implemented with Spring AOP proxies. A self-invocation (calling the annotated method from within the same class) does not pass through the proxy, so the check never runs. Cross the proxy boundary instead.`
+              },
+              {
+                q: `What is the difference between hasRole("ADMIN") and hasAuthority("ROLE_ADMIN")?`,
+                a: `They are equivalent: hasRole adds the ROLE_ prefix automatically, so hasRole("ADMIN") checks for the authority ROLE_ADMIN, exactly what hasAuthority("ROLE_ADMIN") checks.`
+              },
+              {
+                q: `Which annotation enables method security and what does it replace?`,
+                a: `@EnableMethodSecurity (Spring Security 6), which replaced the older @EnableGlobalMethodSecurity. It enables @PreAuthorize/@PostAuthorize and pre/post filtering by default.`
+              },
+              {
+                q: `Why prefer @PostAuthorize over loading then manually checking ownership in code?`,
+                a: `@PostAuthorize centralizes the rule declaratively and is consistently applied/auditable, but note it still runs the method first (causing side effects); for read-only fetches it is fine, and for existence-hiding a query-level filter returning 404 is better.`
+              }
+            ]
+          },
+          {
+            title: `Multi-tenant per-user data isolation & IDOR prevention`,
+            notes: `# Multi-tenant per-user data isolation
+
+Authentication tells you *who* the caller is; this section is about ensuring they can only ever touch **their own** rows. The cardinal failure mode is **IDOR (Insecure Direct Object Reference)**: \`GET /api/orders/123\` returns order 123 to *anyone* authenticated, because the endpoint loads by id without checking ownership.
+
+> [!DANGER]
+> **Never trust an identifier supplied by the client to decide whose data to return.** \`GET /accounts/{id}\` where the server returns whatever \`{id}\` points to is a textbook IDOR. The owning user/tenant must come from the **\`SecurityContext\`**, not from the path, query, or body.
+
+## The golden rule: derive ownership from the principal, filter in the query
+
+\`\`\`text
+BAD : Order o = repo.findById(id);                       // returns anyone's order
+GOOD: Order o = repo.findByIdAndOwner(id, currentUser);  // scoped to the caller
+\`\`\`
+
+The ownership predicate belongs **in the WHERE clause**, not in an \`if\` after loading — that way a non-owned row is simply *not found*.
+
+## 404 vs 403 — don't leak existence
+
+> [!TIP]
+> If a user requests an object that exists but isn't theirs, returning **403** confirms the object *exists*. Returning **404** ("not found") hides whether the id is real. For resources where existence itself is sensitive (other tenants' data), **prefer 404 over 403** — which falls out naturally from \`findByIdAndOwner(...).orElseThrow(NotFound)\`.
+
+## Defense in depth (three layers)
+
+\`\`\`mermaid
+flowchart TD
+  REQ[GET /api/orders/123<br/>principal = alice] --> L1[Layer 1: Controller/Method<br/>@PreAuthorize / derive tenant from SecurityContext]
+  L1 --> L2[Layer 2: Service/Query<br/>findByIdAndOwner WHERE owner = alice]
+  L2 --> L3[Layer 3: Database<br/>Row-Level Security: USING owner = current_setting tenant]
+  L3 --> OK[Only Alice's rows ever return]
+\`\`\`
+
+1. **Application/query layer** — every read/write is scoped to the current principal/tenant (\`findByIdAndOwner\`, a mandatory tenant predicate, or a Hibernate \`@Filter\`).
+2. **Service layer** — a single choke-point that injects the current tenant so individual queries can't forget it.
+3. **Database layer** — **PostgreSQL Row-Level Security (RLS)**: a \`USING\` policy on the tenant column means even a forgotten WHERE clause (or a compromised query) returns only the current tenant's rows. The last line of defense.
+
+> [!SUCCESS]
+> Set the tenant once per request (e.g. \`SET app.current_tenant\`) and let RLS enforce it for ALL queries automatically. This protects against the inevitable developer who writes \`findById\` and forgets the tenant filter. RLS is the strongest, hardest-to-bypass control.
+
+> [!WARNING]
+> Multi-tenancy strategies trade isolation vs cost: **separate database per tenant** (max isolation, ops-heavy) → **separate schema per tenant** → **shared schema with a tenant_id column + RLS** (cheapest, most common, relies on discipline + RLS). Know the trade-offs.
+
+> [!EU]
+> GDPR makes per-tenant isolation a legal control, not just hygiene: a cross-tenant leak is a reportable personal-data breach. RLS + query-level scoping provide demonstrable technical measures ("data protection by design", Art. 25). Also support per-tenant data export/erasure (Art. 15/17) — easier when isolation is enforced at the data layer.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Ownership enforced in the query (IDOR-safe) returning 404 not 403`,
+                code: `import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
+import java.util.Optional;
+
+interface OrderRepository extends JpaRepository<Order, Long> {
+    // Ownership is part of the WHERE clause: a non-owned row is simply not found.
+    Optional<Order> findByIdAndOwnerUsername(Long id, String ownerUsername);
+    java.util.List<Order> findAllByOwnerUsername(String ownerUsername);
+}
+
+@RestController
+@RequestMapping("/api/orders")
+class OrderController {
+
+    private final OrderRepository orders;
+    OrderController(OrderRepository orders) { this.orders = orders; }
+
+    // List: NEVER "findAll()". Always scope to the caller derived from the SecurityContext.
+    @GetMapping
+    java.util.List<Order> myOrders(@AuthenticationPrincipal UserDetails me) {
+        return orders.findAllByOwnerUsername(me.getUsername());
+    }
+
+    // Read by id: the id comes from the client, but the OWNER comes from the principal.
+    @GetMapping("/{id}")
+    Order getOne(@PathVariable Long id, @AuthenticationPrincipal UserDetails me) {
+        return orders.findByIdAndOwnerUsername(id, me.getUsername())
+            // 404, not 403: do not reveal that someone else's order exists.
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+    }
+
+    // Mutations are equally scoped — never delete by id alone.
+    @DeleteMapping("/{id}")
+    ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal UserDetails me) {
+        Order o = orders.findByIdAndOwnerUsername(id, me.getUsername())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        orders.delete(o);
+        return ResponseEntity.noContent().build();
+    }
+}`,
+                runnable: false,
+                note: `The owner is always taken from @AuthenticationPrincipal (the SecurityContext), never from the request. Ownership lives in the query so non-owned rows return 404, hiding existence.`
+              },
+              {
+                lang: `java`,
+                title: `Tenant choke-point: resolve tenant per request + Hibernate filter (defense in depth)`,
+                code: `import jakarta.servlet.*;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.hibernate.Session;
+import jakarta.persistence.EntityManager;
+
+/** Holds the tenant for the current request thread. */
+final class TenantContext {
+    private static final ThreadLocal<String> CURRENT = new ThreadLocal<>();
+    static void set(String t) { CURRENT.set(t); }
+    static String get()       { return CURRENT.get(); }
+    static void clear()       { CURRENT.remove(); }
+}
+
+/** Resolve tenant ONCE per request from the authenticated principal — single source of truth. */
+@Component
+class TenantFilter implements Filter {
+    @Override public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
+            throws java.io.IOException, ServletException {
+        try {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated()) {
+                // tenant claim derived from the token/user, NEVER from a request header the client controls
+                TenantContext.set(resolveTenant(auth));
+            }
+            chain.doFilter(req, res);
+        } finally {
+            TenantContext.clear();   // avoid thread-local leakage across pooled threads
+        }
+    }
+    private String resolveTenant(Object auth) { return "tenant-from-principal"; }
+}
+
+/** Hibernate @Filter automatically appends "tenant_id = :tenantId" to every query of filtered entities. */
+@Component
+class TenantHibernateConfigurer {
+    private final EntityManager em;
+    TenantHibernateConfigurer(EntityManager em) { this.em = em; }
+
+    void enable() {
+        em.unwrap(Session.class)
+          .enableFilter("tenantFilter")
+          .setParameter("tenantId", TenantContext.get());
+    }
+}
+
+// On the entity:
+// @org.hibernate.annotations.FilterDef(name="tenantFilter",
+//     parameters=@org.hibernate.annotations.ParamDef(name="tenantId", type=String.class))
+// @org.hibernate.annotations.Filter(name="tenantFilter", condition="tenant_id = :tenantId")
+// @Entity class Order { @Column String tenantId; ... }`,
+                runnable: false,
+                note: `The tenant comes from the authenticated principal, never a client-supplied header. The Hibernate @Filter ensures the tenant predicate is applied even if a developer forgets it in a specific query.`
+              },
+              {
+                lang: `sql`,
+                title: `PostgreSQL Row-Level Security: the database enforces tenant isolation`,
+                code: `-- The strongest layer: even a query that forgets WHERE tenant_id = ... cannot leak rows.
+
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders FORCE ROW LEVEL SECURITY;   -- applies even to the table owner
+
+-- Policy: a row is visible only when its tenant matches the per-session setting.
+CREATE POLICY tenant_isolation ON orders
+  USING      (tenant_id = current_setting('app.current_tenant')::uuid)   -- reads
+  WITH CHECK (tenant_id = current_setting('app.current_tenant')::uuid);  -- inserts/updates
+
+-- The application sets this once per request/transaction (from the authenticated principal):
+--   SET app.current_tenant = '<tenant-uuid-from-securitycontext>';
+-- Thereafter EVERY SELECT/UPDATE/DELETE is transparently scoped to that tenant by the DB.
+
+-- In Spring you would run, per connection/transaction:
+--   jdbcTemplate.update("SET app.current_tenant = ?", tenantId);   -- via a TransactionSynchronization
+-- so the value is bound before any business query executes.`,
+                runnable: false,
+                note: `RLS is the last line of defense against a forgotten ownership filter. Set app.current_tenant per request from the SecurityContext (never from client input) before running business queries.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is IDOR and what is the canonical example?`,
+                a: `Insecure Direct Object Reference: the server returns/acts on an object identified by a client-supplied id without checking ownership. Canonical example: GET /api/orders/123 returns order 123 to any authenticated user regardless of who owns it.`
+              },
+              {
+                q: `What is the golden rule for preventing IDOR?`,
+                a: `Derive the owner/tenant from the SecurityContext (the authenticated principal), never from the request, and put the ownership predicate in the query WHERE clause (findByIdAndOwner) so non-owned rows are simply not found.`
+              },
+              {
+                q: `Why return 404 instead of 403 for a resource the user does not own?`,
+                a: `A 403 confirms the object exists, leaking information. A 404 hides whether the id is real. For sensitive/cross-tenant resources, prefer 404 — which falls out naturally from findByIdAndOwner(...).orElseThrow(NotFound).`
+              },
+              {
+                q: `Why put the ownership check in the WHERE clause rather than an if after loading?`,
+                a: `Loading then checking still fetches another user's row into memory (and risks forgetting the check); a WHERE-clause predicate means the database never returns a non-owned row, so "not yours" and "not found" are the same outcome.`
+              },
+              {
+                q: `Name the three layers of defense-in-depth for tenant isolation.`,
+                a: `Application/query layer (scope every query to the principal), service layer (a single choke-point injecting the tenant), and database layer (PostgreSQL Row-Level Security as the last line of defense).`
+              },
+              {
+                q: `What does PostgreSQL Row-Level Security provide for multi-tenancy?`,
+                a: `A USING/WITH CHECK policy on the tenant column so the database itself filters every SELECT/UPDATE/DELETE to the current session's tenant — protecting against a query that forgets the tenant predicate. The strongest, hardest-to-bypass control.`
+              },
+              {
+                q: `How should the current tenant be supplied to RLS, and how must it NOT be supplied?`,
+                a: `Set it per request/transaction from the authenticated principal (e.g. SET app.current_tenant = <uuid from SecurityContext>). It must NOT come from a client-controlled header/param, which an attacker could spoof.`
+              },
+              {
+                q: `What does a Hibernate @Filter add to tenant isolation?`,
+                a: `It automatically appends a tenant predicate (tenant_id = :tenantId) to every query of the filtered entity once enabled, so a developer who forgets the filter in a specific query is still protected at the ORM layer.`
+              },
+              {
+                q: `Why must you clear the ThreadLocal tenant context in a finally block?`,
+                a: `Servlet containers reuse pooled threads. If the tenant ThreadLocal is not cleared after the request, a subsequent request on the same thread could inherit the previous tenant, causing a cross-tenant data leak.`
+              },
+              {
+                q: `Compare the main multi-tenancy isolation strategies.`,
+                a: `Database-per-tenant (max isolation, ops-heavy), schema-per-tenant (middle ground), and shared-schema-with-tenant_id + RLS (cheapest, most common, relies on query discipline plus RLS as backstop).`
+              },
+              {
+                q: `Why is per-tenant isolation a GDPR concern, not just hygiene?`,
+                a: `A cross-tenant leak is a reportable personal-data breach. Query scoping + RLS are demonstrable technical measures for data protection by design (Art. 25), and strong isolation eases per-tenant access/erasure obligations (Art. 15/17).`
+              },
+              {
+                q: `Why is "tenant from a request header" dangerous even if the user is authenticated?`,
+                a: `A client controls headers, so an authenticated user could set another tenant's id and pivot to their data. The tenant must be derived from the verified token/principal, which the client cannot tamper with.`
+              },
+              {
+                q: `What is the role of FORCE ROW LEVEL SECURITY in PostgreSQL?`,
+                a: `By default RLS does not apply to the table owner; FORCE ROW LEVEL SECURITY makes the policy apply even to the owner/connecting role, closing a bypass where the app connects as the table owner.`
               }
             ]
           }
