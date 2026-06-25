@@ -23636,94 +23636,302 @@ Under a network **P**artition you must choose **C**onsistency or **A**vailabilit
       id: '5.2',
       title: 'Caching Strategies',
       hours: 3,
-      notes: `
-# Caching Strategies
-
-Caching trades memory and staleness for latency and load reduction — usually the highest-leverage performance fix.
-
-## Where caches live
-
-Client → CDN (edge) → API gateway → **application cache (Redis/Memcached)** → DB buffer pool. Each layer cuts load on the next.
-
-## Patterns
-
-- **Cache-aside (lazy loading)** — app checks cache; on miss, loads from DB and populates cache. Most common. Stale risk handled via TTL.
-- **Read-through** — cache library loads from DB on miss transparently.
-- **Write-through** — write to cache and DB synchronously (consistent, slower writes).
-- **Write-behind** — write to cache, async-flush to DB (fast, risk of loss).
-
-## Eviction policies
-
-**LRU** (least recently used, default), **LFU** (least frequently used), **TTL** (time-based), FIFO. Redis supports several \`maxmemory-policy\` modes.
-
-> [!WARNING]
-> **The three cache failure modes:**
-> - **Cache stampede / thundering herd** — a hot key expires and thousands of requests hit the DB at once. Fix: request coalescing / locks / staggered TTL / early recompute.
-> - **Cache penetration** — queries for non-existent keys always miss and hit the DB. Fix: cache negative results or use a Bloom filter.
-> - **Cache avalanche** — many keys expire simultaneously. Fix: jittered TTLs.
-
-## Invalidation — "one of the two hard things"
-
-TTL (simple, bounded staleness), explicit invalidation on write, or versioned keys. Choose based on tolerance for staleness.
-
-> [!TIP]
-> Redis is more than a cache: distributed locks (Redlock), rate limiting (token bucket), leaderboards (sorted sets), pub/sub, session store. Mentioning these shows range.
-
-> [!EU]
-> Expect: *"How would you add caching here, and how do you keep it consistent?"* Name the pattern (cache-aside), the invalidation strategy (TTL vs write-invalidate), and the failure modes (stampede/penetration/avalanche) with mitigations.
-`,
-      code: [
+      sections: [
         {
-          lang: 'java',
-          title: 'Cache-aside with TTL + stampede guard',
-          code: `import java.util.*;
+          title: 'Cache Patterns — Cache-Aside, Write-Through & Eviction',
+          notes: `## Cache Patterns — Cache-Aside, Write-Through & Eviction
+
+A cache stores frequently-accessed data in fast memory (RAM) to reduce expensive operations (DB queries, external API calls, computations).
+
+### Core Cache Patterns
+
+\`\`\`
+Cache-Aside (Lazy Loading) — most common
+┌──────────┐   1. Read cache     ┌────────┐
+│  Client  │──────────────────→  │ Cache  │
+│          │←── 4. Cache Hit     │(Redis) │
+│          │        or           └────────┘
+│          │   Cache Miss ─────→ ┌────────┐
+│          │←─ 2. Fetch from DB  │   DB   │
+│          │   3. Write to cache └────────┘
+└──────────┘
+
+Write-Through
+┌──────────┐   1. Write to cache ┌────────┐
+│  Client  │──────────────────→  │ Cache  │
+│          │   2. Cache writes → │(Redis) │── 3. Write to DB ──→ ┌────┐
+└──────────┘                     └────────┘                       │ DB │
+                                                                   └────┘
+
+Write-Behind (Write-Back)
+Same as write-through but DB write is async — higher throughput, risk of data loss
+\`\`\`
+
+### Cache-Aside Pattern
+
+\`\`\`java
+@Service
+public class ProductService {
+    private final RedisTemplate<String, Product> cache;
+    private final ProductRepository repo;
+    private static final Duration TTL = Duration.ofMinutes(30);
+
+    public Product getProduct(Long id) {
+        String key = "product:" + id;
+
+        // 1. Try cache first
+        Product cached = cache.opsForValue().get(key);
+        if (cached != null) return cached;  // Cache HIT
+
+        // 2. Cache MISS: load from DB
+        Product product = repo.findById(id).orElseThrow();
+
+        // 3. Store in cache with TTL
+        cache.opsForValue().set(key, product, TTL);
+        return product;
+    }
+
+    public Product updateProduct(Long id, ProductRequest req) {
+        Product updated = repo.save(Product.from(id, req));
+
+        // Invalidate cache (cache-aside: evict on write, re-warm on next read)
+        cache.delete("product:" + id);
+        return updated;
+    }
+}
+\`\`\`
+
+### Spring Cache Abstraction (@Cacheable)
+
+\`\`\`java
+@Configuration @EnableCaching
+public class CacheConfig {
+    @Bean
+    public CacheManager cacheManager(RedisConnectionFactory factory) {
+        var config = RedisCacheConfiguration.defaultCacheConfig()
+            .entryTtl(Duration.ofMinutes(30))
+            .serializeValuesWith(RedisSerializationContext.SerializationPair
+                .fromSerializer(new GenericJackson2JsonRedisSerializer()));
+        return RedisCacheManager.builder(factory)
+            .cacheDefaults(config)
+            .build();
+    }
+}
+
+@Service
+public class ProductService {
+    @Cacheable(value = "products", key = "#id")  // read from cache or populate
+    public Product getProduct(Long id) { return repo.findById(id).orElseThrow(); }
+
+    @CachePut(value = "products", key = "#product.id")  // always write to cache
+    public Product updateProduct(Product product) { return repo.save(product); }
+
+    @CacheEvict(value = "products", key = "#id")  // remove from cache
+    public void deleteProduct(Long id) { repo.deleteById(id); }
+
+    @CacheEvict(value = "products", allEntries = true)  // clear entire cache
+    public void clearAll() {}
+}
+\`\`\`
+
+### Eviction Policies
+
+\`\`\`
+LRU (Least Recently Used) — evict the entry not accessed for the longest time
+LFU (Least Frequently Used) — evict the entry with the fewest accesses
+FIFO (First In First Out) — evict the oldest entry regardless of access
+TTL (Time To Live) — evict entries after a fixed duration
+
+Redis maxmemory-policy options:
+- allkeys-lru     — LRU across all keys (most common choice)
+- volatile-lru    — LRU but only keys with TTL set
+- allkeys-lfu     — LFU across all keys
+- allkeys-random  — random eviction
+- noeviction      — reject writes when memory full (default — usually wrong)
+
+# Configure Redis max memory
+maxmemory 4gb
+maxmemory-policy allkeys-lru
+\`\`\`
+
+### Cache Stampede & Thundering Herd
+
+\`\`\`java
+// Problem: a popular key expires → many concurrent requests all hit DB simultaneously
+// "Cache Stampede" or "Dog Pile" effect
+
+// Solution 1: Mutex/lock on cache miss
+@Service
+public class ProductService {
+    private final Map<Long, Lock> locks = new ConcurrentHashMap<>();
+
+    public Product getProduct(Long id) {
+        Product cached = cache.get("product:" + id);
+        if (cached != null) return cached;
+
+        Lock lock = locks.computeIfAbsent(id, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            // Double-check after acquiring lock
+            cached = cache.get("product:" + id);
+            if (cached != null) return cached;
+            Product product = repo.findById(id).orElseThrow();
+            cache.put("product:" + id, product);
+            return product;
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+
+// Solution 2: Staggered TTLs (add random jitter to TTL)
+Duration ttl = Duration.ofMinutes(25 + (long)(Math.random() * 10));  // 25-35 min
+cache.opsForValue().set(key, product, ttl);
+// Prevents mass expiry at the same moment for related keys
+\`\`\``,
+          code: [
+            `import org.springframework.cache.annotation.*;
+import org.springframework.stereotype.*;
+import java.time.*;
+import java.util.*;
 import java.util.concurrent.*;
 
-public class CacheAsideDemo {
-    record Entry(String value, long expiresAt) {}
-    static final Map<String, Entry> cache = new ConcurrentHashMap<>();
-    static final Map<String, Object> locks = new ConcurrentHashMap<>(); // per-key lock
-    static int dbHits = 0;
+// Demonstrating cache patterns without real Redis (Caffeine in-process cache)
+@org.springframework.context.annotation.Configuration
+@EnableCaching
+class CacheConfig {
+    @org.springframework.context.annotation.Bean
+    public org.springframework.cache.CacheManager cacheManager() {
+        // Caffeine: fast in-process cache (great for single-instance apps)
+        com.github.benmanes.caffeine.cache.Caffeine<Object,Object> caffeine =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+                .maximumSize(1000)
+                .expireAfterWrite(Duration.ofMinutes(10))
+                .recordStats();  // enable hit/miss statistics
+        return new org.springframework.cache.caffeine.CaffeineCacheManager("products", "users");
+    }
+}
 
-    static String loadFromDb(String key) {
+@Service
+class ProductCacheService {
+    private final Map<Long, String> fakeDb = new ConcurrentHashMap<>(Map.of(
+        1L, "Widget", 2L, "Gadget", 3L, "Doohickey"
+    ));
+    private int dbHits = 0;
+
+    @Cacheable(value = "products", key = "#id")
+    public String getProduct(Long id) {
         dbHits++;
-        try { Thread.sleep(20); } catch (InterruptedException ignored) {}
-        return "value-for-" + key;
+        System.out.println("[DB HIT #" + dbHits + "] Loading product " + id);
+        try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        return fakeDb.getOrDefault(id, "Unknown");
     }
 
-    static String get(String key, long ttlMs) {
-        Entry e = cache.get(key);
-        long now = System.currentTimeMillis();
-        if (e != null && e.expiresAt() > now) return e.value();        // cache hit
+    @CachePut(value = "products", key = "#id")
+    public String updateProduct(Long id, String name) {
+        System.out.println("[UPDATE] product " + id + " = " + name);
+        fakeDb.put(id, name);
+        return name;
+    }
 
-        // miss: coalesce concurrent loads on this key (stampede guard)
-        synchronized (locks.computeIfAbsent(key, k -> new Object())) {
-            Entry again = cache.get(key);
-            if (again != null && again.expiresAt() > now) return again.value();
-            String fresh = loadFromDb(key);
-            cache.put(key, new Entry(fresh, now + ttlMs));
-            return fresh;
+    @CacheEvict(value = "products", key = "#id")
+    public void deleteProduct(Long id) {
+        System.out.println("[EVICT] product " + id);
+        fakeDb.remove(id);
+    }
+
+    int getDbHits() { return dbHits; }
+}
+
+// Test (without Spring context — shows the pattern)
+class CachePatternDemo {
+    public static void main(String[] args) {
+        // Manual cache-aside pattern demonstration
+        Map<Long, String> cache = new ConcurrentHashMap<>();
+        Map<Long, String> db = Map.of(1L, "Widget", 2L, "Gadget");
+
+        java.util.function.Function<Long, String> getProduct = id -> {
+            String cached = cache.get(id);
+            if (cached != null) { System.out.println("CACHE HIT: " + id); return cached; }
+            String product = db.get(id);
+            if (product != null) cache.put(id, product);
+            System.out.println("CACHE MISS → DB: " + product);
+            return product;
+        };
+
+        getProduct.apply(1L); // miss → loads from db
+        getProduct.apply(1L); // hit
+        getProduct.apply(1L); // hit
+        getProduct.apply(2L); // miss
+        cache.remove(1L);     // evict
+        getProduct.apply(1L); // miss again (evicted)
+    }
+}`,
+            `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+// Cache stampede prevention + multi-level caching
+class StampedeDemo {
+    // L1: fast in-process (Caffeine), L2: Redis, L3: DB
+    // Only simulating here
+    private final Map<String, String> l1Cache = new ConcurrentHashMap<>();
+    private final Map<String, String> l2Cache = new ConcurrentHashMap<>();
+    private final Map<String, String> db = Map.of("k1","v1","k2","v2","k3","v3");
+    private final Map<String, Object> locks = new ConcurrentHashMap<>();
+    private final AtomicInteger l1Hits = new AtomicInteger();
+    private final AtomicInteger l2Hits = new AtomicInteger();
+    private final AtomicInteger dbHits  = new AtomicInteger();
+
+    String get(String key) {
+        // L1 check
+        String v = l1Cache.get(key);
+        if (v != null) { l1Hits.incrementAndGet(); return v; }
+
+        // L2 check
+        v = l2Cache.get(key);
+        if (v != null) { l1Cache.put(key, v); l2Hits.incrementAndGet(); return v; }
+
+        // Stampede prevention: lock per key
+        Object lock = locks.computeIfAbsent(key, k -> new Object());
+        synchronized (lock) {
+            // Double-check after acquiring lock
+            v = l2Cache.get(key);
+            if (v != null) { l1Cache.put(key, v); return v; }
+
+            // Load from DB
+            v = db.get(key);
+            if (v != null) { l2Cache.put(key, v); l1Cache.put(key, v); }
+            dbHits.incrementAndGet();
+            return v;
         }
     }
 
-    public static void main(String[] args) throws InterruptedException {
-        ExecutorService pool = Executors.newFixedThreadPool(50);
-        CountDownLatch done = new CountDownLatch(50);
-        for (int i = 0; i < 50; i++)                 // 50 concurrent requests, same hot key
-            pool.submit(() -> { get("hot", 1000); done.countDown(); });
-        done.await();
-        pool.shutdown();
-        System.out.println("50 concurrent requests for 'hot' -> DB hits = " + dbHits +
-                           " (without the lock it could be ~50)");
+    void printStats() {
+        int total = l1Hits.get() + l2Hits.get() + dbHits.get();
+        System.out.printf("L1 hits: %d (%.0f%%) | L2: %d | DB: %d%n",
+            l1Hits.get(), 100.0*l1Hits.get()/Math.max(1,total),
+            l2Hits.get(), dbHits.get());
+    }
+
+    public static void main(String[] args) {
+        var demo = new StampedeDemo();
+        // Simulate 100 requests for 3 keys
+        for (int i = 0; i < 100; i++) {
+            demo.get("k" + (i % 3 + 1));
+        }
+        demo.printStats(); // Should show ~97 L1 hits after warmup
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What is the Cache-Aside (Lazy Loading) pattern and when is it preferred?', a: 'Cache-Aside: the application first checks the cache; on a miss, it loads from the DB and writes to the cache. The cache is ONLY populated on demand. Pros: only cached data that\'s actually requested; resilient to cache failure (fallback to DB). Cons: cache miss on first request (cold start); potential stampede. Preferred for: read-heavy workloads with non-uniform access patterns. Write strategy: evict the cache key on write (re-warm on next read) or use a short TTL to ensure eventual consistency.' },
+            { q: 'What is the difference between Write-Through and Write-Behind caching?', a: 'Write-Through: on every write, update BOTH cache and DB synchronously. Cache is always consistent with DB. Slower writes (two writes per update), but reads are always cache hits. Write-Behind (Write-Back): write to cache only; an async process periodically flushes to DB. Faster writes, but risk of data loss if cache fails before flush. Used when write throughput is critical (gaming leaderboards, real-time analytics). Write-Through is safer; Write-Behind is faster but requires durability mechanisms.' },
+            { q: 'What is a cache stampede and how do you prevent it?', a: 'Cache stampede (thundering herd): a popular cache key expires, and simultaneously many concurrent requests miss the cache and all hit the DB, causing a spike. Prevention: (1) Mutex/lock per key — only one request queries DB, others wait then read cache; (2) TTL jitter — add random variation to TTL (e.g. 25-35 min) to prevent mass expiry; (3) Background refresh — asynchronously refresh the cache before TTL expires; (4) Probabilistic early expiration — with some probability, refresh the cache slightly before it expires.' },
+            { q: 'What are LRU, LFU, and TTL eviction policies?', a: 'LRU (Least Recently Used): evict the entry not accessed for the longest time — good for temporal locality (recently used items are likely to be used again). LFU (Least Frequently Used): evict the entry accessed the fewest times — good when some items are permanently hot (always accessed). TTL (Time To Live): evict after a fixed duration regardless of access — ensures eventual consistency and removes stale data. Redis default in production: allkeys-lru (evict the globally least recently used key when memory is full).' },
+            { q: 'What is @Cacheable in Spring and what are the caveats?', a: '@Cacheable intercepts the method call: checks cache first, calls the method on miss, stores the result. Key caveats: (1) Self-invocation problem — same as @Transactional: this.method() bypasses the proxy, @Cacheable is ignored; (2) Method must be public; (3) Null values: by default cached, can disable with unless="#result==null"; (4) Cache key must be serializable for Redis; (5) Cache consistency: if DB is updated without going through the cached method, the cache becomes stale — always pair with @CacheEvict or @CachePut on write methods.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'Describe the cache-aside pattern.', a: 'The application checks the cache first; on a miss it loads from the database, stores the result in the cache (with a TTL), and returns it. Writes update the DB and invalidate/refresh the cache entry.' },
-        { q: 'What is a cache stampede and how do you prevent it?', a: 'When a popular key expires, many concurrent requests miss and hammer the DB simultaneously. Mitigate with request coalescing/locks (single loader), staggered/jittered TTLs, or proactive early recomputation.' },
-        { q: 'Cache penetration vs avalanche?', a: 'Penetration: repeated queries for non-existent keys always miss and hit the DB — fix by caching negative results or a Bloom filter. Avalanche: many keys expire at once overwhelming the DB — fix with jittered TTLs.' },
-        { q: 'Write-through vs write-behind caching?', a: 'Write-through writes to cache and DB synchronously (consistent, slower writes). Write-behind writes to cache and asynchronously flushes to the DB (fast writes, risk of data loss on crash).' }
       ]
     },
 
