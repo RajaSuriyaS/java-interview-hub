@@ -8761,10 +8761,912 @@ public class ConcurrentCollectionsDemo {
         {
       id: '0.10',
       title: 'Java 8 — Optional, Date/Time API, Method Refs',
-      hours: 3,
-      notes: `*[Module 0.10 — under construction. Will cover: Optional, java.time (LocalDate, Instant), method references. Roadmap: build after 0.9.]*`
-    },
+      hours: 4,
+      sections: [
+        {
+          title: 'Lambda Expressions & Functional Interfaces',
+          notes: `## Lambda Expressions & Functional Interfaces
 
+Java 8's lambda expressions let you treat behaviour as data — pass a block of code as a method argument, store it in a variable, or return it from a method. They are the foundation of the functional programming features added in Java 8.
+
+### What Is a Lambda?
+
+A lambda is an anonymous function: no name, no class, just parameters → body.
+
+\`\`\`java
+// Before Java 8 — anonymous class
+Runnable r1 = new Runnable() {
+    @Override public void run() { System.out.println("Hello"); }
+};
+
+// Java 8 lambda — same thing, less noise
+Runnable r2 = () -> System.out.println("Hello");
+
+// Multi-line body with braces
+Runnable r3 = () -> {
+    System.out.println("Line 1");
+    System.out.println("Line 2");
+};
+\`\`\`
+
+**Syntax:** \`(parameters) -> expression\` or \`(parameters) -> { statements; }\`
+
+### Functional Interfaces — The Type a Lambda Inhabits
+
+A functional interface has **exactly one abstract method**. The \`@FunctionalInterface\` annotation enforces this at compile time. Lambdas can be assigned to any functional interface whose signature matches.
+
+\`\`\`java
+@FunctionalInterface
+interface Transformer<T, R> {
+    R transform(T input);
+}
+
+Transformer<String, Integer> len = s -> s.length();
+System.out.println(len.transform("hello")); // 5
+\`\`\`
+
+### The Four JDK Functional Interfaces (know these cold)
+
+\`\`\`mermaid
+graph LR
+    F[Function\nT → R\napply] --> BI[BiFunction\nT,U → R\napply]
+    P[Predicate\nT → boolean\ntest] --> BP[BiPredicate\nT,U → boolean\ntest]
+    S[Supplier\n() → T\nget] --> US[UnaryOperator\nT → T\napply]
+    C[Consumer\nT → void\naccept] --> BC[BiConsumer\nT,U → void\naccept]
+    style F fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style P fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style S fill:#1e293b,stroke:#f59e0b,color:#fde68a
+    style C fill:#1e0a0a,stroke:#ef4444,color:#fecaca
+\`\`\`
+
+| Interface | Signature | Method | Use case |
+|---|---|---|---|
+| \`Function<T,R>\` | \`T → R\` | \`apply\` | Transform one type to another |
+| \`Predicate<T>\` | \`T → boolean\` | \`test\` | Filter / condition check |
+| \`Supplier<T>\` | \`() → T\` | \`get\` | Lazy value provider |
+| \`Consumer<T>\` | \`T → void\` | \`accept\` | Side-effect action |
+| \`UnaryOperator<T>\` | \`T → T\` | \`apply\` | Transform same type (extends Function) |
+| \`BinaryOperator<T>\` | \`(T,T) → T\` | \`apply\` | Reduce two values to one |
+
+### Composing Functions
+
+Functional interfaces expose default methods for composition:
+
+\`\`\`java
+Function<String, String> trim    = String::trim;
+Function<String, String> upper   = String::toUpperCase;
+Function<String, Integer> length = String::length;
+
+// andThen — apply trim, then upper, then length
+Function<String, Integer> pipeline = trim.andThen(upper).andThen(length);
+System.out.println(pipeline.apply("  hello world  ")); // 11
+
+// Predicate composition
+Predicate<Integer> positive = n -> n > 0;
+Predicate<Integer> even     = n -> n % 2 == 0;
+Predicate<Integer> posEven  = positive.and(even);
+Predicate<Integer> posOrEven = positive.or(even);
+Predicate<Integer> notPositive = positive.negate();
+
+System.out.println(posEven.test(4));    // true
+System.out.println(posEven.test(-2));   // false
+System.out.println(posOrEven.test(-2)); // true (even)
+\`\`\`
+
+### Variable Capture
+
+Lambdas can capture variables from the enclosing scope, but only **effectively final** variables (never reassigned after the lambda is created):
+
+\`\`\`java
+String prefix = "Hello, ";  // effectively final — never reassigned
+Consumer<String> greet = name -> System.out.println(prefix + name);
+
+greet.accept("Alice"); // Hello, Alice
+greet.accept("Bob");   // Hello, Bob
+
+// This would NOT compile:
+// prefix = "Hi, ";  ← reassignment makes it non-effectively-final
+\`\`\`
+
+**Why?** Lambdas may outlive the method that created them (stored in a list, passed to a thread). Allowing mutable captures would create race conditions. The captured value is copied at creation time.`,
+          code: [
+            `import java.util.*;
+import java.util.function.*;
+
+public class LambdaDemo {
+    public static void main(String[] args) {
+        // Core four functional interfaces
+        Function<String, Integer>  wordCount  = s -> s.trim().split("\\s+").length;
+        Predicate<String>          longSentence = s -> wordCount.apply(s) > 5;
+        Supplier<List<String>>     newList    = ArrayList::new;
+        Consumer<List<String>>     printAll   = list -> list.forEach(System.out::println);
+
+        String sentence = "the quick brown fox jumps over the lazy dog";
+        System.out.println("Words: " + wordCount.apply(sentence));
+        System.out.println("Long? " + longSentence.test(sentence));
+
+        List<String> words = newList.get();
+        words.addAll(Arrays.asList(sentence.split(" ")));
+        printAll.accept(words.subList(0, 3));
+
+        // Compose predicates
+        Predicate<String> startsWithT = s -> s.startsWith("t");
+        Predicate<String> longWord    = s -> s.length() > 3;
+        Predicate<String> tAndLong   = startsWithT.and(longWord);
+
+        System.out.println("\nWords starting with 't' and longer than 3 chars:");
+        words.stream().filter(tAndLong).forEach(w -> System.out.println("  " + w));
+
+        // Function pipeline
+        Function<String, String>  clean  = String::trim;
+        Function<String, String>  upper  = String::toUpperCase;
+        Function<String, String[]> split  = s -> s.split("\\s+");
+        Function<String, String[]> pipe   = clean.andThen(upper).andThen(split);
+
+        System.out.println("\nPipeline result: " + Arrays.toString(pipe.apply("  hello world  ")));
+    }
+}`,
+            `import java.util.*;
+import java.util.function.*;
+
+// Building a mini-pipeline with functional interfaces
+public class FunctionalPipeline {
+    record Employee(String name, String dept, double salary) {}
+
+    static <T, R> Function<T, R> memoize(Function<T, R> fn) {
+        Map<T, R> cache = new HashMap<>();
+        return input -> cache.computeIfAbsent(input, fn);
+    }
+
+    public static void main(String[] args) {
+        List<Employee> employees = List.of(
+            new Employee("Alice", "Engineering", 95_000),
+            new Employee("Bob",   "Engineering", 82_000),
+            new Employee("Carol", "Marketing",   71_000),
+            new Employee("Dave",  "Engineering", 105_000),
+            new Employee("Eve",   "Marketing",   68_000)
+        );
+
+        // Build pipeline from composable predicates
+        Predicate<Employee> isEngineering = e -> "Engineering".equals(e.dept());
+        Predicate<Employee> highEarner    = e -> e.salary() > 90_000;
+
+        Function<Employee, String> summarise =
+            e -> String.format("%-10s %s $%.0f", e.name(), e.dept(), e.salary());
+
+        Consumer<String> log = s -> System.out.println("  " + s);
+
+        System.out.println("Senior engineers (Engineering + salary > 90k):");
+        employees.stream()
+            .filter(isEngineering.and(highEarner))
+            .map(summarise)
+            .forEach(log);
+
+        // Memoised expensive computation
+        Function<String, Integer> expensiveLength = memoize(s -> {
+            System.out.println("  [computing for: " + s + "]");
+            return s.length();
+        });
+
+        System.out.println("\nMemoised calls:");
+        System.out.println(expensiveLength.apply("hello"));  // computes
+        System.out.println(expensiveLength.apply("world"));  // computes
+        System.out.println(expensiveLength.apply("hello"));  // cached — no re-compute
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is a functional interface? Why does @FunctionalInterface exist?', a: 'A functional interface has exactly one abstract method (SAM — Single Abstract Method). This single method is what a lambda implements. @FunctionalInterface is a compile-time guard: it causes a compiler error if someone accidentally adds a second abstract method to the interface, breaking all existing lambdas that implement it.' },
+            { q: 'What does "effectively final" mean for lambda captures?', a: 'A variable is effectively final if it is never reassigned after its initial assignment — even without the explicit final keyword. Lambdas can only capture effectively final local variables because lambdas may outlive the stack frame; mutable captures would require sharing mutable state across threads, which is a race condition. The captured value is copied at lambda creation.' },
+            { q: 'What is the difference between Function.andThen() and Function.compose()?', a: 'f.andThen(g) = g(f(x)) — apply f first, then g. f.compose(g) = f(g(x)) — apply g first, then f. andThen reads left-to-right (most intuitive). Example: trim.andThen(upper) trims first then uppercases.' },
+            { q: 'Name the four core functional interfaces and their signatures.', a: 'Function<T,R>: T→R (apply). Predicate<T>: T→boolean (test). Supplier<T>: ()→T (get). Consumer<T>: T→void (accept). Plus specialisations: UnaryOperator<T>=Function<T,T>, BinaryOperator<T>=(T,T)→T, BiFunction, BiPredicate, BiConsumer.' },
+            { q: 'Can a lambda throw a checked exception? What is the workaround?', a: 'Only if the functional interface\'s abstract method declares that checked exception. Standard JDK interfaces (Function, Predicate, etc.) do not declare checked exceptions, so lambdas using them cannot throw checked exceptions directly. Workaround: wrap in try-catch inside the lambda, or define a custom @FunctionalInterface that declares throws Exception (e.g., ThrowingFunction<T,R>).' }
+          ]
+        },
+        {
+          title: 'Method References — Four Flavours',
+          notes: `## Method References — Four Flavours
+
+Method references are shorthand for lambdas that do nothing but call a single existing method. They make code more readable by naming the method directly instead of wrapping it in a lambda.
+
+### The Four Types
+
+\`\`\`mermaid
+graph TD
+    MR[Method Reference\nClass::method]
+    MR --> S[Static\nClass::staticMethod\ne.g. Integer::parseInt]
+    MR --> I[Instance — Bound\ninstance::method\ne.g. str::toUpperCase]
+    MR --> U[Instance — Unbound\nClass::instanceMethod\ne.g. String::toUpperCase]
+    MR --> C[Constructor\nClass::new\ne.g. ArrayList::new]
+    style S  fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style I  fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style U  fill:#1e293b,stroke:#f59e0b,color:#fde68a
+    style C  fill:#1e0a0a,stroke:#ef4444,color:#fecaca
+\`\`\`
+
+### 1. Static Method Reference — \`Class::staticMethod\`
+
+\`\`\`java
+Function<String, Integer> parseF = s -> Integer.parseInt(s);
+Function<String, Integer> parseM = Integer::parseInt;   // equivalent
+
+List<String> strs = List.of("3", "1", "4", "1", "5");
+List<Integer> nums = strs.stream().map(Integer::parseInt).toList();
+System.out.println(nums); // [3, 1, 4, 1, 5]
+
+// Comparator.comparingInt uses a static method reference
+strs.stream()
+    .sorted(Comparator.comparingInt(Integer::parseInt))
+    .forEach(System.out::println); // 1 1 3 4 5
+\`\`\`
+
+### 2. Bound Instance Method Reference — \`instance::method\`
+
+The instance is fixed at the time the reference is created. The lambda always calls the method on *that specific object*:
+
+\`\`\`java
+String prefix = "Hello, ";
+Function<String, String> greeter = prefix::concat;  // bound to "Hello, "
+System.out.println(greeter.apply("Alice")); // Hello, Alice
+System.out.println(greeter.apply("Bob"));   // Hello, Bob
+
+// System.out is the bound instance:
+Consumer<String> printer = System.out::println;
+List.of("a", "b", "c").forEach(printer);
+\`\`\`
+
+### 3. Unbound Instance Method Reference — \`Class::instanceMethod\`
+
+The instance is *not* fixed. The lambda receives the instance as its first argument and calls the method on it:
+
+\`\`\`java
+// Lambda: s -> s.toUpperCase()
+// Unbound ref: String::toUpperCase — instance is the first (and only) lambda parameter
+Function<String, String>  upper   = String::toUpperCase;
+Function<String, Integer> length  = String::length;
+Predicate<String>         isEmpty = String::isEmpty;
+
+List<String> words = List.of("java", "streams", "method", "refs");
+words.stream().map(String::toUpperCase).forEach(System.out::println);
+
+// BiFunction: (instance, param) → result
+// String::startsWith — first arg is the String instance, second is the prefix
+BiFunction<String, String, Boolean> starts = String::startsWith;
+System.out.println(starts.apply("hello", "he")); // true
+\`\`\`
+
+### 4. Constructor Reference — \`Class::new\`
+
+\`\`\`java
+Supplier<ArrayList<String>>     empty   = ArrayList::new;
+Function<Integer, ArrayList<String>> sized = ArrayList::new; // ArrayList(int initialCapacity)
+
+ArrayList<String> list = empty.get();   // new ArrayList<>()
+ArrayList<String> big  = sized.apply(100); // new ArrayList<>(100)
+
+// Very common in streams:
+List<String> source = List.of("a", "b", "c");
+List<String> copy = source.stream().collect(Collectors.toCollection(ArrayList::new));
+\`\`\`
+
+### When Lambda vs. Method Reference
+
+| Use lambda | Use method reference |
+|---|---|
+| Body does more than one thing | Body is exactly one method call |
+| Parameters need renaming for clarity | Method name makes intent clear |
+| You need to adapt the signature | Signatures match exactly |
+| Debugging — stack traces name the lambda line | Method ref stack traces show the target method |
+
+\`\`\`java
+// Prefer method ref — intent is obvious
+.map(String::trim)
+
+// Prefer lambda — adapting, adds clarity
+.map(s -> s.trim().toLowerCase())
+
+// Prefer lambda — adapting two args
+.sorted((a, b) -> a.length() - b.length())
+
+// Use method ref — Comparator.comparingInt is cleaner
+.sorted(Comparator.comparingInt(String::length))
+\`\`\`
+
+### \`System.out::println\` — Why It Works
+
+\`System.out\` is a static field of type \`PrintStream\`. \`System.out::println\` captures the current value of \`System.out\` at reference-creation time (bound instance ref). It satisfies \`Consumer<Object>\`, \`Consumer<String>\`, etc. because \`println\` is overloaded for all types.`,
+          code: [
+            `import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
+
+public class MethodRefDemo {
+    static String clean(String s) { return s.trim().toLowerCase(); }
+
+    record Person(String name, int age) {
+        String intro() { return name + " (age " + age + ")"; }
+    }
+
+    public static void main(String[] args) {
+        List<String> raw = List.of("  Alice ", " BOB", "CAROL  ", " dave ");
+
+        // 1. Static method reference
+        System.out.println("Static ref — clean():");
+        raw.stream().map(MethodRefDemo::clean).forEach(System.out::println);
+
+        // 2. Unbound instance ref — method on the stream element
+        System.out.println("\nUnbound ref — String::trim then String::toUpperCase:");
+        raw.stream().map(String::trim).map(String::toUpperCase).forEach(System.out::println);
+
+        // 3. Bound instance ref — captured instance
+        String sep = ", ";
+        Function<String, String> addSep = sep::concat;
+        System.out.println("\nBound ref — concat separator:");
+        raw.stream().map(String::trim).map(addSep).forEach(System.out::println);
+
+        // 4. Constructor ref
+        Supplier<LinkedList<String>> listFactory = LinkedList::new;
+        Function<Integer, int[]>     arrayFactory = int[]::new;
+
+        LinkedList<String> names = raw.stream()
+            .map(String::trim)
+            .collect(Collectors.toCollection(LinkedList::new));
+        System.out.println("\nConstructor ref — LinkedList: " + names);
+
+        // 5. Unbound ref with records
+        List<Person> people = List.of(
+            new Person("Alice", 32), new Person("Bob", 28), new Person("Carol", 35));
+
+        System.out.println("\nUnbound record method ref — Person::intro:");
+        people.stream().map(Person::intro).forEach(System.out::println);
+
+        System.out.println("\nSorted by age using Comparator.comparingInt + method ref:");
+        people.stream()
+            .sorted(Comparator.comparingInt(Person::age))
+            .map(Person::intro)
+            .forEach(System.out::println);
+    }
+}`,
+            `import java.util.*;
+import java.util.function.*;
+
+// Chaining and composing method references
+public class MethodRefCompose {
+    record Product(String name, double price, boolean inStock) {}
+
+    @FunctionalInterface
+    interface ThrowingFunction<T, R> {
+        R apply(T t) throws Exception;
+        static <T, R> Function<T, R> wrap(ThrowingFunction<T, R> fn) {
+            return t -> {
+                try { return fn.apply(t); }
+                catch (Exception e) { throw new RuntimeException(e); }
+            };
+        }
+    }
+
+    public static void main(String[] args) {
+        List<Product> catalog = List.of(
+            new Product("Widget",      9.99, true),
+            new Product("Gadget",     29.99, false),
+            new Product("Doohickey",   4.99, true),
+            new Product("Thingamajig",49.99, true)
+        );
+
+        // Unbound refs for field access
+        Function<Product, String>  getName    = Product::name;
+        Function<Product, Double>  getPrice   = Product::price;
+        Predicate<Product>         isInStock  = Product::inStock;
+
+        System.out.println("In-stock products sorted by price:");
+        catalog.stream()
+            .filter(isInStock)
+            .sorted(Comparator.comparingDouble(Product::price))
+            .forEach(p -> System.out.printf("  %-15s $%.2f%n", getName.apply(p), getPrice.apply(p)));
+
+        // Constructor ref as factory
+        List<String> priceStrings = List.of("19.99", "5.50", "bad", "33.00");
+        Function<String, Double> safeParse = ThrowingFunction.wrap(Double::parseDouble);
+
+        System.out.println("\nParsing prices (with error wrapping):");
+        priceStrings.forEach(s -> {
+            try {
+                System.out.printf("  %s → %.2f%n", s, safeParse.apply(s));
+            } catch (RuntimeException e) {
+                System.out.printf("  %s → INVALID%n", s);
+            }
+        });
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What are the four types of method references?', a: '1. Static — Class::staticMethod (Integer::parseInt). 2. Bound instance — instance::method (System.out::println, str::concat). 3. Unbound instance — Class::instanceMethod (String::toUpperCase, String::length) — instance is the first lambda parameter. 4. Constructor — Class::new (ArrayList::new, Person::new).' },
+            { q: 'What is the difference between String::toUpperCase (unbound) and str::toUpperCase (bound)?', a: 'Bound (str::toUpperCase): the instance is captured — always calls toUpperCase on that specific String. Satisfies Supplier<String>. Unbound (String::toUpperCase): the instance comes from the lambda parameter — you\'re saying "call toUpperCase on whatever String I receive." Satisfies Function<String,String>. Unbound is used in stream().map().' },
+            { q: 'How does BiFunction relate to an unbound method reference that takes a parameter?', a: 'String::startsWith has signature (String instance, String prefix) → boolean, so it fits BiFunction<String,String,Boolean>. The first argument is the target object (the String), the second is the method parameter. Any unbound ref to a one-argument method matches a BiFunction where the first type is the class.' },
+            { q: 'When should you prefer a lambda over a method reference?', a: 'When the body does more than one method call (chaining), when parameter naming adds clarity (a, b vs applying to implicit args), or when you need to adapt the signature (e.g. add a null check). Method references are ideal when the lambda body is exactly one method call with matching types — they\'re more readable and their stack traces name the actual method.' },
+            { q: 'What does int[]::new mean as a constructor reference?', a: 'It\'s a constructor reference for int arrays. It satisfies IntFunction<int[]> — given an int n, it returns new int[n]. Used in Stream.toArray(int[]::new) to collect a stream into an int array. The dimension is passed as the first argument.' }
+          ]
+        },
+        {
+          title: 'Optional — Null-Safe Programming',
+          notes: `## Optional — Null-Safe Programming
+
+\`Optional<T>\` is a container that either holds a non-null value or is empty. It was introduced in Java 8 to make the possibility of absence **explicit in the type system**, forcing callers to handle both cases rather than silently receiving \`null\`.
+
+### Creating an Optional
+
+\`\`\`java
+Optional<String> full    = Optional.of("hello");          // non-null value
+Optional<String> empty   = Optional.empty();               // no value
+Optional<String> maybe   = Optional.ofNullable(getValue()); // null → empty, non-null → present
+\`\`\`
+
+> \`Optional.of(null)\` throws \`NullPointerException\` immediately — use \`ofNullable\` when the source might be null.
+
+### Retrieving the Value
+
+\`\`\`java
+Optional<String> opt = Optional.of("Java");
+
+// Safe retrieval — always use these
+String val1 = opt.orElse("default");              // return default if empty
+String val2 = opt.orElseGet(() -> computeDefault()); // lazy — only called if empty
+String val3 = opt.orElseThrow();                   // throws NoSuchElementException if empty
+String val4 = opt.orElseThrow(() -> new RuntimeException("Not found")); // custom exception
+
+// Conditional action
+opt.ifPresent(s -> System.out.println("Got: " + s));
+opt.ifPresentOrElse(
+    s -> System.out.println("Present: " + s),
+    () -> System.out.println("Empty!")
+);
+\`\`\`
+
+**Never use \`opt.get()\` without \`isPresent()\`** — it throws NoSuchElementException on empty. Idiomatic Java 8+ style never calls \`get()\` at all; use the above methods instead.
+
+### Transforming — map, flatMap, filter
+
+\`\`\`java
+Optional<String> name = Optional.of("  Alice  ");
+
+// map — transform if present (wraps result in Optional)
+Optional<String> trimmed = name.map(String::trim);           // Optional["Alice"]
+Optional<Integer> length = name.map(String::trim).map(String::length); // Optional[5]
+
+// filter — empty if present but fails predicate
+Optional<String> long_ = name.map(String::trim).filter(s -> s.length() > 3); // Optional["Alice"]
+Optional<String> short_ = name.map(String::trim).filter(s -> s.length() > 10); // Optional.empty
+
+// flatMap — when your mapper returns Optional (avoids Optional<Optional<T>>)
+Optional<String> config = Optional.of("user.name");
+Optional<String> value = config.flatMap(key -> Optional.ofNullable(System.getProperty(key)));
+\`\`\`
+
+### Chaining to Eliminate Null Checks
+
+\`\`\`java
+// Before — pyramid of null checks
+User user = getUser(id);
+if (user != null) {
+    Address address = user.getAddress();
+    if (address != null) {
+        String city = address.getCity();
+        if (city != null) {
+            return city.toUpperCase();
+        }
+    }
+}
+return "UNKNOWN";
+
+// After — Optional chain
+return Optional.ofNullable(getUser(id))
+    .map(User::getAddress)
+    .map(Address::getCity)
+    .map(String::toUpperCase)
+    .orElse("UNKNOWN");
+\`\`\`
+
+### What Optional Is NOT For
+
+| ❌ Don't use Optional as | ✅ Use instead |
+|---|---|
+| A method parameter type | Two overloads, or pass null, or a dedicated query object |
+| A field in a class | Nullable field + \`@Nullable\` annotation |
+| A collection element | Collections already express absence as empty |
+| Return type of setters | Return \`void\` or the object itself for chaining |
+| Serializable field | Optional is not Serializable |
+
+Optional is for **return types only** — it signals to the caller that a result may be absent. It is not a general-purpose null replacement throughout the codebase.
+
+### Java 9+ Optional Additions
+
+\`\`\`java
+// or() — provide another Optional if this is empty (Java 9)
+Optional<String> result = primary.or(() -> Optional.ofNullable(fallback));
+
+// stream() — convert to a Stream of 0 or 1 elements (Java 9)
+// Very useful for flatMap in streams-of-Optionals
+List<Optional<String>> opts = List.of(Optional.of("a"), Optional.empty(), Optional.of("b"));
+List<String> present = opts.stream()
+    .flatMap(Optional::stream)  // Optional::stream is the Java 9 method
+    .toList();
+System.out.println(present); // [a, b]
+
+// isEmpty() — negation of isPresent() (Java 11)
+boolean missing = opt.isEmpty(); // opt.isPresent() == false
+\`\`\``,
+          code: [
+            `import java.util.*;
+
+// Chaining Optional to replace null-check pyramids
+public class OptionalDemo {
+    record Address(String street, String city, String postcode) {}
+    record User(String name, String email, Address address) {}
+
+    static Optional<User> findUser(int id) {
+        return switch (id) {
+            case 1 -> Optional.of(new User("Alice", "alice@e.com", new Address("1 High St","London","EC1A")));
+            case 2 -> Optional.of(new User("Bob",   "bob@e.com",   null));  // no address
+            case 3 -> Optional.empty();  // not found
+            default -> Optional.empty();
+        };
+    }
+
+    static String getCity(int userId) {
+        return findUser(userId)
+            .map(User::address)
+            .map(Address::city)
+            .map(String::toUpperCase)
+            .orElse("CITY UNKNOWN");
+    }
+
+    static String getEmailDomain(int userId) {
+        return findUser(userId)
+            .map(User::email)
+            .filter(e -> e.contains("@"))
+            .map(e -> e.substring(e.indexOf('@') + 1))
+            .orElseThrow(() -> new RuntimeException("User " + userId + " has no valid email"));
+    }
+
+    public static void main(String[] args) {
+        System.out.println("Cities:");
+        for (int id : new int[]{1, 2, 3}) {
+            System.out.printf("  User %d → %s%n", id, getCity(id));
+        }
+
+        System.out.println("\nEmail domains:");
+        for (int id : new int[]{1, 2}) {
+            try {
+                System.out.printf("  User %d → %s%n", id, getEmailDomain(id));
+            } catch (RuntimeException e) {
+                System.out.printf("  User %d → ERROR: %s%n", id, e.getMessage());
+            }
+        }
+
+        // ifPresentOrElse
+        System.out.println("\nUser lookup with action:");
+        findUser(1).ifPresentOrElse(
+            u -> System.out.println("  Found: " + u.name()),
+            ()  -> System.out.println("  Not found")
+        );
+        findUser(99).ifPresentOrElse(
+            u -> System.out.println("  Found: " + u.name()),
+            ()  -> System.out.println("  Not found")
+        );
+    }
+}`,
+            `import java.util.*;
+import java.util.stream.*;
+
+// Optional with streams — flatMap and or()
+public class OptionalStreams {
+    record Config(String key, String value) {}
+
+    static final Map<String, String> SETTINGS = Map.of(
+        "db.host", "localhost",
+        "db.port", "5432",
+        "app.name", "demo"
+    );
+
+    static Optional<String> getSetting(String key) {
+        return Optional.ofNullable(SETTINGS.get(key));
+    }
+
+    static Optional<Integer> parsePort(String raw) {
+        try { return Optional.of(Integer.parseInt(raw)); }
+        catch (NumberFormatException e) { return Optional.empty(); }
+    }
+
+    public static void main(String[] args) {
+        // flatMap — when mapper returns Optional
+        Optional<Integer> port = getSetting("db.port").flatMap(OptionalStreams::parsePort);
+        System.out.println("Port: " + port.orElse(3306));
+
+        // or() — fallback chain (Java 9+)
+        Optional<String> host = getSetting("db.host.override")  // missing
+            .or(() -> getSetting("db.host"))                     // falls back here
+            .or(() -> Optional.of("127.0.0.1"));                 // ultimate fallback
+        System.out.println("Host: " + host.orElseThrow());
+
+        // Optional::stream for filtering in streams-of-Optionals
+        List<String> keys = List.of("db.host", "db.password", "app.name", "app.secret");
+        System.out.println("\nFound settings:");
+        keys.stream()
+            .map(OptionalStreams::getSetting)     // Stream<Optional<String>>
+            .flatMap(Optional::stream)            // Stream<String> — only present values
+            .forEach(v -> System.out.println("  " + v));
+
+        // orElseGet vs orElse — performance matters
+        Optional<String> empty = Optional.empty();
+        // orElse always evaluates the argument (even if present):
+        String a = empty.orElse(expensiveComputation());   // expensiveComputation() called
+        // orElseGet is lazy — only called when empty:
+        String b = empty.orElseGet(() -> expensiveComputation()); // also called here (empty)
+
+        Optional<String> full = Optional.of("value");
+        String c = full.orElse(expensiveComputation());    // still called! wasted work
+        String d = full.orElseGet(() -> expensiveComputation()); // NOT called — lazy
+        System.out.println("\norElseGet result: " + d);
+    }
+
+    static String expensiveComputation() {
+        System.out.println("  [expensive computation ran]");
+        return "computed-default";
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the difference between Optional.of(), Optional.ofNullable(), and Optional.empty()?', a: 'Optional.of(value) — wraps a non-null value; throws NullPointerException if value is null. Optional.ofNullable(value) — wraps if non-null, returns empty Optional if null (safe for unknown sources). Optional.empty() — creates an explicitly empty Optional with no value.' },
+            { q: 'What is the difference between orElse() and orElseGet()?', a: 'orElse(default) evaluates the default expression eagerly — always, even when the Optional is present. orElseGet(() -> compute()) is lazy — only calls the supplier when the Optional is empty. Prefer orElseGet() when the default requires computation (DB lookup, object creation) to avoid wasted work.' },
+            { q: 'Why should Optional not be used as a method parameter type?', a: 'It adds verbosity without benefit — callers must wrap every value in Optional.of() even when they know it\'s non-null. It doesn\'t prevent null (you can pass Optional.ofNullable(null)). It\'s semantically wrong: method parameters should be required, and optionality is better expressed via overloads or @Nullable annotation. Optional is for return types only.' },
+            { q: 'How does Optional.flatMap() differ from Optional.map()?', a: 'map(fn) wraps the result in Optional — if fn returns Optional<T>, you get Optional<Optional<T>>. flatMap(fn) expects fn to return Optional<T> itself and flattens the result — you get Optional<T>. Use flatMap when your transformation method already returns Optional (e.g. findUser returns Optional<User>).' },
+            { q: 'What does Optional.stream() do and why is it useful in Java 9+?', a: 'Returns a Stream of 0 or 1 elements — empty stream if the Optional is empty, single-element stream if present. Critical use: flatMap(Optional::stream) on a Stream<Optional<T>> to produce a Stream<T> with only the present values, discarding empties. Much cleaner than filter(Optional::isPresent).map(Optional::get).' }
+          ]
+        },
+        {
+          title: 'Date/Time API — java.time',
+          notes: `## Date/Time API — java.time
+
+Java 8 replaced the broken \`java.util.Date\` and \`Calendar\` with a clean, immutable, thread-safe Date/Time API in the \`java.time\` package (JSR-310). **Every object in \`java.time\` is immutable.**
+
+### The Class Hierarchy
+
+\`\`\`mermaid
+graph TD
+    DT[java.time]
+    DT --> LD[LocalDate\ndate only\n2024-06-25]
+    DT --> LT[LocalTime\ntime only\n14:30:00]
+    DT --> LDT[LocalDateTime\ndate + time, no zone\n2024-06-25T14:30:00]
+    DT --> ZDT[ZonedDateTime\ndate + time + zone\n2024-06-25T14:30:00+05:30]
+    DT --> I[Instant\nUTC machine timestamp\n2024-06-25T09:00:00Z]
+    DT --> DUR[Duration\ntime-based amount\nPT8H30M]
+    DT --> PER[Period\ndate-based amount\nP2Y3M]
+    style LD  fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style LDT fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style ZDT fill:#1e293b,stroke:#f59e0b,color:#fde68a
+    style I   fill:#1e0a0a,stroke:#ef4444,color:#fecaca
+\`\`\`
+
+### LocalDate — Date Without Time
+
+\`\`\`java
+LocalDate today    = LocalDate.now();
+LocalDate birthday = LocalDate.of(1990, Month.MARCH, 15);
+LocalDate parsed   = LocalDate.parse("2024-06-25");  // ISO-8601
+
+LocalDate tomorrow  = today.plusDays(1);
+LocalDate nextMonth = today.plusMonths(1);
+LocalDate lastYear  = today.minusYears(1);
+
+// Querying
+int year   = today.getYear();
+Month month = today.getMonth();         // Month.JUNE
+int dom    = today.getDayOfMonth();
+DayOfWeek dow = today.getDayOfWeek();  // DayOfWeek.TUESDAY
+
+// Comparison
+boolean before = birthday.isBefore(today);
+boolean after  = birthday.isAfter(today);
+boolean leap   = today.isLeapYear();
+
+// How many days between dates?
+long days = ChronoUnit.DAYS.between(birthday, today);
+\`\`\`
+
+### LocalDateTime and ZonedDateTime
+
+\`\`\`java
+LocalDateTime ldt = LocalDateTime.of(2024, 6, 25, 14, 30, 0);
+LocalDateTime now = LocalDateTime.now();
+
+// Add timezone to get ZonedDateTime
+ZoneId india = ZoneId.of("Asia/Kolkata");
+ZoneId utc   = ZoneId.of("UTC");
+ZonedDateTime indiaTime = ldt.atZone(india);
+ZonedDateTime utcTime   = indiaTime.withZoneSameInstant(utc);  // convert zone
+System.out.println(utcTime); // same instant, different representation
+
+// Parse with zone
+ZonedDateTime zdt = ZonedDateTime.parse("2024-06-25T14:30:00+05:30[Asia/Kolkata]");
+\`\`\`
+
+### Instant — Machine Timestamp
+
+\`\`\`java
+Instant now = Instant.now();          // current UTC time as machine timestamp
+Instant epoch = Instant.EPOCH;       // 1970-01-01T00:00:00Z
+long epochMs = now.toEpochMilli();   // milliseconds since epoch
+
+// Convert to/from LocalDateTime for display
+LocalDateTime ldt = LocalDateTime.ofInstant(now, ZoneId.of("Asia/Kolkata"));
+
+// Add duration to Instant
+Instant plusOneHour = now.plus(Duration.ofHours(1));
+Instant plusFiveMin = now.plusSeconds(300);
+\`\`\`
+
+### Duration vs Period
+
+\`\`\`java
+// Duration — time-based (hours, minutes, seconds, nanoseconds)
+Duration d1 = Duration.ofHours(8);
+Duration d2 = Duration.ofMinutes(90);
+Duration d3 = Duration.between(start, end);   // between two time points
+long minutes = d3.toMinutes();
+long seconds = d3.toSeconds();
+
+// Period — date-based (years, months, days)
+Period p1 = Period.ofMonths(6);
+Period p2 = Period.of(2, 3, 10);  // 2 years, 3 months, 10 days
+Period p3 = Period.between(birthday, today);
+System.out.println(p3.getYears() + " years, " + p3.getMonths() + " months");
+\`\`\`
+
+### Formatting and Parsing
+
+\`\`\`java
+// DateTimeFormatter — thread-safe (unlike SimpleDateFormat)
+DateTimeFormatter isoDate   = DateTimeFormatter.ISO_LOCAL_DATE;
+DateTimeFormatter custom    = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+DateTimeFormatter withLocale = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH);
+
+LocalDateTime ldt = LocalDateTime.now();
+String formatted = ldt.format(custom);      // "25/06/2024 14:30"
+LocalDateTime parsed = LocalDateTime.parse("25/06/2024 14:30", custom);
+
+// Built-in formatters
+String iso = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE); // "2024-06-25"
+\`\`\`
+
+### Why java.util.Date Was Broken
+
+| Problem | java.util.Date | java.time |
+|---|---|---|
+| Mutability | Mutable — thread-unsafe | Immutable — always thread-safe |
+| Month indexing | 0-based (January = 0) | 1-based (January = 1) |
+| Year offset | year - 1900 | Actual year (2024) |
+| Time zone | Implicit local zone | Explicit ZoneId / ZoneOffset |
+| Formatting | SimpleDateFormat is NOT thread-safe | DateTimeFormatter IS thread-safe |
+| Clarity | Date represents a point in time (badly named) | LocalDate, LocalDateTime, Instant each have clear semantics |`,
+          code: [
+            `import java.time.*;
+import java.time.format.*;
+import java.time.temporal.*;
+
+public class DateTimeDemo {
+    public static void main(String[] args) {
+        // --- LocalDate ---
+        LocalDate today    = LocalDate.now();
+        LocalDate diwali   = LocalDate.of(2024, 11, 1); // example date
+        LocalDate birthday = LocalDate.of(1995, 3, 15);
+
+        System.out.println("Today:       " + today);
+        System.out.println("Day of week: " + today.getDayOfWeek());
+        System.out.println("Leap year:   " + today.isLeapYear());
+        System.out.println("Days since birthday: " + ChronoUnit.DAYS.between(birthday, today));
+
+        Period age = Period.between(birthday, today);
+        System.out.printf("Age: %d years, %d months%n", age.getYears(), age.getMonths());
+
+        // --- LocalDateTime and ZonedDateTime ---
+        LocalDateTime meeting = LocalDateTime.of(today, LocalTime.of(14, 30));
+        ZoneId india = ZoneId.of("Asia/Kolkata");
+        ZoneId london = ZoneId.of("Europe/London");
+
+        ZonedDateTime indiaTime  = meeting.atZone(india);
+        ZonedDateTime londonTime = indiaTime.withZoneSameInstant(london);
+        System.out.println("\nMeeting in India:  " + indiaTime);
+        System.out.println("Same meeting in London: " + londonTime);
+
+        // --- Instant ---
+        Instant now = Instant.now();
+        System.out.println("\nUTC instant: " + now);
+        System.out.println("Epoch ms:    " + now.toEpochMilli());
+        System.out.println("As India:    " + LocalDateTime.ofInstant(now, india));
+
+        // --- Duration ---
+        LocalTime start = LocalTime.of(9, 0);
+        LocalTime end   = LocalTime.of(17, 30);
+        Duration workday = Duration.between(start, end);
+        System.out.printf("\nWorkday: %dh %dm%n", workday.toHours(), workday.toMinutesPart());
+
+        // --- Formatting ---
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", java.util.Locale.ENGLISH);
+        System.out.println("Formatted: " + today.format(fmt));
+    }
+}`,
+            `import java.time.*;
+import java.time.format.*;
+import java.time.temporal.*;
+import java.util.*;
+import java.util.stream.*;
+
+// Date/Time practical patterns — deadline calculation, scheduling
+public class DateTimePatterns {
+    record Meeting(String title, ZonedDateTime scheduledAt, Duration duration) {
+        ZonedDateTime endsAt() { return scheduledAt.plus(duration); }
+        String formatFor(ZoneId zone) {
+            ZonedDateTime local = scheduledAt.withZoneSameInstant(zone);
+            DateTimeFormatter f = DateTimeFormatter.ofPattern("EEE d MMM HH:mm z", Locale.ENGLISH);
+            return title + " @ " + local.format(f);
+        }
+    }
+
+    static List<LocalDate> businessDaysFrom(LocalDate start, int count) {
+        return Stream.iterate(start.plusDays(1), d -> d.plusDays(1))
+            .filter(d -> d.getDayOfWeek() != DayOfWeek.SATURDAY
+                      && d.getDayOfWeek() != DayOfWeek.SUNDAY)
+            .limit(count)
+            .toList();
+    }
+
+    public static void main(String[] args) {
+        ZoneId india  = ZoneId.of("Asia/Kolkata");
+        ZoneId london = ZoneId.of("Europe/London");
+        ZoneId ny     = ZoneId.of("America/New_York");
+
+        ZonedDateTime teamCall = ZonedDateTime.of(
+            LocalDate.now().plusDays(1), LocalTime.of(10, 0), india);
+
+        Meeting m = new Meeting("Sprint Review", teamCall, Duration.ofHours(1));
+
+        System.out.println("Meeting times:");
+        System.out.println("  " + m.formatFor(india));
+        System.out.println("  " + m.formatFor(london));
+        System.out.println("  " + m.formatFor(ny));
+        System.out.println("  Ends: " + m.endsAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
+
+        // Next 5 business days
+        System.out.println("\nNext 5 business days from today:");
+        businessDaysFrom(LocalDate.now(), 5)
+            .forEach(d -> System.out.printf("  %s (%s)%n", d, d.getDayOfWeek()));
+
+        // Deadline countdown
+        LocalDate deadline = LocalDate.now().plusDays(30);
+        long daysLeft   = ChronoUnit.DAYS.between(LocalDate.now(), deadline);
+        long weeksLeft  = ChronoUnit.WEEKS.between(LocalDate.now(), deadline);
+        System.out.printf("\nDeadline %s — %d days (%d weeks) away%n",
+            deadline, daysLeft, weeksLeft);
+
+        // Parse and convert legacy timestamp
+        String legacyTs = "2024-06-25T09:00:00Z";
+        Instant instant = Instant.parse(legacyTs);
+        System.out.println("\nLegacy UTC: " + legacyTs);
+        System.out.println("As India:   " +
+            instant.atZone(india).format(DateTimeFormatter.ofPattern("d MMM yyyy HH:mm z")));
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the difference between LocalDate, LocalDateTime, ZonedDateTime, and Instant?', a: 'LocalDate: date only, no time, no zone (2024-06-25). LocalDateTime: date + time, no zone (2024-06-25T14:30) — cannot be converted to a UTC point without a zone. ZonedDateTime: date + time + zone — a specific moment anywhere on Earth. Instant: machine timestamp in UTC — best for storing timestamps. Rule: use Instant for storage/comparison, ZonedDateTime for display, LocalDate for calendar calculations.' },
+            { q: 'Why is DateTimeFormatter thread-safe but SimpleDateFormat is not?', a: 'DateTimeFormatter is immutable — once created, all state is fixed and shared. SimpleDateFormat is mutable — it holds parsing state (calendar, number formatter) as instance fields that are modified during format/parse. Concurrent use of one SimpleDateFormat instance causes data corruption. DateTimeFormatter can be safely shared as a static field.' },
+            { q: 'What is the difference between Duration and Period?', a: 'Duration measures time-based amounts — hours, minutes, seconds, nanoseconds. Accurate across DST changes. Period measures date-based amounts — years, months, days. Important: Period.of(0,1,0) added to March 30 gives April 30, but Duration.ofDays(31) added to the same date is always exactly 31×86400 seconds — they diverge around DST and month-length changes.' },
+            { q: 'How do you convert between time zones in java.time?', a: 'Use withZoneSameInstant(newZone) — converts ZonedDateTime to a different zone representing the SAME instant. Use withZoneSameLocal(newZone) — keeps the local date/time but changes the zone label (different instant). Example: 10:00 India → withZoneSameInstant(UTC) → 04:30 UTC (same moment); → withZoneSameLocal(UTC) → 10:00 UTC (different moment).' },
+            { q: 'What was wrong with java.util.Date and Calendar?', a: '(1) Mutable — not thread-safe. (2) Date represents a millisecond-precision instant but is named "Date" (misleading). (3) Calendar months are 0-indexed (January = 0). (4) Calendar years offset by 1900. (5) SimpleDateFormat is not thread-safe. (6) No separation between "date only" and "date+time" concepts. (7) No Duration/Period abstractions. All fixed in java.time.' }
+          ]
+        }
+      ]
+    },
     {
       id: '0.11',
       title: 'File I/O — java.io, NIO2, Files API',
