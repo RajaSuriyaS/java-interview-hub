@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    Java Backend Interview Hub — Curriculum data
    Each phase: { id, title, icon, blurb, modules: [...] }
    Each module: { id, title, hours, notes(md), code[], flashcards[] }
@@ -18,408 +18,1101 @@ const CURRICULUM = [
       id: '1.1',
       title: 'JVM Architecture',
       hours: 4,
-      notes: `
-# JVM Architecture — From Zero to Senior Level
+      sections: [
 
-## What is the JVM? (Start Here)
+        /* ── SECTION 1 ─────────────────────────────────────────────── */
+        {
+          title: 'JVM Overview & Bytecode Pipeline',
+          notes: `
+# JVM Overview & The Bytecode Pipeline
+
+## What Is the JVM? (The Translator Analogy)
 
 Imagine you write a recipe in English. A French chef can't follow it directly — they need a translator. The **JVM (Java Virtual Machine)** is that universal translator for Java programs.
 
-When you write Java code and compile it with \`javac\`, you don't get machine code (the 0s and 1s your CPU understands). You get **bytecode** — a middle language that NO real CPU understands natively. The JVM reads this bytecode and translates it to whatever the real machine needs. That's why Java is "write once, run anywhere": the bytecode is the same everywhere, only the JVM is different per OS.
+When you write Java code and compile it with \`javac\`, you don't get machine code (the 0s and 1s your CPU understands directly). You get **bytecode** — a compact, platform-neutral instruction set that NO real CPU understands natively. The JVM reads this bytecode and translates it to whatever the real machine needs at runtime. That's why Java is "write once, run anywhere": the bytecode is identical on every OS; only the JVM implementation differs.
 
 \`\`\`
-You write:   HelloWorld.java
-javac gives: HelloWorld.class  (bytecode — portable, platform-neutral)
-JVM reads:   HelloWorld.class  → translates → real CPU instructions
+Source code:  HelloWorld.java      (human-readable, platform-independent)
+     ↓  javac (compiler)
+Bytecode:     HelloWorld.class     (binary bytecode, platform-independent)
+     ↓  JVM (interpreter/JIT)
+Native code:  CPU instructions     (platform-specific machine code)
 \`\`\`
 
-> [!TIP]
-> The JVM is a **specification**, not a product. OpenJDK (free, open source), Oracle JDK, Amazon Corretto, Eclipse Temurin, GraalVM — these are all different *implementations* of the same spec. They all run the same \`.class\` files identically.
+The \`.class\` file is portable binary. You can compile once on Windows and run the same \`.class\` on Linux, macOS, or a Raspberry Pi — as long as a JVM exists for that platform.
 
----
+## JVM Is a Specification, Not a Product
 
-## The Big Picture: Three Subsystems
+This is the most important distinction beginners miss. The JVM is defined by the **Java Virtual Machine Specification** — a document that describes exactly how the bytecode must behave. Multiple companies implement this specification:
 
-Every JVM has three major subsystems. Think of them as three departments in a company:
+| Implementation | Who | Notes |
+|---|---|---|
+| **OpenJDK** | Oracle + community | Free, open-source, the reference impl |
+| **Oracle JDK** | Oracle | Paid support tier, same core as OpenJDK |
+| **Amazon Corretto** | Amazon | OpenJDK + AWS patches, free |
+| **Eclipse Temurin** | Adoptium | Community-built OpenJDK distribution |
+| **GraalVM** | Oracle Labs | Polyglot, ahead-of-time compilation |
+| **Azul Zulu / Zing** | Azul | Optimised GC for low-latency workloads |
 
-\`\`\`
-┌─────────────────────────────────────────────────────┐
-│                    JVM Process                      │
-│                                                     │
-│  1. CLASS LOADER       2. RUNTIME DATA AREAS        │
-│  ┌─────────────┐       ┌─────────────────────────┐  │
-│  │ Bootstrap   │       │ Heap (all threads share) │  │
-│  │ Platform    │──────▶│ Metaspace (class meta)   │  │
-│  │ Application │       │ Stack (per thread)       │  │
-│  │ Custom      │       │ PC Register (per thread) │  │
-│  └─────────────┘       │ Native Stack (per thread)│  │
-│                        └─────────────────────────┘  │
-│  3. EXECUTION ENGINE                                │
-│  ┌───────────────────────────────────────────────┐  │
-│  │  Interpreter → JIT Compiler (C1+C2) → GC      │  │
-│  └───────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────┘
-\`\`\`
+All of these run the same \`.class\` files identically (within spec). Choosing between them is an operational decision (support contract, GC characteristics, startup time) — not a correctness decision.
 
----
+## What Bytecode Actually Looks Like
 
-## Subsystem 1: Class Loader — "The Librarian"
-
-The class loader finds your \`.class\` files and prepares them for execution. This is a three-phase process:
-
-### Phase 1: Loading
-- Finds the binary representation of the class (from classpath, jar, network, etc.)
-- Creates a \`java.lang.Class\` object in the **heap** representing that class
-- Triggered the first time you reference a class — lazy by default
-
-### Phase 2: Linking (3 sub-steps)
-
-**a) Verification** — the JVM checks the bytecode is safe. Is it well-formed? Does it try to call methods that don't exist? Does it mix incompatible types? If verification fails → \`VerifyError\`. This is a security step — it prevents malicious bytecode from crashing the VM.
-
-**b) Preparation** — allocates memory for **static fields** and sets them to their **default values** (0, null, false). NOT your declared values yet — just defaults.
-\`\`\`java
-static int count = 42;   // after prepare: count = 0 (not 42 yet!)
-\`\`\`
-
-**c) Resolution** — replaces symbolic references (class names as strings) with direct references (actual memory pointers). E.g. the string \`"java/lang/String"\` in bytecode becomes a pointer to the loaded String class.
-
-### Phase 3: Initialisation
-- Runs **static initialiser blocks** and **static field assignments** in the order they appear in source code
-- Now \`count = 42\` actually happens
-- Guaranteed to run **at most once** per class, and **thread-safe** (the JVM serialises it)
-
-> [!WARNING]
-> **Class initialisation order trap** — a common interview gotcha:
-> \`\`\`java
-> class A { static int x = B.y + 1; }   // depends on B
-> class B { static int y = A.x + 1; }   // depends on A — circular!
-> \`\`\`
-> Circular dependencies between static initialisers produce surprising results. One class's statics will still be at default values (0) when the other reads them. Always keep static initialisers simple.
-
-### The Parent Delegation Model (Critical Concept)
-
-There are four built-in class loaders forming a hierarchy. When any loader is asked to load a class:
-1. **Ask parent first** — delegate upward
-2. Only if parent fails (class not found) → load it yourself
+You can inspect bytecode with \`javap -c ClassName\`. For a trivial method like \`int add(int a, int b) { return a + b; }\`, javap shows:
 
 \`\`\`
-Bootstrap ClassLoader  (built into JVM, loads java.*, javax.*, sun.*)
-       ↑ parent of
-Platform ClassLoader   (loads java.se.* module classes, formerly Extension)
-       ↑ parent of
-Application ClassLoader (loads YOUR classes from -classpath / module-path)
-       ↑ parent of
-Custom ClassLoaders    (you write these for plugins, hot-reload, OSGi)
+0: iload_1     // push local variable slot 1 (a) onto operand stack
+1: iload_2     // push local variable slot 2 (b) onto operand stack
+2: iadd        // pop two ints, add them, push result
+3: ireturn     // return int on top of operand stack
 \`\`\`
 
-**Why does delegation matter?**
-- Security: you cannot replace \`java.lang.String\` with your own — Bootstrap loads it first, always wins
-- Consistency: \`String\` loaded by Bootstrap == \`String\` loaded by Bootstrap, no matter who asks. Two classes are the same type only if same name AND same class loader.
+Bytecode is stack-based: instructions push and pop values from an **operand stack**. This is simpler than register-based ISAs (like x86) and makes it easy to generate from any language. Kotlin, Scala, Groovy, and Clojure all compile to the same bytecode format.
 
-> [!WARNING]
-> **Class identity crisis**: if two different classloaders both load \`com.example.Foo\`, you get TWO distinct \`Class\` objects. A \`Foo\` from loader A **cannot be cast** to a \`Foo\` from loader B — you get \`ClassCastException\` even though the name looks identical. Tomcat, OSGi, and Spring Boot fat-jars all use child-first loading and can trigger this.
+## The Three JVM Subsystems
 
-**When frameworks BREAK delegation on purpose:**
-- Tomcat gives each web app its own classloader (child-first) so different apps can use different versions of the same library
-- Spring Boot fat-jars use a custom \`LaunchedURLClassLoader\` to load classes from nested jars
-- OSGi creates a classloader per bundle for complete isolation
-
----
-
-## Subsystem 2: Runtime Data Areas — "The Memory Rooms"
-
-### The Heap — Shared, Biggest, Most Important
-
-Every object you create with \`new\` lives here. All threads share the same heap. The GC manages it.
-
-The heap is divided into **generations** (in traditional GC designs):
-\`\`\`
-HEAP
-├── Young Generation (new objects born here)
-│   ├── Eden Space          (most new objects allocated here)
-│   ├── Survivor Space S0   (survivors of one GC cycle)
-│   └── Survivor Space S1   (survivors of another cycle)
-└── Old Generation (Tenured)  (objects that survived many GC cycles)
-\`\`\`
-
-Why generations? Because most objects die young (the **Weak Generational Hypothesis**). Collecting only young gen (Minor GC) is fast. Collecting everything (Full GC) is slow and rare.
-
-**What causes \`OutOfMemoryError: Java heap space\`?**
-- You created more objects than the heap can hold AND GC couldn't free enough
-- Tune with: \`-Xms512m\` (initial heap) \`-Xmx2g\` (max heap)
-
-### Metaspace — Where Classes Live (Java 8+)
-
-Before Java 8 there was **PermGen** (Permanent Generation) — a fixed-size heap region holding class metadata. It caused the dreaded \`OutOfMemoryError: PermGen space\` whenever you deployed too many classes (common in app servers).
-
-Java 8 replaced PermGen with **Metaspace** which:
-- Lives in **native memory** (outside the Java heap)
-- Grows dynamically (no fixed size by default)
-- Still can OOM if you have a classloader leak (e.g. hot-deploying web apps without unloading old classloaders)
-- Cap it with: \`-XX:MaxMetaspaceSize=256m\`
-
-Metaspace holds:
-- Class structures (field names, method signatures, bytecode)
-- Runtime constant pool (string and numeric literals)
-- Static field **references** (the actual object the static points to lives in the heap)
-
-> [!TIP]
-> Static fields themselves (references) live in the Class object on the heap in Java 8+. The Metaspace holds the class *structure*, not the object *values*.
-
-### JVM Stack — Per Thread, Last-In-First-Out
-
-Each thread gets its own stack. When you call a method, a **stack frame** is pushed. When the method returns, it's popped.
-
-Each stack frame contains:
-- **Local variable array** — \`this\`, method parameters, declared local variables
-- **Operand stack** — scratch pad for calculations (like a calculator's temporary memory)
-- **Frame data** — reference to the constant pool, return address
+Every JVM implementation has three major subsystems:
 
 \`\`\`
-Thread stack (top = currently executing):
-┌──────────────────────────┐
-│  Frame: doWork()         │ ← currently running
-│    locals: [this, x, y]  │
-│    operand stack: [42]   │
-├──────────────────────────┤
-│  Frame: process()        │ ← called doWork()
-│    locals: [this, list]  │
-├──────────────────────────┤
-│  Frame: main()           │ ← called process()
-└──────────────────────────┘
+┌───────────────────────────────────────────────────────┐
+│                     JVM Process                       │
+│                                                       │
+│  1. CLASS LOADING SUBSYSTEM                           │
+│     Bootstrap → Platform → Application → Custom       │
+│     Loading → Linking → Initialization                │
+│                                                       │
+│  2. RUNTIME DATA AREAS                                │
+│     Heap (shared)  │ Metaspace (shared)               │
+│     Stack (thread) │ PC Register (thread)             │
+│     Native Stack (thread)                             │
+│                                                       │
+│  3. EXECUTION ENGINE                                  │
+│     Interpreter → Profiler → JIT (C1 + C2) → GC      │
+└───────────────────────────────────────────────────────┘
 \`\`\`
 
-**What causes \`StackOverflowError\`?**
-- Too many frames — infinite recursion is the classic cause
-- Each frame takes memory. Default stack size is 512KB–1MB. Tune with: \`-Xss2m\`
+Think of them as three departments: the **Librarian** (class loader) finds and verifies your code; the **Warehouse** (runtime data areas) stores all data at runtime; the **Worker** (execution engine) actually runs the instructions.
 
-> [!TIP]
-> Local variables in the stack are NOT garbage-collected — they disappear automatically when the frame is popped. Only objects on the **heap** need GC.
+## What Happens When You Run \`java HelloWorld\`?
 
-### PC Register — The Bookmark
+This is the most common senior interview question on JVM internals. Walk through all 12 steps:
 
-Each thread has a Program Counter (PC) register that holds the address of the bytecode instruction currently being executed. When you context-switch between threads, the CPU saves/restores each thread's PC so execution can resume where it left off. For native methods, the PC is undefined.
-
-### Native Method Stack
-
-When Java calls a C/C++ function through **JNI (Java Native Interface)**, a native method stack frame is created here. Usually you never think about this unless you're writing JNI code.
-
----
-
-## Subsystem 3: Execution Engine — "How Code Actually Runs"
-
-### Step 1: Interpretation (Slow but Instant Start)
-
-When a method is first called, the JVM **interprets** bytecode — reading each instruction one by one and executing it. This is slow (10-100x slower than native code) but starts immediately.
-
-### Step 2: Profiling
-
-While interpreting, the JVM **profiles** which methods are "hot" (called frequently). The threshold is configurable but roughly 10,000 invocations.
-
-### Step 3: JIT Compilation (The Speed Magic)
-
-Hot methods get compiled by the **JIT (Just-In-Time) compiler** to native machine code. Two compilers work together:
-
-| Compiler | Level | Speed | Quality | Use case |
-|----------|-------|-------|---------|----------|
-| **C1** (Client) | 1-3 | Fast | Lower | Methods hot quickly, needs code soon |
-| **C2** (Server) | 4 | Slow | Highest | Very hot methods, maximum optimization |
-
-This is called **Tiered Compilation** (default since Java 7). A method moves through tiers 0→1→2→3→4 as it gets hotter.
-
-**What optimisations does JIT apply?**
-- **Inlining**: replaces a method call with the method's body — eliminates call overhead
-- **Escape analysis**: if an object never escapes the method, allocate it on the stack (not heap!) — no GC needed
-- **Dead code elimination**: removes code that can never execute
-- **Loop unrolling**: replaces short loops with repeated statements
-- **Devirtualization**: if a virtual call always goes to the same implementation, compile it as a direct call
-
-> [!TIP]
-> This is why Java benchmarks must **warm up** before measuring. Cold (interpreted) performance is 10-100x slower than warm (JIT-compiled) performance. A benchmark that measures cold startup is not measuring Java's production performance. Use **JMH** for correct benchmarks.
-
----
-
-## What Happens When You Run \`java HelloWorld\`? (The Full Journey)
-
-This is the most common senior interview question on JVM. Walk through it step by step:
-
-1. **OS launches the JVM process** — the JVM binary starts, allocates heap, creates the main thread
-2. **Bootstrap ClassLoader initialises** — loads core classes like \`java.lang.Object\`, \`java.lang.String\`
-3. **Application ClassLoader finds** \`HelloWorld.class\` on the classpath
-4. **Loading** — \`HelloWorld.class\` binary read into memory, \`Class\` object created in heap
-5. **Linking** — bytecode verified, statics prepared (set to defaults), symbolic refs resolved
-6. **Initialisation** — static initialisers run, static fields get their declared values
-7. **Main thread stack created** — a new JVM stack is allocated for the main thread
-8. **\`main()\` frame pushed** onto the stack — parameters (\`String[] args\`) in local variable slot 0
-9. **Interpreter starts** — reads bytecode instructions one by one
-10. **JIT kicks in** — as methods get hot, C1 then C2 compile them to native code
-11. **GC runs** — periodically frees unreachable heap objects
-12. **\`main()\` returns** — frame popped, main thread exits, JVM shuts down (if no non-daemon threads remain)
+1. **OS launches the JVM process** — the JVM binary starts, the OS allocates virtual memory
+2. **Bootstrap ClassLoader activates** — loads core classes: \`java.lang.Object\`, \`java.lang.String\`, etc.
+3. **Platform & Application ClassLoaders initialize** — set up the full class loader hierarchy
+4. **Application ClassLoader finds** \`HelloWorld.class\` on the classpath
+5. **Loading phase** — binary read into memory, a \`Class\` object created on the heap
+6. **Verification** — bytecode checked for structural integrity and safety
+7. **Preparation** — static fields allocated and set to default values (0 / null / false)
+8. **Resolution** — symbolic references (class names as strings) replaced with direct memory pointers
+9. **Initialization** — static initializer blocks and static field assignments execute (in source order)
+10. **Main thread's JVM stack created** — a dedicated per-thread stack is allocated
+11. **\`main()\` frame pushed** — \`String[] args\` goes into local variable slot 0
+12. **Execution begins** — interpreter runs bytecode, JIT compiles hot methods, GC reclaims garbage
 
 > [!EU]
-> At Adyen, N26, Zalando, or SAP: narrate all 12 steps above when asked "what happens when you run a Java program?" Most candidates stop at step 4. Getting to step 12 — especially mentioning Metaspace vs PermGen, tiered JIT, and daemon threads — puts you in the top 5% of candidates.
+> At Adyen, Zalando, N26, or SAP — when asked "what happens when you run a Java program?" most candidates stop at step 5. Walking all 12 steps — especially mentioning Metaspace (not PermGen), tiered JIT, and daemon thread termination — puts you in the top 5% of candidates. Practise saying it out loud.
 
----
+## Cold vs Warm Performance (JIT Warmup)
 
-## Common Interview Questions & Strong Answers
+Java has a reputation for slow startup. This is real, but misleading for server workloads. Here's why:
 
-**Q: What's the difference between heap and stack?**
-A: Heap is shared across all threads and holds objects (managed by GC). Stack is per-thread, holds method frames (local variables + operand stack), and is automatically reclaimed when frames pop. Stack is faster (no GC), smaller, and LIFO-ordered. Objects that escape a method must go on the heap; purely local temporaries can stay on the stack (JIT escape analysis does this automatically).
+- **Cold** (first seconds): everything is interpreted — 10–100× slower than optimised native code
+- **Warming** (seconds 10–60): JIT compiles hot methods progressively
+- **Warm** (steady state): compiled native code, often matching or beating C++ for specific patterns
 
-**Q: What replaced PermGen and why?**
-A: Metaspace (Java 8+). PermGen was a fixed-size heap region — easy to overflow when loading many classes. Metaspace lives in native memory and grows dynamically, eliminating most PermGen OOM errors. The risk now is native memory exhaustion from classloader leaks, controlled by \`-XX:MaxMetaspaceSize\`.
+This is why **Java benchmarks must warm up before measuring**. A "benchmark" that measures cold startup is not measuring production performance. Always use **JMH (Java Microbenchmark Harness)** for correct micro-benchmarks.
 
-**Q: Why is parent delegation important?**
-A: Three reasons — (1) Security: core classes like \`String\` always loaded by Bootstrap, can't be overridden. (2) Consistency: same class name + same loader = same Class object, enabling safe casting. (3) Avoid duplication: class loaded once by parent, not re-loaded by each child.
-
-**Q: When would you write a custom ClassLoader?**
-A: Plugin systems (load user-provided jars at runtime), hot-reload (reload changed classes without restarting), application isolation (multiple versions of same library in one JVM — like Tomcat does per web app), loading classes from non-standard sources (database, network, encrypted jar).
+> [!WARNING]
+> Tools like GraalVM Native Image solve startup time by compiling ahead-of-time. The trade-off: peak throughput is lower (no runtime JIT profiling) and some dynamic Java features (reflection, dynamic class loading) require manual configuration.
 `,
-      code: [
-        {
-          lang: 'java',
-          title: 'Inspect the running JVM & class loaders',
-          code: `public class JvmIntro {
-    static int counter = 42; // lives in Metaspace (static), value prepared then initialised
+          code: [
+            {
+              lang: 'java',
+              title: 'Inspect JVM runtime info & bytecode pipeline',
+              code: `// Demonstrates JVM runtime information and the class loading pipeline.
+// Run with: java JvmPipeline
+public class JvmPipeline {
+    static int counter = 42; // static: lives in Metaspace; value set at initialization
+
+    static {
+        // Static initializer — runs ONCE during class initialization (step 9 above)
+        System.out.println("[init] Static initializer running. counter = " + counter);
+    }
 
     public static void main(String[] args) {
         Runtime rt = Runtime.getRuntime();
         long mb = 1024 * 1024;
-        System.out.println("Available processors : " + rt.availableProcessors());
-        System.out.println("Max heap (MB)        : " + rt.maxMemory() / mb);
-        System.out.println("Total heap (MB)      : " + rt.totalMemory() / mb);
-        System.out.println("Free heap (MB)       : " + rt.freeMemory() / mb);
 
-        // Parent-delegation hierarchy
-        ClassLoader cl = JvmIntro.class.getClassLoader();
-        System.out.println("\\nClass loader chain:");
+        System.out.println("=== JVM Runtime Info ===");
+        System.out.println("JVM vendor    : " + System.getProperty("java.vendor"));
+        System.out.println("JVM version   : " + System.getProperty("java.version"));
+        System.out.println("Available CPUs: " + rt.availableProcessors());
+        System.out.printf("Max heap      : %d MB%n", rt.maxMemory() / mb);
+        System.out.printf("Used heap     : %d MB%n", (rt.totalMemory() - rt.freeMemory()) / mb);
+
+        System.out.println("\\n=== Class Loader Chain (parent-delegation) ===");
+        ClassLoader cl = JvmPipeline.class.getClassLoader();
         while (cl != null) {
-            System.out.println("  -> " + cl);
+            System.out.println("  " + cl.getClass().getSimpleName() + " -> " + cl);
             cl = cl.getParent();
         }
-        // Bootstrap loader is native -> shows as null
-        System.out.println("  -> Bootstrap (null)");
-        System.out.println("\\nString loaded by  : " + String.class.getClassLoader());
-        System.out.println("counter           : " + counter);
+        System.out.println("  Bootstrap (null — it's native C++, not a Java object)");
+
+        // String is loaded by Bootstrap — cannot be overridden
+        System.out.println("\\nString loaded by: " + String.class.getClassLoader());
+        // null means Bootstrap — the root, most trusted loader
     }
 }`
+            },
+            {
+              lang: 'bash',
+              title: 'Inspect bytecode with javap',
+              code: `# Compile and disassemble any class to see its bytecode
+javac HelloWorld.java
+javap -c HelloWorld           # show bytecode instructions
+javap -verbose HelloWorld     # show constant pool, stack size, flags
+
+# Example javap -c output for: int add(int a, int b) { return a + b; }
+#   Code:
+#      0: iload_1       // push 'a' (local var slot 1) onto operand stack
+#      1: iload_2       // push 'b' (local var slot 2) onto operand stack
+#      2: iadd          // pop two ints, add, push result
+#      3: ireturn       // return top of operand stack as int
+
+# Useful JVM flags for diagnosis
+java -XX:+PrintFlagsFinal -version 2>&1 | grep -E "HeapSize|StackSize|Metaspace"
+java -Xmx2g -Xms512m -XX:MaxMetaspaceSize=256m -jar app.jar
+
+# Enable JIT compilation logging (noisy, for learning only)
+java -XX:+PrintCompilation MyApp 2>&1 | head -20`
+            }
+          ],
+          flashcards: [
+            { q: 'What is bytecode and why does it make Java portable?', a: 'Bytecode is a platform-neutral binary format produced by javac. It uses a stack-based instruction set that no real CPU understands directly. The JVM translates it to native machine code at runtime — meaning the same .class file runs on any OS/architecture that has a JVM implementation.' },
+            { q: 'Name four JVM implementations and when you would choose each.', a: 'OpenJDK (default, community, free), Amazon Corretto (AWS deployments, free LTS), GraalVM (polyglot, ahead-of-time compilation for fast startup), Azul Zing (specialized low-pause GC for latency-sensitive systems). Choice depends on support, GC characteristics, and startup requirements.' },
+            { q: 'What are the three JVM subsystems?', a: '1) Class Loading Subsystem — finds, verifies, and initializes classes. 2) Runtime Data Areas — heap, metaspace, per-thread stacks, PC registers. 3) Execution Engine — interpreter, JIT compiler (C1/C2), and GC.' },
+            { q: 'Why must benchmarks warm up before measuring Java performance?', a: 'On a cold JVM, all code runs interpreted (10-100x slower than native). JIT compilation promotes hot methods to native code over the first seconds/minutes. Measuring cold is not representative of steady-state production performance. Use JMH for correct benchmarks.' },
+            { q: 'What is the correct sequence of events when you run "java HelloWorld"?', a: '1) JVM process starts. 2) Bootstrap ClassLoader loads core classes. 3) App ClassLoader finds HelloWorld.class. 4) Loading (Class object created). 5) Verification. 6) Preparation (static field defaults). 7) Resolution. 8) Initialization (static blocks). 9) Main thread stack created. 10) main() frame pushed. 11) Interpreter starts. 12) JIT compiles hot methods.' }
+          ]
         },
+
+        /* ── SECTION 2 ─────────────────────────────────────────────── */
         {
-          lang: 'java',
-          title: 'Stack frames, StackOverflow, and tail-call insight',
-          code: `public class StackFrameDemo {
-    // Each call to recurse() pushes a new STACK FRAME onto the thread's JVM stack.
-    // Frame contains: local variables, operand stack, reference back to constant pool.
-    // Default stack size ~512KB-1MB per thread. Deep recursion overflows it.
-    static long recurse(int n, long acc) {
-        if (n <= 0) return acc;
-        // This call creates a new frame. JVM does NOT do tail-call elimination
-        // (unlike Scala/Haskell), so even though this IS tail-recursive, it will overflow.
-        return recurse(n - 1, acc + n);
+          title: 'Class Loading Subsystem',
+          notes: `
+# Class Loading Subsystem — The Librarian
+
+## Why Class Loading Matters for Senior Engineers
+
+Class loading is where most JVM "magic" happens in real-world frameworks. If you've ever seen \`ClassNotFoundException\`, \`NoClassDefFoundError\`, \`ClassCastException\` at a cast that "should work", or mysterious isolation bugs in Tomcat — class loading was the culprit. Understanding it deeply separates you from candidates who only know the surface.
+
+## The Three Phases of Class Loading
+
+Every class goes through exactly three phases before you can use it:
+
+\`\`\`
+┌──────────────┐    ┌──────────────────────────────────────────┐    ┌──────────────────┐
+│   LOADING    │ -> │                LINKING                   │ -> │  INITIALIZATION  │
+│              │    │  Verify  │  Prepare  │  Resolve          │    │                  │
+│ Find binary  │    │ bytecode │  statics  │ symbolic refs      │    │ Run static       │
+│ Create Class │    │ is safe  │ = default │ → direct pointers │    │ initializers     │
+└──────────────┘    └──────────────────────────────────────────┘    └──────────────────┘
+\`\`\`
+
+### Phase 1: Loading
+
+The JVM reads the binary representation of the class (the \`.class\` file bytes) and creates a \`java.lang.Class\` object in the **heap** that represents it. This is lazy — a class is loaded only the first time it's referenced.
+
+Sources can be: local filesystem classpath, JAR files, network (URLClassLoader), in-memory byte arrays (custom classloaders), encrypted containers.
+
+### Phase 2: Linking (Three Sub-steps)
+
+**a) Verification** — The JVM checks the bytecode is structurally correct and safe. Does it reference methods that exist? Does it mix incompatible types? Does it try to access private fields from outside the class? If verification fails → \`VerifyError\`. This is a critical security step — it prevents malicious or corrupt bytecode from crashing the VM.
+
+**b) Preparation** — Static fields are allocated in memory and set to their **type default values** (0 for int, null for references, false for boolean). NOT your declared values yet — just safe zero-defaults.
+
+\`\`\`java
+class Config {
+    static int timeout = 5000;  // After prepare: timeout = 0 (not 5000 yet!)
+    static String host = "localhost"; // After prepare: host = null (not "localhost")
+}
+// The actual values (5000 and "localhost") are assigned in Initialization.
+\`\`\`
+
+**c) Resolution** — Symbolic references in the constant pool (class names stored as strings like \`"java/util/ArrayList"\`) are replaced with direct references (actual memory pointers to the loaded class). This is what makes \`new ArrayList()\` fast — by the time your code runs, the reference is already resolved to a pointer.
+
+### Phase 3: Initialization
+
+Static initializer blocks (\`static { ... }\`) and static field assignments run **in the order they appear in source code**. Now \`timeout = 5000\` actually happens.
+
+Initialization is **thread-safe** and happens **at most once** per class. The JVM uses an internal lock to serialize it. If two threads both trigger initialization of the same class simultaneously, one waits.
+
+> [!WARNING]
+> **Circular static initializer deadlock** — a real production gotcha:
+> \`\`\`java
+> class A { static int x = B.y + 1; }  // A's init reads B.y
+> class B { static int y = A.x + 1; }  // B's init reads A.x — circular!
+> \`\`\`
+> Thread 1 triggers A's init. Thread 2 triggers B's init. Thread 1 tries to read B.y — B is being initialized by Thread 2. Thread 2 tries to read A.x — A is being initialized by Thread 1. Both threads wait forever: **deadlock**. Keep static initializers simple and dependency-free.
+
+## The Parent Delegation Model
+
+There are four built-in classloaders forming a strict hierarchy:
+
+\`\`\`
+Bootstrap ClassLoader  (native C++, loads java.*, javax.*, sun.*)
+        │ parent of
+Platform ClassLoader   (loads java.se module classes, formerly Extension CL)
+        │ parent of
+Application ClassLoader (loads YOUR classes from --class-path / --module-path)
+        │ parent of
+Custom ClassLoaders    (frameworks write these for isolation, hot-reload, plugins)
+\`\`\`
+
+The delegation rule: **when asked to load a class, always ask the parent first**. Only if the parent throws \`ClassNotFoundException\` does the child attempt to load it itself.
+
+**Three reasons this matters:**
+
+1. **Security** — You cannot define your own \`java.lang.String\` class. Bootstrap loads it first; any attempt to load another \`String\` from the same name is rejected. Core classes are tamper-proof.
+
+2. **Consistency** — Two classes are the same type only if they have the same name AND were loaded by the same ClassLoader. Because \`String\` is always loaded by Bootstrap, it's always the same \`Class\` object everywhere.
+
+3. **Deduplication** — Once Bootstrap loads \`Object\`, every child loader reuses that same \`Class\` object. No duplication.
+
+## Class Identity Contract
+
+> Two classes are equal only if: same fully-qualified name AND same ClassLoader instance.
+
+This has important consequences:
+
+\`\`\`java
+// Loaded by ClassLoader A: com.example.UserService (instance #1)
+// Loaded by ClassLoader B: com.example.UserService (instance #2)
+// They are DIFFERENT types at runtime.
+// Casting one to the other throws ClassCastException.
+\`\`\`
+
+This is why Tomcat can run two web apps that both use Hibernate 5.x and Hibernate 6.x simultaneously — each app has its own ClassLoader, so the two Hibernates never conflict.
+
+## When Frameworks Break Parent Delegation (Child-First)
+
+**Tomcat / application servers** — each deployed war gets its own WebAppClassLoader that loads classes from \`WEB-INF/classes\` and \`WEB-INF/lib\` **before** asking the parent. This enables per-app dependency isolation. Side effect: static state in libraries (loggers, caches) is per-app, not global.
+
+**Spring Boot fat-jar** — uses \`LaunchedURLClassLoader\` to load from nested JARs inside \`BOOT-INF/lib/\`. Overrides standard delegation so the embedded Tomcat and your app see the same classloader and same class instances.
+
+**OSGi (Felix, Equinox)** — every bundle has its own ClassLoader with explicit import/export declarations. Two bundles can use different versions of the same library with zero conflict.
+
+**Hot-reload** (JRebel, dev-mode hot swap) — discards the old classloader and creates a new one for the changed class. The old \`Class\` objects become unreachable; GC eventually collects them (if no memory leaks).
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Class loading phases & parent delegation in action',
+              code: `// Demonstrates: loading phases, parent delegation, and class identity.
+public class ClassLoadingDemo {
+
+    // Static field — allocated to default (null) in Prepare phase, set here in Initialize
+    static final String CONFIG = System.getProperty("app.config", "default");
+
+    static {
+        // This block runs ONCE during Initialize phase, thread-safely
+        System.out.println("[init] ClassLoadingDemo initialized. CONFIG=" + CONFIG);
     }
 
-    // Safe iterative version — O(1) stack space
-    static long iterate(int n) {
+    public static void main(String[] args) {
+        System.out.println("=== Class Loader Chain ===");
+        ClassLoader cl = ClassLoadingDemo.class.getClassLoader();
+        int level = 0;
+        while (cl != null) {
+            System.out.printf("  Level %d: %s%n", level++, cl.getClass().getName());
+            cl = cl.getParent();
+        }
+        System.out.printf("  Level %d: Bootstrap (native, shown as null)%n", level);
+
+        // Bootstrap-loaded class has null classloader
+        System.out.println("\\nString's ClassLoader: " + String.class.getClassLoader());
+        System.out.println("Our ClassLoader:      " + ClassLoadingDemo.class.getClassLoader());
+
+        // Class identity: same name, same loader = same Class object
+        Class<?> c1 = ClassLoadingDemo.class;
+        Class<?> c2 = ClassLoadingDemo.class;
+        System.out.println("\\nSame Class object: " + (c1 == c2)); // always true
+
+        // Demonstrate lazy loading: ArrayList not loaded until first use
+        System.out.println("\\nAbout to create ArrayList...");
+        java.util.ArrayList<String> list = new java.util.ArrayList<>(); // loaded NOW
+        System.out.println("ArrayList class loader: " + list.getClass().getClassLoader());
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Custom ClassLoader for plugin/hot-reload pattern',
+              code: `import java.io.*;
+import java.net.*;
+import java.nio.file.*;
+
+// A minimal "plugin" ClassLoader that loads .class files from a directory.
+// Pattern used by: Tomcat (per-webapp), Spring Boot (nested JARs), OSGi (per-bundle).
+public class PluginClassLoaderDemo {
+
+    static class PluginClassLoader extends ClassLoader {
+        private final Path pluginDir;
+
+        PluginClassLoader(Path dir, ClassLoader parent) {
+            super(parent); // parent = App ClassLoader (standard delegation)
+            this.pluginDir = dir;
+        }
+
+        @Override
+        protected Class<?> findClass(String name) throws ClassNotFoundException {
+            // Convert class name to file path
+            String path = name.replace('.', '/') + ".class";
+            Path classFile = pluginDir.resolve(path);
+
+            if (!Files.exists(classFile)) {
+                throw new ClassNotFoundException(name);
+            }
+
+            try {
+                byte[] bytes = Files.readAllBytes(classFile);
+                System.out.printf("[PluginCL] Defining class: %s (%d bytes)%n",
+                    name, bytes.length);
+                // defineClass registers the class with this ClassLoader
+                return defineClass(name, bytes, 0, bytes.length);
+            } catch (IOException e) {
+                throw new ClassNotFoundException(name, e);
+            }
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        // Simulating hot-reload: create two loaders for same class directory
+        Path pluginsDir = Path.of("plugins"); // would contain compiled .class files
+
+        // In real hot-reload: discard old loader, create new one after class changes
+        PluginClassLoader loader1 = new PluginClassLoader(pluginsDir,
+            PluginClassLoaderDemo.class.getClassLoader());
+        PluginClassLoader loader2 = new PluginClassLoader(pluginsDir,
+            PluginClassLoaderDemo.class.getClassLoader());
+
+        System.out.println("loader1 == loader2: " + (loader1 == loader2)); // false
+        System.out.println("loader1 parent: " + loader1.getParent().getClass().getSimpleName());
+
+        // Key insight: if both loaders loaded "com.example.Plugin":
+        // loader1.loadClass("com.example.Plugin") != loader2.loadClass("com.example.Plugin")
+        // Casting across them = ClassCastException even if bytecode is identical.
+        System.out.println("\\nThis is how Tomcat isolates web apps:");
+        System.out.println("  Each app gets its own ClassLoader -> its own type universe.");
+        System.out.println("  A class from app1's loader != same class from app2's loader.");
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What are the three sub-phases of Linking and what does each do?', a: 'Verify: checks bytecode structural integrity and safety (throws VerifyError if malformed). Prepare: allocates static fields with type-default values (0/null/false), NOT declared values. Resolve: replaces symbolic class/field/method references in the constant pool with direct memory pointers.' },
+            { q: 'Why are static fields set to 0/null during Prepare rather than their declared value?', a: 'Prepare allocates memory and applies safe type-defaults before any Java code runs. Declared values (e.g. static int x = 42) are assigned during Initialization when static initializer blocks execute. This ordering ensures the memory is safely allocated before any custom logic runs.' },
+            { q: 'What is the parent-delegation model and what are its three benefits?', a: 'When asked to load a class, a ClassLoader delegates to its parent first. Only if parent fails does it attempt to load itself. Benefits: (1) Security — core classes like String always loaded by Bootstrap, can\'t be spoofed. (2) Consistency — same name + same loader = same Class object. (3) Deduplication — core classes loaded once, shared everywhere.' },
+            { q: 'What is the class identity contract?', a: 'Two classes are the same type only if they share the same fully-qualified name AND the same ClassLoader instance. Same bytecode loaded by two different ClassLoaders = two distinct types. Casting one to the other throws ClassCastException even though the code "looks right".' },
+            { q: 'Why would you write a custom ClassLoader?', a: 'Plugin systems (load user jars at runtime), hot-reload (swap changed classes without restart), application isolation (multiple library versions in same JVM — Tomcat model), loading from non-standard sources (database, encrypted jar, network stream), or frameworks like Spring Boot\'s fat-jar (load from nested JARs).' },
+            { q: 'How can static initializer circular dependencies cause deadlock?', a: 'If class A\'s static init reads B.y, and class B\'s static init reads A.x, and two threads simultaneously trigger each class\'s initialization: Thread 1 holds A\'s init lock and waits for B; Thread 2 holds B\'s init lock and waits for A. Classic deadlock. Keep static initializers simple.' },
+            { q: 'Why does Tomcat use child-first ClassLoaders (breaking parent delegation)?', a: 'Standard delegation would force all web apps to share the same library versions from the server classpath. Child-first (each app\'s WEB-INF/lib loads before the parent) allows app1 to use Hibernate 5 and app2 to use Hibernate 6 in the same JVM without conflict.' }
+          ]
+        },
+
+        /* ── SECTION 3 ─────────────────────────────────────────────── */
+        {
+          title: 'Heap & Object Memory',
+          notes: `
+# Heap & Object Memory
+
+## The Heap: Shared Object Store
+
+Every object you create with \`new\` lives on the **heap**. All threads share the same heap. The GC manages it. This simplicity is powerful — you never manually free memory — but the heap is also the source of most JVM tuning challenges.
+
+The heap is split into **generations** based on one empirical observation called the **Weak Generational Hypothesis**: *most objects die young*. In a typical web server handling HTTP requests, hundreds of temporary String, DTO, and builder objects are created per request and become garbage the moment the response is sent (often within milliseconds). A tiny fraction — caches, connection pools, user sessions — live for minutes or hours.
+
+Exploiting this observation dramatically speeds up GC.
+
+## Young Generation: Where Objects Are Born
+
+\`\`\`
+YOUNG GENERATION  (~25% of heap, default ratio)
+┌───────────────┬──────────────────┬──────────────────┐
+│  Eden Space   │  Survivor S0     │  Survivor S1     │
+│  (new objects)│  (survived GC)   │  (bounce here)   │
+│  ~80% of YG   │  ~10% of YG      │  ~10% of YG      │
+└───────────────┴──────────────────┴──────────────────┘
+\`\`\`
+
+**How objects move through Young Gen:**
+
+1. New object created → goes to **Eden**
+2. Eden fills → **Minor GC** (Young GC) triggers — typically 1–50ms, stop-the-world
+3. Minor GC traces from roots into Eden + one Survivor space
+4. Live objects copied to the OTHER Survivor space; each survivor's age increments by 1
+5. Eden + from-Survivor space cleared (just a pointer reset — O(1))
+6. Objects whose age reaches the tenuring threshold (default: 15) → **promoted to Old Gen**
+
+Minor GC is fast because: (a) most objects in Eden are already dead — nothing to copy; (b) copying only survivors is proportional to what's alive, not heap size; (c) clearing Eden is a single pointer-reset operation.
+
+## Old Generation: Long-Lived Objects
+
+\`\`\`
+OLD GENERATION / TENURED  (~75% of heap, default)
+┌────────────────────────────────────────────────────┐
+│  Objects that survived enough Minor GCs            │
+│  (aged ≥ MaxTenuringThreshold, default 15)         │
+│                                                    │
+│  Also: large objects may be allocated directly     │
+│  here (bypassing Young Gen) to avoid copying       │
+└────────────────────────────────────────────────────┘
+\`\`\`
+
+When Old Gen fills → **Major GC** or **Full GC**. This is expensive: Old Gen is large, compacting it takes proportionally longer, and it pauses all application threads (in simple collectors). Full GC pauses of 10+ seconds are a sign of a seriously misconfigured or memory-leaking JVM.
+
+**Important flags:**
+\`\`\`
+-Xms512m              # initial heap size (start here to avoid resize overhead)
+-Xmx4g                # maximum heap size (never exceed ~70% of physical RAM)
+-XX:NewRatio=3        # Old:Young ratio (3 means Old=75%, Young=25%)
+-XX:MaxTenuringThreshold=10  # promote objects to Old Gen after 10 Minor GCs
+\`\`\`
+
+## Metaspace: Where Classes Live (Java 8+)
+
+Before Java 8, class metadata lived in **PermGen** (Permanent Generation) — a fixed-size heap region. It caused the classic \`OutOfMemoryError: PermGen space\` when:
+- Deploying too many applications to a server
+- Hot-reloading without properly unloading old classloaders
+- Loading many dynamic classes (Groovy/Hibernate proxy generation)
+
+Java 8 replaced PermGen with **Metaspace**, which lives in **native memory** (outside the Java heap) and grows dynamically:
+
+\`\`\`
+METASPACE  (native memory, not counted in -Xmx)
+┌──────────────────────────────────────────────────────┐
+│  Class structures (field names, method bytecode)     │
+│  Runtime constant pool (string literals, numbers)    │
+│  Method tables (vtables for virtual dispatch)        │
+│  Static field REFERENCES (the object itself → heap)  │
+└──────────────────────────────────────────────────────┘
+\`\`\`
+
+> [!TIP]
+> Static fields store their **reference** in the Class object (which lives in Metaspace-adjacent heap). The **object the reference points to** lives on the regular heap. When a static field holds a large Map, that Map is on the heap — but the reference to it is with the class structure.
+
+Metaspace can still OOM if a classloader is leaked — common in app servers when web apps are undeployed but their ClassLoader isn't garbage collected (because something still holds a reference to one of their classes). Tune with:
+
+\`\`\`
+-XX:MetaspaceSize=128m       # initial allocation
+-XX:MaxMetaspaceSize=512m    # cap it; without this, a leak grows unbounded
+\`\`\`
+
+## Object Memory Layout
+
+Every Java object on the heap has a fixed header followed by its fields:
+
+\`\`\`
+┌──────────────────────────────────┐
+│  Mark Word (8 bytes)             │  hashCode, GC age, locking state, GC metadata
+│  Class Pointer (4–8 bytes)       │  pointer to the Class object in Metaspace
+├──────────────────────────────────┤
+│  Instance fields (aligned)       │  the actual data
+└──────────────────────────────────┘
+\`\`\`
+
+The header is 12–16 bytes. This means an \`Integer\` object (holding one 4-byte int) uses ~16 bytes — 4× the raw value. A \`boolean\` field in an object takes 1 byte but is padded to 4 or 8 bytes for alignment. For high-throughput systems with millions of objects, this overhead matters: prefer primitives, use \`IntStream\` over \`Stream<Integer>\`, consider Valhalla value types (future Java).
+
+## OOM Error Types and What They Mean
+
+| Error message | Cause | Fix |
+|---|---|---|
+| \`OutOfMemoryError: Java heap space\` | Live objects exceed -Xmx | Increase -Xmx, fix memory leak |
+| \`OutOfMemoryError: GC overhead limit exceeded\` | GC spending >98% time freeing <2% heap | Same as above, or disable with -XX:-UseGCOverheadLimit |
+| \`OutOfMemoryError: Metaspace\` | Class metadata fills native memory | Add -XX:MaxMetaspaceSize, fix classloader leak |
+| \`OutOfMemoryError: Direct buffer memory\` | NIO direct buffers exhaust native memory | Reduce -XX:MaxDirectMemorySize usage |
+
+> [!EU]
+> At companies with high traffic (Adyen, Booking.com, Zalando), GC tuning is a real skill. Saying "we had metaspace OOMs caused by Hibernate proxy generation — fixed by capping -XX:MaxMetaspaceSize=512m and ensuring Hibernate\'s proxy factory was singleton-scoped" shows real production experience. Generic "increase heap" answers score low.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Object memory, generational promotion & GC triggers',
+              code: `import java.lang.management.*;
+import java.util.*;
+
+// Demonstrates: heap regions, GC triggers, and object promotion.
+public class HeapDemo {
+
+    public static void main(String[] args) throws InterruptedException {
+        // --- Check heap memory pools ---
+        System.out.println("=== Memory Pools ===");
+        for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+            MemoryUsage usage = pool.getUsage();
+            if (usage == null) continue;
+            System.out.printf("%-40s used=%,dK max=%,dK%n",
+                pool.getName(),
+                usage.getUsed() / 1024,
+                usage.getMax() / 1024);
+        }
+
+        // --- Demonstrate Eden → Survivor → Old Gen promotion ---
+        System.out.println("\\n=== Allocation Pressure Demo ===");
+        List<byte[]> survivors = new ArrayList<>();
+
+        // Create short-lived garbage (will be collected in Minor GC)
+        for (int i = 0; i < 50; i++) {
+            byte[] garbage = new byte[100_000]; // 100KB, dies immediately
+            // reference dropped immediately -> becomes eligible for GC
+        }
+
+        // Create long-lived objects (will be promoted to Old Gen)
+        for (int i = 0; i < 5; i++) {
+            survivors.add(new byte[500_000]); // 500KB, held -> survives GC -> promoted
+        }
+
+        // Force a GC to observe promotion (for demo only — never do this in prod)
+        System.gc();
+        Thread.sleep(100);
+
+        System.out.println("After GC:");
+        for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+            if (pool.getName().contains("Old") || pool.getName().contains("Tenured")) {
+                System.out.printf("  Old Gen used: %,d bytes%n",
+                    pool.getUsage().getUsed());
+            }
+        }
+
+        // Keep survivors alive so JIT doesn't optimize them away
+        System.out.println("Survivors size: " + survivors.size());
+    }
+}`
+            },
+            {
+              lang: 'bash',
+              title: 'Heap diagnostics & GC log analysis',
+              code: `# Enable GC logging (Java 11+) — essential for production diagnosis
+java -Xmx2g \\
+     -Xlog:gc*:file=/tmp/gc.log:time,uptime,level,tags \\
+     -jar app.jar
+
+# Key GC log events to watch:
+# [GC pause (G1 Young) ...] - minor GC, should be <100ms
+# [GC pause (G1 Humongous Allocation)] - large object > region size, may cause pause
+# [Full GC (Ergonomics)] - very expensive, investigate root cause
+
+# Heap dump when OOM occurs (invaluable for leak analysis)
+java -XX:+HeapDumpOnOutOfMemoryError \\
+     -XX:HeapDumpPath=/tmp/heap-dump.hprof \\
+     -jar app.jar
+# Then analyze with: Eclipse MAT, VisualVM, JDK Mission Control
+
+# Live heap histogram (no pause, shows top object types by count/size)
+jmap -histo <pid> | head -30
+
+# Print object size (uses Instrumentation API in production tools)
+# Quick rule of thumb:
+# - boolean/byte: 1 byte -> padded to 4-8 in object
+# - int: 4 bytes
+# - long/double: 8 bytes
+# - Object reference: 4 bytes (compressed oops, default when heap < 32GB)
+# - Object header: 12 bytes (8 mark + 4 class pointer with compressed oops)
+# - Minimum object size: 16 bytes (header + at least 4 bytes padding)`
+            }
+          ],
+          flashcards: [
+            { q: 'What is the Weak Generational Hypothesis and how does it influence heap design?', a: 'Most objects die young — short-lived request-scoped objects created in abundance but discarded quickly. This insight leads to generational GC: split the heap into Young (Eden, Survivors) and Old (Tenured). Young GC is cheap because most Eden objects are already dead; only survivors are copied.' },
+            { q: 'Walk through the path of a short-lived object vs a long-lived object in the heap.', a: 'Short-lived: created in Eden → Minor GC hits → not reachable → reclaimed (Eden reset). Long-lived: Eden → Minor GC → copied to Survivor S0 (age=1) → next Minor GC → copied to S1 (age=2) → ... → age reaches MaxTenuringThreshold (default 15) → promoted to Old Generation.' },
+            { q: 'What replaced PermGen in Java 8 and what problem did it solve?', a: 'Metaspace, which lives in native memory and grows dynamically. PermGen was a fixed-size heap region that caused "OutOfMemoryError: PermGen space" when too many classes were loaded. Metaspace avoids the hard limit but still needs -XX:MaxMetaspaceSize to cap classloader leaks.' },
+            { q: 'What does Metaspace store? What does NOT live in Metaspace?', a: 'Metaspace stores: class structures (field names, method bytecode, vtables), runtime constant pool, static field references. NOT in Metaspace: the objects that static fields point to (those are in the heap), instance data, thread stacks.' },
+            { q: 'What is the minimum memory footprint of a Java object?', a: '16 bytes: 8-byte mark word + 4-byte compressed class pointer (with compressed oops, default when heap < 32GB) + at minimum 4 bytes of field data or padding. An empty object with no fields is 16 bytes. This 4x overhead over raw primitives is why value types (Valhalla) matter for memory-intensive code.' },
+            { q: 'What does "OutOfMemoryError: GC overhead limit exceeded" mean?', a: 'The JVM detected that GC is consuming more than 98% of CPU time but reclaiming less than 2% of heap. It throws OOM to prevent the app from crawling indefinitely. Usually means: memory leak filling Old Gen. Fix: increase -Xmx, find and fix the leak, or disable with -XX:-UseGCOverheadLimit (not recommended).' }
+          ]
+        },
+
+        /* ── SECTION 4 ─────────────────────────────────────────────── */
+        {
+          title: 'Thread Stack & Native Memory',
+          notes: `
+# Thread Stack & Native Memory
+
+## Per-Thread Memory Architecture
+
+Heap and Metaspace are shared across all threads. Thread-private memory consists of three structures per thread:
+
+\`\`\`
+PER-THREAD MEMORY
+┌──────────────────────────────────────────────────────────┐
+│  JVM Stack        (method call frames, LIFO)             │
+│  ─────────────────────────────────────────────────────   │
+│  Frame N: currently executing method                     │
+│    - Local variable array                                │
+│    - Operand stack                                       │
+│    - Frame data (constant pool ref, return address)      │
+│  Frame N-1: method that called Frame N                   │
+│  ...                                                     │
+│  Frame 0: main()                                         │
+├──────────────────────────────────────────────────────────┤
+│  PC Register      (address of current bytecode instr)    │
+├──────────────────────────────────────────────────────────┤
+│  Native Method Stack (C/C++ frames for JNI calls)        │
+└──────────────────────────────────────────────────────────┘
+\`\`\`
+
+## The JVM Stack: Method Call Machinery
+
+Every method call pushes a new **stack frame**. When the method returns, its frame is popped and the frame of the caller resumes. This is the classic LIFO (last-in, first-out) structure.
+
+### Inside a Stack Frame
+
+\`\`\`
+Stack Frame for: int compute(int a, int b)
+┌─────────────────────────────────────────────┐
+│  LOCAL VARIABLE ARRAY                        │
+│  [0] this       (implicit for instance methods)
+│  [1] a = 10    (method parameter)            │
+│  [2] b = 20    (method parameter)            │
+│  [3] result    (local variable)              │
+├─────────────────────────────────────────────┤
+│  OPERAND STACK (scratch pad for bytecode)    │
+│  [ ][ ][ ][ ]   (grows/shrinks per instr)   │
+├─────────────────────────────────────────────┤
+│  FRAME DATA                                  │
+│  - Reference to runtime constant pool        │
+│  - Return address (resume caller here)       │
+│  - Exception table reference                 │
+└─────────────────────────────────────────────┘
+\`\`\`
+
+The **local variable array** holds: \`this\` reference (slot 0 for instance methods), parameters (slots 1..N), and declared local variables (slots N+1..M). Importantly, these are NOT heap-allocated — they live directly in the frame on the stack and are reclaimed automatically when the frame is popped.
+
+The **operand stack** is the JVM's scratch pad. Bytecode instructions push and pop values here. For example, adding two integers:
+\`\`\`
+iload_1   // push local[1] (a=10) → operand stack: [10]
+iload_2   // push local[2] (b=20) → operand stack: [10, 20]
+iadd      // pop two, add, push result → operand stack: [30]
+istore_3  // pop 30, store in local[3] (result)
+\`\`\`
+
+This stack-based model is simpler to generate code for than register-based (x86) and makes the JIT's job of optimising into register-based native code non-trivial.
+
+## StackOverflowError: Causes and Fixes
+
+Each thread has a fixed-size JVM stack (default 512KB–1MB depending on JVM/OS). Every frame consumes space. When you add more frames than fit → \`StackOverflowError\`.
+
+**Common causes:**
+- **Infinite recursion** (missing base case)
+- **Mutual recursion** (A calls B calls A)
+- **Very deep legitimate recursion** on large data structures
+- **Large local arrays** in deeply nested calls (each big array is a big frame)
+
+\`\`\`java
+// Each recurse() call pushes a frame. With default -Xss, you get ~10k-20k frames.
+// After that: StackOverflowError (not OutOfMemoryError — it's the stack, not heap).
+static long recurse(int n, long acc) {
+    if (n <= 0) return acc;
+    return recurse(n - 1, acc + n); // STILL creates a new frame (JVM ignores tail calls)
+}
+\`\`\`
+
+> [!WARNING]
+> The JVM does **not** perform tail-call optimization, even for syntactically tail-recursive methods. Unlike Scala (\`@tailrec\` annotation rewrites to loop) or Haskell, Java's bytecode always creates a new stack frame per call. Convert deep recursion to iteration using an explicit stack data structure.
+
+**Tuning:**
+\`\`\`
+-Xss512k     # smaller stack → more threads, less memory per thread
+-Xss4m       # larger stack → fewer threads, handles deeper recursion
+\`\`\`
+
+Trade-off: threads × stack size = native memory committed for stacks. 1000 threads × 1MB = 1GB of native memory just for stacks.
+
+## PC Register: The Thread Bookmark
+
+Each thread has a **Program Counter (PC) register** — a tiny pointer to the bytecode instruction currently being executed. When the OS context-switches between threads, it saves each thread's PC so execution can resume exactly where it left off.
+
+For native methods (JNI), the PC is undefined (native code uses CPU registers directly, not JVM bytecode).
+
+The PC is invisible to Java code — you can't read or write it from Java. It's an implementation detail of the execution engine. It's why thread dumps show the exact line/method where each thread is executing.
+
+## Native Method Stack
+
+When Java calls a C/C++ function via **JNI (Java Native Interface)**, execution leaves the JVM's control. The native function uses a **native method stack** — separate from the JVM stack. This is how Java interfaces with system calls, OS APIs, hardware drivers, and native libraries (OpenSSL, Netty's JNI components).
+
+You rarely interact with the native stack directly unless writing JNI code or debugging crashes that show \`[signal SIGSEGV]\` in thread dumps — which are usually native memory corruption, not Java bugs.
+
+## Virtual Threads (Java 21+): The Stack Revolution
+
+Traditional platform threads each require 512KB–1MB of native stack memory. Creating 10,000 platform threads = 5–10GB of native memory. This is why traditional thread-per-request servers max out at a few thousand concurrent requests.
+
+**Virtual threads** solve this:
+
+\`\`\`
+Platform thread: fixed native stack (512KB–1MB) pinned to OS thread
+Virtual thread:  continuation on HEAP (grows from 1KB, cheap) + tiny carrier thread
+\`\`\`
+
+Virtual threads:
+- Stack stored as a **continuation object on the heap** — starts at ~1KB, grows on demand
+- Millions of virtual threads possible on a small thread pool of carrier threads
+- When a virtual thread blocks (I/O, lock), it **unmounts** from its carrier thread
+- Carrier thread picks up another virtual thread — no OS blocking
+- When I/O completes, virtual thread remounts on a carrier thread and resumes
+
+\`\`\`java
+// Create 100,000 virtual threads (would kill platform threads — fine here)
+try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+    IntStream.range(0, 100_000).forEach(i ->
+        exec.submit(() -> {
+            Thread.sleep(Duration.ofSeconds(1)); // blocks — virtual thread unmounts
+            return i;
+        })
+    );
+}
+// All 100,000 complete in ~1 second with minimal memory (vs 50–100GB for platform threads)
+\`\`\`
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Stack frames, recursion depth & virtual threads',
+              code: `import java.time.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import java.util.stream.*;
+
+public class StackDemo {
+
+    // Recursive method — each call = 1 stack frame
+    static long recursiveSum(int n, long acc) {
+        if (n <= 0) return acc;
+        return recursiveSum(n - 1, acc + n); // new frame pushed each time
+    }
+
+    // Safe iterative version — O(1) stack space regardless of n
+    static long iterativeSum(int n) {
         long sum = 0;
         for (int i = 1; i <= n; i++) sum += i;
         return sum;
     }
 
-    public static void main(String[] args) {
-        // How deep can we go? (varies by JVM/-Xss setting)
-        int depth = 0;
+    // Measure maximum recursion depth before StackOverflowError
+    static int measureMaxDepth() {
         try {
-            recurse(100_000, 0);    // likely StackOverflowError
-            System.out.println("100k calls completed (uncommon without -Xss)");
+            measureMaxDepth();  // recurse until crash
         } catch (StackOverflowError e) {
-            System.out.println("StackOverflowError hit (stack full of frames)");
+            // StackOverflowError, not OutOfMemoryError — it's the stack, not the heap
         }
-
-        // Iterative is always safe and avoids frame allocation overhead
-        System.out.println("Iterative sum 1..1M = " + iterate(1_000_000));
-
-        System.out.println("\\nStack size tuning: -Xss512k (smaller, more threads) or -Xss2m (deeper recursion)");
-        System.out.println("Thread count × stack size = OS memory committed for stacks.");
-        System.out.println("Virtual threads (JDK 21) use heap-allocated stacks -> millions possible.");
-    }
-}`
-        },
-        {
-          lang: 'java',
-          title: 'Custom ClassLoader: load a class from bytes at runtime',
-          code: `// Custom ClassLoaders power OSGi, plugin systems, hot-reload, and Spring Boot fat-jars.
-// They break parent delegation (child-first) to isolate different versions of the same library.
-public class ClassLoaderDemo {
-
-    // A classloader that loads a class from a raw byte array (e.g. from a DB or network).
-    // In real frameworks this would load from a JAR stream.
-    static class ByteArrayClassLoader extends ClassLoader {
-        private final String className;
-        private final byte[] bytecode;
-
-        ByteArrayClassLoader(String className, byte[] bytecode) {
-            super(ClassLoaderDemo.class.getClassLoader()); // parent = app classloader
-            this.className = className;
-            this.bytecode  = bytecode;
-        }
-
-        @Override
-        protected Class<?> findClass(String name) throws ClassNotFoundException {
-            if (name.equals(className)) {
-                System.out.println("[CustomCL] defining class: " + name);
-                return defineClass(name, bytecode, 0, bytecode.length);
-            }
-            return super.findClass(name);
-        }
-    }
-
-    // Minimal valid .class bytecode for: public class Hello { public static String greet() { return "Hi!"; } }
-    // Generated with: javac Hello.java && xxd -i Hello.class
-    // (Using a tiny pre-built bytecode array for this demo)
-    static final byte[] HELLO_CLASS_BYTECODE = buildTinyClass();
-
-    static byte[] buildTinyClass() {
-        // A real example would load bytes from a file/DB/network.
-        // Here we just return the bytes of a class we ALREADY have (to show the mechanism).
-        // In practice: return Files.readAllBytes(Path.of("plugins/MyPlugin.class"));
-        try {
-            return ClassLoaderDemo.class.getResourceAsStream(
-                "ClassLoaderDemo.class") != null
-                ? ClassLoaderDemo.class.getResourceAsStream("ClassLoaderDemo.class").readAllBytes()
-                : new byte[0];
-        } catch (Exception e) { return new byte[0]; }
+        // Approximate: use depth counter in real measurement
+        return -1; // placeholder
     }
 
     public static void main(String[] args) throws Exception {
-        // Demonstrate isolation: same class name, different loaders = different Class objects
-        ClassLoader loaderA = new ByteArrayClassLoader("Isolated", new byte[0]);
-        ClassLoader loaderB = new ByteArrayClassLoader("Isolated", new byte[0]);
+        // --- Stack depth experiment ---
+        AtomicInteger depth = new AtomicInteger();
+        try {
+            Runnable r = new Runnable() {
+                public void run() {
+                    depth.incrementAndGet();
+                    run(); // infinite recursion
+                }
+            };
+            r.run();
+        } catch (StackOverflowError e) {
+            System.out.printf("Max recursion depth (default -Xss): ~%,d frames%n", depth.get());
+        }
 
-        System.out.println("loaderA == loaderB? " + (loaderA == loaderB));  // false
-        System.out.println("Parent of loaderA: " + loaderA.getParent());
+        // --- Iterative is always safe ---
+        System.out.printf("Iterative sum 1..1M = %,d%n", iterativeSum(1_000_000));
 
-        // Key insight: Class identity = class name + ClassLoader
-        // Two classes with identical bytecode loaded by different ClassLoaders are NOT the same type.
-        // This is how Tomcat isolates web apps: each app has its own ClassLoader.
-        System.out.println("\\nParent-delegation in action:");
-        System.out.println("  String class loader: " + String.class.getClassLoader()); // null = Bootstrap
-        System.out.println("  This class loader:   " + ClassLoaderDemo.class.getClassLoader());
-        System.out.println("  Bootstrap is null because it's native (C++), not a Java object.");
+        // --- Virtual threads: millions of cheap threads ---
+        System.out.println("\\n=== Virtual Thread Demo ===");
+        long start = System.currentTimeMillis();
+        int threadCount = 10_000;
+        AtomicInteger completed = new AtomicInteger();
+
+        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            IntStream.range(0, threadCount).forEach(i ->
+                exec.submit(() -> {
+                    Thread.sleep(Duration.ofMillis(10)); // simulates I/O wait
+                    completed.incrementAndGet();
+                    return i;
+                })
+            );
+        } // blocks until all complete
+
+        long elapsed = System.currentTimeMillis() - start;
+        System.out.printf("Completed %,d virtual threads in %dms%n", completed.get(), elapsed);
+        System.out.println("Platform threads would require ~5-10GB native memory for this.");
+        System.out.println("Virtual threads: stack starts at ~1KB on heap, grows on demand.");
     }
 }`
+            }
+          ],
+          flashcards: [
+            { q: 'What are the three components of a JVM stack frame?', a: '1) Local variable array: holds "this", method parameters, and local variables. 2) Operand stack: bytecode instructions push/pop values here (scratch pad for calculations). 3) Frame data: reference to the runtime constant pool, return address, and exception table.' },
+            { q: 'Why does the JVM throw StackOverflowError (not OutOfMemoryError) for deep recursion?', a: 'The JVM stack is a fixed-size per-thread structure (tuned by -Xss, default 512KB–1MB). When recursion creates more frames than fit, the stack overflows → StackOverflowError. The heap is fine; it\'s the stack that\'s exhausted. OutOfMemoryError is specifically for heap exhaustion.' },
+            { q: 'Why doesn\'t the JVM optimize tail-recursive methods like Scala/Haskell does?', a: 'The JVM specification does not require tail-call optimization. Even syntactically tail-recursive Java methods create a new stack frame per call. Scala\'s @tailrec annotation asks the compiler to rewrite recursive calls as loops (JVM bytecode with a jump). Java developers must do this rewrite manually.' },
+            { q: 'What is the PC register and what is it used for?', a: 'The Program Counter register per thread holds the address of the bytecode instruction currently executing. When the OS context-switches threads, PC is saved/restored so execution resumes exactly where it left off. For native methods (JNI), PC is undefined — native code uses CPU registers, not JVM bytecode.' },
+            { q: 'How do virtual threads differ from platform threads in memory model?', a: 'Platform threads have a fixed native stack (512KB–1MB) tied to an OS thread. Virtual threads store their stack as a continuation on the heap (starts ~1KB, grows dynamically). When blocked on I/O, a virtual thread unmounts from its carrier thread (freeing it) and remounts when I/O completes. This enables millions of virtual threads on a small carrier thread pool.' },
+            { q: 'How do you calculate the native memory consumed by thread stacks?', a: 'thread_count × stack_size_per_thread. With default -Xss1m: 1,000 threads × 1MB = 1GB native memory just for stacks. This is why platform-thread-based servers max out at ~thousands of concurrent requests. Virtual threads (JDK 21) avoid this by heap-backing their stacks.' }
+          ]
+        },
+
+        /* ── SECTION 5 ─────────────────────────────────────────────── */
+        {
+          title: 'JIT Compilation & Runtime Optimizations',
+          notes: `
+# JIT Compilation & Runtime Optimizations
+
+## The Three-Phase Execution Model
+
+The JVM doesn't run bytecode the same way throughout a program's lifetime. It has three phases:
+
+\`\`\`
+COLD START          WARMING UP              STEADY STATE
+─────────────       ──────────────────      ──────────────────────────
+Bytecode            Profiling + C1          C2 native code
+interpreted         compiling hot           (aggressively optimized)
+~10-100x slower     methods quickly         near-native speed
+
+Seconds 0-5         Seconds 5-30            After warmup
+\`\`\`
+
+This model is the reason Java servers must warm up before receiving full production traffic. Without warmup, a freshly deployed pod handles requests 10–100× slower than it will after a few minutes.
+
+## How Profiling Works
+
+While interpreting, the JVM maintains **invocation counters** for each method and **back-edge counters** for loop iterations. When these counters cross a threshold (roughly 10,000 invocations for a method, 10,000 loop back-edges for OSR), the method is marked for compilation.
+
+\`\`\`
+Method counter:  [||||||||..] 10,000 threshold → enqueued for C1 compilation
+Loop counter:    [||||||||..] 10,000 back-edges → OSR (on-stack replacement) kicks in
+\`\`\`
+
+**On-Stack Replacement (OSR)** is remarkable: the JVM can swap a method's interpreted execution for JIT-compiled execution while the method is still running. If you have a loop that runs for seconds, OSR replaces the interpreter with compiled code mid-loop.
+
+## Tiered Compilation: Five Levels
+
+Java 7+ uses tiered compilation (enabled by default). Methods progress through levels as they get hotter:
+
+| Level | Compiler | Optimizations | Use case |
+|---|---|---|---|
+| **0** | Interpreter | None | Cold code |
+| **1** | C1 | Minimal (no profiling) | Simple methods |
+| **2** | C1 | Basic + method/branch profiling | Methods that will go to C2 |
+| **3** | C1 | Full profiling | Hot code on the way to C2 |
+| **4** | C2 | Maximum aggressive | Hottest methods |
+
+**C1 (Client Compiler):** Fast compilation (milliseconds), moderate optimizations. Good for getting code into native form quickly — reduces latency of first few thousand calls. Often called "warm" code.
+
+**C2 (Server Compiler):** Slow compilation (tens to hundreds of milliseconds), extremely aggressive optimizations based on collected profiling data. Produces code that can be faster than equivalent hand-written C for specific patterns.
+
+## Key JIT Optimizations in Depth
+
+### 1. Method Inlining
+
+The most impactful optimization. Instead of generating a call instruction, the JIT copies the called method's body directly into the caller. This eliminates call overhead AND enables further optimizations on the combined code.
+
+\`\`\`java
+// Before inlining:
+int total = 0;
+for (Item item : list) total += item.getPrice();  // getPrice() called millions of times
+
+// After inlining (conceptually):
+for (Item item : list) total += item.price;  // field access, no call overhead
+// JIT can then combine with loop optimizations
+\`\`\`
+
+Inlining is governed by byte size thresholds (\`-XX:MaxInlineSize=35\`, \`-XX:FreqInlineSize=325\`). Very large methods are not inlined. This is why keeping hot-path methods small is a real performance concern — not just style.
+
+### 2. Escape Analysis & Stack Allocation
+
+The JIT analyzes whether an object **escapes** its creating method — that is, whether a reference to it can be observed by other threads or other methods. If an object doesn't escape, it can be:
+
+- **Stack-allocated**: placed in the stack frame instead of the heap (no GC pressure)
+- **Scalar replaced**: its fields inlined directly as local variables (object doesn't exist at all)
+
+\`\`\`java
+// The Point object below may be stack-allocated or scalar-replaced by C2
+// because it doesn't escape the method:
+double distance(double x, double y) {
+    Point p = new Point(x, y);   // JIT may eliminate this heap allocation
+    return Math.sqrt(p.x * p.x + p.y * p.y);
+}
+\`\`\`
+
+This is why micro-benchmarks that measure object allocation in hot loops often see JIT eliminate the allocations entirely — making the benchmark meaningless.
+
+### 3. Devirtualization & Speculative Inlining
+
+Virtual method calls (\`interface method\`, \`overridden method\`) require a vtable lookup at runtime — they can't be inlined until the JIT knows which concrete implementation is actually called.
+
+C2 uses **speculative inlining**: "Based on profiling, 99% of calls to \`Collection.add()\` go to \`ArrayList.add()\`. I'll compile a direct call to \`ArrayList.add()\`, plus a slow-path guard for other cases."
+
+If the guard fails (a different implementation appears), the JIT **deoptimizes** — reverts to interpreted code and eventually recompiles with the new data. Deoptimization events are visible in JIT compilation logs.
+
+### 4. Dead Code Elimination
+
+The JIT removes code branches that profiling shows never execute (or that are provably unreachable).
+
+\`\`\`java
+if (DEBUG_MODE) {
+    expensiveLogging();  // if DEBUG_MODE is effectively final false, JIT eliminates this
+}
+\`\`\`
+
+Making debug/trace flags \`static final boolean\` (not a runtime property) lets the JIT completely eliminate disabled logging paths — zero cost.
+
+### 5. Loop Unrolling & Vectorization
+
+Short loops may be **unrolled**: replace the loop with repeated copies of the body, reducing branch/counter overhead. For numeric loops, the JIT can also **vectorize** — use SIMD CPU instructions to process multiple elements per clock cycle.
+
+## Code Cache & JIT Failure Modes
+
+Compiled native code lives in the **code cache** (default ~240MB on 64-bit JVM). When the cache fills:
+- The JIT stops compiling new methods (stays at interpreted/C1)
+- Performance degrades silently — no exception thrown
+- Monitor: \`-XX:+PrintCodeCache\` or JMX \`java.lang:type=Compilation\`
+
+If you see "CodeCache is full. Compiler has been disabled." in GC/JIT logs, increase with \`-XX:ReservedCodeCacheSize=512m\`.
+
+## Diagnosing JIT in Production
+
+\`\`\`
+-XX:+PrintCompilation          # log each compilation event (verbose)
+-XX:+UnlockDiagnosticVMOptions \\
+-XX:+PrintInlining             # show inlining decisions
+\`\`\`
+
+Better tools:
+- **async-profiler**: flame graphs showing CPU time in JIT-compiled vs interpreted code
+- **JDK Flight Recorder (JFR)**: low-overhead production profiling, JIT event capture
+- **JITWatch**: visualises HotSpot JIT decisions from compilation logs
+
+> [!EU]
+> Senior engineers at Adyen or Booking.com who work on high-throughput payment APIs know: "we saw a 40% throughput drop after deploying a new service version — profiled with async-profiler, found JIT was deoptimizing our critical path because a new subclass of PaymentProcessor was introduced, breaking speculative inlining. Fixed by making the hot implementation \`final\`." That kind of story wins interviews.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'JIT warmup curve & inlining demonstration',
+              code: `// Demonstrates JIT warmup: performance improves as C1 then C2 compiles hot methods.
+// For accurate benchmarks always use JMH (never measure with System.currentTimeMillis in production).
+public class JitWarmupDemo {
+
+    // Hot method — will be inlined and optimized by C2 after ~10k calls
+    static int compute(int a, int b) {
+        return (a * 31 + b) ^ (a >>> 16);
+    }
+
+    public static void main(String[] args) {
+        int WARMUP_ROUNDS = 5;
+        int MEASURE_ROUNDS = 5;
+        int ITERATIONS = 5_000_000;
+        long dummy = 0; // prevent dead code elimination
+
+        System.out.println("=== JIT Warmup Demo ===");
+        System.out.println("Each round: " + ITERATIONS + " iterations");
+        System.out.println("Phase 1-5: warmup (interpreted → C1 → C2)");
+        System.out.println("Phase 6-10: measuring (should be faster and stable)");
+        System.out.println();
+
+        for (int round = 0; round < WARMUP_ROUNDS + MEASURE_ROUNDS; round++) {
+            long start = System.nanoTime();
+
+            for (int i = 0; i < ITERATIONS; i++) {
+                dummy += compute(i, i * 3);
+            }
+
+            long elapsed = System.nanoTime() - start;
+            String phase = round < WARMUP_ROUNDS ? "[warm]  " : "[MEASURE]";
+            System.out.printf("%s Round %2d: %,6d ms  (%,.0f M ops/sec)%n",
+                phase, round + 1,
+                elapsed / 1_000_000,
+                (double) ITERATIONS / (elapsed / 1e9) / 1e6);
         }
-      ],
-      flashcards: [
-        { q: 'Which runtime data areas are shared across all threads vs per-thread?', a: 'Shared: Heap and Method Area/Metaspace (class metadata, statics, constant pool). Per-thread: JVM Stack, PC Register, and Native Method Stack.' },
-        { q: 'What replaced PermGen in Java 8 and why does it matter?', a: 'Metaspace, which lives in native memory and grows dynamically (bounded by -XX:MaxMetaspaceSize). It removed fixed PermGen sizing and the classic "PermGen space" OOM, but class-loader leaks can still exhaust native memory.' },
-        { q: 'Explain the parent-delegation model and why it exists.', a: 'A class loader delegates to its parent before attempting to load a class itself (Bootstrap → Platform → Application → custom). It guarantees core classes (java.lang.String) can\'t be spoofed and avoids duplicate class definitions.' },
-        { q: 'What are the three phases of linking?', a: 'Verify (bytecode integrity & safety), Prepare (allocate static fields with default values), Resolve (replace symbolic references with direct references).' },
-        { q: 'How does the JVM decide to JIT-compile a method?', a: 'It interprets bytecode first and profiles invocation/loop counts. "Hot" methods crossing a threshold are compiled by the JIT (tiered: C1 client for quick compiles, C2 server for aggressive optimisation).' },
-        { q: 'What constitutes a JVM stack frame?', a: 'Each method invocation creates a frame containing: local variable array, operand stack (where bytecode instructions push/pop values), and a reference to the runtime constant pool of the current class.' },
-        { q: 'Why does the JVM throw StackOverflowError instead of OutOfMemoryError for deep recursion?', a: 'The JVM stack is a fixed-size per-thread structure (tuned with -Xss). When recursion exhausts the space for new frames, the JVM throws StackOverflowError — distinct from heap OOM. Fix: convert to iteration or increase -Xss (but more threads × larger stack = more native memory).' },
-        { q: 'What is the class identity contract in Java?', a: 'A class\'s identity is defined by BOTH its fully-qualified name AND the ClassLoader that loaded it. Two classes with the same bytecode loaded by different ClassLoaders are different types and cannot be cast to each other — this enables web app isolation in Tomcat/OSGi.' },
-        { q: 'How does Spring Boot\'s fat-jar ClassLoader differ from standard parent delegation?', a: 'Spring Boot\'s LaunchedURLClassLoader loads nested JARs inside the fat-jar (BOOT-INF/lib/) using a custom protocol handler. It loads application classes first (child-first), overriding standard parent delegation, to isolate the app\'s dependencies from the host JVM\'s classpath.' }
-      ]
+
+        System.out.println("dummy=" + dummy); // keep JIT from eliminating the loop
+        System.out.println("\\nNote: first rounds are slowest (interpreted).");
+        System.out.println("Performance stabilizes when C2 kicks in (usually round 3-5).");
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Escape analysis & dead code elimination',
+              code: `// Demonstrates two key JIT optimizations:
+// 1. Escape analysis: if object doesn't escape, JIT may stack-allocate or scalar-replace it
+// 2. Dead code elimination: static final boolean flags get branches compiled away entirely
+
+public class JitOptimizationsDemo {
+
+    // If DEBUG is static final false, JIT eliminates ALL calls to debug() — zero overhead
+    static final boolean DEBUG = false;
+
+    static void debug(String msg) {
+        // This entire method body is dead code when DEBUG=false
+        System.out.println("[DEBUG] " + msg);
+    }
+
+    // Point class used in escape analysis demo
+    record Point(double x, double y) {
+        double distanceTo(Point other) {
+            double dx = this.x - other.x;
+            double dy = this.y - other.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+    }
+
+    // This method creates two Point objects, but they don't escape (no return, no field write).
+    // C2 may scalar-replace them: treat x1,y1,x2,y2 as four doubles, no heap allocation.
+    static double computeDistance(double x1, double y1, double x2, double y2) {
+        Point a = new Point(x1, y1);  // may be stack-allocated/scalar-replaced by JIT
+        Point b = new Point(x2, y2);  // same
+        return a.distanceTo(b);
+    }
+
+    public static void main(String[] args) {
+        // --- Dead code elimination demo ---
+        debug("This log call is eliminated by JIT when DEBUG=false");
+        debug("Zero overhead — as if these lines don't exist");
+
+        // --- Escape analysis demo ---
+        double total = 0;
+        long start = System.nanoTime();
+
+        for (int i = 0; i < 10_000_000; i++) {
+            // After JIT: Point objects may not exist on heap at all (scalar replaced)
+            total += computeDistance(i, i + 1, i * 2, i * 3);
+        }
+
+        long ms = (System.nanoTime() - start) / 1_000_000;
+        System.out.printf("10M distance computations in %dms (total=%.0f)%n", ms, total);
+        System.out.println("If JIT scalar-replaced Points: no GC pressure despite 20M allocations.");
+        System.out.println("Verify with: java -XX:+PrintGCDetails (look for no Young GC)");
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What are the five tiers of tiered compilation?', a: 'Level 0: Interpreter (no compilation). Level 1: C1, no profiling. Level 2: C1 with basic profiling. Level 3: C1 with full profiling (feeding C2). Level 4: C2 with maximum aggressive optimization. Methods progress through levels as they get hotter.' },
+            { q: 'What is method inlining and why is it the most impactful JIT optimization?', a: 'Inlining copies a called method\'s body directly into the caller, eliminating call overhead and enabling further optimizations (escape analysis, dead code elimination) on the combined code. A short getter like getPrice() called millions of times per second is a prime inlining target — it effectively becomes a direct field access.' },
+            { q: 'What is escape analysis and what optimization does it enable?', a: 'Escape analysis determines whether an object reference can be observed outside its creating method. If it doesn\'t escape (no return, no field write, no inter-thread sharing), the JIT can stack-allocate the object (no GC pressure) or scalar-replace it (decompose into primitive fields, eliminating the object entirely).' },
+            { q: 'What is On-Stack Replacement (OSR)?', a: 'OSR allows the JVM to replace an executing interpreted method with JIT-compiled code mid-execution — even while a long-running loop is active. Without OSR, a loop that starts interpreted would stay interpreted until the next call. OSR enables transitioning to compiled code at loop back-edges.' },
+            { q: 'What is speculative inlining and what happens when the speculation is wrong?', a: 'The JIT profiles virtual method call sites and speculatively inlines the most common implementation (e.g., ArrayList.add() for all Collection.add() calls). A guard checks each call. If a different implementation arrives, the JIT deoptimizes — reverts to interpreted code — and eventually recompiles with the new profile data.' },
+            { q: 'How does making a boolean flag "static final" eliminate logging overhead?', a: 'static final boolean DEBUG = false; is known at compile/JIT time. C2 sees "this branch condition is always false" and eliminates the entire if (DEBUG) branch from native code. Zero CPU cycles, zero memory overhead — as if the code doesn\'t exist. Runtime (non-final) flags cannot be eliminated this way.' },
+            { q: 'What happens when the JVM code cache fills up?', a: 'The JIT compiler stops compiling new methods. Hot methods that would have been compiled stay interpreted or at C1. Throughput silently degrades — no exception is thrown. Fix: increase -XX:ReservedCodeCacheSize=512m. Detect: check JMX Compilation MXBean or GC logs for "CodeCache is full" messages.' }
+          ]
+        }
+
+      ], // end sections
+      // keep backward-compat top-level notes stub (empty — sections take over)
+      notes: ``,
+      code: [],
+      flashcards: []
     },
 
     {
