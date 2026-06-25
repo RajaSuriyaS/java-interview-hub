@@ -563,6 +563,16 @@
     if (prev) $('#nav-prev').addEventListener('click', () => openModule(prev.module.id));
     if (next) $('#nav-next').addEventListener('click', () => openModule(next.module.id));
 
+    // Keyboard navigation — ← → between modules (skip if focus is in textarea/input/Monaco)
+    const _keyNav = (e) => {
+      const tag = document.activeElement && document.activeElement.tagName;
+      if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+      if (document.activeElement && document.activeElement.closest('.monaco-wrap')) return;
+      if (e.key === 'ArrowLeft'  && prev) { document.removeEventListener('keydown', _keyNav); openModule(prev.module.id); }
+      if (e.key === 'ArrowRight' && next) { document.removeEventListener('keydown', _keyNav); openModule(next.module.id); }
+    };
+    document.addEventListener('keydown', _keyNav);
+
     icons();
     renderNav($('#search').value);
   }
@@ -593,7 +603,10 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
   function renderSandbox(module) {
     editors = [];
     const pane = $('#tab-sandbox');
-    const samples = module.code || [];
+    // Normalise: code can be plain strings (older format) or {lang,title,code} objects
+    const samples = (module.code || []).map((s, i) =>
+      typeof s === 'string' ? { lang: 'java', title: 'Example ' + (i + 1), code: s } : s
+    );
     if (samples.length === 0) {
       pane.innerHTML = `<div class="rounded-xl border border-slate-800 bg-slate-900/40 p-8 text-center text-slate-400">
         <i data-lucide="code-2" class="w-8 h-8 mx-auto mb-3 text-slate-600"></i>
