@@ -21,6 +21,10 @@ jobs:
   deploy:
     name: SSH deploy
     runs-on: ubuntu-latest
+    # The `secrets` context cannot be used in step `if:` conditions, so expose the
+    # health URL through the env context (which is allowed in `if:`).
+    env:
+      HEALTH_URL: ${{ secrets.HEALTH_URL }}
     # Skip entirely when secrets aren't configured (VPS uses systemd timer auto-deploy instead)
     if: >
       (github.event_name == 'workflow_dispatch' ||
@@ -72,11 +76,11 @@ jobs:
           DEPLOY_STANDALONE: ${{ secrets.DEPLOY_STANDALONE }}
 
       - name: Verify health
-        if: ${{ secrets.HEALTH_URL != '' }}
+        if: ${{ env.HEALTH_URL != '' }}
         run: |
-          echo "Probing ${{ secrets.HEALTH_URL }} …"
+          echo "Probing $HEALTH_URL …"
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${{ secrets.HEALTH_URL }}" || echo 000)
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" || echo 000)
             if [ "$code" = "200" ]; then echo "App healthy (HTTP 200) ✓"; exit 0; fi
             echo "attempt $i: HTTP $code; retry in 5s"; sleep 5
           done
