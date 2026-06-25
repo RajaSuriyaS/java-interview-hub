@@ -26291,80 +26291,197 @@ class OrderProcessListener implements org.camunda.bpm.engine.delegate.ExecutionL
     {
       id: '9.1',
       title: 'Linux Essentials & Shell',
-      hours: 4,
-      notes: `
-# Linux Essentials for Backend Engineers
-
-Production runs on Linux. You'll be expected to navigate, inspect processes, tail logs, and debug a misbehaving JVM over SSH — without an IDE.
-
-## Filesystem & navigation
-
-\`pwd\`, \`ls -la\`, \`cd\`, \`find / -name '*.log'\`, \`du -sh *\` (sizes), \`df -h\` (disk free). Everything is a file; \`/proc\` and \`/sys\` expose kernel/process state.
-
-## Text processing (the daily power tools)
-
-\`grep\` (search), \`awk\` (columns/compute), \`sed\` (stream edit), \`cut\`, \`sort\`, \`uniq -c\`, \`wc -l\`, \`head/tail -f\`. Pipe them: \`cat access.log | awk '{print $9}' | sort | uniq -c | sort -rn\` → count HTTP status codes.
-
-## Processes & resources
-
-- \`ps aux\`, \`top\`/\`htop\` — what's running, CPU/mem.
-- \`kill -TERM/-9 <pid>\`, \`jobs\`, \`bg/fg\`, \`nohup\`, \`&\`.
-- \`free -h\` (memory), \`vmstat\`, \`iostat\`, \`uptime\` (load average).
-- Signals: \`SIGTERM\` (graceful), \`SIGKILL\` (forced), \`SIGHUP\`.
-
-## Permissions
-
-\`chmod\` (rwx for user/group/other → octal 755/644), \`chown\`, \`sudo\`. \`r=4 w=2 x=1\`.
-
-## JVM debugging on a box
-
-> [!TIP]
-> Diagnosing a stuck/hot Java service over SSH: \`jps\` (find PID) → \`jstack <pid>\` (thread dump: find deadlocks/blocked threads) → \`jmap -histo <pid>\` or heap dump (memory) → \`jstat -gcutil <pid> 1s\` (GC activity) → \`top -H -p <pid>\` (hot threads, map TID→thread in jstack). This sequence solves most production JVM incidents.
-
-> [!WARNING]
-> Be careful with \`kill -9\` — it skips shutdown hooks (no graceful connection drain, no flush). Prefer \`SIGTERM\` and let the app shut down cleanly; containers/k8s send TERM then KILL after a grace period.
-
-> [!EU]
-> Expect practical prompts: *"A service is using 100% CPU in production — how do you debug it?"* Walk top → top -H -p pid → jstack → find the hot thread's stack. *"How do you find what's filling the disk?"* → \`du -sh /* | sort -h\`. Hands-on Linux fluency signals operational maturity.
-`,
-      code: [
+      hours: 3,
+      sections: [
         {
-          lang: 'bash',
-          title: 'Production debugging one-liners',
-          code: `# --- Find the heaviest directories (disk filling up) ---
-echo '$ du -sh /var/* 2>/dev/null | sort -h | tail -5'
+          title: 'Linux for Java Developers — Commands, Processes & Shell',
+          notes: `## Linux for Java Developers — Commands, Processes & Shell
 
-# --- Top HTTP status codes from an access log (field 9) ---
-echo '$ awk '"'"'{print $9}'"'"' access.log | sort | uniq -c | sort -rn | head'
+### Essential Commands for Production Debugging
 
-# --- Find & follow errors across rotated logs ---
-echo '$ grep -ri "exception" /var/log/myapp/ | tail -20'
-echo '$ tail -f /var/log/myapp/app.log | grep --line-buffered ERROR'
+\`\`\`bash
+# File navigation
+ls -la                    # list with permissions, hidden files
+cd /opt/app               # change directory
+pwd                       # print working directory
+find /var/log -name "*.log" -mtime -1   # files modified in last day
 
-# --- Who is listening on port 8080? ---
-echo '$ ss -ltnp | grep :8080      # or: lsof -i :8080'
+# File content
+cat app.log               # print entire file
+tail -f app.log           # follow live (like IDE console view)
+tail -n 100 app.log       # last 100 lines
+grep "ERROR" app.log      # filter lines
+grep -i "exception" app.log | tail -50  # case-insensitive, last 50
+grep -r "OutOfMemory" /var/log/        # recursive
 
-# --- JVM incident triage ---
-echo '$ jps -l                      # find the PID of your jar'
-echo '$ top -H -p <pid>             # hottest THREADS (note the TID in decimal)'
-echo '$ printf "%x\\n" <tid>         # convert TID to hex (nid in the dump)'
-echo '$ jstack <pid> | less         # find that nid -> the hot stack trace'
-echo '$ jstat -gcutil <pid> 1000    # GC% every 1s: is it GC-bound?'
-echo '$ jmap -histo:live <pid> | head   # top object counts (leak hunting)'
+# Process management
+ps aux | grep java        # find Java processes
+top                       # live CPU/memory per process
+htop                      # interactive top (if installed)
+kill -9 1234              # force kill process id 1234
+kill -15 1234             # graceful shutdown (SIGTERM)
+kill -3 1234              # thread dump to stdout (Java-specific)
 
-# --- Graceful vs forceful stop ---
-echo '$ kill -TERM <pid>   # graceful: runs shutdown hooks (preferred)'
-echo '$ kill -9   <pid>    # forceful: last resort, skips cleanup'
+# Network
+netstat -tlnp             # listening TCP ports
+ss -tlnp                  # modern replacement for netstat
+curl -I http://localhost:8080/health   # check endpoint
+curl -s http://localhost:8080/health | python3 -m json.tool
 
-echo ""
-echo "Run these on a real Linux box; this sandbox just prints the commands to memorise."`
+# Disk
+df -h                     # disk usage summary
+du -sh /opt/app/*         # size of each item in directory
+lsof | grep deleted       # files deleted but still open (disk leak)
+\`\`\`
+
+### File Permissions
+
+\`\`\`
+Permission string: -rwxr-xr--
+  - (first char): d=directory, l=symlink, -=file
+  rwx = owner: read, write, execute
+  r-x = group: read, no write, execute
+  r-- = others: read only
+
+chmod 755 script.sh       # rwxr-xr-x
+chmod +x script.sh        # add execute for all
+chown appuser:appgroup file.txt
+chown -R appuser /opt/app # recursive ownership change
+
+# Why matters: Spring Boot app running as non-root can't
+# read /etc/secrets if owned by root with mode 600
+\`\`\`
+
+### Shell Scripting for DevOps
+
+\`\`\`bash
+#!/bin/bash
+set -e  # exit on error
+set -u  # error on unset variables
+set -o pipefail  # pipeline fails if any command fails
+
+APP_DIR="/opt/myapp"
+LOG_DIR="/var/log/myapp"
+JAR_FILE="$APP_DIR/app.jar"
+PID_FILE="$APP_DIR/app.pid"
+
+start() {
+    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+        echo "Already running: $(cat $PID_FILE)"
+        exit 1
+    fi
+    java -Xms256m -Xmx512m \
+         -XX:+UseG1GC \
+         -Dspring.profiles.active=prod \
+         -jar "$JAR_FILE" \
+         > "$LOG_DIR/app.log" 2>&1 &
+    echo $! > "$PID_FILE"
+    echo "Started: $(cat $PID_FILE)"
+}
+
+stop() {
+    if [ -f "$PID_FILE" ]; then
+        kill -15 $(cat "$PID_FILE")  # SIGTERM — graceful shutdown
+        rm -f "$PID_FILE"
+        echo "Stopped"
+    fi
+}
+
+case "$1" in
+    start) start ;;
+    stop)  stop ;;
+    restart) stop; sleep 2; start ;;
+    *) echo "Usage: $0 {start|stop|restart}" ;;
+esac
+\`\`\`
+
+### JVM Diagnostics on Linux
+
+\`\`\`bash
+# Thread dump — see all threads, deadlocks
+kill -3 $(pgrep -f myapp.jar)
+# or
+jstack $(pgrep -f myapp.jar) > thread-dump.txt
+
+# Heap dump
+jmap -dump:format=b,file=heap.hprof $(pgrep -f myapp.jar)
+# or via JMX: jcmd <pid> GC.heap_dump /tmp/heap.hprof
+
+# GC stats
+jstat -gc $(pgrep -f myapp.jar) 1000  # every 1 second
+# S0 S1 E  O  M  YGC YGCT FGC FGCT  GCT
+# S0/S1: survivor spaces, E: eden, O: old gen
+
+# Check JVM flags actually used
+java -XX:+PrintFlagsFinal -version 2>&1 | grep MaxHeapSize
+\`\`\``,
+          code: [
+            `#!/bin/bash
+# Useful one-liners for Spring Boot operations — runnable on any Linux server
+
+# 1. Find Java process and its args
+ps aux | grep java | grep -v grep
+
+# 2. Watch live log with ERROR highlighting (requires grep --color)
+tail -f /var/log/myapp/app.log | grep --color=always -E "ERROR|WARN|$"
+
+# 3. Count error frequency in last hour's log
+grep "$(date '+%Y-%m-%d %H')" /var/log/myapp/app.log | grep -c ERROR
+
+# 4. Extract exception types from log
+grep "Exception" /var/log/myapp/app.log | grep -oP '\\w+Exception' | sort | uniq -c | sort -rn
+
+# 5. Check if app is listening on port 8080
+ss -tlnp | grep 8080
+
+# 6. Disk space check
+df -h /var/log
+du -sh /var/log/myapp/
+
+# 7. Find large files (over 100MB)
+find /var/log -size +100M -type f
+
+# 8. Monitor CPU/memory of a specific Java process
+PID=$(pgrep -f myapp.jar)
+top -p $PID
+
+# 9. Rotate logs manually (if logrotate not set up)
+mv /var/log/myapp/app.log /var/log/myapp/app.log.$(date +%Y%m%d)
+kill -USR1 $PID  # send USR1 to reopen log file (depends on logging framework)
+
+# 10. Check systemd service status and recent logs
+systemctl status myapp
+journalctl -u myapp -n 100 --no-pager
+journalctl -u myapp --since "1 hour ago"
+
+# 11. Run Spring Boot as systemd service
+# /etc/systemd/system/myapp.service
+cat << 'EOF'
+[Unit]
+Description=My Spring Boot Application
+After=network.target
+
+[Service]
+User=appuser
+ExecStart=/usr/bin/java -jar /opt/myapp/app.jar --spring.profiles.active=prod
+SuccessExitStatus=143
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start:
+# systemctl enable myapp && systemctl start myapp`
+          ],
+          flashcards: [
+            { q: 'How do you take a thread dump from a running Java process on Linux?', a: 'Method 1: kill -3 <pid> — sends SIGQUIT, JVM prints thread dump to stdout (useful if you can see the process output). Method 2: jstack <pid> > thread.txt — Oracle\'s tool, outputs to a file. Method 3: jcmd <pid> Thread.print > thread.txt — newer, more features. Method 4: /actuator/threaddump endpoint if Spring Boot Actuator is enabled. A thread dump shows all threads: name, state (RUNNABLE, WAITING, BLOCKED), stack trace. Analyse: look for BLOCKED threads waiting for a lock held by another BLOCKED thread → deadlock. Also useful for diagnosing "why is CPU at 100%?" — find threads in RUNNABLE state with hot stack frames.' },
+            { q: 'What does kill -15 vs kill -9 do and which should you use to stop a Spring Boot app?', a: 'kill -15 (SIGTERM): graceful shutdown. JVM catches this signal, runs shutdown hooks — Spring Boot stops accepting new requests, drains in-flight requests (Tomcat graceful shutdown), flushes buffers, closes DB connections cleanly. Preferred. kill -9 (SIGKILL): force kill — OS immediately terminates the process, bypasses JVM and shutdown hooks. Risk: in-flight transactions left open, DB connections leaked, write buffers not flushed, possible data corruption. Use -9 only as a last resort when -15 doesn\'t work after a timeout. Spring Boot graceful shutdown config: server.shutdown=graceful + spring.lifecycle.timeout-per-shutdown-phase=30s.' },
+            { q: 'What do the columns in jstat -gc output mean and what should you watch for?', a: 'jstat -gc <pid> <intervalMs> shows GC stats every N ms. Key columns: S0C/S1C: survivor 0/1 capacity. EC: Eden capacity. OC: Old gen capacity. YGC/YGCT: young GC count/time. FGC/FGCT: full GC count/time. GCT: total GC time. Watch for: FGC climbing continuously → full GCs happening → possible memory leak or heap too small. YGCT high → too many young GCs → allocation rate too high (object creation rate). OC usage near 100% with frequent FGC → heap exhaustion → OOMKill imminent. Rule of thumb: occasional young GC is fine; frequent full GCs need investigation.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'How do you debug a Java service pinning a CPU core in production?', a: 'top -H -p <pid> to find the hottest thread\'s TID, convert it to hex (printf %x), then locate that nid in a jstack thread dump to read the exact stack trace consuming CPU. Cross-check GC with jstat -gcutil.' },
-        { q: 'Difference between SIGTERM and SIGKILL?', a: 'SIGTERM (kill -TERM/15) asks the process to terminate gracefully, allowing shutdown hooks/cleanup. SIGKILL (kill -9) forcibly terminates immediately and cannot be caught — skipping cleanup, connection draining, and flushes.' },
-        { q: 'Build a pipeline to count HTTP status codes in an access log.', a: 'awk \'{print $9}\' access.log | sort | uniq -c | sort -rn — extract the status field, sort, count unique occurrences, then sort by count descending.' },
-        { q: 'Which tools inspect a running JVM\'s threads, heap, and GC?', a: 'jstack (thread dump/deadlocks), jmap (heap histogram/dump), jstat -gcutil (live GC statistics), and jps to find the PID — all part of the JDK.' }
       ]
     },
 
@@ -26372,413 +26489,896 @@ echo "Run these on a real Linux box; this sandbox just prints the commands to me
       id: '9.2',
       title: 'Networking & HTTP',
       hours: 3,
-      notes: `
-# Networking & HTTP for Backend Engineers
-
-## The TCP/IP stack
-
-Application (HTTP/gRPC) → Transport (TCP/UDP) → Network (IP) → Link. Know where things live and fail.
-
-## TCP fundamentals
-
-- **3-way handshake** — SYN → SYN-ACK → ACK establishes a connection. Reliable, ordered, flow/congestion-controlled.
-- **TCP vs UDP** — TCP: reliable, ordered, connection-based (HTTP, DBs). UDP: fire-and-forget, low overhead (DNS, video, QUIC).
-- **Connection pooling** matters — the handshake + TLS adds latency; reuse connections (HTTP keep-alive, DB pools).
-
-## HTTP essentials
-
-- **Methods/semantics** & status codes (see API module).
-- **HTTP/1.1** — keep-alive, but head-of-line blocking per connection.
-- **HTTP/2** — multiplexed streams over one connection, header compression, server push.
-- **HTTP/3 (QUIC)** — over UDP, eliminates TCP head-of-line blocking, faster handshakes.
-- **TLS** — handshake, certificates, SNI; terminate at the LB/ingress.
-
-## DNS
-
-Name → IP resolution, cached with TTLs. A surprising amount of "the network is slow" is DNS or connection-pool exhaustion.
-
-## Diagnosis tools
-
-\`curl -v\` (full request/response + TLS), \`dig\`/\`nslookup\` (DNS), \`ping\`/\`traceroute\` (reachability/path), \`ss\`/\`netstat\` (sockets), \`tcpdump\`/Wireshark (packets), \`telnet host port\`/\`nc\` (is the port open?).
-
-> [!WARNING]
-> Classic production traps: **connection pool exhaustion** (too-small pool + slow downstream → requests queue), **no timeouts** (a hung TCP read blocks a thread forever), **DNS TTL caching** (stale IP after failover), **TLS cert expiry**. Always set connect + read timeouts.
-
-> [!TIP]
-> When "service A can't reach service B": \`curl -v\` from A's pod, check DNS (\`nslookup B\`), check the port (\`nc -zv B 8080\`), check the K8s Service/endpoints, then NetworkPolicies/firewall. Work up the stack methodically.
-
-> [!EU]
-> Expect: *"What happens when you type a URL and press enter?"* (DNS → TCP handshake → TLS → HTTP request → response → render — a whole-stack narration). And *"TCP vs UDP"*, *"HTTP/1.1 vs 2 vs 3"*, *"What's a 3-way handshake?"*
-`,
-      code: [
+      sections: [
         {
-          lang: 'bash',
-          title: 'Network debugging toolkit',
-          code: `# --- Full HTTP+TLS trace (timing, headers, cert) ---
-echo '$ curl -v -o /dev/null -w "dns:%{time_namelookup} connect:%{time_connect} tls:%{time_appconnect} ttfb:%{time_starttransfer} total:%{time_total}\\n" https://api.example.com/health'
+          title: 'Networking & HTTP — What Java Developers Must Know',
+          notes: `## Networking & HTTP — What Java Developers Must Know
 
-# --- DNS resolution ---
-echo '$ dig +short api.example.com        # A records'
-echo '$ nslookup api.example.com'
+### TCP/IP — How HTTP Works Under the Hood
 
-# --- Is the port reachable? (no curl needed) ---
-echo '$ nc -zv api.example.com 443         # TCP connect test'
-echo '$ telnet api.example.com 443'
+\`\`\`
+HTTP request journey:
+1. DNS resolution: "api.example.com" → 93.184.216.34 (IP lookup)
+2. TCP 3-way handshake: SYN → SYN-ACK → ACK (establish connection)
+3. TLS handshake (HTTPS): certificate exchange, cipher negotiation
+4. HTTP request sent: "GET /api/users HTTP/1.1\r\nHost: api.example.com\r\n\r\n"
+5. Server processes request, sends HTTP response
+6. TCP connection: closed (HTTP/1.0) or kept alive (HTTP/1.1 keep-alive)
 
-# --- What sockets/ports is this host using? ---
-echo '$ ss -tunap | head                   # tcp/udp, numeric, all, processes'
+HTTP versions:
+  HTTP/1.0  — new connection per request (slow)
+  HTTP/1.1  — persistent connections, pipelining, chunked transfer
+  HTTP/2    — binary protocol, multiplexing (multiple requests per connection), header compression
+  HTTP/3    — QUIC (UDP-based), built-in encryption, better packet loss handling
+\`\`\`
 
-# --- Path & latency to host ---
-echo '$ traceroute api.example.com'
-echo '$ ping -c 4 api.example.com'
+### HTTP Headers — Most Important for Java
 
-# --- Inspect TLS certificate & expiry ---
-echo '$ echo | openssl s_client -connect api.example.com:443 -servername api.example.com 2>/dev/null | openssl x509 -noout -dates'
+\`\`\`
+Request headers:
+  Content-Type: application/json        — body format
+  Accept: application/json              — expected response format
+  Authorization: Bearer <token>         — JWT auth
+  X-Request-Id: <uuid>                  — correlation ID for tracing
+  Cache-Control: no-cache               — bypass cache
+  If-None-Match: "etag-value"           — conditional GET (caching)
+  Idempotency-Key: <uuid>               — safe retries
 
-echo ""
-echo "Mental model: when A cannot reach B, climb the stack:"
-echo "  1) DNS resolves?  2) TCP connects (nc)?  3) TLS ok?  4) HTTP 200 (curl -v)?"
-echo "  5) K8s Service/Endpoints populated?  6) NetworkPolicy/firewall allowing it?"`
+Response headers:
+  Content-Type: application/json
+  X-Request-Id: <uuid>                  — echo back for correlation
+  ETag: "abc123"                        — resource version fingerprint
+  Cache-Control: max-age=3600           — cache for 1 hour
+  Retry-After: 60                       — rate limit: retry in 60s
+  Location: /api/users/42               — after 201 Created
+  Strict-Transport-Security: max-age=31536000; includeSubDomains  — HSTS
+\`\`\`
+
+### HTTPS & TLS
+
+\`\`\`
+TLS (Transport Layer Security) — encrypts HTTP:
+  1. Client → Server: ClientHello (supported cipher suites, TLS version)
+  2. Server → Client: ServerHello, Certificate (contains public key + CA signature)
+  3. Client: verifies certificate against trusted CAs
+  4. Key exchange: ECDHE — both sides derive same session key without transmitting it
+  5. Symmetric encryption (AES-256) for the rest of the session
+
+Certificate types:
+  DV (Domain Validation): just proves domain ownership (Let's Encrypt, fast)
+  OV (Org Validation):    confirms organisation identity
+  EV (Extended Validation): highest assurance, shown in browser address bar
+
+Let's Encrypt + Caddy/nginx: auto-renews certificates via ACME protocol
+\`\`\`
+
+### REST Client Best Practices in Java
+
+\`\`\`java
+// Spring RestTemplate — configure timeouts (default = no timeout!)
+@Bean
+public RestTemplate restTemplate() {
+    var factory = new SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(2_000);   // 2s to establish connection
+    factory.setReadTimeout(10_000);     // 10s to receive full response
+    return new RestTemplate(factory);
+}
+
+// Spring WebClient (reactive, async)
+@Bean
+public WebClient webClient() {
+    return WebClient.builder()
+        .baseUrl("https://api.example.com")
+        .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+        .codecs(c -> c.defaultCodecs().maxInMemorySize(1 * 1024 * 1024))
+        .build();
+}
+
+// OkHttp with connection pooling
+OkHttpClient client = new OkHttpClient.Builder()
+    .connectTimeout(2, TimeUnit.SECONDS)
+    .readTimeout(10, TimeUnit.SECONDS)
+    .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))
+    .build();
+\`\`\`
+
+### DNS & Load Balancing
+
+\`\`\`
+DNS round-robin: A record has multiple IPs → different client each time
+  api.example.com → 10.0.0.1, 10.0.0.2, 10.0.0.3 (rotated per query)
+
+Load balancer types:
+  L4 (TCP/UDP): routes by IP:port — fast, no HTTP awareness
+  L7 (HTTP): routes by URL path, headers, cookies — smarter routing
+    → Can route /api/v2/* to new cluster, /api/v1/* to old cluster
+    → Can sticky session on user ID
+    → Can do SSL termination (L7 sees plaintext, backend speaks HTTP)
+
+Service mesh (Envoy/Istio): sidecar proxy per pod handles:
+  - mTLS between services
+  - Circuit breaking
+  - Retry logic
+  - Observability (request tracing)
+  - Traffic shifting (canary, blue-green)
+\`\`\``,
+          code: [
+            `import org.springframework.web.client.*;
+import org.springframework.http.*;
+import java.util.*;
+import java.time.*;
+
+// HTTP client patterns for Spring Boot
+
+// 1. RestTemplate with proper timeout + error handling
+public class HttpClientExamples {
+
+    RestTemplate restTemplate = createRestTemplate();
+    WebClientWrapper webClient = new WebClientWrapper();
+
+    private RestTemplate createRestTemplate() {
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(2_000);
+        factory.setReadTimeout(10_000);
+        var rt = new RestTemplate(factory);
+        // Add correlation ID interceptor
+        rt.getInterceptors().add((request, body, execution) -> {
+            request.getHeaders().set("X-Request-Id",
+                UUID.randomUUID().toString());
+            return execution.execute(request, body);
+        });
+        return rt;
+    }
+
+    // GET with error handling
+    public Optional<UserDto> getUser(Long id) {
+        try {
+            ResponseEntity<UserDto> resp = restTemplate.getForEntity(
+                "https://api.example.com/users/{id}", UserDto.class, id);
+            return Optional.ofNullable(resp.getBody());
+        } catch (HttpClientErrorException.NotFound e) {
+            return Optional.empty();     // 404 — resource doesn't exist
+        } catch (HttpClientErrorException e) {
+            throw new RuntimeException("Client error: " + e.getStatusCode(), e);
+        } catch (HttpServerErrorException e) {
+            throw new RuntimeException("Server error (retryable): " + e.getStatusCode(), e);
+        } catch (ResourceAccessException e) {
+            throw new RuntimeException("Network error (timeout/connection): " + e.getMessage(), e);
         }
-      ],
-      flashcards: [
-        { q: 'Describe the TCP 3-way handshake.', a: 'SYN (client→server) → SYN-ACK (server→client) → ACK (client→server). It synchronizes sequence numbers and establishes a reliable, ordered connection before data flows.' },
-        { q: 'TCP vs UDP — when each?', a: 'TCP is connection-oriented, reliable, and ordered (HTTP, databases). UDP is connectionless, fire-and-forget, low-overhead — used for DNS, real-time media, and QUIC/HTTP3 where the app handles reliability.' },
-        { q: 'Key improvements of HTTP/2 and HTTP/3?', a: 'HTTP/2 multiplexes many streams over a single TCP connection with header compression, eliminating HTTP/1.1 head-of-line blocking at the app layer. HTTP/3 runs over QUIC/UDP, removing TCP-level head-of-line blocking and enabling faster (0-RTT) handshakes.' },
-        { q: 'Common production networking failures to guard against?', a: 'Connection pool exhaustion under slow downstreams, missing connect/read timeouts (threads block forever), stale DNS due to TTL caching after failover, and expired TLS certificates. Always set timeouts and monitor cert expiry.' },
-        { q: 'Methodical approach when service A cannot reach service B?', a: 'Climb the stack: verify DNS resolves (dig/nslookup), TCP port connects (nc -zv), TLS succeeds, HTTP responds (curl -v), then check K8s Service/endpoints and NetworkPolicies/firewall rules.' }
+    }
+
+    // POST with request body
+    public UserDto createUser(CreateUserRequest req) {
+        HttpEntity<CreateUserRequest> entity = new HttpEntity<>(req,
+            new HttpHeaders() {{ set("Content-Type", "application/json"); }});
+        return restTemplate.postForObject(
+            "https://api.example.com/users", entity, UserDto.class);
+    }
+}
+
+// 2. WebClient (reactive) — non-blocking
+class WebClientWrapper {
+    // Simulated WebClient usage (requires Spring WebFlux dependency)
+    // WebClient client = WebClient.builder().baseUrl("https://api.example.com").build();
+
+    // Fetch with retry
+    // Mono<UserDto> getUser(Long id) {
+    //     return client.get().uri("/users/{id}", id)
+    //         .retrieve()
+    //         .onStatus(HttpStatus::is4xxClientError,
+    //             r -> Mono.error(new RuntimeException("Client error: " + r.statusCode())))
+    //         .bodyToMono(UserDto.class)
+    //         .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))
+    //             .filter(ex -> ex instanceof java.net.ConnectException));
+    // }
+}
+
+record UserDto(Long id, String name, String email) {}
+record CreateUserRequest(String name, String email) {}`
+          ],
+          flashcards: [
+            { q: 'What happens at the network level when a browser calls an HTTPS API?', a: '1. DNS resolution: browser looks up hostname → IP address (checks local cache first, then recursive DNS). 2. TCP 3-way handshake: SYN → SYN-ACK → ACK to establish connection to IP:443. 3. TLS handshake: client sends supported cipher suites; server sends its certificate; client verifies certificate against trusted CAs; both derive a shared symmetric session key (via ECDHE). 4. HTTP request sent encrypted over TLS. 5. Server processes, sends encrypted response. 6. Connection kept alive (HTTP/1.1+) for subsequent requests. Total latency: new connection ~100-300ms (DNS + TCP + TLS). Subsequent requests on same connection: just the request/response time.' },
+            { q: 'What is the difference between HTTP/1.1, HTTP/2, and HTTP/3?', a: 'HTTP/1.1: persistent connections (multiple requests on one TCP connection), but head-of-line blocking (second request waits for first to complete on same connection). HTTP/2: binary protocol. Multiplexing: multiple concurrent requests on ONE connection with no head-of-line blocking. Header compression (HPACK). Server push (server can send resources before client asks). Major perf improvement for many small requests. HTTP/3: QUIC protocol (UDP-based). Eliminates TCP head-of-line blocking at transport layer. Built-in TLS 1.3. Better on lossy connections (mobile). Faster connection establishment (0-RTT). Still maturing in production use.' },
+            { q: 'Why must you always set timeouts on HTTP clients in Java?', a: 'Default RestTemplate has NO timeout — a slow upstream service causes the calling thread to block forever. In a Tomcat server with 200 threads: if all threads are waiting on a slow API, the entire application stops responding to all other requests (cascade failure). Connect timeout: max time to establish the TCP connection (2-5s typically). Read timeout: max time to wait for data after connection established (5-30s depending on the API). Without these: one slow dependency can bring down your whole service. Also: set circuit breakers (Resilience4j) to open after N timeouts, preventing all threads from queuing up.' }
+          ]
+        }
       ]
     },
 
     {
       id: '9.3',
       title: 'Observability: Logs, Metrics, Traces',
-      hours: 3,
-      notes: `
-# Observability — Logs, Metrics, Traces
-
-You can't operate what you can't see. The **three pillars** let you answer "is it healthy?", "what's wrong?", and "where exactly?".
-
-## The three pillars
-
-- **Logs** — discrete, timestamped events. Use **structured (JSON) logging** + a **correlation/trace id** per request so you can stitch a request across services. Ship to ELK/Loki.
-- **Metrics** — numeric time series (counters, gauges, histograms): request rate, error rate, latency percentiles, JVM heap, GC. **Prometheus** scrapes; **Grafana** visualises. Spring Boot **Micrometer + Actuator** exposes \`/actuator/prometheus\`.
-- **Traces** — the path of a single request across services with timing per span. **OpenTelemetry** → Jaeger/Tempo/Zipkin. Reveals which hop is slow.
-
-## The signals to alert on (Golden Signals / RED / USE)
-
-- **RED** (services): **R**ate, **E**rrors, **D**uration.
-- **USE** (resources): **U**tilisation, **S**aturation, **E**rrors.
-- Alert on **percentiles** (p95/p99), not averages — averages hide tail latency.
-
-> [!TIP]
-> **Correlation IDs** are the cheapest, highest-value observability practice: generate/propagate a trace id (W3C \`traceparent\`) through every service and log it on every line. Then one id reconstructs the entire request journey across logs, metrics, and traces.
-
-> [!WARNING]
-> Don't log secrets/PII (GDPR!). Don't log at DEBUG in prod by default (cost + noise). Cardinality explosions in metrics labels (e.g. user id as a label) can OOM Prometheus — label by bounded dimensions only.
-
-## SLIs / SLOs / error budgets
-
-- **SLI** — a measured indicator (e.g. % requests < 300ms).
-- **SLO** — the target (e.g. 99.9% of requests succeed monthly).
-- **Error budget** — the allowed failure (0.1%); spend it on releases, freeze when exhausted.
-
-> [!EU]
-> European ops culture values reliability engineering. Expect: *"How do you debug a latency spike in production?"* → traces to find the slow span, metrics to see scope/correlation, logs (via trace id) for the error detail. *"What would you monitor for this service?"* → RED + JVM (heap/GC) + dependency health, alerting on p99.
-`,
-      code: [
+      hours: 4,
+      sections: [
         {
-          lang: 'java',
-          title: 'Structured logging with a correlation id (MDC pattern)',
-          code: `import java.util.*;
-import java.util.concurrent.*;
+          title: 'The Three Pillars of Observability',
+          notes: `## The Three Pillars of Observability
 
-// Models the MDC (Mapped Diagnostic Context) + correlation-id pattern used with SLF4J.
-public class ObservabilityDemo {
-    // Per-thread context, like SLF4J MDC
-    static final ThreadLocal<Map<String,String>> MDC =
-        ThreadLocal.withInitial(HashMap::new);
+### Logs, Metrics, and Traces — Why All Three?
 
-    static void log(String level, String msg) {
-        Map<String,String> ctx = MDC.get();
-        // Structured (key=value) line including the trace id -> greppable & parseable
-        System.out.printf("{\\"level\\":\\"%s\\",\\"traceId\\":\\"%s\\",\\"service\\":\\"%s\\",\\"msg\\":\\"%s\\"}%n",
-            level, ctx.getOrDefault("traceId","-"), ctx.getOrDefault("service","-"), msg);
+\`\`\`
+Logs:    What happened?   — timestamped text events
+Metrics: How much/often?  — numbers over time (request rate, error rate, latency)
+Traces:  Where did time go? — request journey across multiple services
+
+An error alert fires:
+  Metrics → spike in error_rate counter at 14:32
+  Logs    → "NullPointerException in PaymentService" at 14:32
+  Traces  → the request went: API → OrderService (2ms) → PaymentService (8000ms, TIMEOUT) → DB
+
+All three together answer: what broke, when, why, which user/request was affected.
+\`\`\`
+
+### Structured Logging with SLF4J + Logback
+
+\`\`\`java
+// WRONG: string concatenation (don't do this)
+log.info("Order created for user " + userId + " amount " + amount);
+
+// RIGHT: parameterised (deferred evaluation — no concatenation if log level disabled)
+log.info("Order created for user {} amount {}", userId, amount);
+
+// BEST: structured JSON logging (Logback with logstash-logback-encoder)
+// MDC (Mapped Diagnostic Context): adds key-value pairs to EVERY log line
+import org.slf4j.MDC;
+
+@RestControllerAdvice
+public class RequestIdInterceptor implements HandlerInterceptor {
+    @Override
+    public boolean preHandle(HttpServletRequest req, ...) {
+        String requestId = req.getHeader("X-Request-Id");
+        MDC.put("requestId", requestId != null ? requestId : UUID.randomUUID().toString());
+        MDC.put("userId", getCurrentUserId());
+        return true;
+    }
+    @Override
+    public void afterCompletion(...) { MDC.clear(); }
+}
+
+// Now every log line automatically includes: {"requestId":"abc","userId":"42","message":"..."}
+// → Can filter ALL logs for a single request: requestId="abc"
+\`\`\`
+
+### Metrics with Micrometer + Prometheus
+
+\`\`\`java
+@Service
+public class PaymentService {
+    private final MeterRegistry registry;
+    private final Counter paymentSuccessCounter;
+    private final Counter paymentFailureCounter;
+    private final Timer paymentTimer;
+
+    public PaymentService(MeterRegistry registry) {
+        this.registry = registry;
+        this.paymentSuccessCounter = Counter.builder("payments.processed")
+            .tag("status", "success")
+            .description("Total successful payments")
+            .register(registry);
+        this.paymentFailureCounter = Counter.builder("payments.processed")
+            .tag("status", "failure")
+            .register(registry);
+        this.paymentTimer = Timer.builder("payments.latency")
+            .description("Payment processing latency")
+            .register(registry);
     }
 
-    static void handleRequest(String traceId) {
-        MDC.get().put("traceId", traceId);     // set once at the edge, propagate downstream
-        MDC.get().put("service", "checkout");
-        log("INFO", "received order");
-        callPayment();                          // same trace id flows through
-        log("INFO", "order completed");
-        MDC.remove();                           // ALWAYS clear (thread pools reuse threads!)
+    public PaymentResult process(PaymentRequest req) {
+        return paymentTimer.record(() -> {
+            try {
+                PaymentResult result = doProcess(req);
+                paymentSuccessCounter.increment();
+                return result;
+            } catch (Exception e) {
+                paymentFailureCounter.increment();
+                throw e;
+            }
+        });
+    }
+}
+
+// Spring Boot Actuator + Micrometer: auto-exposes:
+// /actuator/prometheus  → Prometheus scrapes this endpoint
+// Built-in metrics: JVM heap, GC, threads, HTTP request rate, latency, DB pool
+\`\`\`
+
+### Distributed Tracing with OpenTelemetry
+
+\`\`\`
+Trace: one end-to-end request (e.g. "checkout" button click)
+Span: one unit of work within the trace (one service call, one DB query)
+TraceId: unique ID shared across all spans for one trace
+SpanId: unique ID for one span
+
+Example trace for an order:
+  TraceId: abc123
+  ├── Span: API-Gateway          [0ms → 5ms]
+  ├── Span: OrderService         [5ms → 50ms]
+  │     ├── Span: DB query       [5ms → 10ms]
+  │     └── Span: PaymentService [10ms → 48ms]  ← slow!
+  │           ├── Span: charge    [10ms → 45ms]
+  │           └── Span: webhook   [45ms → 48ms]
+  └── Span: NotificationService  [50ms → 60ms]
+
+OpenTelemetry propagates TraceId/SpanId via HTTP headers:
+  traceparent: 00-abc123-def456-01
+\`\`\`
+
+### Stack: ELK / Grafana
+
+\`\`\`
+Logs:    Application → Filebeat → Logstash → Elasticsearch → Kibana
+         Application → Loki (Grafana Loki, much lighter) → Grafana
+
+Metrics: Application → Prometheus (scrapes /actuator/prometheus) → Grafana
+         Alerts: Grafana Alerting or Prometheus AlertManager
+
+Traces:  Application (OTel SDK) → Jaeger / Tempo → Grafana
+
+Modern simplification — Grafana stack:
+  Loki (logs) + Prometheus (metrics) + Tempo (traces) → all in Grafana
+  Correlate: click a log line → see the trace for that request
+\`\`\``,
+          code: [
+            `import io.micrometer.core.instrument.*;
+import org.slf4j.*;
+import org.springframework.stereotype.*;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.atomic.*;
+
+// Complete observability setup for a Spring Boot service
+@Service
+public class OrderServiceWithObservability {
+    private static final Logger log = LoggerFactory.getLogger(OrderServiceWithObservability.class);
+
+    // ─── Metrics ───────────────────────────────────────────────
+    private final Counter ordersCreated;
+    private final Counter ordersFailed;
+    private final Timer orderProcessingTime;
+    private final AtomicInteger activeOrders;
+
+    public OrderServiceWithObservability(MeterRegistry registry) {
+        this.ordersCreated = Counter.builder("orders.created")
+            .description("Total orders created")
+            .register(registry);
+        this.ordersFailed = Counter.builder("orders.failed")
+            .description("Total orders that failed")
+            .register(registry);
+        this.orderProcessingTime = Timer.builder("orders.processing.time")
+            .description("Time to process an order")
+            .publishPercentiles(0.5, 0.95, 0.99)  // p50, p95, p99
+            .register(registry);
+        this.activeOrders = registry.gauge("orders.active",
+            new AtomicInteger(0));                  // live gauge
     }
 
-    static void callPayment() {
-        MDC.get().put("service", "payment");
-        log("INFO", "charging card");
-        MDC.get().put("service", "checkout");
-    }
+    // ─── Service Method with Logging + Metrics ──────────────────
+    public OrderResult createOrder(CreateOrderRequest req) {
+        String requestId = org.slf4j.MDC.get("requestId");
 
-    public static void main(String[] args) {
-        // Two concurrent requests, each with its own trace id — logs stay attributable
-        var pool = Executors.newFixedThreadPool(2);
-        pool.submit(() -> handleRequest("trace-AAA"));
-        pool.submit(() -> handleRequest("trace-BBB"));
-        pool.shutdown();
-        try { pool.awaitTermination(2, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-        System.out.println("\\n-> Grep one traceId to replay an entire request across services.");
-    }
-}`
+        log.info("Creating order customerId={} productId={} qty={}",
+            req.customerId(), req.productId(), req.quantity());
+
+        activeOrders.incrementAndGet();
+        long start = System.currentTimeMillis();
+
+        try {
+            // Business logic
+            if (req.quantity() <= 0) throw new IllegalArgumentException("Quantity must be positive");
+            String orderId = "ORD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+
+            ordersCreated.increment();
+            long durationMs = System.currentTimeMillis() - start;
+            orderProcessingTime.record(Duration.ofMillis(durationMs));
+
+            log.info("Order created orderId={} customerId={} durationMs={}",
+                orderId, req.customerId(), durationMs);
+
+            return new OrderResult(orderId, "CREATED");
+
+        } catch (Exception e) {
+            ordersFailed.increment();
+            log.error("Order failed customerId={} error={}", req.customerId(), e.getMessage(), e);
+            throw e;
+        } finally {
+            activeOrders.decrementAndGet();
         }
-      ],
-      flashcards: [
-        { q: 'What are the three pillars of observability?', a: 'Logs (discrete structured events), Metrics (numeric time series like rate/errors/latency/JVM stats), and Traces (the timed path of one request across services/spans). Together they answer is-it-healthy, what\'s-wrong, and where.' },
-        { q: 'Why are correlation/trace IDs so valuable?', a: 'Propagating a single trace id (e.g. W3C traceparent) through every service and logging it on each line lets you reconstruct an entire request\'s journey across distributed logs and traces from one identifier — the cheapest high-leverage observability practice.' },
-        { q: 'Why alert on percentiles instead of averages?', a: 'Averages hide tail latency — a p99 of 2s can coexist with a 50ms average. Users feel the tail, so SLOs and alerts use p95/p99 (and RED: Rate, Errors, Duration).' },
-        { q: 'What are SLI, SLO, and error budget?', a: 'SLI is a measured reliability indicator (e.g. % of requests <300ms); SLO is the target for it (e.g. 99.9% monthly); the error budget is the permitted shortfall (0.1%) you spend on releases and freeze when exhausted.' },
-        { q: 'Observability pitfalls to avoid?', a: 'Logging secrets/PII (GDPR), DEBUG logging in prod by default (cost/noise), and high-cardinality metric labels (e.g. user id) that can OOM Prometheus. Use bounded label dimensions and structured logs.' }
-      ]
     }
-  ]
-},
 
-/* ===================== PHASE 10: Behavioral & EU ===================== */
-{
-  id: 'p10',
-  title: 'Behavioral & EU Interview Strategy',
-  icon: 'compass',
-  blurb: 'STAR stories, system-design communication, and the realities of EU visa-sponsorship interviews.',
-  modules: [
+    // ─── Health check contributing to /actuator/health ──────────
+    @org.springframework.stereotype.Component
+    static class OrderServiceHealth
+            implements org.springframework.boot.actuate.health.HealthIndicator {
+        private final AtomicInteger failureCount = new AtomicInteger(0);
+
+        @Override
+        public org.springframework.boot.actuate.health.Health health() {
+            int failures = failureCount.get();
+            if (failures > 10) {
+                return org.springframework.boot.actuate.health.Health.down()
+                    .withDetail("recentFailures", failures).build();
+            }
+            return org.springframework.boot.actuate.health.Health.up()
+                .withDetail("recentFailures", failures).build();
+        }
+    }
+
+    record CreateOrderRequest(String customerId, String productId, int quantity) {}
+    record OrderResult(String orderId, String status) {}
+}`,
+            `# Prometheus alerting rules (prometheus/alerts.yml)
+# These fire when metrics cross thresholds
+
+groups:
+  - name: application-alerts
+    rules:
+      # High error rate
+      - alert: HighErrorRate
+        expr: |
+          rate(http_server_requests_seconds_count{status=~"5.."}[5m])
+          / rate(http_server_requests_seconds_count[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP error rate: {{ $value | humanizePercentage }}"
+          description: "Error rate is above 5% for 2 minutes"
+
+      # High latency
+      - alert: HighP99Latency
+        expr: |
+          histogram_quantile(0.99,
+            rate(http_server_requests_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P99 latency > 2s: {{ $value }}s"
+
+      # JVM heap pressure
+      - alert: JvmHeapHigh
+        expr: |
+          jvm_memory_used_bytes{area="heap"}
+          / jvm_memory_max_bytes{area="heap"} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM heap usage > 85%: {{ $value | humanizePercentage }}"
+
+      # Service down
+      - alert: ServiceDown
+        expr: up{job="myapp"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service is DOWN"`
+          ],
+          flashcards: [
+            { q: 'What are the three pillars of observability and what question does each answer?', a: 'Logs: what happened? — timestamped events with context (user IDs, order IDs, stack traces). Best for debugging specific errors. Structured JSON logs + MDC (request ID, user ID in every line) make them searchable. Metrics: how much/often? — numeric time-series data (request rate, error rate, latency percentiles, heap usage). Aggregated and queryable over time. Drives dashboards and alerts. Traces: where did time go? — records the journey of one request through multiple services. Shows which service was slow or errored. Uses TraceId/SpanId propagated via headers. Need all three: metrics tell you something is wrong; logs tell you what the error was; traces tell you where in the system it happened.' },
+            { q: 'What is MDC (Mapped Diagnostic Context) and why is it critical for logs?', a: 'MDC is a per-thread key-value store that SLF4J automatically includes in every log line. You set it once per request (e.g. in a filter or interceptor): MDC.put("requestId", uuid); MDC.put("userId", "42"). Then EVERY log statement from that thread — across all classes — automatically includes requestId and userId in the output, without passing them through method parameters. Critical for production: when debugging an issue for a specific user or request, you can grep/filter by requestId and see all log lines for exactly that request across all service layers. Always clear MDC after the request (MDC.clear() in a finally block or afterCompletion).' },
+            { q: 'What is the difference between a Counter, Timer, and Gauge in Micrometer?', a: 'Counter: monotonically increasing number — only goes up. Use for: requests processed, errors occurred, payments charged. Rate of change (requests per second) calculated by Prometheus. Timer: records both count AND duration of events. Use for: latency of operations. Automatically tracks count, total time, and histogram buckets (for percentile calculation). Publish p50/p95/p99 for latency SLOs. Gauge: a current value that can go up or down. Use for: active connections, queue depth, JVM heap usage, thread pool size. Sampled at query time. Rule: most things are Counters or Timers; Gauges are for "how many right now" questions.' }
+          ]
+        }
+      ]
+    },
+
     {
       id: '10.1',
       title: 'STAR Stories & Behavioral Rounds',
-      hours: 3,
-      notes: `
-# Behavioral Rounds & STAR
-
-European companies weight **behavioral fit, communication, and collaboration** heavily — sometimes decisively. Technical brilliance with poor communication fails loops here.
-
-## The STAR method
-
-Structure every story as:
-
-- **S**ituation — context (brief).
-- **T**ask — your specific responsibility/goal.
-- **A**ction — what **you** did (use "I", not "we"; show decisions and trade-offs).
-- **R**esult — quantified outcome + what you learned.
-
-> [!TIP]
-> Prepare **6–8 reusable stories** covering: a hard technical problem, a production incident you fixed, a conflict/disagreement, a leadership/mentoring moment, a failure + lesson, and a tight-deadline trade-off. Most behavioral questions map onto these. Keep each to ~2 minutes.
-
-## Questions to prepare
-
-- "Tell me about a challenging bug you debugged in production."
-- "Describe a time you disagreed with a teammate/architect."
-- "A time you made a mistake — what happened and what did you learn?"
-- "How do you handle conflicting priorities / tight deadlines?"
-- "Tell me about a system you designed end to end."
-
-## Quantify everything
-
-> [!SUCCESS]
-> Weak: "I improved performance." Strong: "I profiled with async-profiler, found a JPA N+1 issuing 400 queries per request, added an entity graph, and cut p99 latency from 1.2s to 180ms — a 6x improvement that removed our scaling alarms." Numbers + method + impact = credibility.
-
-> [!WARNING]
-> Avoid badmouthing past employers/colleagues, vague "we" answers that hide your contribution, and rambling. Pause, structure, answer. It's fine to take 3 seconds to think.
-
-> [!EU]
-> **Cultural notes:** Dutch/German cultures value **directness and honesty** — saying "I don't know, but here's how I'd find out" scores *well*, not poorly. Nordic cultures emphasise **consensus and teamwork** — show collaboration. Generally, EU teams prize humility, reliability, and clear reasoning over bravado.
-`,
-      code: [
+      hours: 2,
+      sections: [
         {
-          lang: 'java',
-          title: 'A STAR story, structured (template you can fill in)',
-          code: `public class StarStoryTemplate {
-    record Story(String title, String situation, String task,
-                 String action, String result) {}
+          title: 'Behavioral Interviews — STAR Framework & Common Questions',
+          notes: `## Behavioral Interviews — STAR Framework & Common Questions
 
-    public static void main(String[] args) {
-        Story incident = new Story(
-            "Production latency incident",
-            // Situation
-            "Our checkout API p99 latency spiked to 2s during peak, triggering SLO alerts.",
-            // Task
-            "As the on-call senior, I owned root-causing and restoring the SLO within the hour.",
-            // Action (THE important part — your decisions & trade-offs, first person)
-            "I correlated the spike with GC logs and a distributed trace, isolating a slow span "
-          + "in the pricing service. A heap dump showed an unbounded in-memory cache leaking. "
-          + "I shipped a bounded Caffeine cache with TTL, added a readiness probe gap fix, and "
-          + "right-sized the heap. I chose the bounded-cache fix over scaling out because the "
-          + "root cause was a leak, not load.",
-            // Result (quantified + lesson)
-            "p99 fell from 2s to 220ms, alerts cleared, and I added a Grafana panel + alert on "
-          + "cache size to catch recurrence. Lesson: always bound caches and alert on their size."
-        );
+### The STAR Framework
 
-        for (var s : new Story[]{ incident }) {
-            System.out.println("=== " + s.title() + " ===");
-            System.out.println("S: " + s.situation());
-            System.out.println("T: " + s.task());
-            System.out.println("A: " + s.action());
-            System.out.println("R: " + s.result());
+\`\`\`
+S — Situation: context and background (1-2 sentences)
+T — Task:      what YOU needed to accomplish (1 sentence)
+A — Action:    what YOU specifically did (2-4 sentences, focus on YOUR role)
+R — Result:    measurable outcome (1-2 sentences with numbers if possible)
+
+Total: 90-120 seconds spoken. Practice until crisp.
+Never vague: "we did X" → "I proposed X, the team adopted it"
+\`\`\`
+
+### Most Common Behavioral Questions
+
+\`\`\`
+Leadership / Influence:
+  "Tell me about a time you led a technical decision without authority"
+  "How do you convince skeptical colleagues to adopt a change?"
+
+Conflict:
+  "Describe a disagreement with a team member. How did you resolve it?"
+  "Tell me about a time you had to push back on a requirement from a PM or manager"
+
+Ownership / Initiative:
+  "Tell me about a project you took ownership of beyond your role"
+  "When did you identify and fix a problem that wasn't in your remit?"
+
+Failure / Learning:
+  "Tell me about a technical mistake you made. What did you learn?"
+  "Describe a project that failed. What would you do differently?"
+
+Ambiguity:
+  "Tell me about a time you had to make a decision with incomplete information"
+  "How do you handle changing requirements mid-project?"
+
+Collaboration:
+  "Tell me about a time you had to work with a difficult colleague"
+  "Describe a successful cross-team collaboration"
+\`\`\`
+
+### STAR Template — Filled Example
+
+\`\`\`
+Q: "Tell me about a time you improved system performance under pressure"
+
+S: "At my previous company, our payment processing service was timing out
+    during peak Black Friday traffic, affecting 15% of checkout attempts."
+
+T: "I was tasked with identifying the bottleneck and fixing it within 48 hours
+    before the weekend peak."
+
+A: "I started by adding distributed tracing (Jaeger) to map where latency
+    was accumulating. I discovered that 80% of the delay was a synchronous
+    call to a third-party fraud detection API (avg 3.2s response time).
+    I proposed and implemented an async approach: queue the fraud check,
+    allow checkout to proceed optimistically, and cancel only if fraud is
+    detected within 15 minutes. I wrote the Kafka consumer, updated the
+    order state machine, and deployed behind a feature flag so we could
+    roll back safely."
+
+R: "Checkout success rate went from 85% to 99.2% during that weekend.
+    Fraud detection accuracy was maintained (< 0.1% false pass rate).
+    The pattern was adopted company-wide for all async vendor calls."
+\`\`\`
+
+### Amazon Leadership Principles — Common Targets
+
+\`\`\`
+Customer Obsession:   "Tell me about a time you went above and beyond for a customer"
+Ownership:           "Tell me about a time you took ownership outside your scope"
+Invent and Simplify: "Tell me about a time you simplified a complex process"
+Are Right, A Lot:    "Tell me about a time you made a decision others disagreed with"
+Bias for Action:     "Tell me about a time you took a calculated risk"
+Earn Trust:          "Tell me about a time you had to deliver difficult feedback"
+Dive Deep:           "Tell me about a bug you found that required deep investigation"
+Disagree and Commit: "Tell me about a time you disagreed but still executed"
+Deliver Results:     "Tell me about a time you delivered under a tight deadline"
+
+Prepare 5-6 stories that each cover MULTIPLE principles.
+\`\`\``,
+          code: [
+            `// STAR Stories Worksheet — fill this in before each interview
+// This is JavaScript for the interview hub, but treat it as a prep template
+
+const starStories = [
+  {
+    title: "Performance Optimization Under Pressure",
+    situation: "Payment service timing out during peak traffic, affecting 15% of checkouts",
+    task: "Identify and fix bottleneck within 48 hours before Black Friday peak",
+    action: [
+      "Added distributed tracing (Jaeger) to map latency sources",
+      "Identified synchronous fraud API call as bottleneck (avg 3.2s)",
+      "Proposed async approach: optimistic checkout + background fraud check via Kafka",
+      "Implemented Kafka consumer, updated order state machine, deployed behind feature flag"
+    ],
+    result: "Checkout success: 85% → 99.2%. Pattern adopted company-wide.",
+    principles: ["Ownership", "Dive Deep", "Bias for Action", "Deliver Results"]
+  },
+  {
+    title: "Technical Disagreement with Senior Engineer",
+    situation: "Proposed microservice decomposition; senior engineer insisted on monolith due to timeline",
+    task: "Advocate for technical approach I believed was correct without damaging relationship",
+    action: [
+      "Wrote a 1-page technical brief with trade-offs, not just my opinion",
+      "Proposed a middle path: modular monolith (clean package boundaries, easy to split later)",
+      "Presented in architecture review with concrete data on expected maintenance cost",
+      "When team chose the senior engineer's approach, I documented concerns and committed fully"
+    ],
+    result: "Team delivered on timeline. 6 months later, modular approach was adopted when decomposition became necessary. Zero rework because boundaries were clean.",
+    principles: ["Are Right A Lot", "Disagree and Commit", "Earn Trust"]
+  },
+  {
+    title: "Debugging a Production Incident",
+    situation: "Orders silently failing for 2% of users — no exception in logs, money not charged",
+    task: "Find root cause in a distributed system with 8 microservices involved",
+    action: [
+      "Pulled distributed traces for affected orders using traceId from failed orders",
+      "Found that the notification service was swallowing exceptions in a try-catch",
+      "Traced further: notification service DB insert was failing due to a silent schema migration",
+      "The saga was marking the step complete even on failure (bug in compensating transaction logic)",
+      "Fixed both: proper exception propagation + saga correctness + added alerting on silent failures"
+    ],
+    result: "Root cause identified in 4 hours. No orders lost (idempotent retry recovered them). Added regression test that would have caught this earlier.",
+    principles: ["Dive Deep", "Customer Obsession", "Ownership"]
+  }
+];
+
+// How to use:
+// 1. Read each story aloud — aim for 90-120 seconds
+// 2. Cut details until you hit the time. Quality over quantity.
+// 3. Have a follow-up story ready if they ask "tell me more about the technical detail"
+// 4. Customize the RESULT line with real numbers from your experience
+
+console.log("STAR Stories loaded:", starStories.length);
+starStories.forEach(s => console.log(" -", s.title, "→", s.principles.join(", ")));`
+          ],
+          flashcards: [
+            { q: 'What is the STAR framework and how should you time each section?', a: 'STAR: Situation (10-15s) — brief context, company/team/product background. Task (5-10s) — what YOU were responsible for solving. Action (45-60s) — what YOU specifically did; focus on your decisions and reasoning, not the team. Use "I proposed, I implemented, I negotiated" not "we did." Result (15-20s) — quantified outcome: percentages, time saved, incidents avoided, users affected. Total target: 90-120 seconds. Under 60s = too vague. Over 2 minutes = lose the interviewer. Practice aloud until you can hit the target every time.' },
+            { q: 'How do you structure a "tell me about a failure" answer without looking bad?', a: 'Interviewers are testing self-awareness and learning, not looking for perfect records. Formula: (1) Be specific and honest about what failed — don\'t minimize it. (2) Own your part clearly: "I made the decision to X without validating Y." (3) Explain how you identified the failure and what you did to recover. (4) State what you changed as a result — a process, a habit, a technical practice. (5) If possible, show you applied the learning later. Red flags: blaming others, vague failures, saying "we" to diffuse responsibility, or claiming nothing went wrong. Saying "I would have done X differently" shows growth.' },
+            { q: 'How do you prepare stories that cover multiple behavioral competencies?', a: 'Each strong story should cover 2-4 competencies simultaneously. Example: a story about debugging a production incident covers: Dive Deep (systematic investigation), Ownership (took responsibility beyond your ticket), Customer Obsession (urgency because users were affected), Deliver Results (resolved within SLA). Prepare 5-6 core stories, each with multiple tags. When the interviewer asks about "ownership," mentally scan your tagged stories and pick the best fit. This lets you answer 15-20 different questions with 5-6 prepared stories. Avoid preparing one story per question — you\'ll run out and become rigid.' }
+          ]
         }
-        System.out.println("\\nFill this template for 6-8 stories; rehearse each to ~2 minutes.");
-    }
-}`
-        }
-      ],
-      flashcards: [
-        { q: 'What does STAR stand for and what is the most important part?', a: 'Situation, Task, Action, Result. Action is most important — it should describe what YOU specifically did, including decisions and trade-offs (use "I"), not what the team did.' },
-        { q: 'How many behavioral stories should you prepare and covering what?', a: '6–8 reusable ~2-minute stories covering: a hard technical problem, a production incident, a conflict/disagreement, leadership/mentoring, a failure + lesson, and a tight-deadline trade-off — most questions map onto these.' },
-        { q: 'How should you answer "tell me about improving performance"?', a: 'Quantify with method and impact: the measurement tool used, the root cause found, the fix, and the before/after numbers (e.g. p99 1.2s→180ms). Method + numbers + impact reads as senior credibility.' },
-        { q: 'How is directness perceived in Dutch/German interview cultures?', a: 'Positively. Honest, direct answers — including "I don\'t know, but here\'s how I\'d find out" — are respected. Humility and clear reasoning beat bravado; consensus/teamwork is especially valued in Nordic cultures.' }
       ]
     },
 
     {
       id: '10.2',
-      title: 'System Design Communication & Visa Logistics',
+      title: 'System Design Communication',
       hours: 3,
-      notes: `
-# System-Design Communication & EU Visa Logistics
-
-## Driving the design round
-
-The design round grades **communication and structured thinking** as much as the architecture. Make your thinking visible.
-
-1. **Clarify before drawing** — "Who are the users? What scale? Read- or write-heavy? Consistency vs availability priority?" (asking good questions *is* a positive signal).
-2. **State assumptions out loud** and estimate (Phase 5).
-3. **Start high-level**, then drive into the component the interviewer cares about.
-4. **Name trade-offs explicitly** — "I'll use eventual consistency here to keep the write path available; the cost is the UI must handle in-flight states."
-5. **Address failure & scale** — what breaks at 10x? single points of failure? how do you monitor it?
-6. **Invite collaboration** — "Does that match your constraints, or should I optimise for X instead?"
-
-> [!TIP]
-> Think out loud the *entire* time. Silence reads as being stuck. Even "I'm weighing a queue vs synchronous call here because…" keeps the interviewer with you and shows reasoning.
-
-## EU visa-sponsorship realities
-
-> [!EU]
-> **Practical landscape (verify current rules):**
-> - **Germany** — EU Blue Card for graduates with a qualifying salary threshold; the Opportunity/*Chancenkarte* points system; strong demand for backend engineers.
-> - **Netherlands** — the **30% ruling** tax benefit (being scaled back, check current terms); the *kennismigrant* (highly-skilled migrant) route via recognised sponsors; lots of English-first companies (Adyen, Booking, Mollie, ING).
-> - **Ireland** — Critical Skills Employment Permit (software roles qualify); English-speaking; many US/EU HQs.
-> - **Sweden/Denmark/Nordics** — strong English, structured processes; Klarna, Spotify, etc.
-> - Companies that sponsor advertise it; filter for "visa sponsorship available". Recognised-sponsor lists exist (e.g. IND public register in NL).
-
-> [!WARNING]
-> Sponsorship adds employer cost and lead time, so the technical bar can be **higher** for sponsored roles — you must clearly clear it. Be upfront about needing sponsorship early; don't hide it to the offer stage. Have documents ready (degree, references, passport validity).
-
-## Closing strong
-
-Prepare **questions for them** (team, tech stack, on-call, growth, relocation support) — engaged candidates stand out. Send a concise thank-you that references something specific from the conversation.
-
-> [!SUCCESS]
-> The winning profile for EU sponsorship: **solid fundamentals + clear communication + collaborative attitude + genuine interest in the product/company**. You don't need to be the world's best coder; you need to be a reliable, communicative engineer they'd want on the team — and worth the sponsorship paperwork.
-`,
-      code: [
+      sections: [
         {
-          lang: 'java',
-          title: 'A reusable system-design checklist',
-          code: `import java.util.*;
+          title: 'System Design Interviews — Framework & Common Questions',
+          notes: `## System Design Interviews — Framework & Communication
 
-public class DesignRoundChecklist {
-    public static void main(String[] args) {
-        List<String> steps = List.of(
-            "1. CLARIFY  : users, core features, read/write ratio, scale, consistency vs availability",
-            "2. ESTIMATE : QPS, data size, peak factor (back-of-envelope, say the numbers)",
-            "3. API      : define the key endpoints / contracts first",
-            "4. HIGH-LVL : clients -> LB -> stateless app -> data tier; draw it",
-            "5. DATA     : SQL vs NoSQL, schema, partitioning/sharding key, replication",
-            "6. SCALE    : caching (pattern + invalidation), async/queues, CDN, read replicas",
-            "7. DEEP-DIVE: expand the component the interviewer probes",
-            "8. FAILURE  : SPOFs, what breaks at 10x, timeouts, retries, circuit breakers",
-            "9. OBSERVE  : metrics (RED), tracing, alerting on p99",
-            "10.TRADEOFFS: state each choice's cost out loud; invite feedback"
-        );
-        System.out.println("=== System Design Round — say each step aloud ===");
-        steps.forEach(System.out::println);
-        System.out.println("\\nRemember: communication + trade-off reasoning are graded as much as the diagram.");
-    }
-}`
+### The RADAD Framework
+
+\`\`\`
+R — Requirements:   functional + non-functional; clarify before designing
+A — Assumptions:    state what you're assuming (scale, usage patterns)
+D — Data model:     entities, relationships, storage choices
+A — APIs:           key endpoints and their contracts
+D — Deep dive:      bottlenecks, scaling, failure modes, trade-offs
+\`\`\`
+
+### Requirements Phase — What to Ask
+
+\`\`\`
+Functional requirements (what the system does):
+  "What are the core user actions? Create/read/update/delete?"
+  "Who are the users — consumers, businesses, internal?"
+  "What are the read vs write patterns?"
+
+Non-functional requirements (how well it does it):
+  "What scale? Daily active users? Requests per second?"
+  "What's the acceptable latency? P99 < 200ms? P50 < 50ms?"
+  "What consistency do we need? Strong (banking) or eventual (social feed)?"
+  "Availability target? 99.9% (8.7h/year downtime) or 99.99% (52m/year)?"
+  "Geographic distribution? Single region or global?"
+
+Common clarifications:
+  "Should we handle media (images, video) or just text/structured data?"
+  "Do we need real-time (WebSocket) or near-real-time polling?"
+  "Is read >> write (10:1, 100:1) or roughly balanced?"
+\`\`\`
+
+### Back-of-Envelope Estimates
+
+\`\`\`
+Very rough numbers to size the system:
+  DAU (Daily Active Users) → 10M users
+  Requests per user per day → 10 reads, 1 write
+  Total reads/day: 100M → 100M/86400 ≈ 1,200 read RPS
+  Total writes/day: 10M → 10M/86400 ≈ 115 write RPS
+
+  Write 1KB per event → 115 KB/s → ~10 GB/day → ~300 GB/month
+  Read objects 10KB avg → 1,200 × 10KB = 12 MB/s bandwidth
+
+  With 3× replication + 5× buffer → need ~150 GB/month storage initially
+
+Use these to justify choices:
+  "1,200 RPS is well within a single Postgres server's capacity"
+  "For 12 MB/s read throughput, we'd want Redis caching the hot 20%"
+\`\`\`
+
+### Common System Design Questions & Key Points
+
+\`\`\`
+Design a URL Shortener (bit.ly):
+  - Key insight: write-once, read-many (100:1 read:write)
+  - 7-char base62 key → 62^7 = 3.5 trillion URLs
+  - Hash (SHA-256 → take 7 chars) or auto-increment + base62 encode
+  - Heavy cache: top 20% URLs get 80% traffic → Redis TTL cache
+  - Single writer (no collision risk), read replicas for scale
+
+Design a Notification System:
+  - Fan-out: user has 10M followers → can't do synchronously
+  - Pre-compute: store notifications per user at write time
+  - Push (websocket/FCM/APNS) vs Pull (polling) vs mix
+  - Priority queues: transactional > marketing
+
+Design a Rate Limiter:
+  - Token Bucket: smooth bursts; Fixed Window: simple; Sliding Window: accurate
+  - Redis INCR with TTL per user per window
+  - Distributed: Redis cluster (centralised) or per-node + gossip
+
+Design a Search Service:
+  - Inverted index: word → list of document IDs
+  - Elasticsearch: pre-built, handles scoring, fuzzy match, aggregations
+  - Separate indexing pipeline from query pipeline
+  - Cache hot queries: same search happens many times
+\`\`\`
+
+### Trade-off Communication
+
+\`\`\`
+The interviewer is testing: do you understand WHY, not just WHAT.
+Always say "I chose X over Y because..." and mention the trade-off you accept.
+
+Examples:
+  "I'd use Kafka over RabbitMQ here because our throughput is 50k msg/sec and we
+   need replay capability for the analytics team. Trade-off: higher operational
+   complexity and no message TTL expiry built in."
+
+  "I'd use Redis for this counter rather than Postgres because we need < 1ms
+   write latency and can tolerate losing up to 1 second of data on Redis restart.
+   If the counter were financial, I'd accept the latency and use Postgres."
+
+  "I'd denormalize this table for the read path because our read:write ratio is 100:1.
+   Trade-off: writes become slightly more complex and data duplication requires
+   a sync job."
+\`\`\``,
+          code: [
+            `// System Design Cheat Sheet — key numbers to memorise
+// Use these in back-of-envelope calculations
+
+const NUMBERS_TO_KNOW = {
+  // Time
+  L1_cache_reference: "0.5ns",
+  L2_cache_reference: "7ns",
+  RAM_read_1MB:       "250μs",
+  SSD_read_1MB:       "1ms",
+  HDD_read_1MB:       "20ms",
+  network_roundtrip:  "0.5ms (same DC), 150ms (US↔Europe)",
+
+  // Scale
+  seconds_per_day: 86400,
+  requests_per_second_calc: "1M / 86400 ≈ 12 RPS per million users per day",
+
+  // Storage
+  one_tweet:        "~280 bytes",
+  one_photo:        "~200KB",
+  one_video_minute: "~50MB",
+  postgres_single:  "~50k QPS reads, ~10k QPS writes",
+  redis_single:     "~100k RPS",
+  kafka_partition:  "~100MB/s throughput",
+
+  // Availability
+  "99.9%":  "8.7 hours downtime/year",
+  "99.99%": "52 minutes downtime/year",
+  "99.999%":"5 minutes downtime/year",
+};
+
+// Design framework template
+const systemDesignTemplate = {
+  step1_requirements: {
+    functional:    ["Core user actions", "Read/write patterns", "User types"],
+    nonFunctional: ["Scale (DAU, RPS)", "Latency (P99)", "Availability", "Consistency"]
+  },
+  step2_estimates: {
+    questions: [
+      "DAU × actions/day ÷ 86400 = RPS",
+      "RPS × payload size = bandwidth",
+      "bandwidth × 30 × 12 = yearly storage"
+    ]
+  },
+  step3_dataModel: {
+    identify:  "Core entities and their relationships",
+    storage:   "SQL (relational, ACID) vs NoSQL (flexible schema, scale)",
+    consider:  "Sharding key, indexing strategy, normalization vs denormalization"
+  },
+  step4_apis: {
+    format:  "REST endpoints with request/response",
+    include: "Auth headers, pagination, rate limiting headers"
+  },
+  step5_deepDive: {
+    bottlenecks: ["Where is the hot path?", "What fails first under load?"],
+    scaling:     ["Read replicas", "Caching", "CDN", "Sharding", "Async processing"],
+    tradeoffs:   ["Consistency vs Availability (CAP)", "Latency vs Durability", "Cost vs Performance"]
+  }
+};
+
+// Trade-off vocabulary — use these phrases
+const tradeoffPhrases = [
+  "I chose X over Y because... the trade-off I accept is...",
+  "This is eventually consistent, which is acceptable because...",
+  "We'd fan-out at write time rather than read time because our read:write ratio is...",
+  "This denormalization is justified by our 100:1 read:write ratio",
+  "We'd start with a single-region deployment and add geo-replication if...",
+];
+
+console.log("System Design Framework loaded");
+console.log("Key steps:", Object.keys(systemDesignTemplate).join(" → "));`
+          ],
+          flashcards: [
+            { q: 'What questions should you always ask before designing a system?', a: 'Functional: What are the core user actions? Who are the users? What are the read vs write patterns? Are there media uploads? Real-time requirements? Non-functional (these drive architecture choices): Scale — DAU, RPS, data size? Latency — P99 < X ms? Availability — 99.9% vs 99.99%? Consistency — strong (banking) or eventual (social feed)? Geography — single region or global? Rule: spend 5 minutes on requirements. Designs that skip this phase fail because they optimize for the wrong thing. Say explicitly: "Let me make sure I understand the requirements before designing."' },
+            { q: 'How do you calculate RPS from DAU in a back-of-envelope estimate?', a: 'Formula: RPS = (DAU × actions_per_user_per_day) / 86400. Example: 10M DAU, 10 reads per user per day → 100M reads/day ÷ 86400 ≈ 1,200 read RPS. 1 write per user → 115 write RPS. Quick rule: 1M daily events ≈ 12 RPS. Storage: RPS × payload_size × seconds_per_day × retention_days. Use these to justify: "1,200 RPS is within a single Postgres read replica\'s capacity, so we don\'t need sharding initially." Interviewers value the reasoning, not the exact number. Say your assumptions aloud.' },
+            { q: 'What is the CAP theorem and how should you apply it in a system design interview?', a: 'CAP: a distributed system can guarantee at most 2 of 3: Consistency (all nodes return same data), Availability (every request gets a response), Partition tolerance (system works despite network splits). Network partitions WILL happen — so the real choice is CP vs AP. CP (Consistency + Partition tolerance): on partition, refuse requests rather than return stale data. Use for: banking, inventory (correctness > availability). Example: Zookeeper, HBase. AP (Availability + Partition tolerance): on partition, serve stale data rather than fail. Use for: social feeds, shopping carts (availability > strong consistency). Example: DynamoDB, Cassandra. In interviews: state your choice and justify it based on the requirements you clarified.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What should you do before drawing anything in a system-design round?', a: 'Clarify requirements — users, core features, scale/QPS, read vs write heavy, and consistency-vs-availability priorities — then state assumptions and rough estimates. Asking good clarifying questions is itself a positive signal.' },
-        { q: 'Why think out loud throughout a design interview?', a: 'The round grades communication and structured reasoning as much as the final architecture. Verbalizing trade-offs ("queue vs sync call because…") keeps the interviewer engaged and demonstrates how you reason; silence reads as being stuck.' },
-        { q: 'Name two common EU highly-skilled migration routes.', a: 'Germany\'s EU Blue Card (salary-threshold route for graduates) and the Netherlands\' kennismigrant (highly-skilled migrant) route via recognised sponsors. Ireland\'s Critical Skills Permit is another. (Always verify current thresholds/rules.)' },
-        { q: 'Why might the technical bar be higher for visa-sponsored roles, and how do you handle it?', a: 'Sponsorship adds employer cost and lead time, so they must justify it. Be upfront about needing sponsorship early, clearly clear the technical bar, and have your documents (degree, references, valid passport) ready.' },
-        { q: 'What is the winning candidate profile for EU sponsorship?', a: 'Solid fundamentals plus clear communication, a collaborative attitude, and genuine interest in the product — a reliable, communicative engineer worth the sponsorship effort, rather than necessarily the strongest pure coder.' }
       ]
-    }
-  ]
-},
+    },
 
-/* ===================== PHASE 11: Real-World Architecture ===================== */
-{
-  id: 'p11',
-  title: 'Real-World Java Backend Architecture',
-  icon: 'layers',
-  blurb: 'How production Spring Boot systems are actually built, deployed, and operated — modelled on a real trading platform. Zero to production.',
-  modules: [
     {
       id: '11.1',
       title: 'Multi-Module Maven Monolith Design',
-      hours: 5,
-      notes: `
-# Multi-Module Maven Monolith Design
+      hours: 3,
+      sections: [
+        {
+          title: 'Maven Multi-Module Architecture — Design & Best Practices',
+          notes: `## Maven Multi-Module Architecture — Design & Best Practices
 
-The most important architectural decision for a new backend is **not** microservices vs monolith — it is **how you enforce module boundaries** so the system can evolve without becoming a big ball of mud.
-
-## Why start with a modular monolith
-
-A modular monolith gives you:
-- Single deployable unit (simple ops, fast CI)
-- In-process calls (no network latency, no serialization cost)
-- Real transactional guarantees across modules
-- Can extract to microservices later by cutting along module seams
-
-The key is that modules are **enforced by Maven**, not just convention: module A cannot import module B unless B is a declared dependency. If you leave everything in one Maven module, "modular" is a lie — anyone can import anything.
-
-## The module graph (strict acyclic)
+### Why Multi-Module Maven?
 
 \`\`\`
-core ← broker ← engine ← web ← app (runnable jar)
-       └─ ai  ←┘
-       └─ news ←┘
+Single-module JAR:
+  All code in one module → build everything to change anything
+  Long build times, hard to enforce layering, easy to create circular deps
+
+Multi-module Maven:
+  Each module = a separate Maven project with its own pom.xml
+  Parent pom.xml orchestrates the build
+
+Benefits:
+  - Enforce dependency direction (web cannot import db-core directly)
+  - Parallel builds: mvn -T 4 clean package (4 threads)
+  - Faster incremental builds (only changed modules rebuild)
+  - Each module has clear responsibility + can be tested in isolation
+  - Can evolve into microservices: extract a module = one deployment unit
 \`\`\`
 
-- **core** — domain models, enums, shared config properties. No Spring, no DB, no external libs. Any module can depend on core.
-- **broker** — adapter interfaces + implementations for stock brokers/exchanges. Knows core; knows nothing of engine.
-- **ai** — LLM API clients. Knows core.
-- **news** — RSS/news aggregation. Knows core.
-- **engine** — business logic: risk, orders, journal, analytics. Knows core + broker + ai + news.
-- **web** — REST controllers, dashboard. Knows engine.
-- **app** — bootstraps everything: Spring Boot main class, Flyway migrations, scheduler config.
+### Typical Multi-Module Layout
 
-> [!TIP]
-> The strict downward dependency rule means **business logic never depends on HTTP**. If you need to extract a module to a service later, you just add a thin REST adapter — the logic doesn't change. This also makes unit testing trivial: no Spring context needed for core/engine tests.
+\`\`\`
+my-platform/
+├── pom.xml                    ← parent (packaging=pom)
+├── common/                    ← shared DTOs, utils, exceptions
+│   └── pom.xml
+├── domain/                    ← entities, value objects, domain services
+│   └── pom.xml                depends on: common
+├── infrastructure/            ← JPA repos, external clients, configs
+│   └── pom.xml                depends on: domain, common
+├── application/               ← use cases / services (orchestrates domain + infra)
+│   └── pom.xml                depends on: domain, infrastructure, common
+├── web/                       ← REST controllers, DTOs, security
+│   └── pom.xml                depends on: application, common
+└── app/                       ← Spring Boot main class, resources, Flyway
+    └── pom.xml                depends on: web (all transitively)
+\`\`\`
 
-## Parent POM structure
+### Parent POM — Dependency Management
 
 \`\`\`xml
-<!-- pom.xml (root parent) -->
+<!-- parent pom.xml -->
 <groupId>com.example</groupId>
-<artifactId>myapp-parent</artifactId>
+<artifactId>my-platform</artifactId>
+<version>1.0.0-SNAPSHOT</version>
 <packaging>pom</packaging>
+
 <modules>
-  <module>core</module>
-  <module>broker</module>
-  <module>ai</module>
-  <module>engine</module>
+  <module>common</module>
+  <module>domain</module>
+  <module>infrastructure</module>
+  <module>application</module>
   <module>web</module>
   <module>app</module>
 </modules>
+
+<properties>
+  <java.version>21</java.version>
+  <spring-boot.version>3.2.5</spring-boot.version>
+</properties>
+
 <dependencyManagement>
-  <!-- BOM: all versions declared here, child modules just name the artifact -->
   <dependencies>
+    <!-- BOM: controls all Spring Boot dependency versions centrally -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-dependencies</artifactId>
@@ -26786,557 +27386,204 @@ core ← broker ← engine ← web ← app (runnable jar)
       <type>pom</type>
       <scope>import</scope>
     </dependency>
+    <!-- Own modules: define version once here -->
+    <dependency>
+      <groupId>com.example</groupId>
+      <artifactId>common</artifactId>
+      <version>\${project.version}</version>
+    </dependency>
   </dependencies>
 </dependencyManagement>
+
+<build>
+  <pluginManagement>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </pluginManagement>
+</build>
 \`\`\`
 
-Each child module declares only the **siblings it needs** — enforcing the graph:
+### Child Module POM
 
 \`\`\`xml
-<!-- engine/pom.xml -->
+<!-- web/pom.xml -->
+<parent>
+  <groupId>com.example</groupId>
+  <artifactId>my-platform</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <relativePath>../pom.xml</relativePath>
+</parent>
+<artifactId>web</artifactId>
+
 <dependencies>
-  <dependency><groupId>com.example</groupId><artifactId>core</artifactId></dependency>
-  <dependency><groupId>com.example</groupId><artifactId>broker</artifactId></dependency>
-  <dependency><groupId>com.example</groupId><artifactId>ai</artifactId></dependency>
+  <!-- Own module dep — no version (controlled by parent) -->
+  <dependency>
+    <groupId>com.example</groupId>
+    <artifactId>application</artifactId>
+  </dependency>
+  <!-- Spring Boot dep — no version (BOM in parent controls it) -->
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+  </dependency>
 </dependencies>
 \`\`\`
 
-If engine tried to import web classes, Maven would fail the build. **The build is the architecture enforcer.**
+### Enforcing Layering
 
-## The shared kernel (core module)
+\`\`\`
+Use maven-enforcer-plugin to ban illegal cross-module imports:
+  → web module must NOT directly import infrastructure (DB layer)
+  → domain must NOT import Spring annotations
 
-Core should contain only:
-- **Domain value objects**: \`Money\`, \`OrderId\`, \`Symbol\`, \`Side\` (BUY/SELL)
-- **Domain events**: \`OrderPlaced\`, \`TradeExecuted\`
-- **Enums and constants** shared across modules
-- **Config properties** interfaces (\`@ConfigurationProperties\` POJOs)
-- No Spring beans, no DB, no Jackson (just plain Java)
-
-> [!WARNING]
-> The temptation is to throw everything into core "for convenience." Resist it. Every class in core is a dependency of every other module — a poorly-placed class in core creates hidden coupling across the entire system. If something is only needed by two adjacent modules, put it in the higher one.
-
-## The app (runnable jar) module
-
-The app module's job is assembly:
-- \`@SpringBootApplication\` lives here
-- Flyway migrations in \`src/main/resources/db/migration/\`
-- \`application.yml\` and profile configs
-- \`@EnableScheduling\`, \`@EnableAsync\`, \`@EnableCaching\`
-- Docker / deployment config
-
-**It contains almost no business logic.** If you find yourself writing business code in app, something is in the wrong module.
-
-## Testing across modules
-
-- **core, ai, news**: pure JUnit 5, no Spring
-- **engine**: JUnit 5 + Mockito for broker/AI collaborators
-- **web**: \`@WebMvcTest\` (loads only the web slice)
-- **Integration/E2E**: only in app module (has all deps)
-
-This layering means CI can test core/engine/ai in parallel and fast, without a database.
-
-> [!EU]
-> Senior EU interviews increasingly probe *how* you structure large codebases. "We started with a modular monolith with strict Maven-enforced boundaries. Module A could never accidentally import module B unless declared as a dependency — this prevented the big-ball-of-mud anti-pattern and gave us clean seams to extract services later." This shows architectural maturity.
-`,
-      code: [
-        {
-          lang: 'java',
-          title: 'Enforcing module boundaries — the shared kernel pattern',
-          code: `// core module: pure Java, no Spring, no DB
-// com.example.core.domain.Money
-public record Money(long minorUnits, String currency) {
-    public Money {
-        if (minorUnits < 0) throw new IllegalArgumentException("negative money");
-        if (currency == null || currency.isBlank()) throw new IllegalArgumentException("currency required");
-    }
-
-    public Money add(Money other) {
-        if (!currency.equals(other.currency)) throw new IllegalArgumentException("currency mismatch");
-        return new Money(minorUnits + other.minorUnits, currency);
-    }
-
-    public Money multiply(int factor) { return new Money(minorUnits * factor, currency); }
-
-    @Override public String toString() {
-        return String.format("%s %.2f", currency, minorUnits / 100.0);
-    }
-
-    public static Money of(double amount, String currency) {
-        return new Money(Math.round(amount * 100), currency);
-    }
+// Or use ArchUnit in tests
+@Test
+public void domainShouldNotDependOnSpring() {
+    JavaClasses classes = new ClassFileImporter()
+        .importPackages("com.example.domain");
+    noClasses().that().resideInAPackage("com.example.domain..")
+        .should().dependOnClassesThat()
+        .resideInAPackage("org.springframework..")
+        .check(classes);
 }
+\`\`\``,
+          code: [
+            `// ArchUnit — architecture tests to enforce module layering
+// Add to test dependencies: com.tngtech.archunit:archunit-junit5
 
-// com.example.core.domain.OrderSide
-public enum OrderSide { BUY, SELL }
+import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.lang.syntax.ArchRuleDefinition;
+import com.tngtech.archunit.library.Architectures;
+import org.junit.jupiter.api.Test;
 
-// com.example.core.domain.OrderRequest
-public record OrderRequest(
-    String symbol,
-    OrderSide side,
-    int quantity,
-    Money limitPrice  // null for market orders
-) {
-    public OrderRequest {
-        if (symbol == null || symbol.isBlank()) throw new IllegalArgumentException("symbol required");
-        if (quantity <= 0) throw new IllegalArgumentException("quantity must be positive");
-    }
-    public boolean isMarket() { return limitPrice == null; }
-}
+public class ArchitectureTest {
 
-// engine module: depends on core, broker, ai — NOT on web
-// com.example.engine.OrderExecutionService
-// @Service  (Spring bean but pure business logic, testable without HTTP)
-class OrderExecutionService {
-    private final BrokerAdapter broker;       // interface from broker module
-    private final RiskService riskService;
+    private final com.tngtech.archunit.core.domain.JavaClasses allClasses =
+        new ClassFileImporter().importPackages("com.example");
 
-    OrderExecutionService(BrokerAdapter broker, RiskService riskService) {
-        this.broker = broker;
-        this.riskService = riskService;
+    // Rule 1: Controller depends on Service, not Repository directly
+    @Test
+    void controllersDoNotAccessRepositories() {
+        ArchRuleDefinition.noClasses()
+            .that().resideInAPackage("..controller..")
+            .should().dependOnClassesThat()
+            .resideInAPackage("..repository..")
+            .check(allClasses);
     }
 
-    public String placeOrder(OrderRequest req) {
-        riskService.validate(req);             // throws if breaches risk limits
-        return broker.submitOrder(req);        // broker-specific; paper/Upstox/Dhan
-    }
-}
-
-// web module: knows engine, NOT business logic
-// com.example.web.OrderController
-// @RestController — this is the only place HTTP concepts live
-class OrderController {
-    private final OrderExecutionService execService;
-    OrderController(OrderExecutionService execService) { this.execService = execService; }
-
-    // @PostMapping("/api/v1/orders")
-    String placeOrder(/* @RequestBody */ OrderRequest req) {
-        return execService.placeOrder(req);    // delegate everything; no logic here
-    }
-}
-
-// Demo: test engine independently — no Spring, no HTTP, no DB
-public class ModuleArchDemo {
-    public static void main(String[] args) {
-        // Pure unit test of business logic — no container needed
-        BrokerAdapter paperBroker = req -> "PAPER-ORDER-" + req.symbol() + "-" + req.quantity();
-        RiskService risk = req -> {
-            if (req.quantity() > 100) throw new RuntimeException("quantity exceeds limit");
-        };
-        var svc = new OrderExecutionService(paperBroker, risk);
-        String id = svc.placeOrder(new OrderRequest("NIFTY24DEC20000CE", OrderSide.BUY, 1,
-                                                     Money.of(150.0, "INR")));
-        System.out.println("Order placed: " + id);
-
-        // The module boundary is enforced by Maven: web cannot skip to broker directly
-        System.out.println("Money demo: " + Money.of(100.50, "EUR").add(Money.of(49.50, "EUR")));
+    // Rule 2: Domain layer has no Spring dependency
+    @Test
+    void domainHasNoSpringDependency() {
+        ArchRuleDefinition.noClasses()
+            .that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat()
+            .resideInAPackage("org.springframework..")
+            .check(allClasses);
     }
 
-    interface BrokerAdapter { String submitOrder(OrderRequest req); }
-    interface RiskService   { void validate(OrderRequest req); }
-}`
-        },
-        {
-          lang: 'java',
-          title: 'Adapter pattern: swappable broker implementations',
-          code: `import java.util.*;
-
-// The broker module: defines the interface in core; implementations here.
-// This is the adapter pattern — the engine doesn't care which broker executes the trade.
-public class BrokerAdapterDemo {
-
-    // In the broker module:
-    interface BrokerAdapter {
-        String submitOrder(String symbol, String side, int qty, double price);
-        String getOrderStatus(String orderId);
-        double getLtp(String symbol);
+    // Rule 3: Layered architecture definition
+    @Test
+    void layeredArchitectureIsRespected() {
+        Architectures.layeredArchitecture()
+            .consideringAllDependencies()
+            .layer("Web").definedBy("..web..")
+            .layer("Application").definedBy("..application..")
+            .layer("Domain").definedBy("..domain..")
+            .layer("Infrastructure").definedBy("..infrastructure..")
+            .whereLayer("Web").mayOnlyAccessLayers("Application")
+            .whereLayer("Application").mayOnlyAccessLayers("Domain", "Infrastructure")
+            .whereLayer("Infrastructure").mayOnlyAccessLayers("Domain")
+            .whereLayer("Domain").mayNotAccessAnyLayer()
+            .check(allClasses);
     }
 
-    // Paper broker: simulates trades, no real money. Safe default.
-    static class PaperBrokerAdapter implements BrokerAdapter {
-        private final Map<String, String> orders = new LinkedHashMap<>();
-        private int seq = 1;
-
-        public String submitOrder(String symbol, String side, int qty, double price) {
-            String id = "PAPER-" + seq++;
-            orders.put(id, "COMPLETE");
-            System.out.printf("[PAPER] %s %s x%d @ %.2f -> %s%n", side, symbol, qty, price, id);
-            return id;
-        }
-        public String getOrderStatus(String id) { return orders.getOrDefault(id, "NOT_FOUND"); }
-        public double getLtp(String symbol) { return 150.25 + Math.random() * 5; } // simulated
-    }
-
-    // Upstox broker: calls real REST API (simplified)
-    static class UpstoxBrokerAdapter implements BrokerAdapter {
-        private final String accessToken;
-        UpstoxBrokerAdapter(String accessToken) { this.accessToken = accessToken; }
-
-        public String submitOrder(String symbol, String side, int qty, double price) {
-            // In reality: HTTP POST to https://api.upstox.com/v2/order/place
-            System.out.printf("[UPSTOX] Calling Upstox API with token %s... %s %s x%d%n",
-                              accessToken.substring(0, 8) + "...", side, symbol, qty);
-            return "UPX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        }
-        public String getOrderStatus(String id) { return "COMPLETE"; } // simplified
-        public double getLtp(String symbol) { return 150.50; }
-    }
-
-    // Per-user routing: each user selects their broker; the router dispatches correctly
-    static class BrokerAdapterRouter {
-        private final Map<String, BrokerAdapter> userAdapters = new HashMap<>();
-        private final BrokerAdapter defaultAdapter = new PaperBrokerAdapter();
-
-        void setUserBroker(String userId, BrokerAdapter adapter) {
-            userAdapters.put(userId, adapter);
-        }
-        BrokerAdapter forUser(String userId) {
-            return userAdapters.getOrDefault(userId, defaultAdapter);
-        }
-    }
-
-    public static void main(String[] args) {
-        BrokerAdapterRouter router = new BrokerAdapterRouter();
-
-        // user1 uses paper (default — safe!)
-        // user2 configured live Upstox
-        router.setUserBroker("user2", new UpstoxBrokerAdapter("real-token-xyz"));
-
-        // Engine calls router.forUser(userId).submitOrder(...)
-        // It never cares which broker is behind it
-        router.forUser("user1").submitOrder("NIFTY24C20000", "BUY", 1, 150.0);
-        router.forUser("user2").submitOrder("NIFTY24C20000", "BUY", 1, 150.0);
-        router.forUser("user3").submitOrder("NIFTY24C20000", "BUY", 1, 150.0); // defaults to paper
+    // Rule 4: Services are annotated correctly
+    @Test
+    void serviceClassesAreAnnotated() {
+        ArchRuleDefinition.classes()
+            .that().haveSimpleNameEndingWith("Service")
+            .and().resideInAPackage("..application..")
+            .should().beAnnotatedWith(org.springframework.stereotype.Service.class)
+            .check(allClasses);
     }
 }`
-        },
-        {
-          lang: 'java',
-          title: 'Flyway migrations: safe database evolution',
-          code: `// Flyway manages DB schema evolution with versioned, checksummed SQL scripts.
-// Location: app/src/main/resources/db/migration/
-// Naming: V{version}__{description}.sql  (two underscores!)
-
-// V1__create_users.sql
-/*
-CREATE TABLE app_user (
-    id          BIGSERIAL PRIMARY KEY,
-    email       VARCHAR(255) UNIQUE NOT NULL,
-    role        VARCHAR(50)  NOT NULL DEFAULT 'VIEWER',
-    created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-*/
-
-// V2__create_trade_journal.sql
-/*
-CREATE TABLE trade_journal (
-    id           BIGSERIAL    PRIMARY KEY,
-    user_id      BIGINT       NOT NULL REFERENCES app_user(id),
-    symbol       VARCHAR(100) NOT NULL,
-    side         VARCHAR(10)  NOT NULL,    -- BUY / SELL
-    quantity     INT          NOT NULL,
-    entry_price  NUMERIC(12,4),
-    exit_price   NUMERIC(12,4),
-    broker       VARCHAR(50),             -- which broker executed this trade
-    status       VARCHAR(20)  NOT NULL DEFAULT 'OPEN',
-    created_at   TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-CREATE INDEX idx_journal_user ON trade_journal(user_id);
-CREATE INDEX idx_journal_status ON trade_journal(user_id, status) WHERE status = 'OPEN';
-*/
-
-// V3__add_risk_settings.sql  (single-row config table — runtime overrides YAML)
-/*
-CREATE TABLE risk_settings (
-    id               BIGINT PRIMARY KEY DEFAULT 1,
-    max_daily_loss   NUMERIC(12,2) NOT NULL DEFAULT 5000,
-    max_position_pct NUMERIC(5,2)  NOT NULL DEFAULT 10,
-    trading_enabled  BOOLEAN       NOT NULL DEFAULT TRUE,
-    CONSTRAINT single_row CHECK (id = 1)
-);
-INSERT INTO risk_settings DEFAULT VALUES;
-*/
-
-// Safe migration rules:
-// ✅ ADD columns (nullable or with DEFAULT)
-// ✅ ADD tables, indexes
-// ✅ UPDATE existing data in the migration
-// ❌ DROP columns in use (remove code first, deploy, then drop)
-// ❌ Change column type without a migration plan
-// ❌ Edit an already-deployed migration (Flyway checksums will fail!)
-
-// Demonstrating the Flyway "two-step" pattern for removing a column:
-// Step 1: V10__stop_using_old_col.sql  -> code change: stop reading/writing it
-// Step 2: V11__drop_old_col.sql (in the NEXT release, after Step 1 is live)
-/*
-ALTER TABLE trade_journal DROP COLUMN IF EXISTS legacy_notes;
-*/
-
-public class FlywayConceptDemo {
-    public static void main(String[] args) {
-        System.out.println("Flyway migration naming: V{n}__{desc}.sql");
-        System.out.println("  V1__create_users.sql");
-        System.out.println("  V2__create_trade_journal.sql");
-        System.out.println("  V14__add_api_usage_log.sql");
-        System.out.println();
-        System.out.println("Flyway checks the checksum of applied migrations.");
-        System.out.println("NEVER edit a migration that's already been applied to any env.");
-        System.out.println("To fix: create a NEW migration V{n+1} that corrects the data/schema.");
-        System.out.println();
-        System.out.println("Local profile: set spring.flyway.enabled=false + ddl-auto=create-drop");
-        System.out.println("for fast iteration without real migrations during dev.");
-    }
-}`
+          ],
+          flashcards: [
+            { q: 'What is the difference between dependencyManagement and dependencies in a Maven parent POM?', a: 'dependencyManagement: declares versions and scope but does NOT add the dependency to any module. Child modules that declare the same dependency (without version) inherit the managed version. Use this in the parent to centralise version control without forcing the dependency on all children. dependencies (in parent): actually adds the dependency to ALL child modules — every module inherits it regardless of whether they need it. Rule: put shared test utils (JUnit, Mockito) in parent dependencies if truly universal. Put all other dependencies in dependencyManagement so each module explicitly declares what it needs — avoids implicit transitive pollution.' },
+            { q: 'What is a Maven BOM (Bill of Materials) and when do you use one?', a: 'A BOM is a POM with packaging=pom that contains only dependencyManagement — it declares versions for a related set of artifacts. Importing a BOM (scope=import, type=pom in dependencyManagement) gives you all its version declarations without adding transitive deps. Spring Boot provides spring-boot-dependencies BOM: import it in parent → all Spring/Spring Boot dependency versions are controlled centrally. You never specify versions for spring-boot-starter-web, jackson, hibernate, etc. — the BOM sets them. Benefits: consistent, tested version combinations; upgrade Spring Boot version in one place and all 30+ deps update together.' },
+            { q: 'How do you enforce module boundaries in a multi-module Maven project?', a: 'Option 1: Maven module structure itself. Web module\'s pom.xml only declares dependencies on Application module — it physically cannot import classes from Infrastructure unless it adds that dependency. Misuse creates a compile error. Option 2: maven-enforcer-plugin with banned dependencies rule — CI fails if web declares a direct dependency on infrastructure. Option 3: ArchUnit (architecture tests) — write JUnit tests that assert no class in the web package imports from the infrastructure package. Runs as part of normal test suite. Best practice: combine all three — Maven structure prevents most violations, ArchUnit catches any sneaky attempts via transitive imports.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What is a modular monolith and what makes it different from a "big ball of mud" monolith?', a: 'A modular monolith enforces module boundaries structurally (e.g. via Maven modules) so code in module A cannot access module B without a declared dependency. A ball-of-mud monolith has everything in one module where anyone can import anything — creating hidden coupling.' },
-        { q: 'What belongs in the "core" module of a multi-module Spring Boot app?', a: 'Domain value objects, enums, domain events, shared config property classes (@ConfigurationProperties POJOs) — pure Java with no Spring beans, no DB, no HTTP. Every other module depends on core, so it must stay lean.' },
-        { q: 'What is the role of the "app" (runnable jar) module?', a: 'Assembly only: @SpringBootApplication, Flyway migrations, application.yml, scheduling/async config. Almost no business logic — if you write business code there, it belongs in a lower module.' },
-        { q: 'Why does the engine module never depend on the web module?', a: 'To keep business logic decoupled from HTTP. Engine can be tested without a web server, extracted to a separate service later, and reused by multiple frontends (REST, CLI, bot). The web module adapts HTTP calls to engine service calls — never the reverse.' },
-        { q: 'What is the adapter pattern in the context of broker integrations?', a: 'A BrokerAdapter interface is defined in the broker module. Implementations (PaperAdapter, UpstoxAdapter, DhanAdapter) fulfil it. The engine depends only on the interface; swapping brokers requires no engine changes — just registering a different implementation.' },
-        { q: 'What is the Flyway two-step migration pattern for removing a column?', a: 'Step 1 (current release): stop reading/writing the column in code and deploy. Step 2 (next release): add a migration that DROPs the column. This ensures no running code references the column when it is dropped — zero-downtime schema evolution.' },
-        { q: 'What is the "default paper broker" safety invariant?', a: 'When a user has no broker configured, the system routes to the paper (simulated) broker by default. This prevents real-money order submission for unconfigured users — a capital-safety guarantee baked into routing, not a UI toggle.' },
-        { q: 'How do you test engine-layer business logic without Spring or a database?', a: 'Pure JUnit 5 + Mockito: inject mock BrokerAdapter, RiskService, etc. No @SpringBootTest, no container startup. Fast, isolated unit tests are only possible because the module graph keeps engine free of HTTP/DB dependencies.' }
       ]
     },
 
     {
       id: '11.2',
       title: 'Production Infrastructure: Docker, Caddy & VPS',
-      hours: 4,
-      notes: `
-# Production Infrastructure: Docker + Caddy + VPS
+      hours: 3,
+      sections: [
+        {
+          title: 'Production Deployment — Docker Compose + Caddy + Hetzner VPS',
+          notes: `## Production Deployment — Docker Compose + Caddy + Hetzner VPS
 
-This module covers how a real production Java backend is deployed on a VPS (Hetzner/DigitalOcean) using Docker Compose, Caddy as a reverse proxy, and automated deployments. This is the actual setup used by many European startups and small product teams.
-
-## The technology choices explained
-
-### Why Hetzner instead of AWS?
-Hetzner VPS is **10x cheaper** than AWS EC2 for equivalent CPU/RAM. A CX21 (2 vCPU, 4GB RAM) costs €4/month vs ~$40 for an equivalent AWS instance. For a product serving thousands of users, the economics are clear. Tradeoffs: less managed tooling, more ops responsibility.
-
-### Why Docker Compose instead of Kubernetes?
-K8s for a single-machine deployment is significant complexity overhead. Docker Compose gives:
-- Declarative multi-container setup
-- Service discovery (containers address each other by service name)
-- Healthchecks and restarts
-- Network isolation
-- Zero learning curve for teams already using Docker
-
-Rule of thumb: use K8s when you have **multiple VPS nodes** and need auto-scheduling across them. One or two machines → Docker Compose.
-
-### Why Caddy instead of Nginx?
-Caddy automatically provisions **Let's Encrypt TLS certificates** (HTTPS) and renews them. Zero config. With Nginx you write certbot cronjobs and reload configs. Caddy's config (the Caddyfile) is 3 lines vs 40 for Nginx for the same setup.
-
-## Production architecture on a single VPS
+### Architecture Overview
 
 \`\`\`
 Internet
-    |
- [Caddy :443]  ← TLS termination, auto-HTTPS, gzip
-    |            ← routes by hostname
-    ├─ myapp.com  → [app:8080]         # Spring Boot
-    ├─ dashboard.myapp.com → [caddy serving static]
-    └─ api.myapp.com → [app:8080]
+   │ HTTPS (443)
+   ▼
+Caddy (reverse proxy, auto TLS via Let's Encrypt)
+   │ HTTP (internal)
+   ├──▶ Spring Boot App :8080
+   │       └── connects to PostgreSQL :5432 (internal)
+   ├──▶ UI (static files, Caddy serves directly)
+   └──▶ /grafana → Grafana :3000
 
-[Docker network "prod-default"]
-  app (Java)     - port 127.0.0.1:8080:8080 (not public!)
-  postgres       - port 127.0.0.1:5432:5432 (not public!)
-  redis          - port 127.0.0.1:6379:6379 (not public!)
-  caddy          - ports 80:80, 443:443 (public — the only entry point)
+All services run as Docker containers on a single Hetzner VPS (e.g. CX21: 2 vCPU, 4GB RAM, ~€7/mo)
+docker-compose.yml defines the stack; Caddy handles TLS, routing, compression
 \`\`\`
 
-**Key principle:** only Caddy is exposed to the internet. App and database ports are bound to \`127.0.0.1\` only — not \`0.0.0.0\`. A firewall rule only allows 80/443/22.
-
-## Docker Compose for multi-service setup
+### docker-compose.yml — Production
 
 \`\`\`yaml
 services:
   app:
-    build: .
+    image: ghcr.io/org/myapp:\${IMAGE_TAG:-latest}
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8080:8080"    # NOT 0.0.0.0 — internal only!
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      DB_URL: jdbc:postgresql://postgres:5432/myapp   # service name DNS
+      DB_URL: jdbc:postgresql://db:5432/mydb
+      DB_USER: \${DB_USER}
+      DB_PASS: \${DB_PASS}
+      JWT_SECRET: \${JWT_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [app-net]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-    depends_on:
-      postgres:
-        condition: service_healthy
 
-  postgres:
+  db:
     image: postgres:16-alpine
     restart: unless-stopped
-    volumes:
-      - pgdata:/var/lib/postgresql/data   # persist across container restarts!
     environment:
-      POSTGRES_DB: myapp
+      POSTGRES_DB: mydb
       POSTGRES_USER: \${DB_USER}
-      POSTGRES_PASSWORD: \${DB_PASSWORD}
+      POSTGRES_PASSWORD: \${DB_PASS}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [app-net]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \${DB_USER} -d myapp"]
+      test: ["CMD-SHELL", "pg_isready -U \${DB_USER}"]
       interval: 10s
       retries: 5
-    ports:
-      - "127.0.0.1:5432:5432"
-
-volumes:
-  pgdata:                              # named volume: survives container recreation
-\`\`\`
-
-> [!WARNING]
-> **Never put secrets in docker-compose.yml** (committed to git). Use a **\`.env\`** file (gitignored, chmod 600) in the same directory. Docker Compose reads it automatically. On the VPS: \`cp .env.example .env && nano .env\`. Only copy .env.example to git.
-
-## The Caddyfile (auto-HTTPS in 4 lines)
-
-\`\`\`
-myapp.com {
-    encode gzip
-    reverse_proxy app:8080
-}
-\`\`\`
-
-That's the entire config. Caddy fetches a Let's Encrypt cert for \`myapp.com\`, renews it automatically, terminates TLS, gzips responses, and proxies to the app container. Adding a second domain is two more lines.
-
-## Push-to-deploy with a systemd timer
-
-Instead of GitHub Actions (which needs secrets and external network), a systemd timer on the VPS polls git every minute:
-
-\`\`\`bash
-# /root/auto-pull.sh
-cd /root/myapp
-git fetch origin main
-LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/main)
-if [ "$LOCAL" != "$REMOTE" ]; then
-  git reset --hard origin/main
-  docker compose up -d --build
-  docker image prune -f
-  echo "Deployed at $(date)" >> deploy.log
-fi
-\`\`\`
-
-Timer fires every minute, redeploys only when there's a new commit. **No secrets needed, no GitHub Actions, no manual SSH.**
-
-> [!TIP]
-> The combination of Docker Compose + Caddy + systemd timer is the **simplest possible production setup** for a Java backend. Learn it deeply — you will use this or something equivalent at most startups and scale-ups. It handles production load for hundreds of thousands of users before you need to think about Kubernetes.
-
-## Monitoring a single-VPS production app
-
-- **Caddy logs** — structured JSON access logs; tail -f for real-time
-- **Docker logs** — \`docker compose logs -f app\`
-- **Spring Boot Actuator** — \`/actuator/health\`, \`/actuator/metrics\`, \`/actuator/prometheus\`
-- **Host metrics** — \`htop\`, \`df -h\`, \`free -h\`
-- **Alerting** — send a Telegram message from a scheduled Spring task or a simple cron script
-
-> [!EU]
-> EU interviewers at seed/Series A companies will ask: *"How did you deploy and operate your previous product?"* "We used Docker Compose on a Hetzner VPS with Caddy for TLS, automated deploys via a systemd git-poll timer, and Actuator + Telegram alerts for monitoring" is a **solid, pragmatic answer** that shows real ops experience — more valuable than "we used AWS EKS with Helm" which often means "our platform team did it."
-`,
-      code: [
-        {
-          lang: 'bash',
-          title: 'Complete VPS setup from scratch (annotated)',
-          code: `#!/usr/bin/env bash
-# --- Day-1 VPS setup: security hardening, Docker, Caddy ---
-
-# 1. Secure SSH: disable password auth (keys only)
-echo "PasswordAuthentication no" >> /etc/ssh/sshd_config
-systemctl restart sshd
-
-# 2. Firewall: only allow SSH(22), HTTP(80), HTTPS(443)
-ufw allow 22/tcp
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw --force enable
-
-# 3. Install Docker (one-liner from docs.docker.com)
-curl -fsSL https://get.docker.com | sh
-
-# 4. Install Caddy (Debian/Ubuntu)
-apt install -y debian-keyring debian-archive-keyring apt-transport-https
-curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main" > /etc/apt/sources.list.d/caddy-stable.list
-apt update && apt install caddy -y
-
-# 5. Clone the app
-git clone https://github.com/yourorg/myapp.git /root/myapp
-cd /root/myapp
-cp deploy/.env.example deploy/.env
-chmod 600 deploy/.env
-# Edit .env with real secrets:  nano deploy/.env
-
-# 6. Start everything
-docker compose -f deploy/docker-compose.yml up -d --build
-
-# 7. Set up auto-deploy timer
-cp deploy/systemd/myapp-autodeploy.service /etc/systemd/system/
-cp deploy/systemd/myapp-autodeploy.timer   /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now myapp-autodeploy.timer
-
-# 8. Verify
-systemctl list-timers myapp-autodeploy.timer
-docker compose -f deploy/docker-compose.yml ps
-curl -f https://myapp.com/actuator/health   # should return {"status":"UP"}
-
-echo ""
-echo "Production checklist:"
-echo "  [ ] Firewall: only 22/80/443 open"
-echo "  [ ] .env: chmod 600, not in git"
-echo "  [ ] Postgres data: named volume (persists restarts)"
-echo "  [ ] Caddy: verify HTTPS works and cert auto-renewed"
-echo "  [ ] Healthcheck: actuator/health returns UP"
-echo "  [ ] Auto-deploy: timer active and log shows picks up pushes"`
-        },
-        {
-          lang: 'bash',
-          title: 'Docker Compose healthcheck patterns and zero-downtime redeploy',
-          code: `# Full docker-compose.yml with healthchecks, restart policies, and safe redeploy
-
-cat << 'YAML'
-services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime          # multi-stage: pick the slim JRE stage
-    image: myapp:\${GIT_SHA:-latest}
-    restart: unless-stopped    # restart on crash but respect manual stops
-    ports:
-      - "127.0.0.1:8080:8080"
-    env_file: deploy/.env      # loaded from .env file — NOT in this yaml
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider",
-             "http://localhost:8080/actuator/health/readiness"]
-      interval: 20s
-      timeout: 5s
-      start_period: 40s        # give Spring Boot time to start
-      retries: 3
-    depends_on:
-      postgres: { condition: service_healthy }
-    deploy:
-      resources:
-        limits:   { memory: 512m }
-        reservations: { memory: 256m }
-
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    env_file: deploy/.env
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
-      interval: 5s
-      retries: 10
-    ports:
-      - "127.0.0.1:5432:5432"
 
   caddy:
     image: caddy:2-alpine
@@ -27345,411 +27592,515 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data            # TLS cert storage — must persist!
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data       # TLS certificates
       - caddy_config:/config
-    depends_on:
-      app: { condition: service_healthy }  # only start Caddy when app is healthy
+      - ./ui/dist:/srv/ui      # static UI files
+    networks: [app-net]
+
+networks:
+  app-net:
 
 volumes:
-  pgdata:
-  caddy_data:      # CRITICAL: if this volume is deleted, certs are lost (re-issue triggers rate limits)
+  pg_data:
+  caddy_data:
   caddy_config:
-YAML
+\`\`\`
 
-echo ""
-echo "=== Zero-downtime redeploy steps ==="
-echo "1. docker compose pull (if using registry) OR docker compose build"
-echo "2. docker compose up -d app   # rolling: Compose stops old, starts new"
-echo "   Caddy keeps routing to old app until the new one passes healthcheck"
-echo ""
-echo "=== Rollback if new version is broken ==="
-echo "docker compose down app"
-echo "docker compose up -d --no-build app  # uses previously built image"
-echo ""
-echo "=== See what's running ==="
-echo "docker compose ps"
-echo "docker compose logs -f --tail=100 app"
-echo "docker inspect myapp-app-1 | grep -A5 Health"`
+### Caddyfile — Routing + Auto-TLS
+
+\`\`\`
+myapp.example.com {
+    # Auto-obtains + renews Let's Encrypt certificate
+    encode gzip zstd
+
+    # API routes → Spring Boot
+    handle /api/* {
+        reverse_proxy app:8080
+    }
+
+    # Auth/broker callbacks → Spring Boot
+    handle /broker/* {
+        reverse_proxy app:8080
+    }
+
+    # V2 UI — static files
+    handle /v2/* {
+        root * /srv/ui
+        file_server
+        try_files {path} /v2/index.html   # SPA routing
+    }
+
+    # Default: redirect to UI
+    handle {
+        redir /v2/ permanent
+    }
+}
+\`\`\`
+
+### Deployment Workflow
+
+\`\`\`bash
+# On developer machine: build and push image
+docker build -t ghcr.io/org/myapp:1.5.3 .
+docker push ghcr.io/org/myapp:1.5.3
+
+# On VPS: pull and redeploy (zero-downtime with depends_on + healthcheck)
+ssh root@178.105.239.120 'cd /opt/app && IMAGE_TAG=1.5.3 docker compose up -d --pull always'
+
+# Or via GitHub Actions (automated):
+# - Build image on push to main
+# - SSH into VPS and run docker compose up -d
+
+# First-time VPS setup:
+# 1. Install Docker: curl -fsSL https://get.docker.com | sh
+# 2. Copy docker-compose.yml, Caddyfile, .env to /opt/app/
+# 3. docker compose up -d
+# That's it — Caddy gets TLS, Spring Boot starts, Postgres initializes
+\`\`\`
+
+### Secrets Management on VPS
+
+\`\`\`bash
+# .env file on VPS — NEVER commit to git
+# /opt/app/.env
+DB_USER=myapp
+DB_PASS=s3cr3t-password-here
+JWT_SECRET=very-long-random-string-here
+GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxx
+
+# chmod 600 /opt/app/.env  — owner-only read
+# docker compose reads .env automatically
+\`\`\``,
+          code: [
+            `#!/bin/bash
+# deploy.sh — one-command deploy to VPS
+# Usage: ./deploy.sh 1.5.3
+# Or:    ./deploy.sh (uses current git SHA)
+
+set -euo pipefail
+
+VERSION="\${1:-$(git rev-parse --short HEAD)}"
+VPS_HOST="root@178.105.239.120"
+APP_DIR="/opt/app"
+REGISTRY="ghcr.io/org/myapp"
+
+echo "=== Deploying $VERSION ==="
+
+# 1. Build and push image
+echo "[1/4] Building image..."
+docker build -t "$REGISTRY:$VERSION" .
+docker tag "$REGISTRY:$VERSION" "$REGISTRY:latest"
+
+echo "[2/4] Pushing to registry..."
+docker push "$REGISTRY:$VERSION"
+docker push "$REGISTRY:latest"
+
+# 2. Run DB migration if needed
+echo "[3/4] Running DB migration..."
+ssh "$VPS_HOST" "cd $APP_DIR && IMAGE_TAG=$VERSION docker compose run --rm app java -jar app.jar --migrate-only" || true
+
+# 3. Deploy new version
+echo "[4/4] Deploying to VPS..."
+ssh "$VPS_HOST" "cd $APP_DIR && IMAGE_TAG=$VERSION docker compose up -d --pull always app"
+
+# 4. Health check
+echo "Waiting for health check..."
+sleep 10
+HEALTH=$(ssh "$VPS_HOST" "curl -s http://localhost:8080/actuator/health | python3 -c \\"import sys,json;d=json.load(sys.stdin);print(d.get('status','UNKNOWN'))\\"")
+echo "Health: $HEALTH"
+
+if [ "$HEALTH" != "UP" ]; then
+    echo "HEALTH CHECK FAILED — rolling back!"
+    ssh "$VPS_HOST" "cd $APP_DIR && docker compose up -d --pull always --no-recreate app"
+    exit 1
+fi
+
+echo "=== Deploy complete: $VERSION is UP ==="`,
+            `# Caddyfile — production-grade with security headers, rate limiting, compression
+
+myapp.example.com {
+    # Compression
+    encode gzip zstd
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # CSP: allow scripts only from same origin + CDN
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    }
+
+    # Rate limiting (requires caddy-ratelimit plugin)
+    # rate_limit {
+    #     zone api_zone {
+    #         match path /api/*
+    #         key {remote_ip}
+    #         events 100
+    #         window 1m
+    #     }
+    # }
+
+    # API → Spring Boot app
+    handle /api/* {
+        reverse_proxy app:8080 {
+            health_uri /actuator/health
+            health_interval 30s
         }
-      ],
-      flashcards: [
-        { q: 'Why bind app and database ports to 127.0.0.1 instead of 0.0.0.0 in Docker Compose?', a: 'Binding to 127.0.0.1 means the port is only accessible from the host itself, not from the public internet. Caddy (bound to 0.0.0.0:443) is the only public entry point. Containers on the same Docker network communicate via service names, not host ports.' },
-        { q: 'What does Caddy give you over Nginx for TLS?', a: 'Automatic Let\'s Encrypt certificate provisioning and renewal with zero configuration. Nginx requires certbot, cronjobs, and reload automation. A Caddy reverse proxy for a domain is 3 lines vs ~40 for Nginx with the same functionality.' },
-        { q: 'Why use a named Docker volume for Postgres data and Caddy certs?', a: 'Named volumes persist across container restarts and recreations (docker compose up --build). If you use a bind-mount in /tmp or omit the volume, your database data and TLS certificates are wiped on every rebuild — a production disaster.' },
-        { q: 'What is the systemd timer push-to-deploy pattern?', a: 'A oneshot systemd service runs a shell script that does: git fetch, compare local vs remote revision, git reset --hard + docker compose up --build only when there\'s a new commit. A timer fires it every minute. Result: deploys happen within 60 seconds of a push, no GitHub secrets or external CI needed.' },
-        { q: 'What is the start_period in a Docker healthcheck and why is it important for Spring Boot?', a: 'start_period is a grace time before health failures count. Spring Boot can take 20-40 seconds to start; without start_period, Docker would restart the container before it finishes booting. Set start_period longer than your worst-case startup time.' },
-        { q: 'How do you handle secrets (DB passwords, API keys) on a VPS deployment?', a: 'Store them in a .env file (gitignored, chmod 600) on the VPS. Docker Compose reads it automatically via env_file. Never commit secrets to git — commit only .env.example with placeholder values and document what each variable does.' },
-        { q: 'When would you graduate from Docker Compose to Kubernetes?', a: 'When you need to run across multiple VPS nodes and want automatic pod scheduling, or when you need advanced autoscaling, rolling deploys with zero-downtime at the orchestration level, or when your team has platform engineers who own the K8s cluster. For 1-2 servers with a small team, Docker Compose is the right tool.' }
+    }
+
+    # Broker OAuth callbacks → Spring Boot
+    handle /broker/* {
+        reverse_proxy app:8080
+    }
+
+    # Spring Boot login pages
+    handle /login {
+        reverse_proxy app:8080
+    }
+
+    # V2 SPA — serve static files, fallback to index.html for client-side routing
+    handle /v2/* {
+        root * /srv/ui
+        file_server
+        try_files {path} /v2/index.html
+    }
+
+    # Root → redirect to app
+    handle / {
+        redir /v2/ 301
+    }
+
+    # Access log
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'Why use Caddy instead of Nginx for a VPS deployment?', a: 'Caddy\'s killer feature: automatic HTTPS via Let\'s Encrypt with zero configuration. No need to: install certbot, write cron jobs for renewal, configure SSL certificate paths, handle renewal failures. Caddy auto-obtains and renews TLS certificates. Caddyfile syntax is dramatically simpler than Nginx config — 10 lines vs 50 lines for the same setup. Caddy also handles HTTP/2 and HTTP/3 by default. Trade-offs: Nginx has wider ecosystem, better documented edge cases, more community examples, proven performance at extreme scale. For a VPS / small team / side project: Caddy wins on simplicity and zero-ops TLS.' },
+            { q: 'How does Docker Compose healthcheck + depends_on ensure database-ready startup?', a: 'Without healthcheck: depends_on: db just waits for the db CONTAINER to start — not for Postgres to be ready to accept connections. The Spring Boot app starts, tries to connect to Postgres, fails (pg is still initializing), and crashes. With healthcheck on db service: pg_isready -U user runs every 10s; Compose marks db as "healthy" only when it returns 0. depends_on with condition: service_healthy makes the app wait until db is truly ready before starting. This eliminates the startup race condition. Spring Boot then connects successfully on first attempt.' },
+            { q: 'What is the .env file pattern for Docker Compose secrets and what are its limitations?', a: 'Docker Compose automatically reads a .env file in the same directory and substitutes $VAR or \${VAR} in docker-compose.yml. Production workflow: .env is .gitignored, manually maintained on the VPS with chmod 600, contains DB passwords, JWT secrets, API keys. Limitations: .env is a plain text file on disk — if the server is compromised, all secrets are exposed. Better alternatives: Docker Swarm secrets (encrypted), Kubernetes Secrets (base64, mountable), cloud secret managers (AWS Secrets Manager, HashiCorp Vault) which inject secrets at runtime. For personal projects and small teams: .env + chmod 600 + disk encryption (most VPS providers offer) is acceptable. For enterprise: use a proper secret store.' }
+          ]
+        }
       ]
     },
 
     {
       id: '11.3',
       title: 'Spring Security, OAuth2 & Per-User Data Isolation',
-      hours: 5,
-      notes: `
-# Spring Security, OAuth2 & Per-User Data Isolation
+      hours: 4,
+      sections: [
+        {
+          title: 'Spring Security — JWT, OAuth2 & Multi-Tenant Isolation',
+          notes: `## Spring Security — JWT, OAuth2 & Multi-Tenant Isolation
 
-This module covers the full authentication and authorisation stack for a production Spring Boot application: the security filter chain, OAuth2/OIDC login (Google), role-based access control, and the patterns for keeping one user's data isolated from another's.
-
-## The Spring Security filter chain
-
-Every HTTP request passes through a chain of \`Filter\` implementations before reaching your controller. Spring Security inserts its own filters into this chain.
+### Spring Security Architecture
 
 \`\`\`
-Request
-  -> SecurityContextPersistenceFilter   (restore auth from session/token)
-  -> UsernamePasswordAuthenticationFilter (form login — if enabled)
-  -> OAuth2LoginAuthenticationFilter    (social login — if enabled)
-  -> BearerTokenAuthenticationFilter    (JWT — if enabled)
-  -> ExceptionTranslationFilter         (401/403 routing)
-  -> FilterSecurityInterceptor          (access decisions)
-  -> Your Controller
+Request → FilterChain → SecurityContextHolder → Controller
+
+Key filters (in order):
+  1. SecurityContextPersistenceFilter  — loads SecurityContext for request
+  2. UsernamePasswordAuthenticationFilter — handles form login
+  3. BearerTokenAuthenticationFilter  — handles JWT/Bearer token
+  4. ExceptionTranslationFilter        — converts AuthException → 401/403
+  5. FilterSecurityInterceptor          — enforces method/URL authorization
 \`\`\`
 
-Configuring security means customising this chain — adding filters, disabling defaults, configuring which paths need which roles.
+### JWT Authentication Flow
 
-## Configuring Spring Security 6 (Lambda DSL)
+\`\`\`
+1. Client: POST /auth/login {username, password}
+2. Server: authenticate, generate JWT:
+   Header: {"alg":"HS256","typ":"JWT"}
+   Payload: {"sub":"user@email.com","roles":["ROLE_USER"],"exp":1234567890}
+   Signature: HMAC-SHA256(base64(header) + "." + base64(payload), secret)
+3. Client: stores JWT (localStorage or httpOnly cookie)
+4. Client: every request → Authorization: Bearer <token>
+5. Server: validate signature + expiry → extract user from claims → SecurityContext
+
+JWT is stateless: server doesn't store sessions.
+Trade-off: can't revoke a JWT before expiry (use refresh tokens + short expiry)
+\`\`\`
+
+### Spring Security Configuration (Spring Boot 3.x)
 
 \`\`\`java
-@Configuration
-@EnableWebSecurity
+@Configuration @EnableWebSecurity @EnableMethodSecurity
 public class SecurityConfig {
+
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
+            .csrf(AbstractHttpConfigurer::disable)      // disable for stateless REST
+            .sessionManagement(s ->
+                s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health").permitAll()
-                .requestMatchers("/api/v1/**").hasAnyRole("USER", "ADMIN")
-                .requestMatchers("/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/auth/**", "/actuator/health").permitAll()
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
-            .oauth2Login(oauth2 -> oauth2
-                .userInfoEndpoint(ui -> ui.userService(customOAuth2UserService()))
-                .defaultSuccessUrl("/dashboard", true)
-            )
-            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
-            .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**")) // REST API: stateless
+            .addFilterBefore(jwtAuthFilter(), UsernamePasswordAuthenticationFilter.class)
             .build();
     }
+
+    @Bean
+    public JwtAuthenticationFilter jwtAuthFilter() {
+        return new JwtAuthenticationFilter(jwtService, userDetailsService);
+    }
 }
 \`\`\`
 
-## Google OAuth2 login (most common in EU startups)
-
-Spring Boot makes this almost config-only:
-
-\`\`\`yaml
-spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: \${GOOGLE_CLIENT_ID}
-            client-secret: \${GOOGLE_CLIENT_SECRET}
-            scope: openid, email, profile
-\`\`\`
-
-Flow: user clicks "Login with Google" → redirect to Google → user authenticates → Google redirects back with a code → Spring exchanges code for tokens → loads user info → creates/updates your User entity → sets SecurityContext.
-
-> [!TIP]
-> Implement a \`OAuth2UserService\` to map the Google user (by email) to your own \`AppUser\` entity on first login, and to refresh their name/picture on subsequent logins. Store roles in your DB, not in the OAuth token — you control who is an ADMIN.
-
-## JWT for stateless APIs
-
-Session-based auth doesn't work for mobile clients or microservices. JWT (JSON Web Token) embeds claims in a signed token:
-
-- **Header**: algorithm (HS256/RS256)
-- **Payload**: \`sub\` (user id), \`roles\`, \`exp\` (expiry)
-- **Signature**: HMAC or RSA signature
-
-The server verifies the signature on every request — no session lookup needed. The token is stateless; invalidation requires short expiry + a refresh token.
-
-> [!WARNING]
-> JWTs cannot be revoked before expiry (unlike sessions). Use short expiry (15 min access token + longer refresh token). Never put sensitive data in the payload — it's Base64-encoded, not encrypted. Use HTTPS — a stolen JWT is a stolen identity.
-
-## Per-user data isolation
-
-In a multi-tenant application, every DB query must be scoped to the current user. The common patterns:
-
-### Pattern 1: Repository-level filtering (safest)
-\`\`\`java
-// Every query includes userId — impossible to forget if you use this as the only repository method
-public interface JournalRepository extends JpaRepository<TradeJournal, Long> {
-    List<TradeJournal> findByUserId(Long userId);
-    Optional<TradeJournal> findByIdAndUserId(Long id, Long userId); // ownership check built in
-}
-
-// Service: never expose findById without ownership check
-public TradeJournal getForCurrentUser(Long tradeId) {
-    Long userId = SecurityUtils.currentUserId();
-    return repo.findByIdAndUserId(tradeId, userId)
-        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-}
-\`\`\`
-
-### Pattern 2: @PostFilter / @PreFilter (Spring Security)
-Annotation-driven but can leak N+1 queries — not recommended for large datasets.
-
-### Pattern 3: Hibernate multi-tenancy (for stricter isolation)
-Separate schemas or databases per tenant. More complex, but appropriate for compliance-heavy applications (GDPR, finance).
-
-> [!WARNING]
-> **Insecure direct object reference (IDOR)** — the OWASP #1 access-control vulnerability: \`GET /api/trades/42\` where 42 is another user's trade. Always check ownership in the repository query, not just "is the user authenticated." \`findByIdAndUserId\` not \`findById\` is the pattern.
-
-## Role-based access control (RBAC)
+### Google OAuth2 Flow
 
 \`\`\`
-ADMIN  → everything
-USER   → own data + trading
-VIEWER → own data, read-only (no trading)
+1. User clicks "Sign in with Google"
+2. Browser → GET /oauth2/authorization/google (Spring redirects to Google)
+3. Google → user consents → redirect to /login/oauth2/code/google?code=XXX
+4. Spring → exchanges code for access token (server-to-server call to Google)
+5. Spring → fetches user info (email, name) from Google
+6. OAuth2UserService: look up or create user in DB
+7. Generate JWT, return to client
+
+Spring Boot config:
+spring.security.oauth2.client.registration.google:
+  client-id: \${GOOGLE_CLIENT_ID}
+  client-secret: \${GOOGLE_CLIENT_SECRET}
+  scope: [openid, email, profile]
+  redirect-uri: https://myapp.com/login/oauth2/code/google
 \`\`\`
 
-Implement with Spring Security method security:
+### Per-User Data Isolation Patterns
 
 \`\`\`java
-@EnableMethodSecurity
+// Row-Level Security (RLS) — enforce at query level
+// Every query automatically scoped to current user
+
+@Repository
+public interface OrderRepository extends JpaRepository<Order, Long> {
+    // Always filter by userId — no way to accidentally fetch all users' orders
+    List<Order> findByUserId(Long userId);
+
+    @Query("SELECT o FROM Order o WHERE o.userId = :userId AND o.id = :id")
+    Optional<Order> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
+}
+
+// Service layer: always pass userId from SecurityContext
 @Service
-public class TradingService {
-    @PreAuthorize("hasRole('USER') and not hasRole('VIEWER')")
-    public void placeOrder(OrderRequest req) { ... }
+public class OrderService {
+    private Long currentUserId() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        return ((UserPrincipal) auth.getPrincipal()).getUserId();
+    }
 
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'VIEWER')")
-    public List<Trade> getMyTrades() { ... }
+    public Order getOrder(Long orderId) {
+        Long userId = currentUserId();
+        return orderRepo.findByIdAndUserId(orderId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderId));
+        // 404 not 403 — don't reveal existence of resources to other users
+    }
 }
+
+// PostgreSQL RLS (database-level enforcement):
+// CREATE POLICY user_isolation ON orders
+//   USING (user_id = current_setting('app.current_user_id')::bigint);
+// ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+// → Even a broken query can't return another user's data
 \`\`\`
 
-> [!EU]
-> EU GDPR requires knowing **who accessed whose data**. Log authenticated user id on every sensitive operation. Store userId in MDC (Mapped Diagnostic Context) at the filter layer so it appears in every log line — this is your audit trail. This is both a legal requirement and an interviewer-pleasing operational maturity signal.
-`,
-      code: [
-        {
-          lang: 'java',
-          title: 'OAuth2 user service: map Google login to your AppUser',
-          code: `import java.util.*;
+### Method-Level Security
 
-// In a real Spring Boot app, this is a @Service implementing OAuth2UserService<OidcUserRequest, OidcUser>
-// Here we model the essential logic without the Spring dependencies.
-public class OAuth2UserServiceDemo {
+\`\`\`java
+// @EnableMethodSecurity required in SecurityConfig
 
-    // Your domain entity
-    static class AppUser {
-        Long id; String email; String name; String role; String googleSub;
-        AppUser(Long id, String email, String name, String role, String googleSub) {
-            this.id=id; this.email=email; this.name=name;
-            this.role=role; this.googleSub=googleSub;
-        }
-        @Override public String toString() {
-            return "AppUser{id=" + id + ", email=" + email + ", role=" + role + "}";
+@Service
+public class AdminService {
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<User> getAllUsers() { ... }
+
+    @PostAuthorize("returnObject.userId == authentication.principal.userId or hasRole('ADMIN')")
+    public UserProfile getUserProfile(Long userId) { ... }
+
+    @PreAuthorize("#userId == authentication.principal.userId or hasRole('ADMIN')")
+    public void deleteUser(Long userId) { ... }
+}
+\`\`\``,
+          code: [
+            `import io.jsonwebtoken.*;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.security.core.*;
+import org.springframework.security.authentication.*;
+import org.springframework.web.filter.OncePerRequestFilter;
+import jakarta.servlet.http.*;
+import java.security.Key;
+import java.util.*;
+
+// JWT Service
+public class JwtService {
+    private final Key key;
+    private final long expirationMs;
+
+    public JwtService(String secret, long expirationMs) {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+        this.expirationMs = expirationMs;
+    }
+
+    public String generateToken(String email, List<String> roles) {
+        return Jwts.builder()
+            .subject(email)
+            .claim("roles", roles)
+            .issuedAt(new Date())
+            .expiration(new Date(System.currentTimeMillis() + expirationMs))
+            .signWith(key)
+            .compact();
+    }
+
+    public Claims extractClaims(String token) {
+        return Jwts.parser()
+            .verifyWith((javax.crypto.SecretKey) key)
+            .build()
+            .parseSignedClaims(token)
+            .getPayload();
+    }
+
+    public boolean isValid(String token) {
+        try {
+            extractClaims(token);
+            return true;
+        } catch (JwtException e) {
+            return false;
         }
     }
 
-    // Simulated DB
-    static final Map<String, AppUser> userDb = new LinkedHashMap<>();
-    static long idSeq = 1;
+    public String extractEmail(String token) { return extractClaims(token).getSubject(); }
+}
 
-    // The Google OIDC attributes we care about
-    record GoogleClaims(String sub, String email, String name, String picture) {}
+// JWT Filter — runs on every request
+class JwtAuthenticationFilter extends OncePerRequestFilter {
+    private final JwtService jwtService;
+    private final org.springframework.security.core.userdetails.UserDetailsService uds;
 
-    // This is the core logic of a custom OidcUserService:
-    // Called after Google authenticates the user and returns their claims.
-    static AppUser loadOrCreateUser(GoogleClaims claims, String adminEmail) {
-        // Try to find by Google's sub (stable unique ID — email can change!)
-        AppUser existing = userDb.values().stream()
-            .filter(u -> claims.sub().equals(u.googleSub))
-            .findFirst().orElse(null);
-
-        if (existing != null) {
-            // Refresh name (user might have changed it on Google)
-            existing.name = claims.name();
-            System.out.println("Returning user updated: " + existing);
-            return existing;
-        }
-
-        // First login: create account
-        // ADMIN role if email matches the configured admin; everyone else starts as VIEWER
-        String role = claims.email().equalsIgnoreCase(adminEmail) ? "ADMIN" : "VIEWER";
-        AppUser newUser = new AppUser(idSeq++, claims.email(), claims.name(), role, claims.sub());
-        userDb.put(claims.email(), newUser);
-        System.out.println("New user created: " + newUser);
-        return newUser;
+    JwtAuthenticationFilter(JwtService js,
+            org.springframework.security.core.userdetails.UserDetailsService uds) {
+        this.jwtService = js;
+        this.uds = uds;
     }
 
-    public static void main(String[] args) {
-        String adminEmail = "admin@example.com";
+    @Override
+    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res,
+            jakarta.servlet.FilterChain chain) throws Exception {
+        String header = req.getHeader("Authorization");
+        if (header == null || !header.startsWith("Bearer ")) {
+            chain.doFilter(req, res);
+            return;
+        }
 
-        // First login by admin
-        loadOrCreateUser(new GoogleClaims("google-sub-111", "admin@example.com", "Raja Admin", "photo1"), adminEmail);
-        // First login by regular user
-        loadOrCreateUser(new GoogleClaims("google-sub-222", "user@example.com", "John Doe", "photo2"), adminEmail);
-        // Second login by admin (returns existing, updates name)
-        loadOrCreateUser(new GoogleClaims("google-sub-111", "admin@example.com", "Raja S", "photo1"), adminEmail);
+        String token = header.substring(7);
+        if (!jwtService.isValid(token)) {
+            chain.doFilter(req, res);
+            return;
+        }
 
-        System.out.println("\\nAll users: " + userDb.values());
-        System.out.println("\\nKey point: role is stored in YOUR DB, not in the Google token.");
-        System.out.println("An ADMIN can elevate any user via the admin panel.");
+        String email = jwtService.extractEmail(token);
+        var userDetails = uds.loadUserByUsername(email);
+        var auth = new UsernamePasswordAuthenticationToken(
+            userDetails, null, userDetails.getAuthorities());
+        auth.setDetails(new org.springframework.security.web.authentication
+            .WebAuthenticationDetailsSource().buildDetails(req));
+        org.springframework.security.core.context.SecurityContextHolder
+            .getContext().setAuthentication(auth);
+
+        chain.doFilter(req, res);
+    }
+}`,
+            `import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.*;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.*;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.context.annotation.Bean;
+
+// Complete Spring Security config for JWT + OAuth2 hybrid
+@EnableWebSecurity
+@org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
+@org.springframework.context.annotation.Configuration
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+            JwtAuthenticationFilter jwtFilter) throws Exception {
+        return http
+            // Stateless REST — no CSRF needed, no sessions
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+            // URL authorization
+            .authorizeHttpRequests(auth -> auth
+                // Public
+                .requestMatchers("/api/auth/**",
+                                 "/actuator/health", "/actuator/info",
+                                 "/oauth2/**", "/login/**").permitAll()
+                // Admin only
+                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                // Any authenticated user
+                .anyRequest().authenticated()
+            )
+
+            // JWT filter before Spring's auth filter
+            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+
+            // OAuth2 login (Google)
+            .oauth2Login(oauth2 -> oauth2
+                .userInfoEndpoint(u -> u.userService(customOAuth2UserService()))
+                .successHandler(oAuth2SuccessHandler())  // generates JWT after Google login
+            )
+
+            // Custom 401/403 responses (JSON, not redirect)
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((req, res, e) -> {
+                    res.setStatus(401);
+                    res.setContentType("application/json");
+                    res.getWriter().write("{\"error\":\"Unauthorized\"}");
+                })
+                .accessDeniedHandler((req, res, e) -> {
+                    res.setStatus(403);
+                    res.setContentType("application/json");
+                    res.getWriter().write("{\"error\":\"Forbidden\"}");
+                })
+            )
+            .build();
+    }
+
+    private org.springframework.security.oauth2.client.userinfo.OAuth2UserService<
+        org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest,
+        org.springframework.security.oauth2.core.user.OAuth2User> customOAuth2UserService() {
+        return new org.springframework.security.oauth2.client.userinfo
+            .DefaultOAuth2UserService(); // override to save user to DB
+    }
+
+    private org.springframework.security.web.authentication.AuthenticationSuccessHandler
+            oAuth2SuccessHandler() {
+        return (req, res, auth) -> {
+            // Extract email from OAuth2 principal, generate JWT, redirect to UI
+            res.sendRedirect("/v2/?token=<jwt>");
+        };
     }
 }`
-        },
-        {
-          lang: 'java',
-          title: 'Per-user data isolation: IDOR prevention pattern',
-          code: `import java.util.*;
-import java.util.stream.Collectors;
-
-// Demonstrates the correct pattern for preventing Insecure Direct Object Reference (IDOR)
-// OWASP Top 10 A01: Broken Access Control
-public class PerUserIsolationDemo {
-
-    record Trade(Long id, Long userId, String symbol, String status) {}
-
-    // Simulates the trade_journal table
-    static final List<Trade> trades = List.of(
-        new Trade(1L, 100L, "NIFTY24C20000", "OPEN"),
-        new Trade(2L, 100L, "BANKNIFTY", "CLOSED"),
-        new Trade(3L, 200L, "SENSEX", "OPEN"),   // belongs to user 200
-        new Trade(4L, 200L, "NIFTY", "OPEN")
-    );
-
-    // ❌ VULNERABLE: no ownership check — user 100 can access user 200's trade!
-    static Trade getTradeVulnerable(Long tradeId) {
-        return trades.stream().filter(t -> t.id().equals(tradeId)).findFirst()
-                     .orElseThrow(() -> new RuntimeException("not found"));
-    }
-
-    // ✅ SAFE: always filter by BOTH id AND userId — this is the repository pattern
-    static Optional<Trade> getTradeForUser(Long tradeId, Long currentUserId) {
-        return trades.stream()
-                     .filter(t -> t.id().equals(tradeId) && t.userId().equals(currentUserId))
-                     .findFirst();
-    }
-
-    // ✅ SAFE: list only returns the current user's trades
-    static List<Trade> getOpenTradesForUser(Long currentUserId) {
-        return trades.stream()
-                     .filter(t -> t.userId().equals(currentUserId) && "OPEN".equals(t.status()))
-                     .collect(Collectors.toList());
-    }
-
-    // Security audit helper: log who accessed what
-    static void auditLog(Long currentUserId, String action, Long resourceId, boolean success) {
-        System.out.printf("[AUDIT] user=%d action=%s resource=%d success=%s%n",
-                          currentUserId, action, resourceId, success);
-    }
-
-    public static void main(String[] args) {
-        Long attacker = 100L;   // authenticated as user 100
-        Long victim   = 200L;   // user 100 is trying to access user 200's trade
-
-        System.out.println("=== VULNERABLE endpoint ===");
-        // User 100 requests trade #3 (belongs to user 200) — gets it! IDOR!
-        Trade stolen = getTradeVulnerable(3L);
-        System.out.println("IDOR: attacker got " + stolen);
-
-        System.out.println("\n=== SAFE endpoint ===");
-        // Same request through safe endpoint — returns empty
-        Optional<Trade> result = getTradeForUser(3L, attacker);
-        boolean allowed = result.isPresent();
-        auditLog(attacker, "GET_TRADE", 3L, allowed);
-        System.out.println("Safe result for user " + attacker + " requesting trade 3: "
-                           + result.map(Object::toString).orElse("NOT FOUND (correct!)"));
-
-        System.out.println("\n=== User 100's own trades ===");
-        getOpenTradesForUser(attacker).forEach(t ->
-            System.out.println("  " + t + " (belongs to them)"));
-    }
-}`
-        },
-        {
-          lang: 'java',
-          title: 'JWT: creation, signing, and verification',
-          code: `import java.util.*;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-
-// JWT concept demo (no external library — educational implementation).
-// In production use: io.jsonwebtoken:jjwt or com.auth0:java-jwt
-public class JwtConceptDemo {
-
-    // A JWT has three Base64URL-encoded parts: header.payload.signature
-    static String base64UrlEncode(String input) {
-        return Base64.getUrlEncoder().withoutPadding()
-                     .encodeToString(input.getBytes(StandardCharsets.UTF_8));
-    }
-
-    static String hmacSha256(String data, String secret) throws Exception {
-        // Simplified HMAC — real code uses javax.crypto.Mac
-        byte[] key  = secret.getBytes(StandardCharsets.UTF_8);
-        byte[] dataBytes = data.getBytes(StandardCharsets.UTF_8);
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        // In reality: javax.crypto.Mac.getInstance("HmacSHA256"), mac.init(SecretKeySpec), mac.doFinal()
-        byte[] hash = md.digest(data.getBytes(StandardCharsets.UTF_8)); // simplified (not real HMAC)
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
-    }
-
-    static String createToken(long userId, String email, String role, long expiryMs, String secret) throws Exception {
-        String header  = base64UrlEncode("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
-        long   expEpoch = (System.currentTimeMillis() + expiryMs) / 1000;
-        String payload = base64UrlEncode(String.format(
-            "{\"sub\":\"%d\",\"email\":\"%s\",\"role\":\"%s\",\"exp\":%d}",
-            userId, email, role, expEpoch));
-        String signingInput = header + "." + payload;
-        String signature = hmacSha256(signingInput, secret);
-        return signingInput + "." + signature;
-    }
-
-    static Map<String, String> parsePayload(String token) {
-        String[] parts = token.split("\\.");
-        if (parts.length != 3) throw new IllegalArgumentException("invalid token");
-        String payload = new String(Base64.getUrlDecoder().decode(parts[1]));
-        // Simplified parse — real code uses ObjectMapper
-        Map<String, String> claims = new LinkedHashMap<>();
-        payload = payload.replaceAll("[{}\"]", "");
-        for (String kv : payload.split(",")) {
-            String[] pair = kv.split(":");
-            if (pair.length == 2) claims.put(pair[0].trim(), pair[1].trim());
+          ],
+          flashcards: [
+            { q: 'What is the difference between authentication and authorization in Spring Security?', a: 'Authentication: verifying WHO you are — "is this user who they claim to be?" Spring Security handles this via AuthenticationManager, supporting: username/password (UserDetailsService), JWT (BearerTokenAuthenticationFilter), OAuth2 (social login). Result: a populated SecurityContext with an Authentication object. Authorization: verifying WHAT you\'re allowed to do — "can this authenticated user access this resource?" Spring enforces this via: URL patterns (authorizeHttpRequests), method annotations (@PreAuthorize), domain object security (@PostAuthorize). 401 = not authenticated. 403 = authenticated but not authorized.' },
+            { q: 'What are the security trade-offs of JWT vs server-side sessions?', a: 'JWT (stateless): server stores nothing — scales horizontally easily, no shared session store needed. Trade-off: can\'t revoke a JWT before expiry. If a JWT is stolen or user is banned, the token remains valid until expiry. Mitigation: short expiry (15-60 min) + refresh tokens stored in DB (can be revoked). Server-side sessions (stateful): server stores session in DB/Redis — can revoke instantly (delete session), but requires sticky sessions or shared session store in multi-node deployments. For most APIs: JWT with short expiry + refresh token rotation is the right choice. For high-security (banking): server-side sessions or short JWT + refresh token revocation list.' },
+            { q: 'How do you implement per-user data isolation in a multi-tenant Spring Boot app?', a: 'Three layers of defense: (1) Query-level: always filter by userId in repository methods — findByIdAndUserId() not findById(). Inject current user from SecurityContextHolder, never trust userId from request body. (2) Service-level: extract userId from SecurityContext in service methods. Return 404 (not 403) if a user tries to access another user\'s resource — don\'t reveal existence. (3) Database-level (optional): PostgreSQL Row Level Security (RLS) — CREATE POLICY on tables that automatically filters by current_setting(\'app.user_id\'). Even a flawed query can\'t leak cross-tenant data. Method security (@PreAuthorize) provides a fourth layer for admin operations.' }
+          ]
         }
-        return claims;
-    }
-
-    public static void main(String[] args) throws Exception {
-        String secret = "my-super-secret-key-min-256-bits-for-hs256-security";
-
-        // 1. Issue a token on login
-        String token = createToken(42L, "user@example.com", "USER", 900_000 /*15min*/, secret);
-        System.out.println("Token: " + token.substring(0, 60) + "...");
-
-        // 2. Parse and verify on every request (BearerTokenFilter does this)
-        Map<String, String> claims = parsePayload(token);
-        System.out.println("Claims: " + claims);
-        System.out.println("User id: " + claims.get("sub"));
-        System.out.println("Role: "    + claims.get("role"));
-
-        // Key points about JWT in production:
-        System.out.println("\nProduction rules:");
-        System.out.println("  - Access token: 15min expiry (short! can't revoke before expiry)");
-        System.out.println("  - Refresh token: 7-30 days, stored in DB (can be revoked)");
-        System.out.println("  - Never put passwords or PII in payload (it's BASE64, not encrypted)");
-        System.out.println("  - Always use HTTPS — a stolen token = stolen identity until expiry");
-        System.out.println("  - Use RS256 (asymmetric) when multiple services verify tokens");
-        System.out.println("    (they need the public key only, not the secret)");
-    }
-}`
-        }
-      ],
-      flashcards: [
-        { q: 'What is the Spring Security filter chain and what is its role?', a: 'A chain of Filter implementations through which every HTTP request passes before reaching a controller. Spring Security inserts filters for authentication (OAuth2, JWT, form-login), authorization, exception translation (401/403), and session management. Configuring security means customising this chain.' },
-        { q: 'Why store roles in your own database rather than in the OAuth2 token?', a: 'The OAuth2 token contains identity (email, name) from the provider, but your application defines what roles/permissions that identity has. Storing roles in your DB lets you change a user\'s role without re-authenticating them and keeps authorisation decisions under your control.' },
-        { q: 'What is an IDOR vulnerability and how do you prevent it?', a: 'Insecure Direct Object Reference: accessing another user\'s resource by guessing its ID (e.g. GET /trades/3 where 3 belongs to another user). Prevent it by always querying with BOTH the resource ID AND the authenticated user\'s ID in the WHERE clause — findByIdAndUserId not findById.' },
-        { q: 'What are the trade-offs of JWT vs session-based auth?', a: 'JWT: stateless (no server-side lookup), scales horizontally, works for mobile/API clients — but cannot be revoked before expiry. Sessions: can be revoked instantly (delete the session), but require server-side storage and sticky sessions or a shared session store (Redis).' },
-        { q: 'How does Spring\'s @PreAuthorize prevent access-control bugs?', a: '@PreAuthorize checks the authenticated user\'s roles/authorities before the method executes. Combined with @EnableMethodSecurity it moves authorisation rules to the service layer rather than controllers, so authorisation is enforced even when called from jobs or other services.' },
-        { q: 'Why use findByEmailOrSub (stable Google ID) rather than findByEmail to look up users?', a: 'Google\'s "sub" (subject) claim is a stable unique identifier that never changes for a user. Email can change (user renames their account). If you look up only by email and the user changes their email, they\'d get a new account and lose their data.' },
-        { q: 'What is a short-lived access token + refresh token pattern and why use it?', a: 'Access token expires in 15 minutes (limits damage if stolen — theft window is short). Refresh token lives 7-30 days, stored in DB, and can be revoked. The client exchanges the refresh token for a new access token silently. This balances security with user experience.' },
-        { q: 'How do you implement a GDPR-compliant audit log for data access?', a: 'Store the authenticated user\'s ID in MDC (Mapped Diagnostic Context) at the filter layer so it appears on every log line. Log authenticated userId, action (READ/WRITE/DELETE), resource type, resource ID, and timestamp for every sensitive operation. This trace is your GDPR data-access audit trail.' }
       ]
-    }
+    },
+
   ]
 },
 ];
