@@ -9678,9 +9678,1001 @@ public class DateTimePatterns {
       id: '0.12',
       title: 'JDBC — Connections, PreparedStatement, Transactions',
       hours: 3,
-      notes: `*[Module 0.12 — under construction. Will cover: Connection, Statement, PreparedStatement, ResultSet, transactions, connection pools. Roadmap: build after 0.11.]*`
-    },
+      sections: [
+        {
+          title: 'JDBC Fundamentals — Connections, Statements, ResultSet',
+          notes: `## JDBC Fundamentals — Connections, Statements, ResultSet
 
+JDBC (Java Database Connectivity) is the standard Java API for relational database access. It provides a vendor-neutral abstraction: you write to the JDBC API; the driver vendor (MySQL, PostgreSQL, H2, etc.) provides the implementation.
+
+### The JDBC Stack
+
+\`\`\`mermaid
+graph TD
+    APP[Your Java Code\nJDBC API calls]
+    APP --> DM[DriverManager\nor DataSource]
+    DM --> DR[JDBC Driver\nPostgreSQL / MySQL / H2]
+    DR --> DB[(Database)]
+    style APP fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style DR fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style DB fill:#1e0a0a,stroke:#ef4444,color:#fecaca
+\`\`\`
+
+### Getting a Connection
+
+\`\`\`java
+// DriverManager — fine for scripts, tests; NOT for production (no pooling)
+String url  = "jdbc:postgresql://localhost:5432/mydb";
+String user = "appuser";
+String pass = "secret";
+
+try (Connection conn = DriverManager.getConnection(url, user, pass)) {
+    System.out.println("Connected: " + conn.getMetaData().getDatabaseProductName());
+} // connection auto-closed (try-with-resources)
+\`\`\`
+
+> In production always use a **DataSource** (connection pool) — HikariCP, c3p0, or Spring's DataSource. Direct DriverManager connections have no pooling, no health checks, and create a new physical TCP connection on every call.
+
+### Statement — Simple Queries (No Parameters)
+
+\`\`\`java
+try (Connection conn = DriverManager.getConnection(url, user, pass);
+     Statement stmt = conn.createStatement()) {
+
+    // DDL
+    stmt.execute("CREATE TABLE IF NOT EXISTS orders (id INT PRIMARY KEY, item VARCHAR(100), qty INT)");
+
+    // DML — returns rows affected
+    int rows = stmt.executeUpdate("INSERT INTO orders VALUES (1, 'Widget', 5)");
+
+    // Query — returns ResultSet
+    ResultSet rs = stmt.executeQuery("SELECT id, item, qty FROM orders");
+    while (rs.next()) {
+        int  id  = rs.getInt("id");
+        String item = rs.getString("item");
+        int  qty = rs.getInt("qty");
+        System.out.printf("  %d | %-10s | %d%n", id, item, qty);
+    }
+}
+\`\`\`
+
+**Never use Statement with user-supplied values** — it is vulnerable to SQL injection. Always use PreparedStatement for parameterised queries.
+
+### ResultSet Navigation
+
+\`\`\`java
+ResultSet rs = stmt.executeQuery("SELECT id, name, created_at FROM users");
+while (rs.next()) {  // cursor starts BEFORE first row
+    int    id   = rs.getInt(1);          // by column index (1-based)
+    String name = rs.getString("name");  // by column name (preferred — resistant to query changes)
+    Timestamp ts = rs.getTimestamp("created_at");
+    LocalDateTime ldt = ts.toLocalDateTime(); // convert to java.time
+
+    // Null check — rs.getInt returns 0 for SQL NULL (misleading!)
+    int nullable = rs.getInt("optional_col");
+    boolean wasNull = rs.wasNull(); // must check AFTER getXxx()
+}
+\`\`\`
+
+**Column index vs column name:** use column names — they survive column reordering and make the code self-documenting.
+
+### Key JDBC Interfaces
+
+| Interface | Purpose |
+|---|---|
+| \`Connection\` | Represents one DB connection; manages transactions |
+| \`Statement\` | Executes static SQL (no parameters) |
+| \`PreparedStatement\` | Executes pre-compiled SQL with parameters (preferred) |
+| \`CallableStatement\` | Calls stored procedures |
+| \`ResultSet\` | Cursor into a query result |
+| \`DataSource\` | Factory for connections, typically pooled |
+
+### Resource Management — try-with-resources
+
+JDBC resources (\`Connection\`, \`Statement\`, \`ResultSet\`) implement \`AutoCloseable\`. Always use try-with-resources to guarantee they are closed even when exceptions occur:
+
+\`\`\`java
+// Correct — all three auto-closed in reverse order (rs, stmt, conn)
+try (Connection conn = ds.getConnection();
+     PreparedStatement ps = conn.prepareStatement("SELECT * FROM users WHERE id = ?");
+     ResultSet rs = (ps.setInt(1, userId), ps.executeQuery())) {
+    if (rs.next()) { /* process */ }
+}
+// After the block: rs closed, then ps closed, then conn returned to pool
+\`\`\``,
+          code: [
+            `import java.sql.*;
+
+// H2 in-memory database — runnable without a real DB
+public class JdbcBasicsDemo {
+    static final String URL  = "jdbc:h2:mem:demo;DB_CLOSE_DELAY=-1";
+    static final String USER = "sa";
+    static final String PASS = "";
+
+    public static void main(String[] args) throws SQLException {
+        // Setup schema and data
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
+             Statement stmt = conn.createStatement()) {
+
+            stmt.execute("""
+                CREATE TABLE products (
+                  id   INT PRIMARY KEY,
+                  name VARCHAR(100) NOT NULL,
+                  price DECIMAL(10,2),
+                  stock INT DEFAULT 0
+                )""");
+
+            stmt.execute("INSERT INTO products VALUES (1,'Widget',9.99,50)");
+            stmt.execute("INSERT INTO products VALUES (2,'Gadget',29.99,5)");
+            stmt.execute("INSERT INTO products VALUES (3,'Doohickey',4.99,200)");
+            System.out.println("Schema created, 3 products inserted.");
+        }
+
+        // Query with ResultSet
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
+             Statement stmt = conn.createStatement();
+             ResultSet rs   = stmt.executeQuery(
+                 "SELECT id, name, price, stock FROM products ORDER BY price")) {
+
+            System.out.printf("%n%-5s %-15s %8s %6s%n", "ID", "Name", "Price", "Stock");
+            System.out.println("-".repeat(40));
+            while (rs.next()) {
+                System.out.printf("%-5d %-15s %8.2f %6d%n",
+                    rs.getInt("id"),
+                    rs.getString("name"),
+                    rs.getDouble("price"),
+                    rs.getInt("stock"));
+            }
+        }
+
+        // ResultSet metadata
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
+             Statement stmt = conn.createStatement();
+             ResultSet rs   = stmt.executeQuery("SELECT * FROM products LIMIT 1")) {
+            ResultSetMetaData md = rs.getMetaData();
+            System.out.println("\nColumn metadata:");
+            for (int i = 1; i <= md.getColumnCount(); i++) {
+                System.out.printf("  %s (%s)%n", md.getColumnName(i), md.getColumnTypeName(i));
+            }
+        }
+    }
+}`,
+            `import java.sql.*;
+import java.util.*;
+
+// Batch inserts + ResultSet navigation
+public class JdbcBatchDemo {
+    static final String URL = "jdbc:h2:mem:batchdemo;DB_CLOSE_DELAY=-1";
+
+    record Order(int id, String item, int qty, double price) {}
+
+    public static void main(String[] args) throws SQLException {
+        try (Connection conn = DriverManager.getConnection(URL, "sa", "")) {
+            conn.createStatement().execute(
+                "CREATE TABLE orders (id INT PRIMARY KEY, item VARCHAR(100), qty INT, price DECIMAL(10,2))");
+
+            // Batch insert — single round-trip for many rows
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO orders VALUES (?,?,?,?)")) {
+                for (int i = 1; i <= 5; i++) {
+                    ps.setInt(1, i);
+                    ps.setString(2, "Item-" + i);
+                    ps.setInt(3, i * 10);
+                    ps.setDouble(4, i * 5.99);
+                    ps.addBatch();
+                }
+                int[] counts = ps.executeBatch();
+                System.out.println("Batch inserted: " + counts.length + " rows");
+            }
+
+            // Query and map to records
+            List<Order> orders = new ArrayList<>();
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(
+                     "SELECT * FROM orders WHERE qty > 20 ORDER BY price DESC")) {
+                while (rs.next()) {
+                    orders.add(new Order(
+                        rs.getInt("id"), rs.getString("item"),
+                        rs.getInt("qty"), rs.getDouble("price")));
+                }
+            }
+            System.out.println("\nOrders with qty > 20:");
+            orders.forEach(o -> System.out.printf(
+                "  #%d %-10s qty=%-3d $%.2f%n", o.id(), o.item(), o.qty(), o.price()));
+        }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the JDBC URL format and what does each part mean?', a: 'jdbc:<subprotocol>://<host>:<port>/<database>. Example: jdbc:postgresql://localhost:5432/mydb. The subprotocol identifies the driver (postgresql, mysql, h2, oracle:thin). The driver must be on the classpath — modern JDBC 4.0+ drivers auto-register via ServiceLoader, so Class.forName() is no longer needed.' },
+            { q: 'Why is DriverManager.getConnection() not suitable for production?', a: 'DriverManager creates a new physical TCP connection on every call — expensive (100ms+). Production apps need a DataSource connection pool (HikariCP is standard). Pools maintain a warm set of connections, validate them, handle reconnection, and return connections to the pool on close rather than actually closing them.' },
+            { q: 'How do you check for SQL NULL in a ResultSet?', a: 'rs.getInt("col") returns 0 for NULL — indistinguishable from an actual 0. After any getXxx() call, check rs.wasNull() to know if the last column read was NULL. Alternatively use rs.getObject("col") which returns null for SQL NULL. For nullable columns, map to Integer/Double (boxed types) to use null directly.' },
+            { q: 'What does rs.next() return and where does the cursor start?', a: 'The ResultSet cursor starts before the first row. rs.next() advances the cursor one row and returns true if there is a row, false when past the last row. For a single expected row: if (rs.next()) { /* process */ } else { /* not found */ }. Never call get methods before the first rs.next().' },
+            { q: 'What is the difference between Statement.execute(), executeUpdate(), and executeQuery()?', a: 'executeQuery(sql) — for SELECT; returns ResultSet; throws if SQL produces no ResultSet. executeUpdate(sql) — for INSERT/UPDATE/DELETE/DDL; returns int (rows affected for DML, 0 for DDL). execute(sql) — generic; returns boolean (true = ResultSet, false = update count); use for dynamic SQL where you don\'t know the type.' }
+          ]
+        },
+        {
+          title: 'PreparedStatement & SQL Injection Prevention',
+          notes: `## PreparedStatement & SQL Injection Prevention
+
+\`PreparedStatement\` is the cornerstone of safe JDBC. It pre-compiles the SQL on the database, uses bind parameters (\`?\` placeholders), and separates code from data — making SQL injection structurally impossible.
+
+### How SQL Injection Works
+
+\`\`\`java
+// NEVER DO THIS
+String username = request.getParameter("username"); // attacker inputs: ' OR '1'='1
+String sql = "SELECT * FROM users WHERE name = '" + username + "'";
+// Resulting SQL: SELECT * FROM users WHERE name = '' OR '1'='1'
+// Returns ALL rows — complete bypass of authentication
+\`\`\`
+
+### PreparedStatement — The Safe Way
+
+\`\`\`java
+String sql = "SELECT * FROM users WHERE name = ? AND active = ?";
+try (PreparedStatement ps = conn.prepareStatement(sql)) {
+    ps.setString(1, username);   // parameter 1 (1-based)
+    ps.setBoolean(2, true);      // parameter 2
+    try (ResultSet rs = ps.executeQuery()) {
+        while (rs.next()) { /* process safely */ }
+    }
+}
+// Even if username = "' OR '1'='1", it is treated as a literal string value
+// The DB sees: WHERE name = ''' OR ''1''=''1' — no injection possible
+\`\`\`
+
+### Setting Parameters — Type Methods
+
+\`\`\`java
+ps.setInt(1, 42);
+ps.setLong(1, 1234567890L);
+ps.setDouble(1, 9.99);
+ps.setString(1, "text");
+ps.setBoolean(1, true);
+ps.setDate(1, java.sql.Date.valueOf(LocalDate.now()));
+ps.setTimestamp(1, Timestamp.valueOf(LocalDateTime.now()));
+ps.setNull(1, Types.VARCHAR);       // explicit NULL
+ps.setObject(1, someValue);         // let JDBC infer type
+\`\`\`
+
+### INSERT, UPDATE, DELETE with PreparedStatement
+
+\`\`\`java
+// INSERT — with generated key retrieval
+String insert = "INSERT INTO orders (item, qty, price) VALUES (?,?,?)";
+try (PreparedStatement ps = conn.prepareStatement(insert, Statement.RETURN_GENERATED_KEYS)) {
+    ps.setString(1, "Widget");
+    ps.setInt(2, 5);
+    ps.setDouble(3, 49.95);
+    ps.executeUpdate();
+    try (ResultSet keys = ps.getGeneratedKeys()) {
+        if (keys.next()) System.out.println("Generated ID: " + keys.getLong(1));
+    }
+}
+
+// UPDATE
+try (PreparedStatement ps = conn.prepareStatement(
+        "UPDATE products SET price = ? WHERE id = ?")) {
+    ps.setDouble(1, 12.99);
+    ps.setInt(2, orderId);
+    int rowsAffected = ps.executeUpdate();
+    System.out.println("Updated: " + rowsAffected + " rows");
+}
+\`\`\`
+
+### Batch Execution
+
+\`\`\`java
+// Batching — execute many DML statements in a single round-trip
+conn.setAutoCommit(false);
+try (PreparedStatement ps = conn.prepareStatement("INSERT INTO log (msg, ts) VALUES (?,?)")) {
+    for (LogEntry entry : entries) {
+        ps.setString(1, entry.message());
+        ps.setTimestamp(2, Timestamp.valueOf(entry.timestamp()));
+        ps.addBatch();
+        if (entries.indexOf(entry) % 1000 == 999) {
+            ps.executeBatch(); // flush every 1000 rows to avoid OOM
+        }
+    }
+    ps.executeBatch(); // flush remainder
+    conn.commit();
+}
+\`\`\`
+
+### Why PreparedStatement Is Also Faster
+
+Pre-compiled SQL is parsed and planned once by the database engine, then executed many times with different parameters. For queries run many times with different values (e.g. \`SELECT * FROM users WHERE id = ?\`) this gives a significant performance advantage over Statement — the query plan is cached by the DB.
+
+### Parameterising IN Clauses
+
+\`PreparedStatement\` cannot take a list as a single parameter. For \`IN (?,?,?)\`:
+
+\`\`\`java
+List<Integer> ids = List.of(1, 2, 3, 4);
+String placeholders = "?,".repeat(ids.size()).replaceAll(",$", ""); // "?,?,?,?"
+String sql = "SELECT * FROM products WHERE id IN (" + placeholders + ")";
+try (PreparedStatement ps = conn.prepareStatement(sql)) {
+    for (int i = 0; i < ids.size(); i++) ps.setInt(i + 1, ids.get(i));
+    try (ResultSet rs = ps.executeQuery()) { /* process */ }
+}
+\`\`\``,
+          code: [
+            `import java.sql.*;
+import java.util.*;
+
+// PreparedStatement patterns — safe CRUD operations
+public class PreparedStmtDemo {
+    static final String URL = "jdbc:h2:mem:pstest;DB_CLOSE_DELAY=-1";
+
+    record Product(int id, String name, double price, int stock) {}
+
+    static Connection conn() throws SQLException {
+        return DriverManager.getConnection(URL, "sa", "");
+    }
+
+    static void setup(Connection c) throws SQLException {
+        c.createStatement().execute("""
+            CREATE TABLE IF NOT EXISTS products (
+              id    INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              name  VARCHAR(100) NOT NULL,
+              price DECIMAL(10,2),
+              stock INT DEFAULT 0
+            )""");
+    }
+
+    static int insert(Connection c, String name, double price, int stock) throws SQLException {
+        String sql = "INSERT INTO products (name, price, stock) VALUES (?,?,?)";
+        try (PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, name);
+            ps.setDouble(2, price);
+            ps.setInt(3, stock);
+            ps.executeUpdate();
+            try (ResultSet k = ps.getGeneratedKeys()) {
+                return k.next() ? k.getInt(1) : -1;
+            }
+        }
+    }
+
+    static List<Product> findByPriceRange(Connection c, double min, double max) throws SQLException {
+        List<Product> list = new ArrayList<>();
+        String sql = "SELECT * FROM products WHERE price BETWEEN ? AND ? ORDER BY price";
+        try (PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setDouble(1, min);
+            ps.setDouble(2, max);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(new Product(
+                    rs.getInt("id"), rs.getString("name"),
+                    rs.getDouble("price"), rs.getInt("stock")));
+            }
+        }
+        return list;
+    }
+
+    public static void main(String[] args) throws SQLException {
+        try (Connection c = conn()) {
+            setup(c);
+            int id1 = insert(c, "Widget",     9.99, 50);
+            int id2 = insert(c, "Gadget",    29.99,  5);
+            int id3 = insert(c, "Doohickey",  4.99, 200);
+            System.out.println("Inserted IDs: " + id1 + ", " + id2 + ", " + id3);
+
+            List<Product> affordable = findByPriceRange(c, 5.00, 25.00);
+            System.out.println("\nProducts $5-$25:");
+            affordable.forEach(p -> System.out.printf("  [%d] %-15s $%.2f (stock:%d)%n",
+                p.id(), p.name(), p.price(), p.stock()));
+
+            // Update with PreparedStatement
+            try (PreparedStatement ps = c.prepareStatement(
+                    "UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?")) {
+                ps.setInt(1, 3);   // qty to deduct
+                ps.setInt(2, id1); // product id
+                ps.setInt(3, 3);   // guard: only if stock sufficient
+                int rows = ps.executeUpdate();
+                System.out.println("\nStock deducted: " + rows + " row(s) updated");
+            }
+        }
+    }
+}`,
+            `import java.sql.*;
+import java.util.*;
+
+// Batch insert + IN clause parameterisation
+public class BatchAndInClause {
+    static final String URL = "jdbc:h2:mem:batchin;DB_CLOSE_DELAY=-1";
+
+    public static void main(String[] args) throws SQLException {
+        try (Connection conn = DriverManager.getConnection(URL, "sa", "")) {
+            conn.createStatement().execute(
+                "CREATE TABLE events (id INT, name VARCHAR(100), score INT)");
+
+            // Batch insert — single round-trip for 20 rows
+            conn.setAutoCommit(false);
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO events VALUES (?,?,?)")) {
+                Random rnd = new Random(42);
+                for (int i = 1; i <= 20; i++) {
+                    ps.setInt(1, i);
+                    ps.setString(2, "Event-" + i);
+                    ps.setInt(3, rnd.nextInt(100));
+                    ps.addBatch();
+                }
+                int[] results = ps.executeBatch();
+                conn.commit();
+                System.out.println("Batch inserted " + results.length + " events");
+            }
+
+            // IN clause with dynamic list
+            List<Integer> wanted = List.of(2, 5, 8, 11, 17);
+            String placeholders = String.join(",", Collections.nCopies(wanted.size(), "?"));
+            String sql = "SELECT id, name, score FROM events WHERE id IN (" + placeholders
+                       + ") ORDER BY score DESC";
+
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                for (int i = 0; i < wanted.size(); i++) ps.setInt(i + 1, wanted.get(i));
+                try (ResultSet rs = ps.executeQuery()) {
+                    System.out.println("\nSelected events (sorted by score desc):");
+                    while (rs.next())
+                        System.out.printf("  id=%-3d %-12s score=%d%n",
+                            rs.getInt("id"), rs.getString("name"), rs.getInt("score"));
+                }
+            }
+        }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'How does PreparedStatement prevent SQL injection?', a: 'Bind parameters (?) are never interpreted as SQL syntax — they are sent to the DB as data values after the query has been parsed and planned. The DB sees the parameter value only after the SQL structure is fixed. Even if a user inputs "; DROP TABLE users --", it is stored as a literal string, not executed as SQL.' },
+            { q: 'How do you retrieve auto-generated keys after an INSERT?', a: 'Pass Statement.RETURN_GENERATED_KEYS as the second argument to prepareStatement(). After executeUpdate(), call ps.getGeneratedKeys() to get a ResultSet containing the generated keys. Call rs.next() then rs.getLong(1) (or getInt/getString based on key type).' },
+            { q: 'What is ps.addBatch() / executeBatch() and why use it?', a: 'addBatch() queues a set of bound parameters without sending them to the DB. executeBatch() sends all queued statements in a single network round-trip. For bulk inserts, this is orders of magnitude faster than executing each INSERT individually (100 round-trips vs 1). Returns int[] — rows affected per statement.' },
+            { q: 'Why can\'t you use a single ? placeholder for an IN clause list?', a: 'JDBC ? binds exactly one scalar value. IN (?) means IN (singleValue), not IN (list). You must generate N placeholders dynamically: "?,?,?".repeat(n) or String.join(",", nCopies(n,"?")). Then loop to bind each value. This is one of the most common JDBC pain points — solved by NamedParameterJdbcTemplate in Spring.' },
+            { q: 'What is RETURN_GENERATED_KEYS and which method retrieves them?', a: 'Statement.RETURN_GENERATED_KEYS is a flag passed to prepareStatement() or createStatement() telling the driver to capture auto-generated values (e.g. SERIAL/IDENTITY primary keys) after INSERT. Retrieve with getGeneratedKeys() — returns a ResultSet; use it like a regular result set. Not all drivers support all column types as generated keys.' }
+          ]
+        },
+        {
+          title: 'Transactions, ACID & Connection Pools',
+          notes: `## Transactions, ACID & Connection Pools
+
+A transaction groups multiple SQL operations into one atomic unit — either all succeed or all are rolled back. JDBC's transaction API is simple but understanding the ACID guarantees and connection pool behaviour is essential for production code.
+
+### ACID Properties
+
+| Property | Meaning | JDBC mechanism |
+|---|---|---|
+| **Atomicity** | All operations succeed or none do | \`commit()\` / \`rollback()\` |
+| **Consistency** | DB moves from one valid state to another | Constraints enforced by DB |
+| **Isolation** | Concurrent transactions don't corrupt each other | Isolation level setting |
+| **Durability** | Committed data survives crashes | DB write-ahead log |
+
+### JDBC Transaction API
+
+\`\`\`java
+conn.setAutoCommit(false);  // begin transaction (default: auto-commit = true)
+try {
+    // Multiple operations in one transaction
+    updateInventory(conn, productId, -qty);
+    insertOrderLine(conn, orderId, productId, qty, price);
+    updateOrderTotal(conn, orderId);
+
+    conn.commit();   // all or nothing
+} catch (Exception e) {
+    conn.rollback(); // undo everything on any failure
+    throw e;
+}
+\`\`\`
+
+### Isolation Levels
+
+\`\`\`java
+conn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED); // most common
+\`\`\`
+
+| Level | Constant | Prevents | Allows |
+|---|---|---|---|
+| READ_UNCOMMITTED | 1 | — | Dirty reads, phantom reads |
+| READ_COMMITTED | 2 | Dirty reads | Non-repeatable reads, phantoms |
+| REPEATABLE_READ | 4 | Dirty + non-repeatable reads | Phantom reads |
+| SERIALIZABLE | 8 | All anomalies | Nothing (slowest) |
+
+**Most databases default to READ_COMMITTED.** PostgreSQL default is READ_COMMITTED; MySQL InnoDB default is REPEATABLE_READ.
+
+**Anomaly definitions:**
+- **Dirty read** — reading a row modified by another uncommitted transaction
+- **Non-repeatable read** — reading a row twice and getting different values (other tx committed between reads)
+- **Phantom read** — a query returns different rows on second execution (another tx inserted/deleted rows)
+
+### Savepoints — Partial Rollback
+
+\`\`\`java
+conn.setAutoCommit(false);
+Savepoint sp1 = conn.setSavepoint("after_inventory");
+updateInventory(conn, productId, -qty);
+
+try {
+    riskyOperation(conn);
+} catch (Exception e) {
+    conn.rollback(sp1); // undo only riskyOperation, keep inventory update
+}
+
+conn.commit(); // commit everything up to sp1
+\`\`\`
+
+### Connection Pools — HikariCP
+
+In production, you never call \`DriverManager.getConnection()\` directly. A connection pool maintains a set of warm connections and recycles them:
+
+\`\`\`java
+// HikariCP — fastest JDBC connection pool (used by Spring Boot by default)
+HikariConfig cfg = new HikariConfig();
+cfg.setJdbcUrl("jdbc:postgresql://localhost:5432/mydb");
+cfg.setUsername("appuser");
+cfg.setPassword("secret");
+cfg.setMaximumPoolSize(10);          // max concurrent connections
+cfg.setMinimumIdle(2);               // always keep 2 warm connections
+cfg.setConnectionTimeout(30_000);    // throw if no connection available in 30s
+cfg.setIdleTimeout(600_000);         // close idle connections after 10 min
+cfg.setMaxLifetime(1_800_000);       // recycle connections after 30 min (avoid DB timeout)
+
+DataSource ds = new HikariDataSource(cfg);
+
+// Usage — conn is returned to the pool on close(), NOT physically closed
+try (Connection conn = ds.getConnection()) {
+    // ... queries ...
+} // conn released back to pool here
+\`\`\`
+
+**Key insight:** \`conn.close()\` on a pooled connection returns it to the pool, it does NOT close the physical TCP connection. This is transparent — your code is the same; the pool intercepts the close call.
+
+### The Transaction Template Pattern
+
+\`\`\`java
+// Reusable transaction wrapper (what Spring @Transactional does internally)
+@FunctionalInterface
+interface TxWork<T> { T run(Connection conn) throws SQLException; }
+
+static <T> T inTransaction(DataSource ds, TxWork<T> work) throws SQLException {
+    try (Connection conn = ds.getConnection()) {
+        conn.setAutoCommit(false);
+        try {
+            T result = work.run(conn);
+            conn.commit();
+            return result;
+        } catch (Exception e) {
+            conn.rollback();
+            throw e;
+        }
+    }
+}
+
+// Usage
+Order order = inTransaction(ds, conn -> {
+    deductStock(conn, productId, qty);
+    return createOrder(conn, customerId, productId, qty, price);
+});
+\`\`\``,
+          code: [
+            `import java.sql.*;
+
+// Transaction rollback demo — transfer funds atomically
+public class TransactionDemo {
+    static final String URL = "jdbc:h2:mem:txdemo;DB_CLOSE_DELAY=-1";
+
+    static Connection conn() throws SQLException {
+        return DriverManager.getConnection(URL, "sa", "");
+    }
+
+    static void setup(Connection c) throws SQLException {
+        c.createStatement().execute("""
+            CREATE TABLE accounts (
+              id      INT PRIMARY KEY,
+              owner   VARCHAR(50),
+              balance DECIMAL(12,2) NOT NULL CHECK (balance >= 0)
+            )""");
+        c.createStatement().execute("INSERT INTO accounts VALUES (1,'Alice',1000.00)");
+        c.createStatement().execute("INSERT INTO accounts VALUES (2,'Bob',  500.00)");
+    }
+
+    static void transfer(Connection conn, int fromId, int toId, double amount) throws SQLException {
+        conn.setAutoCommit(false);
+        try {
+            // Deduct from sender
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE accounts SET balance = balance - ? WHERE id = ?")) {
+                ps.setDouble(1, amount);
+                ps.setInt(2, fromId);
+                ps.executeUpdate();
+            }
+            // Add to receiver
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE accounts SET balance = balance + ? WHERE id = ?")) {
+                ps.setDouble(1, amount);
+                ps.setInt(2, toId);
+                ps.executeUpdate();
+            }
+            conn.commit();
+            System.out.println("Transferred $" + amount + " from " + fromId + " to " + toId);
+        } catch (SQLException e) {
+            System.out.println("ROLLBACK: " + e.getMessage());
+            conn.rollback();
+            throw e;
+        }
+    }
+
+    static void printBalances(Connection c) throws SQLException {
+        try (ResultSet rs = c.createStatement().executeQuery(
+                "SELECT owner, balance FROM accounts ORDER BY id")) {
+            while (rs.next())
+                System.out.printf("  %-10s $%.2f%n", rs.getString("owner"), rs.getDouble("balance"));
+        }
+    }
+
+    public static void main(String[] args) throws SQLException {
+        try (Connection c = conn()) {
+            setup(c);
+            System.out.println("Initial balances:");
+            printBalances(c);
+
+            transfer(c, 1, 2, 200.00);   // Alice → Bob: success
+
+            System.out.println("After transfer:");
+            printBalances(c);
+
+            try {
+                transfer(c, 2, 1, 10_000.00); // Bob → Alice: violates CHECK constraint
+            } catch (SQLException e) {
+                System.out.println("Transfer failed (expected)");
+            }
+
+            System.out.println("After failed transfer (unchanged):");
+            printBalances(c);
+        }
+    }
+}`,
+            `import java.sql.*;
+
+// Isolation levels + savepoints
+public class IsolationSavepointDemo {
+    static final String URL = "jdbc:h2:mem:isodemo;DB_CLOSE_DELAY=-1";
+
+    public static void main(String[] args) throws SQLException {
+        try (Connection conn = DriverManager.getConnection(URL, "sa", "")) {
+            conn.createStatement().execute(
+                "CREATE TABLE inventory (product VARCHAR(50), qty INT)");
+            conn.createStatement().execute("INSERT INTO inventory VALUES ('Widget',100)");
+            conn.createStatement().execute("INSERT INTO inventory VALUES ('Gadget',50)");
+
+            // Savepoint demo — partial rollback
+            conn.setAutoCommit(false);
+            System.out.println("Starting transaction...");
+
+            // Operation 1 — deduct Widget stock
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE inventory SET qty = qty - ? WHERE product = ?")) {
+                ps.setInt(1, 10); ps.setString(2, "Widget"); ps.executeUpdate();
+            }
+            System.out.println("Widget stock deducted");
+
+            Savepoint sp = conn.setSavepoint("after_widget");
+
+            // Operation 2 — risky: deduct too many Gadgets (will fail CHECK or business rule)
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE inventory SET qty = qty - ? WHERE product = ?")) {
+                ps.setInt(1, 200); ps.setString(2, "Gadget"); // 200 > 50 stock
+                ps.executeUpdate();
+                // Simulate business rule check
+                try (ResultSet rs = conn.createStatement().executeQuery(
+                        "SELECT qty FROM inventory WHERE product = 'Gadget'")) {
+                    if (rs.next() && rs.getInt(1) < 0) throw new SQLException("Insufficient stock");
+                }
+            } catch (SQLException e) {
+                System.out.println("Gadget operation failed — rolling back to savepoint");
+                conn.rollback(sp); // undo Gadget update only
+            }
+
+            conn.commit();
+
+            // Verify: Widget deducted, Gadget unchanged
+            try (ResultSet rs = conn.createStatement().executeQuery(
+                    "SELECT product, qty FROM inventory ORDER BY product")) {
+                System.out.println("Final inventory:");
+                while (rs.next())
+                    System.out.printf("  %-10s qty=%d%n", rs.getString(1), rs.getInt(2));
+            }
+            // Isolation level
+            System.out.println("Isolation level: " + conn.getTransactionIsolation()
+                + " (2=READ_COMMITTED)");
+        }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What does conn.setAutoCommit(false) do and when must you call commit/rollback?', a: 'By default, every JDBC statement is auto-committed (each is its own transaction). setAutoCommit(false) disables this and begins a transaction that spans all subsequent statements. You must explicitly call conn.commit() to persist changes, or conn.rollback() to undo them. If the connection closes without commit, the transaction is rolled back automatically.' },
+            { q: 'What are the four SQL transaction isolation levels and what anomaly does each prevent?', a: 'READ_UNCOMMITTED — prevents nothing (allows dirty reads). READ_COMMITTED — prevents dirty reads. REPEATABLE_READ — prevents dirty and non-repeatable reads. SERIALIZABLE — prevents all anomalies including phantom reads. Each level adds performance cost. READ_COMMITTED is the most common production default (PostgreSQL default).' },
+            { q: 'What is a connection pool and why does conn.close() not disconnect the socket?', a: 'A pool pre-creates N physical DB connections and lends them to application threads. conn.close() on a pooled connection returns it to the pool (physical connection stays alive), ready for the next request. Without pooling, every getConnection() opens a TCP socket and authenticates — 100ms+ per call, a bottleneck for web apps handling many concurrent requests.' },
+            { q: 'What is a Savepoint and when would you use one?', a: 'A savepoint marks a point within a transaction. conn.rollback(savepoint) undoes only the work done after the savepoint, leaving earlier operations intact. Use when a transaction has optional steps that may fail: complete the mandatory steps, set a savepoint, attempt the optional step, roll back to the savepoint on failure, then commit the mandatory work.' },
+            { q: 'What is a dirty read and at which isolation level is it possible?', a: 'A dirty read occurs when transaction A reads a row that transaction B has modified but not yet committed. If B then rolls back, A has read data that never existed. Dirty reads are possible only at READ_UNCOMMITTED level — the lowest isolation level. READ_COMMITTED and above prevent dirty reads by only showing committed data.' }
+          ]
+        },
+        {
+          title: 'JDBC Patterns & DAO Layer Design',
+          notes: `## JDBC Patterns & DAO Layer Design
+
+Raw JDBC code tends to be verbose and error-prone. The DAO (Data Access Object) pattern and a few reusable abstractions make JDBC code maintainable at scale — and understanding these patterns helps you understand what Spring Data JPA does for you automatically.
+
+### The DAO Pattern
+
+\`\`\`mermaid
+graph LR
+    SVC[Service Layer]
+    SVC --> DAO[UserDao interface]
+    DAO --> JI[JdbcUserDao\nimpl]
+    JI --> DS[(DataSource\n/ Connection Pool)]
+    style SVC fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style DAO fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style JI  fill:#1e293b,stroke:#f59e0b,color:#fde68a
+\`\`\`
+
+\`\`\`java
+// Repository interface — no JDBC details leak to callers
+interface UserRepository {
+    Optional<User> findById(long id);
+    List<User> findByEmail(String email);
+    User save(User user);  // INSERT or UPDATE
+    void delete(long id);
+    List<User> findAll(int limit, int offset);
+}
+
+// JDBC implementation
+class JdbcUserRepository implements UserRepository {
+    private final DataSource ds;
+    JdbcUserRepository(DataSource ds) { this.ds = ds; }
+
+    @Override
+    public Optional<User> findById(long id) {
+        String sql = "SELECT id, name, email, created_at FROM users WHERE id = ?";
+        try (Connection c = ds.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setLong(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw new DataAccessException("findById failed", e);  // translate to unchecked
+        }
+    }
+
+    private User mapRow(ResultSet rs) throws SQLException {
+        return new User(
+            rs.getLong("id"),
+            rs.getString("name"),
+            rs.getString("email"),
+            rs.getTimestamp("created_at").toLocalDateTime()
+        );
+    }
+}
+\`\`\`
+
+### Exception Translation — Don't Let SQLException Leak
+
+\`SQLException\` is a checked exception that contains little useful information (error codes are DB-specific). Wrap it in your own unchecked exception hierarchy at the DAO boundary:
+
+\`\`\`java
+class DataAccessException extends RuntimeException {
+    DataAccessException(String msg, Throwable cause) { super(msg, cause); }
+}
+
+class DuplicateKeyException extends DataAccessException {
+    DuplicateKeyException(String msg, Throwable cause) { super(msg, cause); }
+}
+
+// Translate vendor error codes
+static DataAccessException translate(String operation, SQLException e) {
+    if (e.getSQLState() != null && e.getSQLState().startsWith("23")) {
+        return new DuplicateKeyException(operation + ": duplicate key", e);
+    }
+    return new DataAccessException(operation + " failed: " + e.getMessage(), e);
+}
+\`\`\`
+
+SQLState codes starting with \`23\` are integrity constraint violations across all databases (ANSI SQL). Spring DataAccessException hierarchy does exactly this translation.
+
+### ResultSet → Object Mapping
+
+For complex mappings, extract a \`RowMapper\`:
+
+\`\`\`java
+@FunctionalInterface
+interface RowMapper<T> {
+    T map(ResultSet rs, int rowNum) throws SQLException;
+}
+
+static <T> List<T> query(DataSource ds, String sql, RowMapper<T> mapper, Object... params)
+        throws SQLException {
+    List<T> results = new ArrayList<>();
+    try (Connection c = ds.getConnection();
+         PreparedStatement ps = c.prepareStatement(sql)) {
+        for (int i = 0; i < params.length; i++) ps.setObject(i + 1, params[i]);
+        try (ResultSet rs = ps.executeQuery()) {
+            int row = 0;
+            while (rs.next()) results.add(mapper.map(rs, row++));
+        }
+    }
+    return results;
+}
+
+// Usage
+List<User> users = query(ds,
+    "SELECT * FROM users WHERE active = ? LIMIT ?",
+    (rs, i) -> new User(rs.getLong("id"), rs.getString("name"), rs.getString("email"), null),
+    true, 50);
+\`\`\`
+
+This is exactly what Spring's \`JdbcTemplate.query(sql, rowMapper, args...)\` does.
+
+### What Spring JdbcTemplate Replaces
+
+| Raw JDBC boilerplate | Spring JdbcTemplate |
+|---|---|
+| \`ds.getConnection()\` + \`conn.close()\` | Managed automatically |
+| try-catch-rethrow \`SQLException\` | Translated to \`DataAccessException\` hierarchy |
+| \`ps.setObject(i+1, param)\` for each arg | Varargs: \`.query(sql, mapper, args...)\` |
+| \`while(rs.next())\` loop | Handled by \`RowMapper\` |
+| Manual \`rollback\` on error | \`@Transactional\` |
+
+> **Interview key point:** If you understand raw JDBC thoroughly, you understand what JPA/Hibernate is doing underneath. Every JPA \`findById()\` eventually becomes a \`PreparedStatement\`, a \`ResultSet\`, and a \`commit()\`.`,
+          code: [
+            `import java.sql.*;
+import java.time.*;
+import java.util.*;
+
+// Full DAO pattern with exception translation
+public class DaoPatternDemo {
+    static final String URL = "jdbc:h2:mem:dao;DB_CLOSE_DELAY=-1";
+
+    record User(long id, String name, String email, LocalDateTime createdAt) {}
+
+    static class DataAccessException extends RuntimeException {
+        DataAccessException(String msg, Throwable cause) { super(msg, cause); }
+    }
+
+    interface UserRepository {
+        Optional<User> findById(long id);
+        List<User> findAll();
+        long save(String name, String email);
+    }
+
+    static class JdbcUserRepository implements UserRepository {
+        private final Connection conn;
+        JdbcUserRepository(Connection conn) { this.conn = conn; }
+
+        @Override public Optional<User> findById(long id) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT * FROM users WHERE id = ?")) {
+                ps.setLong(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? Optional.of(map(rs)) : Optional.empty();
+                }
+            } catch (SQLException e) { throw new DataAccessException("findById", e); }
+        }
+
+        @Override public List<User> findAll() {
+            try (ResultSet rs = conn.createStatement().executeQuery(
+                    "SELECT * FROM users ORDER BY created_at")) {
+                List<User> list = new ArrayList<>();
+                while (rs.next()) list.add(map(rs));
+                return list;
+            } catch (SQLException e) { throw new DataAccessException("findAll", e); }
+        }
+
+        @Override public long save(String name, String email) {
+            String sql = "INSERT INTO users (name, email, created_at) VALUES (?,?,?)";
+            try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                ps.setString(1, name);
+                ps.setString(2, email);
+                ps.setTimestamp(3, Timestamp.valueOf(LocalDateTime.now()));
+                ps.executeUpdate();
+                try (ResultSet k = ps.getGeneratedKeys()) {
+                    return k.next() ? k.getLong(1) : -1;
+                }
+            } catch (SQLException e) { throw new DataAccessException("save", e); }
+        }
+
+        private User map(ResultSet rs) throws SQLException {
+            return new User(rs.getLong("id"), rs.getString("name"), rs.getString("email"),
+                rs.getTimestamp("created_at").toLocalDateTime());
+        }
+    }
+
+    public static void main(String[] args) throws SQLException {
+        try (Connection conn = DriverManager.getConnection(URL, "sa", "")) {
+            conn.createStatement().execute("""
+                CREATE TABLE users (
+                  id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                  name VARCHAR(100), email VARCHAR(200), created_at TIMESTAMP)""");
+
+            UserRepository repo = new JdbcUserRepository(conn);
+            long id1 = repo.save("Alice", "alice@example.com");
+            long id2 = repo.save("Bob",   "bob@example.com");
+            System.out.println("Saved IDs: " + id1 + ", " + id2);
+
+            repo.findById(id1).ifPresent(u ->
+                System.out.println("Found: " + u.name() + " (" + u.email() + ")"));
+
+            System.out.println("All users:");
+            repo.findAll().forEach(u -> System.out.println("  " + u.id() + ". " + u.name()));
+        }
+    }
+}`,
+            `import java.sql.*;
+import java.util.*;
+import java.util.function.*;
+
+// RowMapper abstraction — what JdbcTemplate uses
+public class RowMapperDemo {
+    static final String URL = "jdbc:h2:mem:rm;DB_CLOSE_DELAY=-1";
+
+    @FunctionalInterface
+    interface RowMapper<T> {
+        T map(ResultSet rs) throws SQLException;
+    }
+
+    static <T> List<T> query(Connection conn, String sql, RowMapper<T> mapper, Object... params)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (int i = 0; i < params.length; i++) ps.setObject(i + 1, params[i]);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<T> list = new ArrayList<>();
+                while (rs.next()) list.add(mapper.map(rs));
+                return list;
+            }
+        }
+    }
+
+    static <T> Optional<T> queryOne(Connection conn, String sql, RowMapper<T> mapper, Object... params)
+            throws SQLException {
+        List<T> results = query(conn, sql, mapper, params);
+        if (results.size() > 1) throw new SQLException("Expected 1 row, got " + results.size());
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+    }
+
+    record Product(int id, String name, double price) {}
+
+    public static void main(String[] args) throws SQLException {
+        try (Connection conn = DriverManager.getConnection(URL, "sa", "")) {
+            conn.createStatement().execute(
+                "CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(50), price DECIMAL(8,2))");
+            for (int i = 1; i <= 5; i++)
+                conn.createStatement().execute(
+                    "INSERT INTO products VALUES (" + i + ",'Product-" + i + "'," + (i * 7.5) + ")");
+
+            // RowMapper as lambda — no boilerplate
+            RowMapper<Product> pm = rs -> new Product(
+                rs.getInt("id"), rs.getString("name"), rs.getDouble("price"));
+
+            // Query with filter param
+            List<Product> expensive = query(conn,
+                "SELECT * FROM products WHERE price > ? ORDER BY price DESC", pm, 20.0);
+            System.out.println("Expensive products:");
+            expensive.forEach(p -> System.out.printf("  [%d] %-12s $%.2f%n", p.id(), p.name(), p.price()));
+
+            // Query for one
+            Optional<Product> one = queryOne(conn,
+                "SELECT * FROM products WHERE id = ?", pm, 3);
+            one.ifPresent(p -> System.out.println("\nFound single: " + p.name()));
+        }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the DAO (Data Access Object) pattern and why use it?', a: 'DAO separates database access code from business logic by placing all SQL/JDBC behind an interface. Benefits: (1) business logic is not polluted with SQL strings, (2) the implementation can be swapped (JDBC → JPA → mock for tests) without changing callers, (3) exception translation happens at the boundary (SQLException → DataAccessException), (4) SQL queries are colocated, not scattered.' },
+            { q: 'Why should SQLException be wrapped at the DAO boundary?', a: 'SQLException is a checked exception that leaks DB implementation details (vendor-specific error codes, SQL states). Service and controller layers should not handle or declare DB exceptions. Wrapping in an unchecked DataAccessException hierarchy at the DAO boundary: (1) removes checked exception burden from callers, (2) allows error classification (DuplicateKeyException etc.) using portable SQLState codes.' },
+            { q: 'What is an SQLState code and which prefix indicates a constraint violation?', a: 'SQLState is a 5-character string that standardises error categories across databases (ANSI SQL). Prefix "23" means integrity constraint violation — duplicate key, foreign key, not-null, check constraint. This is reliable across PostgreSQL, MySQL, H2, Oracle. Spring uses SQLState codes to translate SQLExceptions into its DataAccessException hierarchy.' },
+            { q: 'What is a RowMapper and how does it relate to Spring\'s JdbcTemplate?', a: 'RowMapper is a functional interface mapping one ResultSet row to one domain object. It separates "how to execute SQL" from "how to read one row". Spring\'s JdbcTemplate.query(sql, rowMapper, args) does exactly this: manages connection lifecycle, PreparedStatement creation, parameter binding, ResultSet iteration, and exception translation. Your only job is mapping one row.' },
+            { q: 'How does Spring\'s JdbcTemplate relate to raw JDBC?', a: 'JdbcTemplate is a thin wrapper around JDBC that eliminates boilerplate: auto-manages Connection (get from pool, return on done), auto-translates SQLException to DataAccessException hierarchy, handles PreparedStatement creation and parameter binding, and iterates ResultSet calling your RowMapper. No try-catch-rethrow, no conn.close(), no rs.next() loop. Same SQL, no boilerplate.' }
+          ]
+        }
+      ]
+    },
     {
       id: '0.13',
       title: 'Design Patterns — Creational, Structural, Behavioral',
@@ -15084,438 +16076,892 @@ public class WarmupEffectBenchmark {
       id: '2.1',
       title: 'Collections & Equals/HashCode Contracts',
       hours: 4,
-      notes: `
-# Collections & Equals/HashCode Contracts — From Zero to Senior Level
-
-## Why Collections Matter
-
-In almost every Java interview and production system, you'll use collections constantly. The difference between a junior and a senior engineer is not just knowing which collection to use — it's understanding **why** each one works the way it does, what can go wrong, and how to pick the right one for the situation.
-
----
-
-## The Collections Family Tree
-
-\`\`\`
-java.util.Collection
-├── List (ordered, allows duplicates)
-│   ├── ArrayList      (resizable array — fast random access, slow insert in middle)
-│   ├── LinkedList     (doubly-linked — fast insert/delete at ends, slow random access)
-│   └── ArrayDeque     (preferred deque/stack over LinkedList in most cases)
-│
-├── Set (no duplicates)
-│   ├── HashSet        (backed by HashMap — O(1) add/contains, no ordering)
-│   ├── LinkedHashSet  (insertion order preserved)
-│   └── TreeSet        (sorted — O(log n), needs Comparable or Comparator)
-│
-└── Queue / Deque
-    ├── ArrayDeque     (fast stack/queue, NOT thread-safe)
-    ├── PriorityQueue  (min-heap — O(log n) offer/poll, O(1) peek)
-    └── LinkedList     (also implements Deque)
-
-java.util.Map (key-value, separate hierarchy)
-├── HashMap            (O(1) avg, no ordering, 1 null key allowed)
-├── LinkedHashMap      (insertion or access order)
-├── TreeMap            (sorted by key — O(log n))
-├── Hashtable          (legacy, synchronized, avoid)
-└── ConcurrentHashMap  (thread-safe, O(1), no null keys/values)
-\`\`\`
-
----
-
-## ArrayList vs LinkedList: The Most Misunderstood Choice
-
-Most developers use \`LinkedList\` thinking "inserting in the middle is O(1)". But:
-
-\`\`\`
-ArrayList internal structure:
-[elem0][elem1][elem2][elem3][elem4][ ][ ][ ]  ← contiguous array
-  idx0   idx1   idx2   idx3   idx4
-\`\`\`
-\`\`\`
-LinkedList internal structure:
-[prev|elem0|next] ↔ [prev|elem1|next] ↔ [prev|elem2|next]
-                                          ← scattered in heap
-\`\`\`
-
-| Operation | ArrayList | LinkedList |
-|-----------|-----------|------------|
-| \`get(i)\` | O(1) — index into array | O(n) — traverse from head |
-| \`add(end)\` | O(1) amortised | O(1) |
-| \`add(middle)\` | O(n) — shift elements | O(n) — find position first! |
-| \`remove(middle)\` | O(n) — shift elements | O(n) — find position first |
-| Memory | Compact (CPU cache friendly) | High overhead (node objects, pointers) |
-| Iteration | Very fast (cache line prefetching) | Slow (random memory access) |
-
-**The verdict:** Use \`ArrayList\` almost always. \`LinkedList\` is only better when you iterate with an \`Iterator\` and call \`iterator.remove()\` frequently, and even then \`ArrayDeque\` is usually better for queue/stack use cases.
-
-> [!TIP]
-> If you know the approximate size upfront, use \`new ArrayList<>(expectedSize)\` to avoid repeated resizing. \`ArrayList\` doubles its capacity each resize (amortised O(1) add), but each resize copies the whole array.
-
----
-
-## HashMap Internals: Deep Dive
-
-HashMap is the most important collection to understand deeply. Every interview asks about it.
-
-### The Data Structure
-
-A \`HashMap\` is an **array of buckets**. Each bucket can hold multiple entries (when keys hash to the same bucket — a "collision").
-
-\`\`\`
-HashMap internal array (capacity = 16 by default):
-index: [0]  [1]  [2]  [3]  [4]  [5]  [6]  [7] ...
-        null null null  ↓   null null null  ↓
-                      Entry              Entry → Entry → Entry
-                      k="cat"            k="dog"  k="fox"  k="emu"
-                      v=1                v=2      v=3      v=4
-                     (no collision)      (3 collisions in bucket 7)
-\`\`\`
-
-### Step-by-Step: What Happens on \`map.put("cat", 1)\`?
-
-1. Call \`"cat".hashCode()\` → e.g. \`98262\`
-2. Apply spread function: \`hash = hashCode ^ (hashCode >>> 16)\` (spreads high bits to reduce clustering)
-3. Compute bucket index: \`index = (capacity - 1) & hash\` → e.g. \`3\`
-4. Check bucket 3:
-   - Empty → create new \`Entry(key="cat", value=1, hash=..., next=null)\`, place it
-   - Not empty → walk the chain, check \`hash == entry.hash && key.equals(entry.key)\`
-     - Match found → update value (put overwrites)
-     - No match → append to chain (collision)
-
-### Step-by-Step: What Happens on \`map.get("cat")\`?
-
-1. Hash "cat" → same spread → same bucket index (3)
-2. Walk bucket 3's chain, compare hash first (fast int compare), then \`.equals()\`
-3. Return value, or \`null\` if not found
-
-### Treeification: From O(n) to O(log n) Worst Case
-
-Before Java 8: bucket chains were linked lists. With many collisions (e.g. all keys hash to the same bucket), get/put degrades to O(n) — a DoS attack vector!
-
-Java 8 fix: when a bucket chain exceeds **8 entries** AND total capacity ≥ **64**, the chain is converted to a **Red-Black Tree**. Get/put worst case becomes O(log n). When elements are removed and the tree shrinks below **6**, it converts back to a linked list.
-
-### Load Factor and Resizing
-
-- **Capacity**: number of buckets (default 16, always a power of 2)
-- **Load factor**: threshold ratio = entries / capacity (default 0.75)
-- When \`size > capacity × 0.75\` → **resize**: new array of double capacity, rehash all entries
-
-\`\`\`
-After 12 entries (16 × 0.75 = 12) → resize to 32 buckets → rehash all 12 entries
-After 24 entries (32 × 0.75 = 24) → resize to 64 → rehash all 24
-\`\`\`
-
-Resizing is O(n) — expensive! Pre-size maps when you know the approximate count:
-\`\`\`java
-// To hold 100 entries without resizing: capacity = 100/0.75 + 1 = 134, round up to 256
-Map<String, Value> map = new HashMap<>(256);
-// Or use the Google Guava helper:
-Map<String, Value> map = Maps.newHashMapWithExpectedSize(100);
-\`\`\`
-
----
-
-## The equals/hashCode Contract — The Most Important Rule in Java
-
-This is the #1 source of subtle bugs with collections.
-
-### The Rules (Must Memorise)
-
-**Rule 1 (the critical one):** If \`a.equals(b)\` is \`true\`, then \`a.hashCode() == b.hashCode()\` MUST be true.
-
-**Rule 2 (performance, not correctness):** If \`a.equals(b)\` is \`false\`, \`a.hashCode()\` SHOULD differ from \`b.hashCode()\` (but doesn't have to — just causes more collisions).
-
-**Rule 3:** \`equals\` must be:
-- Reflexive: \`x.equals(x)\` → true
-- Symmetric: \`x.equals(y)\` ↔ \`y.equals(x)\`
-- Transitive: if \`x.equals(y)\` and \`y.equals(z)\` then \`x.equals(z)\`
-- Consistent: same result on repeated calls (assuming no state change)
-- \`x.equals(null)\` → always false
-
-### What Breaks When You Violate the Contract
-
-**Mistake 1: Override equals but not hashCode**
-\`\`\`java
-class Person {
-    String name;
-    @Override public boolean equals(Object o) {
-        return o instanceof Person p && p.name.equals(name);
-    }
-    // ← NO hashCode override!
-}
-
-Set<Person> set = new HashSet<>();
-set.add(new Person("Alice"));
-set.contains(new Person("Alice")); // FALSE! Different hashCode → wrong bucket → not found
-\`\`\`
-
-**Mistake 2: Mutable key — mutate it after putting in the map**
-\`\`\`java
-List<String> key = new ArrayList<>(List.of("a", "b"));
-Map<List<String>, Integer> map = new HashMap<>();
-map.put(key, 42);
-
-key.add("c");  // ← mutate the key!
-// hashCode changed → the entry is now in the WRONG bucket
-map.get(key);  // → null (can't find it)
-map.get(List.of("a", "b")); // → null (hash doesn't match the new position either)
-// The entry is LOST — a memory leak in the map
-\`\`\`
-
-**The fix:** Always use **immutable objects** as map keys: \`String\`, \`Integer\`, \`Long\`, \`UUID\`, \`record\` types, enums.
-
-### How to Implement equals/hashCode Correctly
-
-\`\`\`java
-// Option 1: Java record (auto-generates from all components — best for DTOs/keys)
-record Point(int x, int y) {}  // equals, hashCode, toString all correct
-
-// Option 2: Manual implementation (when record isn't appropriate)
-class OrderId {
-    private final String value;
-    OrderId(String value) { this.value = Objects.requireNonNull(value); }
-
-    @Override public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof OrderId other)) return false;
-        return value.equals(other.value);
-    }
-
-    @Override public int hashCode() {
-        return Objects.hash(value);  // or: value.hashCode()
-    }
-}
-
-// Option 3: Lombok (code generation)
-@EqualsAndHashCode  // generates correct equals + hashCode from all fields
-class Product { String sku; String name; }
-\`\`\`
-
----
-
-## TreeMap and Sorted Collections
-
-\`TreeMap\` keeps keys in sorted order (natural ordering via \`Comparable\`, or a \`Comparator\` provided at construction). Internally a **Red-Black Tree** — self-balancing BST guaranteeing O(log n) for all operations.
-
-\`\`\`java
-TreeMap<String, Integer> scores = new TreeMap<>();
-scores.put("Charlie", 85);
-scores.put("Alice", 92);
-scores.put("Bob", 78);
-// Iterates in alphabetical order: Alice, Bob, Charlie
-
-// Rich navigation API:
-scores.firstKey();              // "Alice"
-scores.lastKey();               // "Charlie"
-scores.headMap("Bob");          // {Alice=92} (keys < "Bob")
-scores.tailMap("Bob");          // {Bob=78, Charlie=85} (keys >= "Bob")
-scores.floorKey("Ba");          // "Alice" (greatest key ≤ "Ba")
-scores.subMap("Alice", "Bob");  // {Alice=92} (Alice inclusive, Bob exclusive)
-\`\`\`
-
-**TreeMap vs HashMap:** TreeMap is O(log n) for all ops vs HashMap's O(1) average. Use TreeMap when you need sorted order or range queries. Use HashMap when you just need fast lookup by key.
-
----
-
-## Fail-Fast vs Fail-Safe Iterators
-
-**Fail-fast** (ArrayList, HashMap, etc.): throws \`ConcurrentModificationException\` if the collection is structurally modified while iterating. Uses a \`modCount\` counter — each structural change increments it, iterator checks on each \`next()\`.
-
-\`\`\`java
-List<String> list = new ArrayList<>(List.of("a", "b", "c"));
-for (String s : list) {
-    if (s.equals("b")) list.remove(s);  // ← ConcurrentModificationException!
-}
-
-// Correct ways to remove while iterating:
-// 1. Iterator.remove()
-Iterator<String> it = list.iterator();
-while (it.hasNext()) { if (it.next().equals("b")) it.remove(); }  // safe
-
-// 2. removeIf (Java 8+) — cleanest
-list.removeIf(s -> s.equals("b"));
-
-// 3. Collect to remove, then removeAll
-List<String> toRemove = list.stream().filter(s -> s.equals("b")).toList();
-list.removeAll(toRemove);
-\`\`\`
-
-**Fail-safe** (CopyOnWriteArrayList, ConcurrentHashMap): iterates over a snapshot, never throws. Modifications during iteration are invisible to the current iterator. Higher memory cost.
-
----
-
-## LinkedHashMap: LRU Cache in 5 Lines
-
-\`LinkedHashMap\` maintains insertion order (or access order) via a doubly-linked list threaded through the entries. With access-order mode and overriding \`removeEldestEntry\`, you get a built-in LRU cache:
-
-\`\`\`java
-// LRU cache: evicts least-recently-accessed entry when size exceeds limit
-int MAX_SIZE = 100;
-Map<String, String> lruCache = new LinkedHashMap<>(MAX_SIZE, 0.75f, true /* access order */) {
-    @Override protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
-        return size() > MAX_SIZE;  // evict when over the limit
-    }
-};
-// get() and put() both count as "access" and move the entry to the end
-// The eldest (least recently used) is always at the front, auto-evicted
-\`\`\`
-
-This is a classic interview coding question. Understanding that \`LinkedHashMap\` with \`accessOrder=true\` gives you access-order tracking for free is the key insight.
-
-> [!EU]
-> "Implement an LRU cache" is asked at virtually every European backend interview (Booking.com, Adyen, Zalando, Spotify). Know both approaches: (1) \`LinkedHashMap\` override — 5 lines, simple but not thread-safe; (2) manual \`HashMap\` + doubly-linked list — more code but shows you understand the internals. For thread safety: \`Collections.synchronizedMap(lru)\` or use Caffeine cache library.
-`,
-      code: [
+      sections: [
         {
-          lang: 'java',
-          title: 'Broken vs correct map key',
-          code: `import java.util.*;
+          title: 'Collection Hierarchy & Choosing the Right Type',
+          notes: `## Collection Hierarchy & Choosing the Right Type
 
-public class EqualsHashDemo {
-    // A correct, immutable key
-    record Point(int x, int y) {}        // equals/hashCode auto-generated
+The Java Collections Framework (JCF) is a unified architecture for representing and manipulating groups of objects. Every collection falls into one of three interfaces: \`List\`, \`Set\`, or \`Map\` (not technically a \`Collection\`, but part of the framework).
 
-    // A BROKEN key: equals without hashCode
-    static final class BadKey {
-        final String id;
-        BadKey(String id) { this.id = id; }
-        @Override public boolean equals(Object o) {
-            return o instanceof BadKey b && b.id.equals(id);
+### The Hierarchy
+
+\`\`\`mermaid
+graph TD
+    IT[Iterable]
+    IT --> CO[Collection]
+    CO --> LI[List]
+    CO --> SE[Set]
+    CO --> QU[Queue]
+    LI --> AL[ArrayList\nordered, indexed\nO1 get, On insert]
+    LI --> LL[LinkedList\nO1 head/tail\nOn get]
+    SE --> HS[HashSet\nO1 add/contains\nunordered]
+    SE --> LS[LinkedHashSet\ninsertion order]
+    SE --> TS[TreeSet\nsorted\nOlogn]
+    QU --> PQ[PriorityQueue\nheap-based]
+    QU --> AQ[ArrayDeque\nstack + queue]
+    style AL fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style HS fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style TS fill:#1e0a0a,stroke:#ef4444,color:#fecaca
+\`\`\`
+
+### List — Ordered, Indexed, Duplicates Allowed
+
+\`\`\`java
+// ArrayList — best general-purpose list
+// O(1) amortised add-to-end, O(1) get(i), O(n) insert-middle
+List<String> list = new ArrayList<>();
+list.add("a"); list.add("b"); list.add("a"); // duplicates fine
+System.out.println(list.get(0));  // "a" — O(1) random access
+
+// LinkedList — O(1) add/remove at head or tail; O(n) get(i) — rarely the right choice
+LinkedList<String> deque = new LinkedList<>();
+deque.addFirst("front");
+deque.addLast("back");
+
+// Immutable lists (Java 9+)
+List<String> fixed = List.of("x", "y", "z");    // UnsupportedOperationException on mutate
+List<String> copy  = List.copyOf(mutableList);  // defensive copy
+\`\`\`
+
+### Set — No Duplicates
+
+\`\`\`java
+// HashSet — O(1) add/contains/remove; order not guaranteed
+Set<String> seen = new HashSet<>();
+seen.add("alice"); seen.add("bob"); seen.add("alice"); // no-op (already present)
+System.out.println(seen.size()); // 2
+
+// LinkedHashSet — O(1) operations; maintains insertion order
+Set<String> ordered = new LinkedHashSet<>(List.of("c", "a", "b"));
+System.out.println(ordered); // [c, a, b] — insertion order
+
+// TreeSet — O(log n) operations; elements sorted by Comparable or Comparator
+Set<Integer> sorted = new TreeSet<>(List.of(5, 2, 8, 1));
+System.out.println(sorted); // [1, 2, 5, 8]
+System.out.println(((TreeSet<Integer>)sorted).floor(6)); // 5 — largest element ≤ 6
+\`\`\`
+
+### Queue and Deque
+
+\`\`\`java
+// PriorityQueue — heap-based; poll() returns smallest element (natural order)
+PriorityQueue<Integer> pq = new PriorityQueue<>();
+pq.addAll(List.of(5, 1, 3, 2, 4));
+while (!pq.isEmpty()) System.out.print(pq.poll() + " "); // 1 2 3 4 5
+
+// Max-heap: reverse the comparator
+PriorityQueue<Integer> maxPq = new PriorityQueue<>(Comparator.reverseOrder());
+
+// ArrayDeque — best stack AND queue implementation; NO capacity limit
+Deque<String> stack = new ArrayDeque<>();
+stack.push("first");  // addFirst
+stack.push("second"); // addFirst
+System.out.println(stack.pop()); // "second" — LIFO
+
+Deque<String> queue = new ArrayDeque<>();
+queue.offer("first");  // addLast
+queue.offer("second"); // addLast
+System.out.println(queue.poll()); // "first" — FIFO
+\`\`\`
+
+### Choosing the Right Collection
+
+| Need | Use |
+|---|---|
+| Ordered, indexed, frequent read | \`ArrayList\` |
+| Frequent insert/remove at both ends | \`ArrayDeque\` |
+| Unique items, fast lookup | \`HashSet\` |
+| Unique items, insertion order | \`LinkedHashSet\` |
+| Unique items, sorted | \`TreeSet\` |
+| Priority queue / min-heap | \`PriorityQueue\` |
+| Thread-safe list | \`CopyOnWriteArrayList\` |
+| Thread-safe queue | \`ConcurrentLinkedQueue\` |
+| Key-value, fast lookup | \`HashMap\` |
+| Key-value, insertion order | \`LinkedHashMap\` |
+| Key-value, sorted | \`TreeMap\` |
+
+> **Interview rule:** reach for \`ArrayList\` and \`HashMap\` first — they are the correct default for 90% of use cases. Only switch when you have a specific requirement (ordering, sorting, deduplication).`,
+          code: [
+            `import java.util.*;
+import java.util.stream.*;
+
+public class CollectionTypesDemo {
+    public static void main(String[] args) {
+        // --- ArrayList vs LinkedList performance trade-offs ---
+        List<Integer> arrayList  = new ArrayList<>(List.of(1, 2, 3, 4, 5));
+        List<Integer> linkedList = new LinkedList<>(List.of(1, 2, 3, 4, 5));
+
+        // ArrayList: O(1) random access
+        System.out.println("ArrayList.get(2): " + arrayList.get(2));
+        // LinkedList: O(1) head/tail operations
+        ((LinkedList<Integer>) linkedList).addFirst(0);
+        ((LinkedList<Integer>) linkedList).addLast(6);
+        System.out.println("LinkedList after addFirst/addLast: " + linkedList);
+
+        // --- Set semantics: no duplicates ---
+        List<String> rawTags = List.of("java", "spring", "java", "jvm", "spring", "jdbc");
+        Set<String> unique = new LinkedHashSet<>(rawTags); // insertion-order, deduped
+        System.out.println("\nUnique tags (insertion order): " + unique);
+
+        // Set operations
+        Set<String> setA = new HashSet<>(Set.of("a", "b", "c", "d"));
+        Set<String> setB = new HashSet<>(Set.of("c", "d", "e", "f"));
+        Set<String> intersection = new HashSet<>(setA); intersection.retainAll(setB);
+        Set<String> union        = new HashSet<>(setA); union.addAll(setB);
+        System.out.println("Intersection: " + new TreeSet<>(intersection)); // sorted for display
+        System.out.println("Union:        " + new TreeSet<>(union));
+
+        // --- PriorityQueue: task scheduling by priority ---
+        record Task(String name, int priority) implements Comparable<Task> {
+            public int compareTo(Task other) { return Integer.compare(other.priority, this.priority); } // highest first
         }
-        // No hashCode() -> uses identity hash -> lookups fail!
+
+        PriorityQueue<Task> tasks = new PriorityQueue<>();
+        tasks.add(new Task("Send email",  2));
+        tasks.add(new Task("Fix prod bug", 10));
+        tasks.add(new Task("Write tests",  5));
+        tasks.add(new Task("Code review",  7));
+
+        System.out.println("\nTask queue (highest priority first):");
+        while (!tasks.isEmpty()) {
+            Task t = tasks.poll();
+            System.out.printf("  [%2d] %s%n", t.priority(), t.name());
+        }
+    }
+}`,
+            `import java.util.*;
+
+// ArrayDeque as stack, queue, and sliding window
+public class DequeDemo {
+    // Browser history — back/forward using two stacks
+    static class BrowserHistory {
+        private final Deque<String> back    = new ArrayDeque<>();
+        private final Deque<String> forward = new ArrayDeque<>();
+        private String current;
+
+        void visit(String url) {
+            if (current != null) back.push(current);
+            forward.clear(); // new visit clears forward history
+            current = url;
+        }
+        String goBack() {
+            if (back.isEmpty()) return current;
+            forward.push(current);
+            current = back.pop();
+            return current;
+        }
+        String goForward() {
+            if (forward.isEmpty()) return current;
+            back.push(current);
+            current = forward.pop();
+            return current;
+        }
+        String current() { return current; }
+    }
+
+    // Sliding window maximum using Deque
+    static int[] slidingWindowMax(int[] nums, int k) {
+        int[] result = new int[nums.length - k + 1];
+        Deque<Integer> dq = new ArrayDeque<>(); // stores indices
+        for (int i = 0; i < nums.length; i++) {
+            // Remove indices outside window
+            while (!dq.isEmpty() && dq.peekFirst() <= i - k) dq.pollFirst();
+            // Remove smaller elements (they can't be the max)
+            while (!dq.isEmpty() && nums[dq.peekLast()] <= nums[i]) dq.pollLast();
+            dq.offerLast(i);
+            if (i >= k - 1) result[i - k + 1] = nums[dq.peekFirst()];
+        }
+        return result;
     }
 
     public static void main(String[] args) {
-        Map<Point, String> good = new HashMap<>();
-        good.put(new Point(1, 2), "origin-ish");
-        System.out.println("record key lookup : " + good.get(new Point(1, 2))); // found
+        BrowserHistory browser = new BrowserHistory();
+        browser.visit("google.com");
+        browser.visit("github.com");
+        browser.visit("stackoverflow.com");
+        System.out.println("Current: " + browser.current());
+        System.out.println("Back:    " + browser.goBack());
+        System.out.println("Back:    " + browser.goBack());
+        System.out.println("Forward: " + browser.goForward());
 
-        Map<BadKey, String> bad = new HashMap<>();
-        bad.put(new BadKey("A"), "value");
-        System.out.println("bad key lookup    : " + bad.get(new BadKey("A"))); // null!
+        int[] nums = {1, 3, -1, -3, 5, 3, 6, 7};
+        System.out.println("\nSliding window max (k=3): " + Arrays.toString(slidingWindowMax(nums, 3)));
+        // [3, 3, 5, 5, 6, 7]
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What is the time complexity of ArrayList.get(i), add(), and add(i, elem)?', a: 'get(i): O(1) — direct array index access. add() to end: O(1) amortised (occasional O(n) resize, but amortised constant). add(i, elem) at index: O(n) — all elements from i onward must be shifted right. For frequent mid-list inserts, consider LinkedList (but its O(n) traversal to find position negates the O(1) insert benefit in practice — ArrayDeque is often better).' },
+            { q: 'When should you use LinkedHashSet over HashSet?', a: 'When you need both uniqueness AND insertion order. HashSet gives O(1) operations but no order guarantee. LinkedHashSet gives the same O(1) complexity but maintains a doubly-linked list connecting entries in insertion order. Common use: deduplicate a list while preserving order — new LinkedHashSet<>(list).' },
+            { q: 'What is the difference between PriorityQueue.poll() and peek()?', a: 'peek() returns the head element (smallest for natural order, or according to Comparator) without removing it — O(1). poll() removes and returns the head — O(log n) because it must re-heapify. offer()/add() is also O(log n). PriorityQueue does NOT sort on iteration — only poll() order is guaranteed. For sorted output: keep polling until empty.' },
+            { q: 'Why prefer ArrayDeque over Stack and LinkedList for stack/queue operations?', a: 'Stack extends Vector which is synchronized — unnecessary overhead in single-threaded code. LinkedList allocates a node object per element. ArrayDeque uses a resizable array internally: O(1) amortised push/pop/offer/poll, better cache locality than LinkedList, no synchronization overhead. It implements Deque, so it serves as both stack (push/pop) and queue (offer/poll).' },
+            { q: 'What does Collections.unmodifiableList() return and how does it differ from List.of()?', a: 'Collections.unmodifiableList(list) returns a view — modifications to the original list are reflected in the unmodifiable view. It wraps the original without copying. List.of() creates a new truly immutable list that cannot be modified from any reference. For defensive returns, List.copyOf() makes an immutable snapshot, while List.of() is for literals.' }
+          ]
         },
         {
-          lang: 'java',
-          title: 'LRU Cache using LinkedHashMap — a real interview question',
-          code: `import java.util.*;
+          title: 'equals() and hashCode() Contract',
+          notes: `## equals() and hashCode() Contract
 
-// Classic interview question: implement an LRU (Least Recently Used) cache.
-// LinkedHashMap with accessOrder=true maintains access order — the tail is the most-recently-used.
-// Override removeEldestEntry to evict when capacity is exceeded.
-public class LruCacheDemo {
+The equals/hashCode contract is one of the most tested Java topics in senior interviews. Get it wrong and \`HashSet\`, \`HashMap\`, and any hash-based collection silently breaks — losing items or producing ghost duplicates.
 
-    static class LruCache<K, V> extends LinkedHashMap<K, V> {
-        private final int capacity;
+### The Contract
 
-        LruCache(int capacity) {
-            super(capacity, 0.75f, true); // accessOrder=true: get() moves entry to tail
-            this.capacity = capacity;
+From \`java.lang.Object\`:
+
+1. **Reflexive:** \`x.equals(x)\` must be \`true\`
+2. **Symmetric:** if \`x.equals(y)\` then \`y.equals(x)\`
+3. **Transitive:** if \`x.equals(y)\` and \`y.equals(z)\` then \`x.equals(z)\`
+4. **Consistent:** repeated calls return the same result (if no state changes)
+5. **Non-null:** \`x.equals(null)\` must return \`false\`
+
+**Critical rule:** if \`x.equals(y)\` is \`true\` → \`x.hashCode() == y.hashCode()\` **must** also be true. The reverse is NOT required (hash collisions are allowed).
+
+### What Happens When You Break the Contract
+
+\`\`\`java
+class BrokenPoint {
+    int x, y;
+    BrokenPoint(int x, int y) { this.x = x; this.y = y; }
+    @Override public boolean equals(Object o) {
+        if (!(o instanceof BrokenPoint)) return false;
+        BrokenPoint p = (BrokenPoint) o;
+        return x == p.x && y == p.y;
+    }
+    // ← hashCode() NOT overridden → uses Object's identity hash
+}
+
+Set<BrokenPoint> set = new HashSet<>();
+set.add(new BrokenPoint(1, 2));
+System.out.println(set.contains(new BrokenPoint(1, 2))); // FALSE — broken!
+// HashMap bucket lookup uses hashCode first. Different hashCodes → different buckets → never found.
+\`\`\`
+
+### Correct Implementation
+
+\`\`\`java
+class Point {
+    final int x, y;
+    Point(int x, int y) { this.x = x; this.y = y; }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;               // same object — short-circuit
+        if (!(o instanceof Point p)) return false; // null and wrong type handled
+        return x == p.x && y == p.y;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(x, y); // same fields as equals — contract maintained
+    }
+}
+
+Point p1 = new Point(1, 2);
+Point p2 = new Point(1, 2);
+System.out.println(p1.equals(p2));   // true
+System.out.println(p1.hashCode() == p2.hashCode()); // true
+Set<Point> set = new HashSet<>();
+set.add(p1);
+System.out.println(set.contains(p2)); // true ✓
+\`\`\`
+
+### How HashMap Uses hashCode
+
+\`\`\`mermaid
+graph LR
+    KEY[key.hashCode\ne.g. 42]
+    KEY --> BUCKET[bucket index\nhash & mask]
+    BUCKET --> CHAIN[linked chain\nor tree node]
+    CHAIN --> EQ[key.equals\nfor each node]
+    EQ --> VAL[value]
+    style KEY fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style EQ  fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+\`\`\`
+
+1. \`hashCode()\` determines the **bucket** (O(1) array index)
+2. \`equals()\` identifies the **exact entry** within the bucket
+
+This is why both must be consistent: if two equal objects hash to different buckets, the lookup never finds them in the same chain.
+
+### Records — equals/hashCode for Free
+
+Java 16+ records automatically implement correct \`equals()\`, \`hashCode()\`, and \`toString()\` based on all components:
+
+\`\`\`java
+record Point(int x, int y) {}  // equals, hashCode, toString — generated correctly
+
+Point p1 = new Point(3, 4);
+Point p2 = new Point(3, 4);
+System.out.println(p1.equals(p2));                   // true
+System.out.println(p1.hashCode() == p2.hashCode()); // true
+System.out.println(p1);                               // Point[x=3, y=4]
+\`\`\`
+
+### The Mutable Key Problem
+
+\`\`\`java
+// DANGER: mutable object as Map key
+class MutableKey { int id; MutableKey(int id) { this.id = id; } /* equals/hashCode use id */ }
+
+Map<MutableKey, String> map = new HashMap<>();
+MutableKey key = new MutableKey(1);
+map.put(key, "value");
+
+key.id = 2; // mutation changes hashCode!
+System.out.println(map.get(key)); // null — key is now in wrong bucket
+System.out.println(map.size());   // 1 — the entry is still there, just unreachable
+\`\`\`
+
+**Rule:** never use a mutable object as a Map key or Set element. Use immutable types (String, Integer, records, custom immutable class).`,
+          code: [
+            `import java.util.*;
+
+public class EqualsHashCodeDemo {
+    // Correct implementation for a value object
+    static class Money {
+        private final long cents;
+        private final String currency;
+
+        Money(long cents, String currency) {
+            this.cents    = cents;
+            this.currency = Objects.requireNonNull(currency).toUpperCase();
+        }
+
+        @Override public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Money m)) return false;
+            return cents == m.cents && currency.equals(m.currency);
+        }
+
+        @Override public int hashCode() {
+            return Objects.hash(cents, currency); // same fields as equals
+        }
+
+        @Override public String toString() {
+            return String.format("%s %.2f", currency, cents / 100.0);
+        }
+    }
+
+    public static void main(String[] args) {
+        Money a = new Money(999, "USD");
+        Money b = new Money(999, "USD");
+        Money c = new Money(999, "EUR");
+
+        // equals contract
+        System.out.println("a.equals(b): " + a.equals(b));           // true (same value)
+        System.out.println("a.equals(c): " + a.equals(c));           // false (diff currency)
+        System.out.println("a.equals(null): " + a.equals(null));     // false (never throws)
+        System.out.println("Symmetric: " + (a.equals(b) == b.equals(a))); // true
+
+        // hashCode contract: equal objects must have same hash
+        System.out.println("Same hash: " + (a.hashCode() == b.hashCode())); // true
+        System.out.println("Diff hash: " + (a.hashCode() == c.hashCode())); // false (likely)
+
+        // Works correctly in collections
+        Set<Money> wallet = new HashSet<>();
+        wallet.add(a);
+        wallet.add(b); // duplicate — ignored
+        wallet.add(c);
+        System.out.println("Wallet size: " + wallet.size()); // 2, not 3
+
+        Map<Money, Integer> quantities = new HashMap<>();
+        quantities.put(a, 5);
+        System.out.println("Lookup with b: " + quantities.get(b)); // 5 — found via equals
+    }
+}`,
+            `import java.util.*;
+
+// Demonstrate the broken-contract failure and mutable key danger
+public class ContractViolations {
+    // Breaks the contract — equals without hashCode
+    static class BadKey {
+        final int value;
+        BadKey(int value) { this.value = value; }
+        @Override public boolean equals(Object o) {
+            return o instanceof BadKey bk && value == bk.value;
+        }
+        // hashCode NOT overridden — uses Object identity hash
+    }
+
+    // Mutable key danger
+    static class MutableId {
+        int id;
+        MutableId(int id) { this.id = id; }
+        @Override public boolean equals(Object o) { return o instanceof MutableId m && id == m.id; }
+        @Override public int hashCode()            { return Integer.hashCode(id); }
+        @Override public String toString()         { return "MutableId(" + id + ")"; }
+    }
+
+    public static void main(String[] args) {
+        // 1. Broken: equals without hashCode
+        BadKey k1 = new BadKey(42);
+        BadKey k2 = new BadKey(42);
+        System.out.println("BadKey equals: " + k1.equals(k2)); // true
+        System.out.println("BadKey hash same: " + (k1.hashCode() == k2.hashCode())); // FALSE
+
+        Map<BadKey, String> broken = new HashMap<>();
+        broken.put(k1, "found me?");
+        System.out.println("Lookup k1: " + broken.get(k1)); // found me?
+        System.out.println("Lookup k2: " + broken.get(k2)); // null — k2 hashes to wrong bucket
+
+        // 2. Mutable key danger
+        MutableId mutable = new MutableId(1);
+        Map<MutableId, String> map = new HashMap<>();
+        map.put(mutable, "original value");
+        System.out.println("\nBefore mutation: " + map.get(mutable)); // original value
+
+        mutable.id = 999; // mutate after put!
+        System.out.println("After mutation:  " + map.get(mutable));  // null — wrong bucket now
+        System.out.println("Map is not empty: " + !map.isEmpty());   // true — entry exists but unreachable
+
+        // 3. Correct: record — contract satisfied automatically
+        record Point(int x, int y) {}
+        Set<Point> points = new HashSet<>();
+        points.add(new Point(1, 2));
+        System.out.println("\nRecord lookup: " + points.contains(new Point(1, 2))); // true
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What happens if you override equals() but NOT hashCode()?', a: 'Two "equal" objects will hash to different buckets in HashMap/HashSet (because Object.hashCode() returns identity-based values). HashSet.contains(b) returns false even when a.equals(b) is true — b lands in a different bucket from a. The contract requires: a.equals(b) → a.hashCode() == b.hashCode(). Breaking this silently corrupts all hash-based collections.' },
+            { q: 'What are the five properties of the equals() contract?', a: 'Reflexive: x.equals(x) = true. Symmetric: x.equals(y) ↔ y.equals(x). Transitive: x.equals(y) ∧ y.equals(z) → x.equals(z). Consistent: repeated calls return same result (no state change). Non-null: x.equals(null) = false (never throws NullPointerException).' },
+            { q: 'Why must you never use a mutable object as a HashMap key?', a: 'A key\'s bucket is determined by its hashCode() at insertion time. If the object is mutated after insertion, its hashCode changes, so it is now in the wrong bucket. The entry still exists but is unreachable via get() — the map is corrupted. Always use immutable types (String, Integer, record, or custom immutable class) as map keys.' },
+            { q: 'How does HashMap use hashCode() and equals() to find a value?', a: 'HashMap.get(key): (1) compute key.hashCode(), (2) compute bucket index = hash & (capacity-1), (3) traverse the linked list (or red-black tree for large buckets) at that bucket, (4) for each node, check key.equals(nodeKey) until found or list exhausted. hashCode determines the bucket (O(1) array lookup); equals identifies the exact entry within the bucket.' },
+            { q: 'What does Objects.hash(a, b, c) do and why is it preferred?', a: 'Objects.hash(a,b,c) calls Arrays.hashCode(new Object[]{a,b,c}) which computes 31*31*h(a) + 31*h(b) + h(c) — the standard polynomial hash. It is preferred over manual "31 * result + field.hashCode()" because: null-safe (handles null fields gracefully), concise, standard, and consistent with what IDEs and records generate. Use the same fields as in equals().' }
+          ]
+        },
+        {
+          title: 'Comparable vs Comparator',
+          notes: `## Comparable vs Comparator
+
+Sorting in Java has two mechanisms: \`Comparable\` (natural order, built into the class) and \`Comparator\` (external, pluggable order). Understanding when to use each is a common interview question.
+
+### Comparable — Natural Ordering
+
+\`Comparable<T>\` is implemented by the class itself, defining its single natural ordering. \`compareTo()\` returns negative (this < other), zero (equal), or positive (this > other).
+
+\`\`\`java
+class Employee implements Comparable<Employee> {
+    String name;
+    int salary;
+    LocalDate startDate;
+
+    Employee(String name, int salary, LocalDate startDate) {
+        this.name = name; this.salary = salary; this.startDate = startDate;
+    }
+
+    @Override
+    public int compareTo(Employee other) {
+        // Natural order: by salary ascending
+        return Integer.compare(this.salary, other.salary); // never use subtraction — overflow risk
+    }
+}
+
+List<Employee> staff = new ArrayList<>(List.of(
+    new Employee("Alice", 80_000, LocalDate.of(2020, 1, 1)),
+    new Employee("Bob",   95_000, LocalDate.of(2019, 6, 1)),
+    new Employee("Carol", 72_000, LocalDate.of(2021, 3, 1))
+));
+
+Collections.sort(staff);           // uses Comparable — sort by salary
+TreeSet<Employee> sorted = new TreeSet<>(staff); // TreeSet uses Comparable
+\`\`\`
+
+### Comparator — External, Pluggable Ordering
+
+\`Comparator<T>\` lives outside the class, allowing multiple orderings without modifying the class. In Java 8+, \`Comparator\` has factory methods that chain naturally:
+
+\`\`\`java
+// Multiple orderings via Comparator — no changes to Employee class
+Comparator<Employee> byName       = Comparator.comparing(e -> e.name);
+Comparator<Employee> bySalaryDesc = Comparator.comparingInt(Employee::getSalary).reversed();
+Comparator<Employee> byTenure     = Comparator.comparing(Employee::getStartDate);
+
+// Chained: sort by salary desc, then by name asc for ties
+Comparator<Employee> primary = bySalaryDesc.thenComparing(byName);
+
+staff.sort(primary);
+staff.forEach(e -> System.out.printf("%-10s $%d%n", e.name, e.salary));
+\`\`\`
+
+### Comparator Factory Methods (Java 8+)
+
+\`\`\`java
+// comparing(keyExtractor) — wraps in null-safe Comparator
+Comparator<String> byLen = Comparator.comparingInt(String::length);
+
+// reversed() — flips the order
+Comparator<Integer> desc = Comparator.<Integer>naturalOrder().reversed();
+
+// thenComparing() — secondary sort when primary is equal
+Comparator<String> byLenThenAlpha = Comparator.comparingInt(String::length)
+    .thenComparing(Comparator.naturalOrder());
+
+// nullsFirst / nullsLast
+Comparator<String> nullSafe = Comparator.nullsFirst(Comparator.naturalOrder());
+
+List<String> words = new ArrayList<>(Arrays.asList("banana", "apple", "kiwi", "fig", "cherry"));
+words.sort(byLenThenAlpha);
+System.out.println(words); // [fig, kiwi, apple, banana, cherry]
+\`\`\`
+
+### compareTo Contract
+
+\`compareTo\` must be consistent with \`equals\` for sorted collections:
+
+\`\`\`java
+// If x.compareTo(y) == 0, then x.equals(y) should be true (strongly recommended)
+// BigDecimal violates this: new BigDecimal("2.0").compareTo(new BigDecimal("2.00")) == 0
+//   but new BigDecimal("2.0").equals(new BigDecimal("2.00")) == false
+// TreeSet/TreeMap use compareTo — so BigDecimal("2.0") and BigDecimal("2.00")
+//   are treated as the same key in a TreeSet, but different objects via equals
+\`\`\`
+
+### When to Use Which
+
+| Situation | Use |
+|---|---|
+| One natural ordering makes sense (String alphabetical, Integer numeric) | \`Comparable\` |
+| Multiple orderings needed (by name, by date, by salary) | \`Comparator\` |
+| Sorting a third-party class you can't modify | \`Comparator\` |
+| Passing order to \`TreeSet\`/\`TreeMap\` constructor | \`Comparator\` |
+| Algorithm choice based on runtime condition | \`Comparator\` |`,
+          code: [
+            `import java.util.*;
+import java.time.*;
+
+public class ComparableComparatorDemo {
+    record Product(String name, double price, int rating) {}
+
+    public static void main(String[] args) {
+        List<Product> catalog = new ArrayList<>(List.of(
+            new Product("Widget",      9.99, 4),
+            new Product("Gadget",     29.99, 5),
+            new Product("Doohickey",   4.99, 3),
+            new Product("Thingamajig",49.99, 5),
+            new Product("Gizmo",      14.99, 4)
+        ));
+
+        // Comparator chains — multiple sort orderings
+        Comparator<Product> byPrice  = Comparator.comparingDouble(Product::price);
+        Comparator<Product> byRating = Comparator.comparingInt(Product::rating).reversed();
+        Comparator<Product> byName   = Comparator.comparing(Product::name);
+
+        // Sort by rating desc, then price asc, then name asc
+        Comparator<Product> shopSort = byRating.thenComparing(byPrice).thenComparing(byName);
+
+        System.out.println("Shop sort (rating desc, price asc, name asc):");
+        catalog.stream().sorted(shopSort)
+            .forEach(p -> System.out.printf("  ★%d %-15s $%.2f%n",
+                p.rating(), p.name(), p.price()));
+
+        // TreeMap with custom Comparator — sorted by price desc
+        TreeMap<Product, Integer> inventory =
+            new TreeMap<>(Comparator.comparingDouble(Product::price).reversed());
+        catalog.forEach(p -> inventory.put(p, (int)(100 / p.price())));
+
+        System.out.println("\nInventory (price desc):");
+        inventory.forEach((p, qty) ->
+            System.out.printf("  %-15s $%.2f  stock=%d%n", p.name(), p.price(), qty));
+
+        // Null-safe sort
+        List<String> tags = new ArrayList<>(Arrays.asList("java", null, "spring", null, "jdbc"));
+        tags.sort(Comparator.nullsLast(Comparator.naturalOrder()));
+        System.out.println("\nNull-safe sort: " + tags);
+    }
+}`,
+            `import java.util.*;
+
+// Implementing Comparable with correct compareTo
+public class ComparableImpl {
+    static class Version implements Comparable<Version> {
+        final int major, minor, patch;
+
+        Version(String version) {
+            String[] parts = version.split("\\.");
+            major = Integer.parseInt(parts[0]);
+            minor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+            patch = parts.length > 2 ? Integer.parseInt(parts[2]) : 0;
         }
 
         @Override
-        protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
-            return size() > capacity; // evict oldest (head) when over capacity
+        public int compareTo(Version other) {
+            // Never use subtraction — can overflow for large int values
+            int c = Integer.compare(major, other.major);
+            if (c != 0) return c;
+            c = Integer.compare(minor, other.minor);
+            if (c != 0) return c;
+            return Integer.compare(patch, other.patch);
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof Version v)) return false;
+            return major == v.major && minor == v.minor && patch == v.patch;
+        }
+
+        @Override public int hashCode() { return Objects.hash(major, minor, patch); }
+        @Override public String toString() { return major + "." + minor + "." + patch; }
     }
 
     public static void main(String[] args) {
-        LruCache<Integer, String> cache = new LruCache<>(3);
-        cache.put(1, "one");
-        cache.put(2, "two");
-        cache.put(3, "three");
-        System.out.println("After 3 puts: " + cache.keySet()); // [1, 2, 3]
+        List<Version> versions = new ArrayList<>(List.of(
+            new Version("2.1.0"),
+            new Version("1.9.5"),
+            new Version("2.0.1"),
+            new Version("1.9.10"),
+            new Version("3.0.0")
+        ));
 
-        cache.get(1); // access key 1 -> moves to tail (most recently used)
-        System.out.println("After get(1): " + cache.keySet()); // [2, 3, 1]
+        Collections.sort(versions); // uses Comparable
+        System.out.println("Sorted versions: " + versions);
 
-        cache.put(4, "four"); // capacity exceeded -> evicts LRU (key 2, the head)
-        System.out.println("After put(4): " + cache.keySet()); // [3, 1, 4] — 2 evicted
+        // TreeSet uses Comparable for deduplication + ordering
+        TreeSet<Version> latest = new TreeSet<>(versions);
+        System.out.println("Latest: " + latest.last());   // 3.0.0
+        System.out.println("Oldest: " + latest.first());  // 1.9.5
 
-        // For thread-safety: wrap with Collections.synchronizedMap() or use Caffeine
-        // For production: com.github.ben-manes.caffeine:caffeine
-        // Caffeine.newBuilder().maximumSize(1000).expireAfterWrite(10, MINUTES).build()
-
-        System.out.println("\\nAlgorithm insight:");
-        System.out.println("  LinkedHashMap with accessOrder maintains a doubly-linked list.");
-        System.out.println("  get/put moves the entry to the tail in O(1).");
-        System.out.println("  removeEldestEntry evicts the head (LRU) in O(1).");
-        System.out.println("  Total: O(1) get and put for LRU — the optimal solution.");
+        // Range query — versions >= 2.0.0
+        System.out.println("Versions >= 2.0.0: " + latest.tailSet(new Version("2.0.0")));
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What is the difference between Comparable and Comparator?', a: 'Comparable (java.lang) is implemented by a class to define its natural ordering — one ordering baked into the class. Comparator (java.util) is external — a separate object or lambda that defines an ordering independently of the class. Use Comparable for the primary, "obvious" ordering; use Comparator for alternative orderings, third-party classes, or runtime-chosen orders.' },
+            { q: 'Why should you never implement compareTo() as return a.field - b.field?', a: 'Integer subtraction overflows for extreme values: if a=Integer.MAX_VALUE and b=-1, MAX_VALUE - (-1) overflows to a negative number, reversing the comparison. Always use Integer.compare(a, b), Long.compare(a, b), or Double.compare(a, b) — these are overflow-safe and return -1, 0, or 1 correctly.' },
+            { q: 'How does Comparator.thenComparing() work?', a: 'thenComparing() adds a secondary comparator applied only when the primary comparator returns 0 (equal). You can chain arbitrarily: byDept.thenComparingInt(Employee::salary).thenComparing(Employee::name) — sort by dept, then within same dept by salary, then within same dept+salary by name. Each thenComparing() is only consulted when all previous ones return 0.' },
+            { q: 'What is Comparator.nullsFirst() / nullsLast() for?', a: 'Standard comparators throw NullPointerException when comparing a null element. Comparator.nullsFirst(natural) wraps another comparator and sorts nulls before all non-null elements. nullsLast(natural) sorts nulls after. Essential when sorting collections that may contain null elements.' },
+            { q: 'What is the consistency-with-equals requirement for compareTo()?', a: 'Strongly recommended (not mandatory): if x.compareTo(y) == 0, then x.equals(y) should be true. If violated, the element behaves differently in sorted collections (TreeSet/TreeMap, which use compareTo) vs hash collections (HashMap/HashSet, which use equals). BigDecimal is a known violator: "2.0".compareTo("2.00") = 0 but "2.0".equals("2.00") = false, so TreeSet treats them as duplicates but HashMap treats them as different keys.' }
+          ]
         },
         {
-          lang: 'java',
-          title: 'ConcurrentHashMap: atomic operations and common pitfalls',
-          code: `import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
+          title: 'Maps Deep Dive — HashMap, LinkedHashMap, TreeMap',
+          notes: `## Maps Deep Dive — HashMap, LinkedHashMap, TreeMap
 
-// ConcurrentHashMap is the workhorse of concurrent Java code.
-// Key: operations are NOT synchronized across multiple method calls.
-public class ConcurrentMapDemo {
+Maps are the most-used data structure in backend Java. Understanding their internal mechanics, thread-safety, and choosing between them is a staple of senior interviews.
 
-    public static void main(String[] args) throws InterruptedException {
-        ConcurrentHashMap<String, AtomicInteger> wordCount = new ConcurrentHashMap<>();
+### HashMap Internals
 
-        // ✅ computeIfAbsent is ATOMIC — safe for concurrent initialization
-        // Only one thread creates the AtomicInteger for a key; others get the same instance.
-        ExecutorService pool = Executors.newFixedThreadPool(8);
-        String[] words = {"java","python","java","go","java","python","rust","java"};
+\`\`\`mermaid
+graph TD
+    HM[HashMap capacity=16]
+    HM --> B0[Bucket 0]
+    HM --> B3[Bucket 3]
+    HM --> B7[Bucket 7]
+    B0 --> N1[Node\nkey=Alice\nval=30\nnext→]
+    N1 --> N2[Node\nkey=Eve\nval=25\nnext=null]
+    B3 --> N3[Node\nkey=Bob\nval=40\nnext=null]
+    B7 --> N4[TreeNode\nred-black tree\nwhen chain ≥ 8]
+    style B0 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style B7 fill:#1e0a0a,stroke:#ef4444,color:#fecaca
+\`\`\`
 
-        for (String w : words) {
-            pool.submit(() -> {
-                wordCount.computeIfAbsent(w, k -> new AtomicInteger(0)).incrementAndGet();
-            });
+**Key implementation facts:**
+- Default initial capacity: **16** buckets, load factor **0.75**
+- Resize (doubles capacity) when: \`size > capacity × 0.75\`
+- Collision handling: linked list → **red-black tree** when chain length ≥ 8 (Java 8+)
+- \`put()\`, \`get()\`, \`remove()\`: O(1) amortised; O(log n) worst-case (treeified bucket)
+- **Not thread-safe** — use \`ConcurrentHashMap\` or \`Collections.synchronizedMap()\`
+
+### Common HashMap Operations
+
+\`\`\`java
+Map<String, Integer> scores = new HashMap<>();
+
+// put, get, getOrDefault
+scores.put("Alice", 85);
+scores.put("Bob",   92);
+int bobScore = scores.getOrDefault("Bob", 0);     // 92
+int unknown  = scores.getOrDefault("Eve", 0);     // 0 — default, no NPE
+
+// computeIfAbsent — lazy initialisation (very common for grouping)
+Map<String, List<String>> groups = new HashMap<>();
+groups.computeIfAbsent("Engineering", k -> new ArrayList<>()).add("Alice");
+groups.computeIfAbsent("Engineering", k -> new ArrayList<>()).add("Bob");  // reuses list
+
+// merge — combine values
+Map<String, Integer> wordCount = new HashMap<>();
+String[] words = {"apple", "banana", "apple", "cherry", "banana", "apple"};
+for (String w : words) wordCount.merge(w, 1, Integer::sum);
+System.out.println(wordCount); // {apple=3, banana=2, cherry=1}
+
+// putIfAbsent, replace, replaceAll
+scores.putIfAbsent("Alice", 99);  // no-op, Alice already exists
+scores.replaceAll((name, score) -> score + 5); // bonus for everyone
+\`\`\`
+
+### LinkedHashMap — Insertion or Access Order
+
+\`\`\`java
+// Insertion order (default)
+Map<String, Integer> insertion = new LinkedHashMap<>();
+insertion.put("c", 3); insertion.put("a", 1); insertion.put("b", 2);
+System.out.println(insertion.keySet()); // [c, a, b] — insertion order
+
+// Access order — LRU cache with removeEldestEntry
+class LruCache<K, V> extends LinkedHashMap<K, V> {
+    private final int capacity;
+    LruCache(int capacity) {
+        super(capacity, 0.75f, true);  // true = access order
+        this.capacity = capacity;
+    }
+    @Override
+    protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+        return size() > capacity; // evict LRU when over capacity
+    }
+}
+
+LruCache<String, String> cache = new LruCache<>(3);
+cache.put("a", "1"); cache.put("b", "2"); cache.put("c", "3");
+cache.get("a");         // access "a" — moves to most-recently-used
+cache.put("d", "4");    // evicts "b" (least-recently used after "a" accessed)
+System.out.println(cache.keySet()); // [c, a, d]
+\`\`\`
+
+### TreeMap — Sorted Keys
+
+\`\`\`java
+TreeMap<String, Integer> tree = new TreeMap<>();
+tree.put("banana", 2); tree.put("apple", 1); tree.put("cherry", 3);
+System.out.println(tree.firstKey());      // apple
+System.out.println(tree.lastKey());       // cherry
+System.out.println(tree.floorKey("b"));   // banana (largest key ≤ "b")
+System.out.println(tree.ceilingKey("b")); // banana (smallest key ≥ "b")
+
+// Range views — live, backed by the TreeMap
+SortedMap<String, Integer> subMap = tree.subMap("apple", "cherry"); // [apple, banana]
+NavigableMap<String, Integer> head = tree.headMap("cherry", false);  // [apple, banana]
+\`\`\`
+
+### Choosing Between Map Implementations
+
+| | HashMap | LinkedHashMap | TreeMap |
+|---|---|---|---|
+| Performance | O(1) avg | O(1) avg | O(log n) |
+| Order | None | Insertion or access | Sorted (compareTo) |
+| Null key | 1 allowed | 1 allowed | Not allowed |
+| Use case | General purpose | Predictable iteration, LRU | Range queries, sorted output |
+
+### ConcurrentHashMap — Thread-Safe Alternative
+
+\`\`\`java
+// ConcurrentHashMap — lock-striped, O(1) concurrent reads
+ConcurrentHashMap<String, AtomicInteger> counters = new ConcurrentHashMap<>();
+counters.computeIfAbsent("hits", k -> new AtomicInteger()).incrementAndGet();
+
+// Java 8 atomic operations
+counters.merge("hits", new AtomicInteger(1), (a, b) -> { a.addAndGet(b.get()); return a; });
+\`\`\``,
+          code: [
+            `import java.util.*;
+import java.util.stream.*;
+
+public class MapDeepDive {
+    public static void main(String[] args) {
+        // 1. Word frequency with merge()
+        String text = "the quick brown fox jumps over the lazy dog the fox";
+        Map<String, Integer> freq = new HashMap<>();
+        for (String word : text.split("\\s+"))
+            freq.merge(word, 1, Integer::sum);
+
+        // Sort by frequency desc, then alpha
+        System.out.println("Word frequencies:");
+        freq.entrySet().stream()
+            .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder())
+                .thenComparing(Map.Entry.comparingByKey()))
+            .forEach(e -> System.out.printf("  %-8s %d%n", e.getKey(), e.getValue()));
+
+        // 2. computeIfAbsent for grouping
+        List<String> names = List.of("Alice","Bob","Carol","Amy","Brian","Charlie");
+        Map<Character, List<String>> byInitial = new TreeMap<>();
+        names.forEach(n -> byInitial.computeIfAbsent(n.charAt(0), k -> new ArrayList<>()).add(n));
+        System.out.println("\nGrouped by initial: " + byInitial);
+
+        // 3. LinkedHashMap — preserve insertion order for config
+        Map<String, String> config = new LinkedHashMap<>();
+        config.put("db.host", "localhost");
+        config.put("db.port", "5432");
+        config.put("db.name", "myapp");
+        config.put("app.env", "production");
+        System.out.println("\nConfig (insertion order):");
+        config.forEach((k, v) -> System.out.println("  " + k + "=" + v));
+
+        // 4. TreeMap range query — log entries by timestamp prefix
+        TreeMap<String, String> logs = new TreeMap<>();
+        logs.put("2024-06-25T10:00", "server started");
+        logs.put("2024-06-25T10:05", "request received");
+        logs.put("2024-06-25T10:15", "error: timeout");
+        logs.put("2024-06-25T11:00", "request received");
+        logs.put("2024-06-25T11:30", "shutdown");
+
+        System.out.println("\nLogs from 10:00-11:00:");
+        logs.subMap("2024-06-25T10:00", "2024-06-25T11:00")
+            .forEach((k, v) -> System.out.println("  " + k + " — " + v));
+    }
+}`,
+            `import java.util.*;
+
+// LRU Cache using LinkedHashMap + computeIfAbsent patterns
+public class LruAndComputeDemo {
+    static class LruCache<K, V> extends LinkedHashMap<K, V> {
+        private final int cap;
+        LruCache(int cap) { super(cap, 0.75f, true); this.cap = cap; }
+        @Override protected boolean removeEldestEntry(Map.Entry<K, V> e) { return size() > cap; }
+        public V getOrLoad(K key, java.util.function.Function<K, V> loader) {
+            return computeIfAbsent(key, loader);
         }
-        pool.shutdown();
-        pool.awaitTermination(2, TimeUnit.SECONDS);
-        System.out.println("Word counts: " + wordCount);
+    }
 
-        // ❌ WRONG: check-then-act is NOT atomic across two calls
-        ConcurrentHashMap<String, Integer> broken = new ConcurrentHashMap<>();
-        // Two threads could both pass the null check and both put a value
-        if (broken.get("key") == null) {
-            broken.put("key", 1); // RACE: another thread may also do this
+    // Frequency analysis using computeIfAbsent + merge
+    static Map<String, Map<String, Long>> groupAndCount(List<String[]> rows) {
+        // rows: [dept, name]
+        Map<String, Map<String, Long>> result = new TreeMap<>();
+        for (String[] row : rows) {
+            String dept = row[0], name = row[1];
+            result.computeIfAbsent(dept, k -> new TreeMap<>())
+                  .merge(name, 1L, Long::sum);
         }
+        return result;
+    }
 
-        // ✅ CORRECT: putIfAbsent or compute
-        broken.putIfAbsent("key", 1);                     // atomic
-        broken.merge("key", 1, Integer::sum);             // atomic increment: null-safe
-        broken.compute("key", (k, v) -> v == null ? 1 : v + 1); // full control
+    public static void main(String[] args) {
+        // LRU Cache demo
+        LruCache<Integer, String> cache = new LruCache<>(3);
+        for (int i = 1; i <= 4; i++) cache.put(i, "value-" + i);
+        System.out.println("After 4 puts (cap=3): " + cache.keySet()); // [2, 3, 4]
 
-        System.out.println("Atomic put result: " + broken.get("key"));
+        cache.get(2); // access 2 — becomes most recent
+        cache.put(5, "value-5"); // evicts 3 (LRU)
+        System.out.println("After access(2), put(5): " + cache.keySet()); // [4, 2, 5]
 
-        // NULL keys/values are NOT allowed (unlike HashMap) — common NPE source
-        try {
-            ConcurrentHashMap<String,String> m = new ConcurrentHashMap<>();
-            m.put(null, "value"); // throws NullPointerException!
-        } catch (NullPointerException e) {
-            System.out.println("ConcurrentHashMap rejects null keys/values (NPE caught)");
-        }
+        // Group and count
+        List<String[]> employees = List.of(
+            new String[]{"Engineering", "Alice"},
+            new String[]{"Marketing",   "Bob"},
+            new String[]{"Engineering", "Carol"},
+            new String[]{"Engineering", "Alice"}, // Alice counted twice
+            new String[]{"Marketing",   "Dave"}
+        );
 
-        // WHY? In CHM, null would be ambiguous: does get() return null because the key
-        // is absent, or because the value IS null? Without separate containsKey(),
-        // the API would be unusable. HashMap allows it because it's single-threaded.
-        System.out.println("\\nKey rule: in CHM, treat every operation as potentially racing.");
-        System.out.println("Use atomic compound ops: computeIfAbsent, merge, compute.");
+        System.out.println("\nDept breakdown:");
+        groupAndCount(employees).forEach((dept, members) -> {
+            System.out.println("  " + dept + ":");
+            members.forEach((name, count) ->
+                System.out.println("    " + name + " x" + count));
+        });
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What is HashMap\'s default initial capacity and load factor, and when does it resize?', a: 'Default capacity: 16 buckets. Default load factor: 0.75. Resize trigger: when size > capacity × loadFactor (size > 12 for default settings). Resize doubles the capacity and rehashes all entries. Pre-sizing with new HashMap<>(expectedSize / 0.75 + 1) avoids costly rehashing if the approximate size is known upfront.' },
+            { q: 'What changed in HashMap in Java 8 for collision handling?', a: 'Before Java 8: colliding entries always formed a linked list — O(n) worst case for all operations. Java 8+: when a bucket chain reaches 8 entries, it is treeified into a red-black tree — O(log n) worst case. When entries drop below 6 (after removes), it reverts to a linked list. This prevents hash-flooding DoS attacks and improves worst-case performance.' },
+            { q: 'How do you implement an LRU cache using LinkedHashMap?', a: 'Extend LinkedHashMap, pass true as the third constructor argument (accessOrder=true — moves accessed entries to the end). Override removeEldestEntry(eldest) to return true when size() > capacity. On get(), the accessed entry moves to the tail (most-recent); when over capacity, the eldest (head) entry is evicted. One-liner: new LinkedHashMap<>(cap, 0.75f, true) { protected boolean removeEldestEntry(Entry e) { return size() > cap; } }' },
+            { q: 'What is the difference between put(), putIfAbsent(), computeIfAbsent(), and merge()?', a: 'put(k,v): unconditionally writes. putIfAbsent(k,v): writes only if key absent; returns old value (or null). computeIfAbsent(k, fn): calls fn only if key absent, stores result; great for grouping (computeIfAbsent(key, k->new ArrayList<>()).add(item)). merge(k, v, fn): if key absent, puts v; if present, applies fn(oldValue, v) — perfect for counters (merge(word, 1, Integer::sum)).' },
+            { q: 'When would you use TreeMap instead of HashMap?', a: 'When you need sorted key iteration, range queries (subMap, headMap, tailMap), or nearest-key lookups (floorKey, ceilingKey, lowerKey, higherKey). Examples: log entries by timestamp prefix, autocomplete with prefix range, scheduling sorted by time. TreeMap costs O(log n) per operation vs HashMap\'s O(1). Keys must implement Comparable or a Comparator must be provided.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What happens inside a HashMap bucket when collisions grow large (Java 8+)?', a: 'The bucket\'s linked list treeifies into a red-black tree once it exceeds 8 nodes and table capacity ≥ 64, improving worst-case lookup from O(n) to O(log n).' },
-        { q: 'State the equals/hashCode contract.', a: 'Equal objects must have equal hashCodes; equals must be reflexive, symmetric, transitive, consistent, and false for null. Unequal objects ideally have different hashCodes for good distribution.' },
-        { q: 'Why must HashMap keys be immutable (or at least their hash-relevant fields)?', a: 'The bucket index is derived from hashCode at insertion. If a field used in hashCode changes afterward, the entry sits in the wrong bucket and becomes unreachable by get().' },
-        { q: 'How do you avoid ConcurrentModificationException while removing during iteration?', a: 'Use Iterator.remove(), Collection.removeIf(predicate), iterate over a copy, or use a concurrent collection (CopyOnWriteArrayList / ConcurrentHashMap).' },
-        { q: 'Why does ConcurrentHashMap not allow null keys or values while HashMap does?', a: 'In CHM, a null return from get() is ambiguous — it could mean the key is absent OR the value is null. Without a separate containsKey() call (which would create a race condition), the API becomes unusable. HashMap avoids this issue because it\'s single-threaded.' },
-        { q: 'What is the difference between putIfAbsent, computeIfAbsent, and merge on ConcurrentHashMap?', a: 'putIfAbsent: inserts only if key absent (returns existing value). computeIfAbsent: inserts using a factory function if absent — the function is called only once (atomic for initialization). merge: combines an existing value with a new one using a BiFunction — perfect for accumulation (e.g. word count).' },
-        { q: 'How would you implement an O(1) get and put LRU cache in Java?', a: 'Extend LinkedHashMap with accessOrder=true and override removeEldestEntry to return true when size() > capacity. accessOrder=true moves entries to the tail on get(), so the head is always the least recently used. The JDK\'s doubly-linked list maintenance makes all operations O(1).' },
-        { q: 'When would you choose TreeMap over HashMap?', a: 'When you need keys in sorted order (e.g. range queries: subMap, headMap, tailMap), ceiling/floor lookups, or iteration in natural/comparator order. TreeMap gives O(log n) operations via a red-black tree. HashMap is O(1) average but unordered.' }
       ]
     },
-
     {
       id: '2.2',
       title: 'Concurrency: Threads, Executors, Locks',
@@ -17090,224 +18536,489 @@ int days = switch (month) {
       id: '3.1',
       title: 'IoC, DI & Bean Lifecycle',
       hours: 4,
-      notes: `
-# IoC, Dependency Injection & Bean Lifecycle — From Zero to Senior Level
+      sections: [
+        {
+          title: 'Inversion of Control & Dependency Injection',
+          notes: `## Inversion of Control & Dependency Injection
 
-## The Problem: Tight Coupling
+**Inversion of Control (IoC)** is the principle that a framework calls your code, rather than your code calling the framework. Control of object creation and wiring is *inverted* — you hand it to the container.
 
-Imagine a checkout service that needs to charge a credit card:
+**Dependency Injection (DI)** is the most common way to achieve IoC. Instead of a class creating its own dependencies, they are *injected* from outside.
+
+### The Problem Without DI
 
 \`\`\`java
-// ❌ Tightly coupled — hard to test, hard to change
-class CheckoutService {
-    private StripeGateway gateway = new StripeGateway(); // hardcoded!
+// Tightly coupled — hard to test, hard to swap implementations
+class OrderService {
+    private final EmailNotifier notifier = new EmailNotifier(); // hardcoded!
+    private final PaymentGateway gateway = new StripeGateway(); // hardcoded!
 
-    void checkout(Order order) {
-        gateway.charge(order.total());
+    void placeOrder(Order order) {
+        gateway.charge(order);
+        notifier.send(order.customerEmail(), "Order placed");
     }
+}
+// To test OrderService, you MUST have a live Stripe account and live email server
+\`\`\`
+
+### With Dependency Injection
+
+\`\`\`java
+class OrderService {
+    private final Notifier notifier;       // interfaces, not implementations
+    private final PaymentGateway gateway;
+
+    // Constructor injection — dependencies are explicit
+    OrderService(Notifier notifier, PaymentGateway gateway) {
+        this.notifier = notifier;
+        this.gateway  = gateway;
+    }
+
+    void placeOrder(Order order) {
+        gateway.charge(order);
+        notifier.send(order.customerEmail(), "Order placed");
+    }
+}
+
+// Tests — inject mocks
+OrderService svc = new OrderService(new MockNotifier(), new MockGateway());
+
+// Production — inject real implementations via Spring
+@Bean OrderService orderService(Notifier n, PaymentGateway g) {
+    return new OrderService(n, g);
 }
 \`\`\`
 
-Problems:
-- To test, you must hit Stripe's real API (slow, costs money, flaky)
-- Changing from Stripe to Adyen requires modifying CheckoutService
-- Can't test different scenarios (payment fails, timeout, etc.)
-
-**Inversion of Control (IoC)** flips this: instead of CheckoutService creating its dependency, something *outside* creates and *provides* it.
+### Three Injection Types
 
 \`\`\`java
-// ✅ Loosely coupled — testable, flexible
-class CheckoutService {
-    private final PaymentGateway gateway; // interface, not impl
+// 1. Constructor injection — PREFERRED
+@Service
+class UserService {
+    private final UserRepository repo;
+    private final PasswordEncoder encoder;
 
-    CheckoutService(PaymentGateway gateway) { // INJECTED
-        this.gateway = gateway;
+    UserService(UserRepository repo, PasswordEncoder encoder) {
+        this.repo    = repo;
+        this.encoder = encoder;
     }
 }
-// In production: inject StripeGateway
-// In tests: inject MockGateway
+
+// 2. Setter injection — for optional dependencies
+@Service
+class ReportService {
+    private Notifier notifier;
+
+    @Autowired(required = false)
+    public void setNotifier(Notifier n) { this.notifier = n; }
+}
+
+// 3. Field injection — @Autowired on field — AVOID
+@Service
+class BadService {
+    @Autowired UserRepository repo; // not testable without Spring container
+}
 \`\`\`
 
-**Dependency Injection (DI)** is the technique. **Spring's IoC container** (ApplicationContext) is the automated DI framework — it creates all your beans, resolves their dependencies, and wires everything together.
+**Why constructor injection is preferred:**
+- Dependencies are explicit — visible in constructor signature
+- \`final\` fields — truly immutable after construction
+- No Spring required to instantiate — testable with \`new\`
+- Circular dependency detected at startup (not silently at runtime)
+- IDE and compiler flag missing dependencies
 
----
+### Spring ApplicationContext — The IoC Container
 
-## How Spring's ApplicationContext Works
-
-When your Spring Boot app starts:
-
-1. \`@SpringBootApplication\` triggers component scanning
-2. Spring scans your packages for \`@Component\`, \`@Service\`, \`@Repository\`, \`@Controller\`, \`@RestController\`, \`@Configuration\`
-3. For each found class, Spring creates a **bean** (by default, a singleton)
-4. Spring analyzes each bean's constructor/setters/fields to find dependencies
-5. Spring resolves the dependency graph (topological sort)
-6. Spring creates beans in dependency order and injects them
-7. \`@PostConstruct\` methods run
-8. Application is ready to serve requests
-
+\`\`\`mermaid
+graph TD
+    AC[ApplicationContext\nIoC Container]
+    AC --> SC[Scans @Component\n@Service @Repository @Controller]
+    AC --> CF[Reads @Configuration\n@Bean methods]
+    AC --> WI[Wires dependencies\nby type + @Qualifier]
+    AC --> LM[Manages lifecycle\ninit → use → destroy]
+    SC --> B1[UserService bean]
+    SC --> B2[UserRepository bean]
+    CF --> B3[DataSource bean]
+    CF --> B4[PasswordEncoder bean]
+    WI --> B1
+    WI --> B2
+    style AC fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style WI fill:#0f1e12,stroke:#10b981,color:#e2e8f0
 \`\`\`
+
+The ApplicationContext reads your \`@Component\`/\`@Configuration\` annotations, instantiates beans in the right order (respecting dependencies), and injects them where needed. Your code just declares what it needs — the container figures out how to provide it.`,
+          code: [
+            `import java.util.*;
+
+// DI without Spring — manual container to understand the concept
+public class ManualDiDemo {
+    interface Notifier { void send(String to, String msg); }
+    interface PaymentGateway { boolean charge(String account, double amount); }
+
+    static class ConsoleNotifier implements Notifier {
+        public void send(String to, String msg) {
+            System.out.println("[EMAIL to " + to + "]: " + msg);
+        }
+    }
+
+    static class MockNotifier implements Notifier {
+        final List<String> sent = new ArrayList<>();
+        public void send(String to, String msg) { sent.add(to + ":" + msg); }
+    }
+
+    static class FakePaymentGateway implements PaymentGateway {
+        public boolean charge(String account, double amount) {
+            System.out.printf("[PAYMENT] Charged $%.2f to %s%n", amount, account);
+            return true;
+        }
+    }
+
+    record Order(String id, String customerEmail, String account, double amount) {}
+
+    static class OrderService {
+        private final Notifier notifier;
+        private final PaymentGateway gateway;
+
+        // Constructor injection — dependencies are explicit
+        OrderService(Notifier notifier, PaymentGateway gateway) {
+            this.notifier = Objects.requireNonNull(notifier, "notifier");
+            this.gateway  = Objects.requireNonNull(gateway, "gateway");
+        }
+
+        boolean placeOrder(Order order) {
+            boolean paid = gateway.charge(order.account(), order.amount());
+            if (paid) notifier.send(order.customerEmail(), "Order " + order.id() + " placed!");
+            return paid;
+        }
+    }
+
+    public static void main(String[] args) {
+        // Production wiring — real implementations
+        OrderService prodService = new OrderService(
+            new ConsoleNotifier(), new FakePaymentGateway());
+        prodService.placeOrder(new Order("ORD-001", "alice@e.com", "ACC-123", 49.99));
+
+        // Test wiring — mock implementations, no Spring needed
+        MockNotifier mockNotifier = new MockNotifier();
+        OrderService testService = new OrderService(mockNotifier, new FakePaymentGateway());
+        testService.placeOrder(new Order("ORD-002", "bob@e.com", "ACC-456", 9.99));
+
+        System.out.println("\nMock captured: " + mockNotifier.sent);
+    }
+}`,
+            `// Spring-style DI with annotations (conceptual — shows the pattern)
+// In a real Spring Boot project these classes live in separate files
+
+/*
 @SpringBootApplication
-       ↓
-ApplicationContext created
-       ↓
-Component scan: finds @Service, @Repository, @RestController...
-       ↓
-Build dependency graph:
-  CheckoutService needs PaymentGateway
-  PaymentGateway is StripeGateway (only implementation)
-  StripeGateway needs StripeConfig
-  StripeConfig needs application.yml values
-       ↓
-Create in order: StripeConfig → StripeGateway → CheckoutService
-       ↓
-@PostConstruct methods run (e.g. cache warm-up)
-       ↓
-Ready
-\`\`\`
+public class ShopApp {
+    public static void main(String[] args) { SpringApplication.run(ShopApp.class, args); }
+}
 
----
+// Repository layer
+@Repository
+public class JdbcProductRepository implements ProductRepository {
+    private final JdbcTemplate jdbc;
+    // Constructor injection — Spring detects the single constructor automatically
+    public JdbcProductRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public Optional<Product> findById(Long id) { ... }
+}
 
-## Three Ways to Define Beans
+// Service layer
+@Service
+public class ProductService {
+    private final ProductRepository repo;
+    // Single-constructor — no @Autowired needed (Spring 4.3+)
+    public ProductService(ProductRepository repo) { this.repo = repo; }
 
-### 1. @Component and specialisations (most common)
-\`\`\`java
-@Component          // generic bean
-@Service            // business logic layer (same as @Component, semantic)
-@Repository         // data access layer (+ exception translation)
-@RestController     // HTTP handler (= @Controller + @ResponseBody)
-\`\`\`
+    public ProductDto getProduct(Long id) {
+        return repo.findById(id)
+            .map(ProductDto::from)
+            .orElseThrow(() -> new ProductNotFoundException(id));
+    }
+}
 
-### 2. @Bean in @Configuration class (for third-party classes you don't own)
-\`\`\`java
+// Controller layer
+@RestController
+@RequestMapping("/api/products")
+public class ProductController {
+    private final ProductService service;
+    public ProductController(ProductService service) { this.service = service; }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ProductDto> getProduct(@PathVariable Long id) {
+        return ResponseEntity.ok(service.getProduct(id));
+    }
+}
+
+// Manual bean — for third-party classes that can't be annotated
 @Configuration
-public class AppConfig {
+public class InfraConfig {
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(12);
+    }
+
     @Bean
     public ObjectMapper objectMapper() {
         return new ObjectMapper()
             .registerModule(new JavaTimeModule())
-            .disable(WRITE_DATES_AS_TIMESTAMPS);
-    }
-
-    @Bean
-    public RestTemplate restTemplate(RestTemplateBuilder builder) {
-        return builder
-            .connectTimeout(Duration.ofSeconds(5))
-            .readTimeout(Duration.ofSeconds(30))
-            .build();
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 }
-\`\`\`
+*/
 
-### 3. @Import, @ImportResource for XML/legacy configs (rare in new code)
-
----
-
-## Injection Styles: Which to Use and Why
-
-### Constructor Injection (✅ Always Prefer)
-\`\`\`java
-@Service
-public class OrderService {
-    private final PaymentGateway gateway;
-    private final OrderRepository repo;
-    private final EventPublisher events;
-
-    // Spring auto-wires if there's only one constructor (no @Autowired needed)
-    public OrderService(PaymentGateway gateway, OrderRepository repo, EventPublisher events) {
-        this.gateway = gateway;
-        this.repo = repo;
-        this.events = events;
+public class SpringDiConceptual {
+    public static void main(String[] args) {
+        System.out.println("See comments above for Spring @Service/@Repository/@Controller pattern.");
+        System.out.println("Key rules:");
+        System.out.println("  1. Use constructor injection (no @Autowired needed for single constructor)");
+        System.out.println("  2. Depend on interfaces, not concrete classes");
+        System.out.println("  3. @Repository for DB access, @Service for business logic, @Controller for HTTP");
+        System.out.println("  4. @Configuration + @Bean for third-party or complex wiring");
+        System.out.println("  5. Keep beans stateless — state in DB/cache, not fields");
     }
-}
+}`
+          ],
+          flashcards: [
+            { q: 'What is Inversion of Control (IoC)?', a: 'IoC means the framework controls the flow and object lifecycle, not your code. In classic code, you write main() and call framework APIs. With IoC, the framework calls your code (e.g. Spring creates your beans, wires them, and calls your @PostConstruct). The "control" of wiring and lifecycle is inverted from your code to the container.' },
+            { q: 'Why is constructor injection preferred over field injection?', a: '(1) Dependencies are explicit — visible to callers and tests. (2) Fields can be final — immutable after construction. (3) No Spring needed to instantiate — testable with new MyService(mockRepo). (4) Circular dependencies detected at startup (Spring refuses to start), not silently at runtime. (5) IDE flags missing required beans. Field @Autowired hides dependencies and requires reflection to test.' },
+            { q: 'What is the difference between @Component, @Service, @Repository, and @Controller?', a: 'All four are @Component specialisations — they all register a bean. The difference is semantic/functional: @Repository adds exception translation (SQLException → DataAccessException). @Controller marks MVC controllers (Spring MVC dispatch). @Service has no extra functionality but documents intent. Use the specific annotation for documentation, IDE support, and so framework features (AOP pointcuts, exception translation) can target them precisely.' },
+            { q: 'When is @Autowired required on a constructor in Spring?', a: 'Not required if the class has exactly one constructor (Spring 4.3+). Spring uses the single constructor automatically. @Autowired is required if the class has multiple constructors — it tells Spring which one to use for injection. Best practice: write one constructor with all dependencies, no @Autowired annotation needed.' },
+            { q: 'What is the ApplicationContext and how does it differ from BeanFactory?', a: 'Both are IoC containers. BeanFactory is the basic contract (lazy bean creation). ApplicationContext extends BeanFactory and adds: eager singleton creation at startup, ApplicationEvent publication, MessageSource (i18n), AOP auto-proxying. In Spring Boot, ApplicationContext is always used. BeanFactory is mainly a historical distinction — you never create one directly.' }
+          ]
+        },
+        {
+          title: 'Bean Lifecycle & Scopes',
+          notes: `## Bean Lifecycle & Scopes
+
+Understanding the Spring bean lifecycle lets you hook into initialization and destruction phases — loading config, warming caches, releasing resources, closing connections cleanly.
+
+### Bean Lifecycle Phases
+
+\`\`\`mermaid
+graph LR
+    IN[Instantiate\nconstructor called]
+    IN --> PI[Property injection\n@Autowired fields/setters]
+    PI --> AC[Aware callbacks\nBeanNameAware etc.]
+    AC --> BP1[BeanPostProcessor\nbeforeInit]
+    BP1 --> IN2[Init\n@PostConstruct\nInitializingBean.afterPropertiesSet\ninit-method]
+    IN2 --> BP2[BeanPostProcessor\nafterInit]
+    BP2 --> US[In use\nhandling requests]
+    US --> DS[Destroy\n@PreDestroy\nDisposableBean.destroy\ndestroy-method]
+    style IN fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style IN2 fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style DS fill:#1e0a0a,stroke:#ef4444,color:#fecaca
 \`\`\`
 
-**Why constructor injection wins:**
-- Fields are \`final\` — object is immutable once created
-- Dependencies are explicit — you can see what the class needs just by reading its constructor
-- Fails at startup if a dependency is missing — no surprise NullPointerExceptions later
-- Works without Spring — test with \`new OrderService(mockGateway, mockRepo, mockEvents)\`
-- No reflection magic — just regular Java
+### Lifecycle Hooks
 
-**With Lombok (cleanest):**
 \`\`\`java
 @Service
-@RequiredArgsConstructor  // generates constructor for all 'final' fields
-public class OrderService {
-    private final PaymentGateway gateway;
-    private final OrderRepository repo;
-    private final EventPublisher events;
-}
-\`\`\`
+@Slf4j
+public class CacheService {
+    private Map<String, String> cache;
+    private final DataSource dataSource;
 
-### Setter Injection (for optional dependencies)
-\`\`\`java
-@Service
-public class NotificationService {
-    private EmailSender emailSender;  // optional
+    CacheService(DataSource dataSource) { this.dataSource = dataSource; }
 
-    @Autowired(required = false)
-    public void setEmailSender(EmailSender emailSender) {
-        this.emailSender = emailSender;
+    @PostConstruct  // called after all dependencies injected; bean is ready
+    void warmUp() {
+        log.info("Warming up cache...");
+        cache = loadFromDatabase(); // safe to use dataSource here — it's injected
     }
+
+    @PreDestroy  // called before Spring removes the bean (on shutdown)
+    void flush() {
+        log.info("Flushing cache to database...");
+        persistToDatabase(cache);
+    }
+
+    Map<String, String> loadFromDatabase() { return new HashMap<>(); }
+    void persistToDatabase(Map<String, String> m) { /* ... */ }
 }
 \`\`\`
 
-Use when the dependency is optional or when you need to allow reconfiguration after construction.
+**Ordering:** \`@PostConstruct\` runs after all \`@Autowired\` injections complete. \`@PreDestroy\` runs when the ApplicationContext is closed (normal JVM shutdown, \`context.close()\`, or Ctrl+C with a Spring Boot shutdown hook).
 
-### Field Injection (❌ Avoid)
-\`\`\`java
-@Service
-public class BadService {
-    @Autowired
-    private PaymentGateway gateway;  // ← DON'T DO THIS
-}
-\`\`\`
-
-Why it's bad:
-- Can't be \`final\` — object is mutable
-- Dependencies hidden — can't tell what this class needs without reading all fields
-- Can't test without Spring container (need \`@ExtendWith(SpringExtension.class)\` or reflection hacks)
-- NullPointerException if used before injection completes
-- Circular dependencies silently "work" (via proxy) and hide design problems
-
----
-
-## Bean Scopes
-
-| Scope | Instances | Created when | Destroyed when |
-|-------|-----------|--------------|----------------|
-| **singleton** (default) | 1 per container | Container starts | Container closes |
-| **prototype** | New each time | Every \`getBean()\` / injection | Caller's responsibility |
-| **request** (web) | 1 per HTTP request | Request starts | Request ends |
-| **session** (web) | 1 per HTTP session | Session created | Session invalidated |
-| **application** (web) | 1 per ServletContext | App starts | App stops |
+### Bean Scopes
 
 \`\`\`java
 @Component
-@Scope("prototype")   // or Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
-public class ReportBuilder {
-    // new instance for each injection point
+@Scope("singleton")   // DEFAULT — one instance per ApplicationContext
+class SingletonBean {}
+
+@Component
+@Scope("prototype")   // new instance every time it is requested
+class PrototypeBean {}
+
+// Web scopes (require web ApplicationContext)
+@Component
+@Scope(value = "request", proxyMode = ScopedProxyMode.TARGET_CLASS)
+class RequestScopedBean {}  // one instance per HTTP request
+
+@Component
+@Scope(value = "session", proxyMode = ScopedProxyMode.TARGET_CLASS)
+class SessionScopedBean {}  // one instance per HTTP session
+\`\`\`
+
+| Scope | Instances | When to use |
+|---|---|---|
+| singleton (default) | 1 per context | Stateless services, repositories — the vast majority |
+| prototype | New per request | Stateful objects (e.g. command objects, parsers with state) |
+| request | 1 per HTTP request | Per-request context (auth info, correlation ID) |
+| session | 1 per HTTP session | User preferences, shopping cart |
+
+### Injecting Prototype into Singleton
+
+\`\`\`java
+@Service
+class SingletonService {
+    // PROBLEM: @Autowired PrototypeBean — only ONE prototype is created at startup
+    // SOLUTION: inject ApplicationContext and get a new instance on demand
+
+    private final ApplicationContext ctx;
+    SingletonService(ApplicationContext ctx) { this.ctx = ctx; }
+
+    void doWork() {
+        PrototypeBean fresh = ctx.getBean(PrototypeBean.class); // new instance each call
+        fresh.process();
+    }
+
+    // Better: use ObjectProvider (Spring 4.3+)
+    // @Autowired ObjectProvider<PrototypeBean> prototypeProvider;
+    // void doWork() { prototypeProvider.getObject().process(); }
 }
 \`\`\`
 
-### The Singleton-Prototype Injection Trap
+### BeanPostProcessor — Intercept All Bean Initialization
 
 \`\`\`java
-@Service  // singleton
-public class ReportService {
-    @Autowired
-    private ReportBuilder builder;  // prototype — injected ONCE at startup
+@Component
+public class LoggingBeanPostProcessor implements BeanPostProcessor {
+    @Override
+    public Object postProcessBeforeInitialization(Object bean, String beanName) {
+        System.out.println("Before init: " + beanName);
+        return bean; // return same bean (or a wrapper)
+    }
 
-    void generateReport() {
-        // BUG: always uses the SAME builder instance (captured at startup)
-        // despite prototype scope
-        builder.build();
+    @Override
+    public Object postProcessAfterInitialization(Object bean, String beanName) {
+        System.out.println("After init: " + beanName + " → " + bean.getClass().getSimpleName());
+        return bean; // Spring AOP proxies are created HERE
     }
 }
 \`\`\`
 
-Fix with \`ObjectProvider\` (Spring's way to get fresh instances):
-\`\`\`java
+> **Key insight:** Spring AOP (the mechanism behind \`@Transactional\`, \`@Cacheable\`, \`@Async\`) creates proxy objects in \`postProcessAfterInitialization\`. This is why you must inject beans (to get the proxy) rather than calling \`new MyService()\` directly — a directly constructed object has no proxy, so \`@Transactional\` on its methods does nothing.`,
+          code: [
+            `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+// Simulating bean lifecycle without Spring
+public class BeanLifecycleDemo {
+    interface InitializingBean { void afterPropertiesSet() throws Exception; }
+    interface DisposableBean  { void destroy() throws Exception; }
+
+    static class ConnectionPool implements InitializingBean, DisposableBean {
+        private final String url;
+        private final int size;
+        private final List<String> connections = new ArrayList<>();
+        private final AtomicBoolean closed = new AtomicBoolean(false);
+
+        ConnectionPool(String url, int size) { this.url = url; this.size = size; }
+
+        // @PostConstruct equivalent
+        public void afterPropertiesSet() {
+            System.out.println("[INIT] Opening " + size + " connections to " + url);
+            for (int i = 0; i < size; i++) connections.add("conn-" + i);
+            System.out.println("[INIT] Pool ready: " + connections.size() + " connections");
+        }
+
+        public String borrow() {
+            if (closed.get()) throw new IllegalStateException("Pool is closed");
+            return connections.isEmpty() ? null : connections.remove(0);
+        }
+
+        public void release(String conn) { if (!closed.get()) connections.add(conn); }
+
+        // @PreDestroy equivalent
+        public void destroy() {
+            System.out.println("[DESTROY] Closing " + connections.size() + " connections...");
+            closed.set(true);
+            connections.clear();
+            System.out.println("[DESTROY] Pool closed.");
+        }
+    }
+
+    // Minimal DI container simulating singleton scope
+    static class MiniContainer {
+        private final Map<String, Object> singletons = new LinkedHashMap<>();
+
+        void register(String name, Object bean) {
+            singletons.put(name, bean);
+            if (bean instanceof InitializingBean ib) {
+                try { ib.afterPropertiesSet(); } catch (Exception e) { throw new RuntimeException(e); }
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        <T> T getBean(String name) { return (T) singletons.get(name); }
+
+        void shutdown() {
+            // Destroy in reverse order
+            List<Map.Entry<String, Object>> entries = new ArrayList<>(singletons.entrySet());
+            Collections.reverse(entries);
+            entries.forEach(e -> {
+                if (e.getValue() instanceof DisposableBean db) {
+                    try { db.destroy(); } catch (Exception ex) { ex.printStackTrace(); }
+                }
+            });
+        }
+    }
+
+    public static void main(String[] args) {
+        MiniContainer container = new MiniContainer();
+        container.register("pool", new ConnectionPool("jdbc:postgresql://localhost/db", 3));
+
+        ConnectionPool pool = container.getBean("pool");
+        String c1 = pool.borrow();
+        String c2 = pool.borrow();
+        System.out.println("\nBorrowed: " + c1 + ", " + c2);
+        pool.release(c1);
+        System.out.println("Released: " + c1);
+
+        System.out.println("\nShutting down container...");
+        container.shutdown();
+    }
+}`,
+            `// Bean scopes and ObjectProvider pattern (conceptual Spring code)
+
+/*
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.*;
+import jakarta.annotation.*;
+
+// SINGLETON — default, stateless service
+@Service
+public class OrderService {
+    private final OrderRepository repo;
+    public OrderService(OrderRepository repo) { this.repo = repo; }
+    // One instance shared by all threads — must be stateless (no mutable instance fields)
+}
+
+// PROTOTYPE — stateful, new instance per use
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+public class ReportBuilder {
+    private final List<String> lines = new ArrayList<>(); // ok — fresh instance each time
+    public void addLine(String line) { lines.add(line); }
+    public String build() { return String.join("\n", lines); }
+}
+
+// Injecting prototype into singleton correctly
 @Service
 public class ReportService {
     private final ObjectProvider<ReportBuilder> builderProvider;
@@ -17316,128 +19027,602 @@ public class ReportService {
         this.builderProvider = builderProvider;
     }
 
-    void generateReport() {
-        ReportBuilder builder = builderProvider.getObject(); // fresh instance each time
-        builder.build();
+    public String generateReport(List<String> data) {
+        ReportBuilder builder = builderProvider.getObject(); // new instance each call
+        data.forEach(builder::addLine);
+        return builder.build();
     }
 }
-\`\`\`
 
----
-
-## Bean Lifecycle Hooks
-
-\`\`\`
-Constructor called
-       ↓
-Dependencies injected (fields, setters)
-       ↓
-@PostConstruct method runs  ← your init code here (can use injected deps)
-       ↓
-Bean is in use (serving requests)
-       ↓
-Container shutdown triggered
-       ↓
-@PreDestroy method runs  ← cleanup: close connections, flush buffers
-       ↓
-Bean destroyed
-\`\`\`
-
-\`\`\`java
-@Component
-public class ConnectionPool {
-    private final DataSource ds;
-    private List<Connection> pool;
-
-    public ConnectionPool(DataSource ds) { this.ds = ds; }
+// Lifecycle hooks
+@Service
+public class SearchIndexService {
+    private final Map<String, String> index = new ConcurrentHashMap<>();
 
     @PostConstruct
-    void init() {
-        // Constructor finished, ds is injected — safe to use it now
-        pool = new ArrayList<>();
-        for (int i = 0; i < 10; i++) pool.add(ds.getConnection());
-        log.info("Pool initialised with {} connections", pool.size());
+    void buildIndex() {
+        System.out.println("Building search index...");
+        // Called after @Autowired fields are set — safe to use dependencies here
     }
 
     @PreDestroy
-    void shutdown() {
-        pool.forEach(Connection::close);
-        log.info("Pool closed");
+    void saveIndex() {
+        System.out.println("Persisting index (" + index.size() + " entries)...");
+        // Called on graceful shutdown — close files, flush caches, release connections
+    }
+}
+*/
+
+public class ScopesConceptual {
+    public static void main(String[] args) {
+        System.out.println("Spring Bean Scopes Summary:");
+        System.out.println("  singleton  — 1 per ApplicationContext (default, stateless)");
+        System.out.println("  prototype  — new instance per getBean() / @Autowired injection");
+        System.out.println("  request    — 1 per HTTP request (web apps)");
+        System.out.println("  session    — 1 per HTTP session (web apps)");
+        System.out.println();
+        System.out.println("Lifecycle order:");
+        System.out.println("  1. Constructor  2. @Autowired setters/fields");
+        System.out.println("  3. @PostConstruct  4. [in use]  5. @PreDestroy");
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the order of Spring bean lifecycle phases?', a: '1. Instantiate (constructor). 2. Populate properties (@Autowired injection). 3. BeanNameAware / other Aware callbacks. 4. BeanPostProcessor.beforeInitialization(). 5. @PostConstruct / InitializingBean.afterPropertiesSet() / init-method. 6. BeanPostProcessor.afterInitialization() — AOP proxies created here. 7. Bean in use. 8. @PreDestroy / DisposableBean.destroy() / destroy-method.' },
+            { q: 'When does @PostConstruct run and what is it safe to do there?', a: '@PostConstruct runs after all dependencies are injected (after constructor and @Autowired processing). It is safe to use all injected dependencies. Typical uses: warm a cache by loading from DB, validate configuration, register the bean with an external system, open a resource. Never do heavy work in the constructor (dependencies not yet injected).' },
+            { q: 'What is the default Spring bean scope and what does it mean?', a: 'Singleton — one instance per ApplicationContext. All components that @Autowired this bean receive the same object. This means singleton beans MUST be stateless — no mutable instance fields holding per-request data. If you need state per request, use prototype or request scope, or store state in the method stack / ThreadLocal / DB.' },
+            { q: 'What is the problem with @Autowiring a prototype bean into a singleton?', a: 'Spring injects once at startup. The singleton receives one prototype instance and holds it forever — effectively making it a singleton. Solution: inject ObjectProvider<Prototype> and call getObject() each time you need a fresh instance. Alternative: inject ApplicationContext and call ctx.getBean(Prototype.class). Spring\'s @Lookup annotation on a method is another approach.' },
+            { q: 'What is BeanPostProcessor and what uses it?', a: 'BeanPostProcessor intercepts all bean initialization — it runs before and after every bean\'s init phase. Spring\'s own AOP infrastructure creates proxy objects in postProcessAfterInitialization. This is how @Transactional, @Cacheable, @Async work — they replace your bean with a proxy that adds transaction/cache/async logic. You can write your own for cross-cutting concerns (logging, validation).' }
+          ]
+        },
+        {
+          title: '@Configuration, Component Scanning & Profiles',
+          notes: `## @Configuration, Component Scanning & Profiles
+
+Spring discovers beans in two ways: component scanning (classpath scan for annotations) and explicit \`@Bean\` methods in \`@Configuration\` classes. Profiles let you activate different configurations per environment.
+
+### Component Scanning
+
+\`\`\`java
+@SpringBootApplication // includes @ComponentScan of the package and subpackages
+public class ShopApp { public static void main(String[] args) { SpringApplication.run(ShopApp.class, args); } }
+\`\`\`
+
+Spring scans all classes in the application package and sub-packages for:
+
+| Annotation | What it registers |
+|---|---|
+| \`@Component\` | Generic bean |
+| \`@Service\` | Business logic bean |
+| \`@Repository\` | Data access bean (+ exception translation) |
+| \`@Controller\` | Spring MVC controller bean |
+| \`@RestController\` | \`@Controller\` + \`@ResponseBody\` |
+| \`@Configuration\` | Contains \`@Bean\` factory methods |
+
+### @Configuration and @Bean
+
+\`\`\`java
+@Configuration
+public class AppConfig {
+    // @Bean method — return type becomes the bean type
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(12);
+    }
+
+    // @Bean with dependencies — Spring injects other beans as parameters
+    @Bean
+    public UserService userService(UserRepository repo, PasswordEncoder encoder) {
+        return new UserService(repo, encoder);
+    }
+
+    // @Bean from external library — can't annotate the class itself
+    @Bean
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 }
 \`\`\`
 
----
+**Key property of \`@Configuration\`:** \`@Bean\` methods in a \`@Configuration\` class are proxied. Calling \`passwordEncoder()\` from within the same class returns the singleton — not a new instance. In a non-\`@Configuration\` class (bare \`@Component\`), calling a \`@Bean\` method creates a new object every time.
 
-## Circular Dependencies and How to Detect Them
+### @Qualifier — Resolve Ambiguity
 
+\`\`\`java
+interface MessageSender { void send(String msg); }
+
+@Component("email")  class EmailSender implements MessageSender { /* ... */ }
+@Component("sms")    class SmsSender   implements MessageSender { /* ... */ }
+
+@Service
+class AlertService {
+    private final MessageSender primary;
+    private final MessageSender backup;
+
+    AlertService(
+        @Qualifier("email") MessageSender primary,
+        @Qualifier("sms")   MessageSender backup
+    ) {
+        this.primary = primary;
+        this.backup  = backup;
+    }
+}
 \`\`\`
-ServiceA needs ServiceB
-ServiceB needs ServiceA
-→ Spring can't create either one first!
+
+### @Value and @ConfigurationProperties
+
+\`\`\`java
+// @Value — inject single property
+@Service
+class PaymentService {
+    @Value("\${payment.api.key}")
+    private String apiKey;
+
+    @Value("\${payment.timeout:5000}") // default 5000ms if property missing
+    private int timeoutMs;
+}
+
+// @ConfigurationProperties — typed, validated, IDE-friendly
+@ConfigurationProperties(prefix = "payment")
+public class PaymentProperties {
+    private String apiKey;
+    private int timeout = 5000;
+    private String currency = "INR";
+    // getters + setters (or use record in Spring Boot 3)
+}
+
+// Usage in service
+@Service class PaymentService {
+    private final PaymentProperties props;
+    PaymentService(PaymentProperties props) { this.props = props; }
+}
 \`\`\`
 
-Constructor injection: **fails fast at startup** with \`BeanCurrentlyInCreationException\`. This is the correct behavior — it surfaces a design problem.
+### Profiles — Environment-Specific Beans
 
-Field/setter injection: Spring works around it with proxy magic — the circular dependency "works" but you now have a design smell silently hidden.
+\`\`\`java
+// Different implementations for different environments
+@Repository
+@Profile("!test")  // active for all profiles except "test"
+class JdbcUserRepository implements UserRepository { /* real DB */ }
 
-**How to fix circular dependencies:**
-1. Extract the shared logic into a third service (best fix — usually the design is wrong)
-2. Use an event (\`ApplicationEventPublisher\`) instead of direct dependency
-3. Make one dependency \`@Lazy\` — defers creation until first use (last resort)
+@Repository
+@Profile("test")   // active only in "test" profile
+class InMemoryUserRepository implements UserRepository { /* in-memory, no DB needed */ }
 
-> [!EU]
-> The two most-asked Spring IoC questions: (1) *"Constructor vs field injection — which and why?"* Answer: constructor — immutable fields, explicit dependencies, testable without container, fails fast. (2) *"Singleton bean with mutable state — what's the risk?"* → shared across all HTTP request threads simultaneously → race conditions. Keep Spring beans **stateless**: no instance fields that hold per-request data. Use \`@RequestScope\` or method parameters for per-request state.
-`,
-      code: [
-        {
-          lang: 'java',
-          title: 'Constructor injection & lifecycle (conceptual)',
-          code: `import java.util.*;
+// Configuration classes can also be profile-scoped
+@Configuration
+@Profile("local")
+class LocalDevConfig {
+    @Bean DataSource dataSource() { return new EmbeddedDatabaseBuilder().setType(H2).build(); }
+}
+
+@Configuration
+@Profile("production")
+class ProdConfig {
+    @Bean DataSource dataSource() {
+        HikariConfig cfg = new HikariConfig();
+        cfg.setJdbcUrl(System.getenv("DATABASE_URL"));
+        return new HikariDataSource(cfg);
+    }
+}
+\`\`\`
+
+Activate a profile: \`SPRING_PROFILES_ACTIVE=local\` (env var) or \`--spring.profiles.active=local\` (CLI arg). Multiple: \`production,metrics\`.
+
+### Conditional Beans — @Conditional
+
+\`\`\`java
+// @ConditionalOnProperty — bean exists only when property is set/has value
+@Bean
+@ConditionalOnProperty(name = "feature.dark-mode", havingValue = "true")
+DarkModeService darkModeService() { return new DarkModeService(); }
+
+// @ConditionalOnMissingBean — register default only if no other bean of this type exists
+@Bean
+@ConditionalOnMissingBean(MessageSender.class)
+MessageSender defaultSender() { return msg -> System.out.println("DEFAULT: " + msg); }
+\`\`\`
+
+This is the foundation of Spring Boot auto-configuration — every \`@AutoConfiguration\` class is guarded by \`@Conditional*\` annotations.`,
+          code: [
+            `import java.util.*;
 import java.util.function.*;
 
-// Plain-Java illustration of the IoC idea Spring automates.
-public class DiDemo {
-    interface PaymentGateway { String charge(int cents); }
+// @Configuration + profiles without Spring — shows the concept
+public class ConfigAndProfilesDemo {
+    interface DataSource { String query(String sql); }
 
-    // Two implementations — the container picks one
-    static class StripeGateway implements PaymentGateway {
-        public String charge(int cents) { return "Stripe charged " + cents + "c"; }
-    }
-    static class MockGateway implements PaymentGateway {
-        public String charge(int cents) { return "MOCK ok " + cents + "c"; }
+    static class H2DataSource implements DataSource {
+        public String query(String sql) { return "[H2] " + sql + " → in-memory result"; }
     }
 
-    // Business class depends on the ABSTRACTION, injected via constructor (final = immutable)
-    static class CheckoutService {
-        private final PaymentGateway gateway;
-        CheckoutService(PaymentGateway gateway) { this.gateway = gateway; } // @Autowired implied
-        String buy(int cents) { return gateway.charge(cents); }
+    static class PostgresDataSource implements DataSource {
+        public String query(String sql) { return "[Postgres] " + sql + " → real result"; }
+    }
+
+    // Config class — factory for beans
+    static class AppConfig {
+        private final String profile;
+        AppConfig(String profile) { this.profile = profile; }
+
+        DataSource dataSource() {
+            return switch (profile) {
+                case "local", "test" -> new H2DataSource();
+                case "production"    -> new PostgresDataSource();
+                default -> throw new IllegalStateException("Unknown profile: " + profile);
+            };
+        }
+
+        Map<String, Object> allBeans() {
+            DataSource ds = dataSource();
+            Map<String, Object> beans = new LinkedHashMap<>();
+            beans.put("dataSource", ds);
+            beans.put("userRepository", new Object() { // inline — simplified
+                public String toString() { return "UserRepository(ds=" + ds.getClass().getSimpleName() + ")"; }
+            });
+            return beans;
+        }
     }
 
     public static void main(String[] args) {
-        // A tiny 'container': map of bean factories
-        Map<String, Supplier<PaymentGateway>> ctx = Map.of(
-            "prod", StripeGateway::new,
-            "test", MockGateway::new
-        );
+        String activeProfile = System.getProperty("spring.profiles.active", "local");
+        System.out.println("Active profile: " + activeProfile);
 
-        var prod = new CheckoutService(ctx.get("prod").get());
-        var test = new CheckoutService(ctx.get("test").get());
-        System.out.println(prod.buy(1999));  // real impl
-        System.out.println(test.buy(1999));  // swapped for tests — that's DI's payoff
+        AppConfig config = new AppConfig(activeProfile);
+        DataSource ds = config.dataSource();
+        System.out.println(ds.query("SELECT * FROM users WHERE id = 1"));
+
+        System.out.println("\nBeans registered:");
+        config.allBeans().forEach((name, bean) ->
+            System.out.println("  " + name + " → " + bean.getClass().getSimpleName()));
+    }
+}`,
+            `import java.util.*;
+
+// @Qualifier pattern and conditional beans
+public class QualifierAndConditionalDemo {
+    interface Cache<K, V> {
+        void put(K key, V value);
+        Optional<V> get(K key);
+        String name();
+    }
+
+    static class InMemoryCache<K, V> implements Cache<K, V> {
+        private final String name;
+        private final Map<K, V> store = new LinkedHashMap<>();
+        InMemoryCache(String name) { this.name = name; }
+        public void put(K k, V v) { store.put(k, v); }
+        public Optional<V> get(K k) { return Optional.ofNullable(store.get(k)); }
+        public String name() { return name; }
+        public String toString() { return "InMemoryCache[" + name + "] size=" + store.size(); }
+    }
+
+    // Manual qualifier pattern — choose implementation by name
+    static class CacheRegistry {
+        private final Map<String, Cache<?, ?>> caches = new HashMap<>();
+
+        void register(Cache<?, ?> cache) { caches.put(cache.name(), cache); }
+
+        @SuppressWarnings("unchecked")
+        <K, V> Cache<K, V> getCache(String name) {
+            Cache<?, ?> c = caches.get(name);
+            if (c == null) throw new IllegalArgumentException("No cache: " + name);
+            return (Cache<K, V>) c;
+        }
+    }
+
+    public static void main(String[] args) {
+        CacheRegistry registry = new CacheRegistry();
+
+        // Register two named caches — like @Qualifier("user") and @Qualifier("product")
+        registry.register(new InMemoryCache<>("user"));
+        registry.register(new InMemoryCache<>("product"));
+
+        Cache<Long, String> userCache    = registry.getCache("user");
+        Cache<Long, String> productCache = registry.getCache("product");
+
+        userCache.put(1L, "Alice");
+        userCache.put(2L, "Bob");
+        productCache.put(100L, "Widget");
+
+        System.out.println("User 1:    " + userCache.get(1L).orElse("not found"));
+        System.out.println("Product:   " + productCache.get(100L).orElse("not found"));
+        System.out.println("Missing:   " + userCache.get(99L).orElse("not found"));
+
+        // Conditional bean registration
+        String darkModeEnabled = System.getProperty("feature.dark-mode", "false");
+        if (Boolean.parseBoolean(darkModeEnabled)) {
+            System.out.println("Dark mode service: ACTIVE");
+        } else {
+            System.out.println("Dark mode service: SKIPPED (feature.dark-mode not set)");
+        }
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What is the difference between @Component and @Bean?', a: '@Component (and its specialisations) is placed on a class — Spring creates the bean via the class constructor. @Bean is placed on a method inside a @Configuration class — Spring calls the method to get the bean. Use @Component for your own classes. Use @Bean for third-party library classes you can\'t annotate, or when construction logic is complex.' },
+            { q: 'What is special about @Bean methods inside a @Configuration class (CGLIB proxy)?', a: '@Configuration classes are CGLIB-proxied. When Spring calls a @Bean method, subsequent calls to that same method (from other @Bean methods in the same config) return the existing singleton rather than calling the method again. Without CGLIB (bare @Component), each call to a @Bean method creates a new object — breaking singleton semantics.' },
+            { q: 'How do Spring Profiles work and how do you activate them?', a: 'Profiles let you register different beans per environment. Annotate beans or @Configuration with @Profile("name"). Active profiles are set via: SPRING_PROFILES_ACTIVE environment variable, --spring.profiles.active CLI argument, spring.profiles.active in application.properties. Multiple profiles can be active. @Profile("!test") activates for all profiles except test.' },
+            { q: 'What is @ConfigurationProperties and why prefer it over @Value?', a: '@ConfigurationProperties binds a whole group of properties to a typed POJO (prefix = "payment" → payment.apiKey, payment.timeout). Benefits over @Value: IDE autocompletion, compile-time type safety, JSR-303 validation with @Validated, no SpEL strings scattered in code, properties are grouped logically. @Value is fine for one-off simple values.' },
+            { q: 'What is @ConditionalOnMissingBean and how does Spring Boot use it?', a: 'Registers a bean only if no other bean of that type is already registered. Spring Boot auto-configuration uses this extensively: auto-configure DataSource only if the user hasn\'t defined their own. This lets you override any auto-configured bean simply by defining your own @Bean of the same type — your bean is registered first, and the auto-config @ConditionalOnMissingBean check then skips.' }
+          ]
+        },
+        {
+          title: 'ApplicationContext, Events & Conditional Wiring',
+          notes: `## ApplicationContext, Events & Conditional Wiring
+
+### ApplicationContext Hierarchy
+
+\`\`\`mermaid
+graph TD
+    BAC[BeanFactory\nbasic bean lookup]
+    BAC --> AC[ApplicationContext\n+ event publishing\n+ i18n\n+ AOP auto-proxy]
+    AC --> CAC[ConfigurableApplicationContext\n+ close lifecycle]
+    CAC --> WAC[WebApplicationContext\n+ Servlet support]
+    WAC --> SB[Spring Boot\nAnnotationConfigServletWebServerApplicationContext]
+    style AC fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style SB fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+\`\`\`
+
+### ApplicationContext Startup
+
+\`\`\`java
+// Programmatic context (useful in tests or non-Boot apps)
+try (var ctx = new AnnotationConfigApplicationContext(AppConfig.class)) {
+    UserService svc = ctx.getBean(UserService.class);
+    svc.doWork();
+} // context.close() called automatically — @PreDestroy runs
+
+// Spring Boot — context created by SpringApplication.run()
+ConfigurableApplicationContext ctx = SpringApplication.run(ShopApp.class, args);
+// Shutdown hook registered automatically — @PreDestroy runs on JVM exit
+\`\`\`
+
+### ApplicationEvent — Decoupled Communication
+
+Events let components communicate without direct coupling — publisher doesn't know who listens.
+
+\`\`\`java
+// Define event (extends ApplicationEvent or is any class in Spring 4.2+)
+record OrderPlacedEvent(String orderId, String customerEmail, double amount) {}
+
+// Publisher — inject ApplicationEventPublisher
+@Service
+class OrderService {
+    private final ApplicationEventPublisher publisher;
+    OrderService(ApplicationEventPublisher publisher) { this.publisher = publisher; }
+
+    void placeOrder(Order order) {
+        // business logic...
+        publisher.publishEvent(new OrderPlacedEvent(order.id(), order.email(), order.total()));
+    }
+}
+
+// Listeners — multiple, independent, decoupled
+@Component
+class EmailListener {
+    @EventListener
+    void onOrder(OrderPlacedEvent event) {
+        System.out.println("Sending receipt to " + event.customerEmail());
+    }
+}
+
+@Component
+class InventoryListener {
+    @EventListener
+    void onOrder(OrderPlacedEvent event) {
+        System.out.println("Reserving stock for order " + event.orderId());
+    }
+}
+
+// Async listener — runs on different thread (requires @EnableAsync)
+@Component
+class AnalyticsListener {
+    @EventListener
+    @Async
+    void onOrder(OrderPlacedEvent event) {
+        System.out.println("Recording analytics for order " + event.orderId());
+    }
+}
+\`\`\`
+
+### Built-in Application Events
+
+\`\`\`java
+@EventListener(ContextRefreshedEvent.class)
+void onContextReady() { /* context fully initialized */ }
+
+@EventListener(ContextClosedEvent.class)
+void onShutdown() { /* context closing */ }
+
+// Better: use @PostConstruct / @PreDestroy instead for bean-level hooks
+\`\`\`
+
+### Programmatic Bean Access — When Necessary
+
+\`\`\`java
+// Avoid this pattern except for framework/utility code
+@Component
+class SomeFactory implements ApplicationContextAware {
+    private ApplicationContext ctx;
+
+    @Override
+    public void setApplicationContext(ApplicationContext ctx) { this.ctx = ctx; }
+
+    public Object createBean(String beanName) { return ctx.getBean(beanName); }
+}
+\`\`\`
+
+**The ServiceLocator anti-pattern:** directly calling \`ctx.getBean()\` hides dependencies and makes testing harder. Only acceptable in: factory components that need to resolve beans by name/type at runtime, framework integration code, or when injecting prototype beans.
+
+### Testing with Spring Context
+
+\`\`\`java
+// Full integration test — loads entire ApplicationContext
+@SpringBootTest
+class OrderServiceIntegrationTest {
+    @Autowired OrderService service;
+    @Test void testOrderFlow() { /* test with real wired beans */ }
+}
+
+// Slice test — only loads relevant beans
+@WebMvcTest(OrderController.class)
+class OrderControllerTest {
+    @Autowired MockMvc mockMvc;
+    @MockBean OrderService service; // other beans mocked
+    @Test void testEndpoint() throws Exception {
+        mockMvc.perform(get("/api/orders/1")).andExpect(status().isOk());
+    }
+}
+
+// No Spring — pure unit test (preferred for services)
+class OrderServiceTest {
+    OrderService service = new OrderService(mock(OrderRepository.class));
+    @Test void testOrder() { /* fast, no context startup */ }
+}
+\`\`\``,
+          code: [
+            `import java.util.*;
+import java.util.function.*;
+import java.util.concurrent.*;
+
+// Event bus without Spring — understand the pattern
+public class EventBusDemo {
+    // Simple type-safe event bus
+    static class EventBus {
+        private final Map<Class<?>, List<Consumer<Object>>> listeners = new ConcurrentHashMap<>();
+
+        @SuppressWarnings("unchecked")
+        public <T> void subscribe(Class<T> eventType, Consumer<T> listener) {
+            listeners.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>())
+                     .add(e -> listener.accept((T) e));
         }
-      ],
-      flashcards: [
-        { q: 'Why is constructor injection preferred over field injection?', a: 'It allows final (immutable) fields, makes dependencies explicit, fails fast at startup if a dependency is missing, and lets you instantiate the class in unit tests without the Spring container or reflection.' },
-        { q: 'What breaks when you inject a prototype bean into a singleton?', a: 'The singleton captures a single prototype instance at creation time, so you never get fresh instances. Use ObjectProvider/Provider/@Lookup to obtain a new one per use.' },
-        { q: 'Difference between @PostConstruct and a constructor?', a: 'The constructor runs before dependency injection completes; @PostConstruct runs after all dependencies are injected, so it can safely use them for initialisation.' },
-        { q: 'What is the default bean scope and its threading implication?', a: 'Singleton — one shared instance per container. It\'s shared across all threads, so beans must be stateless or have their mutable state externally synchronised.' }
+
+        public void publish(Object event) {
+            listeners.getOrDefault(event.getClass(), List.of())
+                     .forEach(l -> l.accept(event));
+        }
+    }
+
+    // Events
+    record OrderPlacedEvent(String orderId, String email, double amount) {}
+    record OrderCancelledEvent(String orderId, String reason) {}
+
+    // Services — decoupled via events
+    static class OrderService {
+        private final EventBus bus;
+        private int orderCounter = 0;
+        OrderService(EventBus bus) { this.bus = bus; }
+
+        String placeOrder(String email, double amount) {
+            String id = "ORD-" + (++orderCounter);
+            System.out.println("[OrderService] Order " + id + " placed");
+            bus.publish(new OrderPlacedEvent(id, email, amount));
+            return id;
+        }
+
+        void cancelOrder(String id) {
+            System.out.println("[OrderService] Order " + id + " cancelled");
+            bus.publish(new OrderCancelledEvent(id, "Customer request"));
+        }
+    }
+
+    public static void main(String[] args) {
+        EventBus bus = new EventBus();
+
+        // Wire up listeners — independent, decoupled
+        bus.subscribe(OrderPlacedEvent.class, e ->
+            System.out.println("[Email]     Sending receipt to " + e.email()));
+        bus.subscribe(OrderPlacedEvent.class, e ->
+            System.out.println("[Inventory] Reserving stock for " + e.orderId()));
+        bus.subscribe(OrderPlacedEvent.class, e ->
+            System.out.println("[Analytics] Tracking $" + e.amount() + " revenue"));
+        bus.subscribe(OrderCancelledEvent.class, e ->
+            System.out.println("[Refund]    Processing refund for " + e.orderId()
+                + " — reason: " + e.reason()));
+
+        OrderService service = new OrderService(bus);
+        String id1 = service.placeOrder("alice@e.com", 49.99);
+        String id2 = service.placeOrder("bob@e.com",   9.99);
+        service.cancelOrder(id2);
+    }
+}`,
+            `import java.util.*;
+
+// Demonstrating ApplicationContext patterns: ServiceLocator vs proper DI
+public class ApplicationContextPatterns {
+    // Anti-pattern: ServiceLocator hides dependencies
+    interface BeanLocator { <T> T getBean(Class<T> type); }
+
+    static class AntiPatternService {
+        private final BeanLocator locator;
+        AntiPatternService(BeanLocator locator) { this.locator = locator; }
+
+        void process() {
+            // Hidden dependency — not visible in constructor
+            var repo = locator.getBean(UserRepository.class);
+            System.out.println("[Anti-pattern] Got: " + repo.getClass().getSimpleName());
+        }
+    }
+
+    // Correct: explicit DI — all deps in constructor
+    static class CorrectService {
+        private final UserRepository repo;
+        CorrectService(UserRepository repo) { this.repo = repo; }
+
+        void process() {
+            System.out.println("[DI pattern] Using: " + repo.getClass().getSimpleName());
+        }
+    }
+
+    interface UserRepository { void save(Object user); }
+    static class InMemoryUserRepository implements UserRepository {
+        public void save(Object user) { System.out.println("  saved: " + user); }
+    }
+
+    // Where ServiceLocator IS acceptable: plugin factories with dynamic resolution
+    static class PluginFactory {
+        private final Map<String, Supplier<Object>> registry = new HashMap<>();
+        void register(String name, Supplier<Object> factory) { registry.put(name, factory); }
+        Object create(String name) { return registry.getOrDefault(name, () -> { throw new NoSuchElementException(name); }).get(); }
+    }
+
+    public static void main(String[] args) {
+        UserRepository repo = new InMemoryUserRepository();
+
+        // Anti-pattern service (hidden dep)
+        BeanLocator locator = new BeanLocator() {
+            public <T> T getBean(Class<T> type) {
+                if (type == UserRepository.class) return type.cast(repo);
+                throw new NoSuchElementException(type.getName());
+            }
+        };
+        new AntiPatternService(locator).process();
+
+        // DI-correct service (explicit dep)
+        new CorrectService(repo).process();
+
+        // Acceptable factory pattern
+        PluginFactory factory = new PluginFactory();
+        factory.register("inmemory", InMemoryUserRepository::new);
+        Object dynamic = factory.create("inmemory");
+        System.out.println("Plugin: " + dynamic.getClass().getSimpleName());
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is ApplicationEventPublisher and how does @EventListener work?', a: 'ApplicationEventPublisher is a Spring interface for publishing events. Inject it into any bean and call publishEvent(event). @EventListener on a method registers it to receive events — Spring scans all beans for @EventListener at startup. The method signature determines which event type it listens to. By default events are synchronous; add @Async for asynchronous delivery (requires @EnableAsync).' },
+            { q: 'What is the ServiceLocator anti-pattern in Spring?', a: 'Calling ctx.getBean() inside business logic to fetch dependencies at runtime. Problems: (1) hides dependencies — constructor doesn\'t show what the class needs, (2) hard to test — requires ApplicationContext or mocking it, (3) violates Dependency Inversion. Acceptable only for plugin factories needing runtime type resolution or injecting prototype beans (use ObjectProvider instead).' },
+            { q: 'What is @SpringBootTest vs @WebMvcTest?', a: '@SpringBootTest loads the full ApplicationContext — all beans, all auto-configurations. Suitable for integration tests but slow to start. @WebMvcTest loads only the web layer (controllers, filters, converters) and auto-configures MockMvc. Other dependencies are @MockBean. Much faster than @SpringBootTest, tests HTTP layer in isolation. For services with no HTTP, use plain unit tests (new ServiceImpl(mock(Repo.class))).' },
+            { q: 'What are the built-in Spring application lifecycle events?', a: 'ContextStartedEvent — after context.start() called. ContextRefreshedEvent — after all beans initialized (most useful: "context is ready"). ContextStoppedEvent — after context.stop(). ContextClosedEvent — after context.close() / JVM shutdown. ApplicationStartingEvent / ApplicationReadyEvent — Spring Boot specific, fire before/after context refresh. For bean-level hooks, prefer @PostConstruct / @PreDestroy over ContextRefreshedEvent.' },
+            { q: 'How does Spring know the order to instantiate and inject beans?', a: 'Spring builds a dependency graph from constructor/setter parameters and @Autowired references. It instantiates beans in topological order — if A depends on B, B is created first. Circular dependencies with constructor injection fail at startup (Spring refuses to start — a feature, not a bug). @Lazy or setter injection can break cycles but hides the design problem.' }
+          ]
+        }
       ]
     },
-
     {
       id: '3.2',
       title: 'Spring Boot Auto-Configuration',
