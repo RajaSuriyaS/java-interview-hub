@@ -26364,259 +26364,1443 @@ public class IdempotencyDemo {
     modules: [
       {
         id: `6.1`,
-        title: `Microservice Patterns`,
-        hours: 4,
+        title: `Microservice Patterns & Architecture`,
+        hours: 6,
         sections: [
           {
-            title: `Microservice Architecture — Core Patterns`,
-            notes: `## Microservice Architecture — Core Patterns
+            title: `Monolith → Microservices: When (and When Not) to Split`,
+            notes: `## Monolith → Microservices
 
-### Monolith vs Microservices
+Microservices are an **organizational** technology before they are a technical one. You adopt them to let many teams ship independently — not because "REST is faster than a method call" (it is dramatically slower). Get this framing wrong and you build a *distributed monolith*: all the cost, none of the benefit.
 
-\`\`\`
-Monolith                          Microservices
-────────────────────              ───────────────────────────────
-Single deployable unit            Many independent services
-Simple local method calls         Network calls (HTTP/gRPC/messaging)
-One database                      Each service owns its data
-Easy transactions (ACID)          Distributed transactions (hard)
-Simple to develop initially       Complex infrastructure (k8s, service mesh)
-Hard to scale individual parts    Scale each service independently
-Deploy everything for one change  Deploy one service at a time
-One tech stack                    Polyglot (best tool per service)
+> [!EU] **What interviewers probe:** They want to hear that microservices are a trade-off with real, quantifiable costs. A senior who says "we split because microservices are modern" fails. A staff candidate says "we split *this* seam because two teams were blocking each other on deploys, and we kept the rest a modular monolith."
 
-When to use microservices:
-  ✓ Teams > 50 engineers (Conway's Law)
-  ✓ Different scaling needs per component
-  ✓ Independent release cadence per team
-  ✗ Early-stage product (premature)
-  ✗ Small team (operational overhead too high)
-\`\`\`
+### The honest cost ledger
 
-### Service Communication Patterns
+A single in-process method call is ~1–10 **nanoseconds**. The equivalent cross-service call is ~0.5–5 **milliseconds** on a fast network — roughly a **100,000–1,000,000× latency tax** — and it can now *fail independently* (timeout, partial failure, retry storm). That is the core thing you are buying.
 
-\`\`\`
-Synchronous (request-response):
-  REST/HTTP   — simple, widely understood, every language
-  gRPC        — binary protocol (Protobuf), fast, strong typing, bi-directional streaming
-  GraphQL     — flexible queries, avoids over/under-fetching
+| Concern | Monolith | Microservices |
+|---|---|---|
+| Call latency | ns (in-process) | ms (network) |
+| Failure model | process up or down | partial failure, must design for it |
+| Transactions | ACID, one DB | sagas / eventual consistency |
+| Refactor across boundary | IDE rename | API version + deploy coordination |
+| Local dev | run one process | run N services or mock them |
+| Deploy | one artifact | independent per service (the win) |
+| Debugging | one stack trace | distributed trace across N hops |
+| Data query | JOIN | API composition / replication |
 
-Asynchronous (messaging):
-  Kafka       — high-throughput event streaming, durable, replayable
-  RabbitMQ    — traditional message queue, flexible routing
-  Amazon SQS  — managed queue, at-least-once delivery
+> [!WARNING] You take on **network, consistency, and operational** cost on day one. The payoff (independent deploys, independent scaling, team autonomy) only materializes if your org and boundaries are right. Below ~3 teams it is almost never worth it.
 
-Rule: synchronous for user-facing reads; async for writes and cross-service side-effects
-\`\`\`
+### Bounded Contexts & DDD — where the seams go
 
-### API Gateway Pattern
+The boundary that matters is the **bounded context** (Eric Evans / DDD): a region of the model where a term means exactly one thing. "Customer" in *Billing* (has a credit limit, payment methods) is a different concept from "Customer" in *Shipping* (has addresses, delivery prefs). Forcing one shared "Customer" entity across both is the classic mistake that produces a chatty, coupled mess.
 
-\`\`\`
-Client
-  │
-  ▼
-API Gateway ──────────────────────────
-  ├── Auth/JWT validation
-  ├── Rate limiting
-  ├── Request routing
-  ├── Response aggregation
-  ├── SSL termination
-  └── Logging/tracing
-  │
-  ├──▶ Order Service    :8081
-  ├──▶ Product Service  :8082
-  ├──▶ User Service     :8083
-  └──▶ Payment Service  :8084
+- **Ubiquitous language** per context — the model and the code share the same vocabulary.
+- **Context map** — define the relationship between contexts (Customer/Supplier, Conformist, Anti-Corruption Layer, Shared Kernel).
+- **Aggregate** = the transactional consistency boundary *inside* a service. A service usually owns one or a few aggregates. A good rule: **one service per bounded context, not per aggregate, not per entity** (per-entity → "nano-services" → distributed monolith).
 
-Single entry point for all clients
-Hides internal service topology
-Cross-cutting concerns in one place (no repetition per service)
+> [!TIP] Map a service boundary onto a bounded context, and a transaction boundary onto an aggregate. If a single business operation must atomically mutate two aggregates in two services, your boundary is probably wrong — or you need a saga.
 
-Tools: Kong, AWS API Gateway, Spring Cloud Gateway, Nginx
+### Decomposition strategies
+
+\`\`\`mermaid
+graph LR
+  C[Client] --> G[API Gateway]
+  G --> O[Order Service]
+  G --> CAT[Catalog Service]
+  G --> U[User Service]
+  O -->|publishes OrderPlaced| K{{Event Bus}}
+  K --> INV[Inventory Service]
+  K --> SHIP[Shipping Service]
+  K --> NOTIF[Notification Service]
+  O --> ODB[(Order DB)]
+  CAT --> CDB[(Catalog DB)]
+  U --> UDB[(User DB)]
+  INV --> IDB[(Inventory DB)]
 \`\`\`
 
-### Circuit Breaker Pattern
+1. **Decompose by business capability** — Order, Catalog, Payment, Shipping. Stable because the business changes slowly. *Preferred default.*
+2. **Decompose by subdomain (DDD)** — formal version of the above; core vs supporting vs generic subdomains. Spend your best engineers on the *core* subdomain; buy/outsource the generic ones (auth, email).
+3. **Strangler Fig (Fowler)** — the safe migration. Put a façade/proxy in front of the monolith; route one capability at a time to a new service; the monolith shrinks until it's gone. Never a big-bang rewrite.
 
-\`\`\`java
-// Problem: if Payment Service is down, Order Service keeps trying
-// → threads pile up waiting → Order Service also crashes (cascading failure)
+> [!SUCCESS] **Strong answer:** "We don't decompose by technical layer or by table. We decompose by business capability so each service owns a vertical slice — its API, its logic, and its data. We migrate incrementally with a strangler façade, moving the highest-friction capability first, and we keep the rest a modular monolith until there's a concrete pressure (independent deploy cadence, divergent scaling, or team ownership) that justifies the split."
 
-// Circuit Breaker states:
-// CLOSED   → calls pass through normally
-// OPEN     → calls fail fast (no network call) — after N failures
-// HALF-OPEN → try one call; if it succeeds → CLOSED; if fails → OPEN
+### The distributed-monolith anti-pattern — the thing to avoid
 
-// With Resilience4j
-@Service
-public class PaymentClient {
-    @CircuitBreaker(name = "payment", fallbackMethod = "fallbackPay")
-    @Retry(name = "payment", fallbackMethod = "fallbackPay")
-    @TimeLimiter(name = "payment")
-    public CompletableFuture<PaymentResult> pay(PaymentRequest req) {
-        return CompletableFuture.supplyAsync(() -> httpClient.post(paymentUrl, req));
-    }
+You have a distributed monolith if **services must be deployed together, share a database, or fail together.** Smells:
 
-    public CompletableFuture<PaymentResult> fallbackPay(PaymentRequest req, Exception e) {
-        // Graceful degradation: queue for retry or return pending status
-        outbox.save(new PendingPayment(req));
-        return CompletableFuture.completedFuture(PaymentResult.pending());
-    }
-}
-// resilience4j.circuitbreaker.instances.payment.slidingWindowSize=10
-// resilience4j.circuitbreaker.instances.payment.failureRateThreshold=50
-// resilience4j.circuitbreaker.instances.payment.waitDurationInOpenState=30s
-\`\`\`
+- A shared database across services (the #1 cause — couples schemas, you can't change a column safely).
+- Synchronous call chains N levels deep (A→B→C→D) — latency adds, availability *multiplies down*.
+- A change to one service forces a coordinated release of others (lock-step deploys).
+- Distributed transactions / 2PC trying to recreate ACID across the network.
 
-### Strangler Fig Pattern
+> [!DANGER] **Availability multiplies.** A request that fans out synchronously to 5 services each at 99.9% has a ceiling of 0.999^5 ≈ **99.5%** — that's ~3.6 hours/month of downtime created purely by topology. Worse, a deep sync chain means one slow dependency stalls every caller above it. The fix: fewer sync hops, async where possible, and resilience patterns (Section 4).
 
-\`\`\`
-Migrating monolith → microservices incrementally:
+### Conway's Law — the punchline
 
-Phase 1:  Monolith ← all traffic
-Phase 2:  Monolith ← most traffic
-          └→ New User Service ← /api/users/* only
-Phase 3:  New Order Service ← /api/orders/*
-          New User Service  ← /api/users/*
-          Monolith ← remaining (legacy)
-Phase N:  All services, monolith decommissioned
+> "Organizations design systems that mirror their communication structure." — Melvin Conway, 1967
 
-Route via API Gateway/reverse proxy
-Never big-bang rewrite — too risky
-Extract high-change or high-scale components first
-\`\`\``,
+Your service boundaries *will* end up matching your team boundaries whether you plan it or not. The **Inverse Conway Maneuver**: deliberately shape teams to get the architecture you want. Two-pizza teams, each owning a service end-to-end (you build it, you run it). If two teams must edit the same service to ship a feature, the boundary is wrong.`,
             code: [
-              `import java.util.*;
-import java.util.concurrent.*;
-import java.util.function.*;
+              {
+                lang: `text`,
+                title: `Decision checklist — should we split this seam?`,
+                runnable: false,
+                note: `Heuristic, not a law. Default to 'no' until two or more boxes are checked.`,
+                code: `SPLIT a capability out of the monolith when:
+  [ ] Two+ teams are blocking each other on this code's deploys
+  [ ] It has a genuinely different scaling profile (e.g. search vs checkout)
+  [ ] It needs a different runtime/data store (ML in Python, graph DB)
+  [ ] It has an independent release cadence / SLA / compliance boundary
+  [ ] It is a stable, well-understood bounded context (not still in flux)
 
-// Circuit Breaker implementation from scratch
-public class CircuitBreakerDemo {
+DO NOT split when:
+  [ ] One team owns everything and ships fine
+  [ ] The boundary keeps moving (you'll pay refactor-across-network tax)
+  [ ] You'd need a distributed transaction to keep two new services consistent
+  [ ] You're pre-product-market-fit (premature; optimize for change speed)
 
-    enum State { CLOSED, OPEN, HALF_OPEN }
+If unsure -> MODULAR MONOLITH: enforce module boundaries in-process
+(separate packages, no cross-module DB access, explicit module APIs).
+Extract to a service only when a concrete pressure appears.`
+              },
+              {
+                lang: `java`,
+                title: `Modular monolith: enforce boundaries before extracting`,
+                runnable: false,
+                note: `Reference structure. ArchUnit/Spring Modulith can fail the build on violations.`,
+                code: `// A modular monolith is the cheapest way to get clean boundaries.
+// Each module exposes an interface; nobody reaches into another module's
+// internals or DB tables. When a module needs to become a service, the
+// seam already exists -> extraction is mechanical, not archaeological.
 
-    static class CircuitBreaker {
-        private State state = State.CLOSED;
-        private int failureCount = 0;
-        private long openedAt = 0;
+// com.shop.order        (module: Order bounded context)
+//   api/   OrderFacade        <- the ONLY public surface
+//   internal/ OrderRepository, OrderEntity   <- package-private, hidden
+//
+// com.shop.inventory    (module: Inventory bounded context)
+//   api/   InventoryFacade
+//   internal/ ...
 
-        private final int failureThreshold;
-        private final long retryAfterMs;
+package com.shop.order.api;
 
-        CircuitBreaker(int failureThreshold, long retryAfterMs) {
-            this.failureThreshold = failureThreshold;
-            this.retryAfterMs = retryAfterMs;
-        }
+public interface OrderFacade {                 // stable, published contract
+    OrderId place(PlaceOrderCommand cmd);
+    OrderView find(OrderId id);
+}
 
-        <T> T call(Supplier<T> action, Supplier<T> fallback) {
-            if (state == State.OPEN) {
-                if (System.currentTimeMillis() - openedAt > retryAfterMs) {
-                    state = State.HALF_OPEN;
-                    System.out.println("[CB] HALF-OPEN — trying probe call");
-                } else {
-                    System.out.println("[CB] OPEN — fast fail");
-                    return fallback.get();
-                }
-            }
-            try {
-                T result = action.get();
-                if (state == State.HALF_OPEN) { reset(); }
-                return result;
-            } catch (Exception e) {
-                recordFailure();
-                return fallback.get();
-            }
-        }
-
-        private void recordFailure() {
-            failureCount++;
-            if (failureCount >= failureThreshold) {
-                state = State.OPEN;
-                openedAt = System.currentTimeMillis();
-                System.out.println("[CB] OPEN after " + failureCount + " failures");
-            }
-        }
-
-        private void reset() {
-            state = State.CLOSED;
-            failureCount = 0;
-            System.out.println("[CB] CLOSED — service recovered");
-        }
-    }
-
-    public static void main(String[] args) throws InterruptedException {
-        var cb = new CircuitBreaker(3, 500); // open after 3 failures, retry after 500ms
-        int[] attempt = {0};
-
-        Supplier<String> service = () -> {
-            attempt[0]++;
-            if (attempt[0] <= 5) throw new RuntimeException("Service unavailable");
-            return "OK";
-        };
-        Supplier<String> fallback = () -> "FALLBACK (cached/default)";
-
-        // 8 calls — first 3 fail and open circuit, next fast-fail, then recovery
-        for (int i = 0; i < 8; i++) {
-            if (i == 6) Thread.sleep(600); // wait for circuit to allow retry
-            String result = cb.call(service, fallback);
-            System.out.printf("Call %d: %s (state=%s)%n", i+1, result, cb.state);
-        }
-    }
-}`,
-              `// Service mesh concepts + health checks pattern
-import org.springframework.boot.actuate.health.*;
-import org.springframework.web.client.RestTemplate;
-import java.util.*;
-
-// Each microservice exposes:
-// 1. /actuator/health/liveness   — is the process alive?
-// 2. /actuator/health/readiness  — can it serve traffic?
-// 3. /actuator/health (composite) — all dependency health
-
-@org.springframework.stereotype.Component
-class DependencyHealthIndicator implements HealthIndicator {
-    private final RestTemplate restTemplate;
-    private final List<String> dependencyUrls = List.of(
-        "http://payment-service/actuator/health",
-        "http://inventory-service/actuator/health"
-    );
-
-    DependencyHealthIndicator(RestTemplate rt) { this.restTemplate = rt; }
-
-    @Override
-    public Health health() {
-        Map<String, Object> details = new LinkedHashMap<>();
-        boolean allUp = true;
-        for (String url : dependencyUrls) {
-            try {
-                String resp = restTemplate.getForObject(url, String.class);
-                details.put(url, resp != null && resp.contains("UP") ? "UP" : "DEGRADED");
-            } catch (Exception e) {
-                details.put(url, "DOWN: " + e.getMessage());
-                allUp = false;
-            }
-        }
-        return allUp
-            ? Health.up().withDetails(details).build()
-            : Health.down().withDetails(details).build();
-    }
-}`
+// Inventory talks to Order ONLY through the facade — never its repo/tables.
+// Enforce with ArchUnit so a violation FAILS CI:
+//
+//   noClasses().that().resideInAPackage("..inventory..")
+//     .should().accessClassesThat().resideInAPackage("..order.internal..")
+//
+// Spring Modulith can also verify this and even generate a context map.`
+              }
             ],
             flashcards: [
               {
-                q: `What are the main trade-offs of microservices vs a monolith?`,
-                a: `Monolith advantages: simple local calls, easy ACID transactions, one codebase to understand, no network latency overhead. Microservices advantages: independent deployment/scaling, team autonomy, polyglot freedom, fault isolation. Microservices add: network calls between services (latency, failure), distributed data management (no easy joins, eventual consistency), complex infrastructure (service discovery, load balancing, tracing), and operational overhead. Recommendation: start with a well-structured monolith; extract services when scaling or team structure demands it.`
+                q: `Why are microservices fundamentally an organizational pattern, not just a technical one?`,
+                a: `Their primary payoff is independent deployability and team autonomy (Conway's Law). The technical change — replacing in-process calls with network calls — is a net *cost* (100k+× slower, can fail independently). You only come out ahead if multiple teams need to ship without coordinating.`
               },
               {
-                q: `What is the Circuit Breaker pattern and what problem does it solve?`,
-                a: `Circuit Breaker prevents cascading failures. Without it: Service A calls Service B repeatedly even when B is down — threads pile up waiting for timeouts → A runs out of threads → A crashes → C which calls A also crashes. Circuit Breaker states: CLOSED (calls pass through), OPEN (calls fail fast after N failures — no network call), HALF-OPEN (try one probe call after cooldown). Fallback provides graceful degradation (cached data, default values, queue for retry). Libraries: Resilience4j (Java), Hystrix (deprecated).`
+                q: `Define a 'distributed monolith' and give three smells.`,
+                a: `Services that must deploy together, share a database, or fail together — all the cost of distribution with none of the independence. Smells: shared DB, deep synchronous call chains, lock-step releases, 2PC across services.`
               },
               {
-                q: `What is the API Gateway pattern and what responsibilities does it take on?`,
-                a: `API Gateway is the single entry point for all clients. Handles cross-cutting concerns so individual services don't have to: authentication/JWT validation, rate limiting, SSL termination, request routing, response aggregation (BFF pattern — Backend for Frontend), protocol translation (REST → gRPC), logging and distributed tracing. Clients see one endpoint; internal service topology is hidden. Trade-off: it's a potential single point of failure and a bottleneck (must be highly available and fast). Popular: Kong, AWS API Gateway, Spring Cloud Gateway, Nginx.`
+                q: `What's the difference between a bounded context and an aggregate, and how do they map to services?`,
+                a: `A bounded context is a model boundary where terms have one meaning → maps to a *service*. An aggregate is a transactional consistency boundary inside a service → maps to a *transaction*. One service per bounded context (not per entity).`
               },
               {
-                q: `What is the Strangler Fig pattern for microservice migration?`,
-                a: `The Strangler Fig incrementally replaces a monolith by building new services alongside it, routing traffic slice by slice. Step 1: put a proxy (API Gateway) in front of the monolith — it routes all traffic to the monolith unchanged. Step 2: implement the User Service, route /api/users/* to it; monolith handles everything else. Step 3: extract more services one at a time. Never: big-bang rewrite (too risky, diverges from production behaviour). This way the monolith "strangled" — slowly replaced without a cutover. Always extract high-change or high-scale components first.`
+                q: `How does availability behave across a synchronous call fan-out and why is that dangerous?`,
+                a: `It multiplies: five 99.9% services in a sync chain ≈ 99.9%^5 ≈ 99.5% (~3.6h/month down). Topology alone destroys availability; the fix is fewer sync hops, async messaging, and resilience patterns.`
+              },
+              {
+                q: `What is the Strangler Fig pattern?`,
+                a: `Incremental migration: put a façade/proxy in front of the monolith and route one capability at a time to new services; the monolith shrinks until it disappears. Avoids the big-bang rewrite, which usually fails.`
+              },
+              {
+                q: `What is the Inverse Conway Maneuver?`,
+                a: `Deliberately structuring teams to produce the architecture you want, since systems mirror org communication structure. E.g. two-pizza teams each owning one service end-to-end (you build it, you run it).`
+              },
+              {
+                q: `Why is a shared database across services the #1 microservices anti-pattern?`,
+                a: `It couples schemas and lifecycles: you can't change a column without coordinating across services, you lose clear ownership, and you get hidden transactional coupling. Database-per-service is the rule.`
+              },
+              {
+                q: `When should you NOT split into microservices?`,
+                a: `Pre-PMF products, single-team systems shipping fine, boundaries still in flux (refactor-across-network tax), or anything that would require distributed transactions to stay correct. Prefer a modular monolith.`
+              },
+              {
+                q: `What is a modular monolith and why is it often the right first step?`,
+                a: `A single deployable with strictly enforced in-process module boundaries (separate packages, no cross-module DB access, explicit module APIs). It gives you clean seams cheaply; extraction to a service becomes mechanical when a real pressure appears.`
+              },
+              {
+                q: `What are 'nano-services' and why are they bad?`,
+                a: `Over-decomposition to one service per entity/operation. The chatter, network latency, and operational overhead explode while cohesion collapses — a classic route into a distributed monolith.`
+              },
+              {
+                q: `Give a concrete example of why a shared 'Customer' entity across contexts is wrong.`,
+                a: `In Billing, Customer = credit limit + payment methods; in Shipping, Customer = addresses + delivery prefs. One shared model forces both teams to agree on every change and bloats the entity. Each context should model its own Customer.`
+              },
+              {
+                q: `What's the core latency trade-off when replacing an in-process call with a service call?`,
+                a: `~1–10 ns in-process vs ~0.5–5 ms over the network — a 5–6 order-of-magnitude tax — plus the call can now time out, fail partially, or trigger retries. You must design for that failure, not just the happy path.`
+              }
+            ]
+          },
+          {
+            title: `Inter-service Communication: Sync vs Async, gRPC vs REST, Backpressure`,
+            notes: `## Inter-service Communication
+
+Two axes that interviewers conflate — keep them separate:
+1. **Transport/encoding:** REST/JSON vs gRPC/Protobuf vs GraphQL.
+2. **Interaction style:** synchronous request-response vs asynchronous event-driven.
+
+You can run request-response over a message broker (async RPC), and you can stream over gRPC. Don't collapse the two axes.
+
+### Synchronous request-response
+
+The caller blocks (logically) until it gets an answer. Simple mental model, but it **couples availability**: if the callee is down or slow, the caller is down or slow. Use it for **user-facing reads** where you need an answer *now* (load a product page).
+
+| | REST/JSON over HTTP/1.1 | gRPC/Protobuf over HTTP/2 |
+|---|---|---|
+| Encoding | text JSON (human-readable, verbose) | binary Protobuf (compact, ~3–10× smaller) |
+| Contract | OpenAPI (optional, often drifts) | .proto (mandatory, code-generated, typed) |
+| Transport | HTTP/1.1 (HTTP/2 possible) | HTTP/2 (multiplexed, header compression) |
+| Streaming | no (SSE/websocket bolt-ons) | yes: client/server/bidi streaming |
+| Browser support | native | needs grpc-web proxy |
+| Latency/throughput | higher overhead | lower latency, higher throughput |
+| Debuggability | curl, easy | needs grpcurl/tooling |
+| Schema evolution | manual discipline | field numbers; add fields freely, never reuse numbers |
+| Best for | public/edge APIs, browser clients | internal east-west, high-throughput, polyglot |
+
+> [!TIP] **Rule of thumb:** REST at the **edge** (public, browser, partner APIs), gRPC for **internal east-west** chatter (service-to-service, high QPS, low latency). GraphQL when *clients* (mobile/web) need to shape their own queries and you want to kill over/under-fetching at the BFF layer.
+
+> [!WARNING] gRPC schema evolution gotcha: Protobuf field *numbers* are the wire identity, not field names. You may add fields and rename them freely; you must **never reuse a field number** for a different meaning, and **never change a field's type**. Reserve removed numbers (\`reserved 4, 7;\`) so nobody recycles them.
+
+### Asynchronous / event-driven
+
+The producer emits an event and moves on; consumers react later. This **decouples availability** (broker buffers while a consumer is down) and **decouples the producer from consumers** (it doesn't know who listens). Use for **writes and cross-service side-effects**: \`OrderPlaced\` → inventory reserves stock, shipping schedules, notifications send.
+
+\`\`\`mermaid
+sequenceDiagram
+  participant C as Client
+  participant O as Order Svc
+  participant B as Event Bus
+  participant I as Inventory Svc
+  participant S as Shipping Svc
+  C->>O: POST /orders
+  O->>O: persist order (PENDING)
+  O-->>C: 202 Accepted (orderId)
+  O->>B: publish OrderPlaced
+  Note over B: broker durably stores event
+  B-->>I: OrderPlaced
+  I->>I: reserve stock
+  I->>B: publish StockReserved
+  B-->>S: StockReserved
+  S->>S: schedule shipment
+\`\`\`
+
+**Command vs Event** — a key distinction:
+- **Command** ("ReserveStock") is a directed *request to do something*, addressed to one owner, can be rejected. Implies coupling.
+- **Event** ("OrderPlaced") is an immutable *statement of fact* about the past, broadcast, fire-and-forget. Maximizes decoupling. Prefer events for cross-context integration.
+
+> [!EU] **Interviewers probe consistency:** "Your API returned 202 Accepted before inventory was reserved — what does the client see?" Strong answer: you've chosen eventual consistency; the client polls or subscribes for the final state, and you make the consumer **idempotent** because the broker delivers **at-least-once** (duplicates happen).
+
+### Choreography vs Orchestration
+
+- **Choreography:** services react to each other's events, no central brain. Loosely coupled, but the end-to-end flow is implicit — hard to see "what is the order process?" Good for simple flows.
+- **Orchestration:** a central orchestrator (e.g. a saga coordinator / workflow engine like Temporal) issues commands and tracks state. Explicit, observable, easier to reason about; reintroduces a coordinator. Good for complex, long-running flows.
+
+### Backpressure — the failure mode juniors miss
+
+If a producer emits faster than a consumer can handle, something must give. Without backpressure you get **unbounded queue growth → OOM**, or you drop data silently.
+
+- **Pull-based (Kafka):** consumers pull at their own pace; the broker is the buffer (bounded by retention/disk). Lag is observable as *consumer lag*. This is natural backpressure.
+- **Push-based (naive):** producer overwhelms consumer. You need flow control — bounded queues, **Reactive Streams** \`request(n)\` (Project Reactor / RSocket), HTTP/2 flow-control windows, or 429/503 with \`Retry-After\`.
+- **Load shedding:** when overloaded, reject early (429) rather than accept work you can't finish — failing fast beats failing slow.
+
+> [!DANGER] An unbounded in-memory queue is a time bomb: under a traffic spike it grows until the JVM OOMs and the whole instance dies, taking *all* in-flight work with it. Always bound your queues and decide a policy (block the producer, drop oldest, or reject) **explicitly**.
+
+> [!SUCCESS] **Strong answer on sync-vs-async:** "I default to async events for cross-service writes to decouple availability and absorb spikes via the broker, and synchronous calls only for user-facing reads that need an immediate answer. I keep sync call chains shallow because availability multiplies down a chain, and I make every async consumer idempotent because delivery is at-least-once."`,
+            code: [
+              {
+                lang: `java`,
+                title: `RUNNABLE: token-bucket backpressure / rate limiter simulator`,
+                runnable: true,
+                note: `Plain Java, no deps. Shows how a bounded rate limiter sheds load instead of OOMing.`,
+                code: `import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * Token-bucket rate limiter — the simplest production backpressure tool.
+ * Refills at a steady rate; bucket has a max capacity (burst). If no token
+ * is available, the request is SHED (rejected fast) instead of queued forever.
+ */
+public class TokenBucket {
+    private final long capacity;       // max burst
+    private final double refillPerMs;  // tokens added per millisecond
+    private double tokens;
+    private long lastRefillMs;
+
+    TokenBucket(long capacity, double tokensPerSecond) {
+        this.capacity = capacity;
+        this.refillPerMs = tokensPerSecond / 1000.0;
+        this.tokens = capacity;
+        this.lastRefillMs = System.currentTimeMillis();
+    }
+
+    synchronized boolean tryAcquire() {
+        long now = System.currentTimeMillis();
+        tokens = Math.min(capacity, tokens + (now - lastRefillMs) * refillPerMs);
+        lastRefillMs = now;
+        if (tokens >= 1.0) { tokens -= 1.0; return true; }
+        return false; // SHED — caller gets 429, does not enqueue work it can't do
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        // Allow 100 req/s, burst of 20. Simulate a 300 req/s spike.
+        TokenBucket bucket = new TokenBucket(20, 100);
+        AtomicLong accepted = new AtomicLong(), shed = new AtomicLong();
+
+        long end = System.currentTimeMillis() + 1000; // 1 second window
+        long next = System.nanoTime();
+        while (System.currentTimeMillis() < end) {
+            if (bucket.tryAcquire()) accepted.incrementAndGet();
+            else shed.incrementAndGet();
+            next += 3_300_000L;                    // ~300 attempts/sec
+            long waitNs = next - System.nanoTime();
+            if (waitNs > 0) Thread.sleep(waitNs / 1_000_000, (int) (waitNs % 1_000_000));
+        }
+        System.out.printf("accepted=%d  shed=%d  (target ~100/s + burst)%n",
+                accepted.get(), shed.get());
+        System.out.println("Load shedding kept us safe: rejected early instead of OOMing a queue.");
+    }
+}`
+              },
+              {
+                lang: `text`,
+                title: `Protobuf contract with safe schema evolution`,
+                runnable: false,
+                note: `gRPC reference. Field NUMBERS are the wire identity — reserve removed ones.`,
+                code: `syntax = "proto3";
+package shop.order.v1;
+
+service OrderService {
+  rpc PlaceOrder (PlaceOrderRequest) returns (PlaceOrderResponse);
+  rpc StreamOrderEvents (OrderId) returns (stream OrderEvent); // server streaming
+}
+
+message PlaceOrderRequest {
+  string customer_id = 1;
+  repeated LineItem items = 2;
+  // field 3 was 'coupon_code' (string) — REMOVED. Reserve so it's never reused:
+  reserved 3;
+  reserved "coupon_code";
+  string idempotency_key = 4; // ADDED later — safe: new field number, defaults empty
+}
+
+message LineItem { string sku = 1; int32 qty = 2; }
+message PlaceOrderResponse { string order_id = 1; OrderStatus status = 2; }
+enum OrderStatus { ORDER_STATUS_UNSPECIFIED = 0; PENDING = 1; CONFIRMED = 2; }
+
+// RULES: add fields freely (consumers ignore unknown). Never reuse a number.
+// Never change a field's type. Keep enum 0 = UNSPECIFIED for forward-compat.`
+              },
+              {
+                lang: `java`,
+                title: `Reactive Streams backpressure (Project Reactor)`,
+                runnable: false,
+                note: `Needs reactor-core. request(n) is the demand signal — consumer controls pace.`,
+                code: `import reactor.core.publisher.Flux;
+import java.time.Duration;
+
+// Producer emits fast; consumer is slow. onBackpressureBuffer with a bounded
+// size + overflow strategy prevents unbounded growth. The Subscriber pulls via
+// request(n); the operator chain propagates that demand upstream.
+public class BackpressureDemo {
+  public static void main(String[] args) throws InterruptedException {
+    Flux.interval(Duration.ofMillis(1))           // fast producer (1000/s)
+        .onBackpressureBuffer(256,                 // BOUNDED buffer
+            dropped -> System.out.println("dropped " + dropped), // overflow policy
+            reactor.util.concurrent.Queues.<Long>get(256).get() == null ? null : null)
+        .publishOn(reactor.core.scheduler.Schedulers.boundedElastic())
+        .delayElements(Duration.ofMillis(10))      // slow consumer (100/s)
+        .subscribe(i -> { /* process */ });
+    Thread.sleep(2000);
+    // Without the bounded buffer this 10:1 mismatch would grow memory forever.
+  }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Separate the two axes people conflate in inter-service comms.`,
+                a: `Axis 1 = transport/encoding (REST/JSON vs gRPC/Protobuf vs GraphQL). Axis 2 = interaction style (sync request-response vs async event-driven). They're orthogonal: you can do async RPC over a broker, or streaming over gRPC.`
+              },
+              {
+                q: `When REST vs when gRPC?`,
+                a: `REST/JSON at the edge (public, browser, partner APIs — human-readable, ubiquitous). gRPC/Protobuf for internal east-west traffic (high QPS, low latency, streaming, strong typing across polyglot services).`
+              },
+              {
+                q: `What is the wire identity of a Protobuf field, and what evolution rules follow?`,
+                a: `The field *number*, not the name. You may rename and add fields freely; you must never reuse a number for a new meaning and never change a field's type. Reserve removed numbers (\`reserved 3;\`).`
+              },
+              {
+                q: `Command vs Event — define and say which to prefer for integration.`,
+                a: `A command is a directed request to do something (one owner, rejectable → coupling). An event is an immutable fact about the past (broadcast, fire-and-forget → decoupling). Prefer events for cross-context integration.`
+              },
+              {
+                q: `Why does async messaging 'decouple availability'?`,
+                a: `The producer emits to a durable broker and returns; if a consumer is down, the broker buffers and the consumer catches up later. The producer's success no longer depends on the consumer being up right now.`
+              },
+              {
+                q: `Why must async consumers be idempotent?`,
+                a: `Brokers deliver at-least-once; network/retry/rebalance causes duplicate deliveries. Processing the same event twice must be safe (dedupe by event id, or use idempotent operations).`
+              },
+              {
+                q: `Choreography vs orchestration for multi-service workflows.`,
+                a: `Choreography: services react to each other's events, no central brain — loosely coupled but the flow is implicit/hard to observe. Orchestration: a central coordinator issues commands and tracks state — explicit/observable but reintroduces a coordinator. Use orchestration for complex long-running flows.`
+              },
+              {
+                q: `What is backpressure and why is it critical?`,
+                a: `A mechanism for a slow consumer to signal a fast producer to slow down. Without it you get unbounded queue growth → OOM, or silent data loss. Examples: Kafka pull model, Reactive Streams request(n), HTTP/2 flow control, 429/Retry-After.`
+              },
+              {
+                q: `Why is Kafka's pull model natural backpressure?`,
+                a: `Consumers pull at their own pace; the broker (bounded by retention/disk) is the buffer, and backlog is observable as consumer lag. Producers aren't forced onto slow consumers.`
+              },
+              {
+                q: `What is load shedding and why prefer it to queuing under overload?`,
+                a: `Rejecting requests early (429/503) when at capacity instead of accepting work you can't finish. Failing fast preserves the system; queuing under sustained overload just delays collapse and grows latency for everyone.`
+              },
+              {
+                q: `Client returns 202 Accepted before downstream side effects complete — what consistency model is that, and what must the client do?`,
+                a: `Eventual consistency. The client must poll, subscribe to a status, or be event-driven to learn the final outcome; the API can't promise the side effects are done synchronously.`
+              },
+              {
+                q: `What does HTTP/2 give gRPC over HTTP/1.1 REST?`,
+                a: `Multiplexed streams over one connection (no head-of-line blocking at the HTTP layer), header compression (HPACK), binary framing, and native bidirectional streaming.`
+              }
+            ]
+          },
+          {
+            title: `API Gateway & Service Discovery`,
+            notes: `## API Gateway & Service Discovery
+
+### API Gateway — the single front door
+
+The gateway is the **edge** between untrusted clients and your service mesh. It centralizes cross-cutting concerns so individual services don't reimplement them.
+
+| Responsibility | Why at the gateway |
+|---|---|
+| Routing | Path/host → service; clients see one stable host |
+| AuthN/AuthZ | Validate JWT/OAuth once at the edge; services trust internal traffic |
+| Rate limiting / quotas | Protect the whole estate; per-client throttling |
+| TLS termination | Terminate once; mTLS internally (or via mesh) |
+| Request aggregation | Combine N backend calls into one client response (esp. for mobile) |
+| Response shaping / protocol translation | REST↔gRPC, gRPC-web bridging |
+| Observability | Inject correlation IDs, central access logs, metrics |
+| Load shedding / circuit breaking | First line of defense |
+
+> [!WARNING] **Don't let the gateway become a monolith.** If business logic creeps into the gateway, you've recreated a centralized chokepoint that every team must coordinate on. The gateway routes and applies *generic* policy; it must not know domain rules.
+
+### BFF — Backend for Frontend
+
+When web, iOS, and Android need different payloads, a single gateway gets messy. **BFF** = one gateway per client type, each aggregating/shaping for *that* client. Owned by the client team. Avoids over/under-fetching without polluting downstream services.
+
+\`\`\`mermaid
+graph LR
+  W[Web] --> WB[Web BFF]
+  M[Mobile] --> MB[Mobile BFF]
+  WB --> O[Order Svc]
+  WB --> C[Catalog Svc]
+  MB --> O
+  MB --> C
+  MB --> R[Recommendation Svc]
+\`\`\`
+
+### Service Discovery — finding instances in a dynamic fleet
+
+Instances come and go (autoscaling, rolling deploys, crashes) and IPs are ephemeral. You can't hardcode addresses. A **service registry** maps logical name → healthy instances.
+
+**Client-side discovery (e.g. Netflix Eureka + Ribbon):**
+- Client queries the registry, gets the instance list, and load-balances itself.
+- Pros: fewer hops, smart client-side LB (zone-aware). Cons: discovery logic in every client/language; tighter coupling to the registry.
+
+**Server-side discovery (e.g. AWS ALB, Kubernetes Service / kube-proxy):**
+- Client calls a stable virtual endpoint; a router/LB resolves to an instance.
+- Pros: clients stay dumb, language-agnostic. Cons: the LB is an extra hop and a thing to run (usually managed/built into the platform).
+
+\`\`\`mermaid
+graph LR
+  subgraph Client-side
+    CA[Client] -->|1: query| REG[(Registry/Eureka)]
+    REG -->|2: instance list| CA
+    CA -->|3: call chosen instance| SVC1[Svc inst]
+  end
+  subgraph Server-side
+    CB[Client] -->|call vhost| LB[Load Balancer / k8s Service]
+    LB --> SVC2[Svc inst]
+    SVC2 -->|register/health| REG2[(Registry)]
+    LB -.reads.-> REG2
+  end
+\`\`\`
+
+| | Eureka (client-side) | Consul | Kubernetes (server-side) |
+|---|---|---|---|
+| Model | AP (availability over consistency) | CP via Raft (or AP mode) | etcd-backed, server-side |
+| Health | client heartbeats, self-preservation | rich health checks | liveness/readiness probes |
+| LB location | in client (Ribbon/Spring LB) | client or via Consul Connect | kube-proxy / Service / mesh |
+| Extras | — | KV store, service mesh (Connect), DNS | native to k8s, DNS via CoreDNS |
+| Best for | Spring Cloud / JVM estates | multi-platform, mesh | anything on k8s (don't run Eureka on k8s) |
+
+> [!EU] **Common probe:** "Eureka or Consul?" Senior answer keys on the CAP trade-off: **Eureka is AP** — during a partition it keeps serving possibly-stale instance lists (it would rather route to a maybe-dead instance than have no answer; its *self-preservation* mode even stops evicting instances when it suspects a network blip). **Consul is CP by default** (Raft) — it prefers a consistent registry and may reject reads during leader election. For discovery, AP is usually the right default: a stale list + client retries beats no list at all. And on Kubernetes you almost never run Eureka — the platform *is* the registry (Services + DNS).
+
+> [!TIP] **Self-preservation** (Eureka): when too many heartbeats are missed at once, Eureka assumes a network problem (not mass instance death) and stops evicting registrations. Prevents a partition from nuking the whole registry — but can serve dead instances, so clients still need timeouts + retries + circuit breakers (Section 4).
+
+> [!SUCCESS] **Strong answer on gateway placement:** "Auth, rate limiting, and TLS termination live at the gateway so services trust internal traffic and don't reimplement them. Aggregation that's client-specific moves to a BFF. But routing decisions stay dumb/declarative — no domain logic at the edge — otherwise the gateway becomes a deployment bottleneck every team fights over."`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Spring Cloud Gateway — routes, rate limit, circuit breaker, discovery`,
+                runnable: false,
+                note: `Needs Spring Cloud Gateway + Redis (rate limiter) + a discovery client. Reference config.`,
+                code: `spring:
+  cloud:
+    gateway:
+      # Resolve lb:// URIs via the discovery registry (Eureka/Consul/k8s)
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      default-filters:
+        - name: RequestRateLimiter        # global per-client throttle
+          args:
+            redis-rate-limiter.replenishRate: 100   # tokens/sec steady
+            redis-rate-limiter.burstCapacity: 200    # burst
+            key-resolver: "#{@userKeyResolver}"      # bean: throttle per user/API key
+      routes:
+        - id: order-service
+          uri: lb://ORDER-SERVICE          # lb:// -> picked from registry
+          predicates:
+            - Path=/api/orders/**
+          filters:
+            - StripPrefix=2                 # /api/orders/X -> /X
+            - name: CircuitBreaker          # Resilience4j-backed
+              args:
+                name: orderCb
+                fallbackUri: forward:/fallback/orders
+            - name: Retry
+              args:
+                retries: 2
+                statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE
+                methods: GET                # only retry idempotent methods!
+        - id: catalog-service
+          uri: lb://CATALOG-SERVICE
+          predicates:
+            - Path=/api/catalog/**
+          filters:
+            - StripPrefix=2
+
+resilience4j.circuitbreaker.instances.orderCb:
+  slidingWindowSize: 20
+  failureRateThreshold: 50
+  waitDurationInOpenState: 10s`
+              },
+              {
+                lang: `yaml`,
+                title: `Eureka client + server (Spring Cloud Netflix)`,
+                runnable: false,
+                note: `Reference. On Kubernetes, skip Eureka — use the platform's Service/DNS instead.`,
+                code: `# --- Eureka SERVER ---
+server:
+  port: 8761
+eureka:
+  client:
+    register-with-eureka: false   # the registry doesn't register with itself
+    fetch-registry: false
+  server:
+    enable-self-preservation: true   # AP behavior: don't evict en masse on partition
+    eviction-interval-timer-in-ms: 60000
+
+---
+# --- Eureka CLIENT (each service) ---
+spring:
+  application:
+    name: order-service            # logical name other services discover by
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-1:8761/eureka/,http://eureka-2:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10   # heartbeat cadence
+    lease-expiration-duration-in-seconds: 30 # evict after 3 missed beats`
+              },
+              {
+                lang: `java`,
+                title: `RUNNABLE: tiny client-side discovery + round-robin LB simulation`,
+                runnable: true,
+                note: `Plain Java. Models registry lookup, heartbeat expiry, and client-side LB.`,
+                code: `import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+/** Minimal client-side discovery: registry tracks instances + last heartbeat;
+ *  a client fetches the healthy list and round-robins across it. */
+public class DiscoveryDemo {
+  record Instance(String id, String host) {}
+
+  static class Registry {
+    private final Map<String, Map<String, Long>> beats = new ConcurrentHashMap<>(); // svc -> (instId -> lastBeat)
+    private final Map<String, Instance> all = new ConcurrentHashMap<>();
+    final long ttlMs;
+    Registry(long ttlMs) { this.ttlMs = ttlMs; }
+
+    void register(String svc, Instance i) {
+      beats.computeIfAbsent(svc, k -> new ConcurrentHashMap<>()).put(i.id(), System.currentTimeMillis());
+      all.put(i.id(), i);
+    }
+    void heartbeat(String svc, String id) { beats.get(svc).put(id, System.currentTimeMillis()); }
+
+    List<Instance> healthy(String svc) {                  // server-side eviction by TTL
+      long now = System.currentTimeMillis();
+      List<Instance> out = new ArrayList<>();
+      beats.getOrDefault(svc, Map.of()).forEach((id, t) -> {
+        if (now - t <= ttlMs) out.add(all.get(id));       // only return live instances
+      });
+      return out;
+    }
+  }
+
+  static class LbClient {                                  // client-side round robin
+    private final Registry reg; private int rr = 0;
+    LbClient(Registry reg) { this.reg = reg; }
+    String call(String svc) {
+      List<Instance> live = reg.healthy(svc);
+      if (live.isEmpty()) return "NO HEALTHY INSTANCE -> circuit-break/fallback";
+      Instance chosen = live.get(Math.floorMod(rr++, live.size()));
+      return "routed to " + chosen.host();
+    }
+  }
+
+  public static void main(String[] args) throws InterruptedException {
+    Registry reg = new Registry(300);                      // 300ms TTL for demo
+    reg.register("order", new Instance("o1", "10.0.0.1"));
+    reg.register("order", new Instance("o2", "10.0.0.2"));
+    reg.register("order", new Instance("o3", "10.0.0.3"));
+    LbClient client = new LbClient(reg);
+
+    for (int i = 0; i < 4; i++) System.out.println("call " + i + ": " + client.call("order"));
+    // o2 stops heartbeating; o1 & o3 keep beating
+    System.out.println("-- o2 goes silent --");
+    Thread.sleep(200); reg.heartbeat("order","o1"); reg.heartbeat("order","o3");
+    Thread.sleep(200); reg.heartbeat("order","o1"); reg.heartbeat("order","o3");
+    for (int i = 0; i < 4; i++) System.out.println("call " + i + ": " + client.call("order"));
+  }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `List the core responsibilities of an API gateway.`,
+                a: `Routing, edge authN/authZ, rate limiting/quotas, TLS termination, request aggregation/protocol translation, observability (correlation IDs, access logs), and first-line resilience (circuit breaking, load shedding).`
+              },
+              {
+                q: `What's the danger of putting logic in the gateway, and where's the line?`,
+                a: `Domain logic at the edge recreates a centralized monolith/bottleneck every team must coordinate on. The gateway applies *generic* policy and dumb/declarative routing only; business rules stay in services.`
+              },
+              {
+                q: `What is a BFF and what problem does it solve?`,
+                a: `Backend for Frontend: one gateway per client type (web/iOS/Android), each aggregating and shaping payloads for that client, owned by the client team. Kills over/under-fetching without polluting downstream services.`
+              },
+              {
+                q: `Client-side vs server-side service discovery — trade-offs.`,
+                a: `Client-side (Eureka+Ribbon): client queries registry and load-balances itself — fewer hops, smart LB, but discovery logic in every client/language. Server-side (ALB, k8s Service): client hits a stable vhost and an LB resolves it — dumb clients, language-agnostic, but an extra hop/component to run.`
+              },
+              {
+                q: `Eureka vs Consul on the CAP axis.`,
+                a: `Eureka is AP — keeps serving (possibly stale) instance lists during partitions, even halting evictions (self-preservation). Consul is CP by default (Raft) — prefers a consistent registry, may reject reads during leader election. For discovery, AP is usually the better default.`
+              },
+              {
+                q: `What is Eureka self-preservation mode?`,
+                a: `When too many heartbeats are missed simultaneously, Eureka assumes a network partition (not mass death) and stops evicting registrations, so a blip doesn't wipe the registry. Trade-off: it may serve dead instances, so clients still need timeouts/retries/circuit breakers.`
+              },
+              {
+                q: `Why do you usually NOT run Eureka on Kubernetes?`,
+                a: `Kubernetes IS the service registry: Services + Endpoints + CoreDNS provide server-side discovery and health via readiness probes. Running Eureka on top duplicates that and adds operational weight.`
+              },
+              {
+                q: `Why should gateway retries be restricted to idempotent methods?`,
+                a: `Retrying a non-idempotent POST can duplicate side effects (double charge, double order). Retry GET/PUT/DELETE freely; only retry POST if you carry an idempotency key end-to-end.`
+              },
+              {
+                q: `How does a registry detect a dead instance?`,
+                a: `Instances send periodic heartbeats / pass health checks; if the lease isn't renewed within an expiration window (e.g. 3 missed beats), the registry evicts it. k8s uses liveness/readiness probes instead of heartbeats.`
+              },
+              {
+                q: `Why terminate TLS and validate JWTs at the gateway?`,
+                a: `Do expensive crypto and auth once at the edge so internal services can trust east-west traffic (or use mTLS via a mesh). Avoids every service reimplementing auth and re-validating tokens on each hop.`
+              },
+              {
+                q: `What's request aggregation at the gateway/BFF and when is it valuable?`,
+                a: `Fanning out to several backends and composing one response. Valuable for high-latency/mobile clients to cut round trips, but it must stay generic composition — not domain orchestration that belongs in a service.`
+              },
+              {
+                q: `Why is a stale instance list often acceptable for discovery?`,
+                a: `Because clients pair discovery with timeouts, retries, and circuit breakers: hitting an occasionally-dead instance fails fast and retries elsewhere. A slightly stale AP registry that always answers beats a CP registry that can't answer during a partition.`
+              }
+            ]
+          },
+          {
+            title: `Resilience Patterns: Timeouts, Retries, Circuit Breakers, Bulkheads`,
+            notes: `## Resilience Patterns
+
+In a distributed system, **failure is the steady state**, not the exception. The job isn't to prevent failure; it's to *contain* it so one slow dependency doesn't cascade into a full outage. The enemy is **failure amplification**: a single slow service makes callers pile up threads, those callers slow down, *their* callers pile up, and the whole estate browns out — even though only one service was sick.
+
+> [!DANGER] **The cascade.** Service D slows to 5s. C's threads block waiting on D and exhaust C's pool. B's calls to C now time out and B's pool fills. A browns out. One sick leaf took down four healthy services. The patterns below exist to break this chain.
+
+### 1. Timeouts — the non-negotiable foundation
+
+A call with **no timeout is a resource leak waiting to happen.** Every remote call needs a bounded timeout (connect + read). Set it from the dependency's p99 latency, not a guess. Without timeouts, threads block forever and pools exhaust — this is the root of most cascades.
+
+> [!WARNING] Sum your timeouts down a chain. If A→B→C and each has a 30s timeout, A could wait 90s. Timeouts should *decrease* downstream (deadline propagation): pass the remaining budget so inner calls give up before the outer one does.
+
+### 2. Retries — necessary but dangerous
+
+Retries handle *transient* faults (a dropped packet, a brief blip). They are dangerous because they **multiply load on an already-struggling service** — the retry storm that turns a brown-out into an outage.
+
+- Only retry **idempotent** operations (or those guarded by an idempotency key).
+- Only retry **transient/retriable** errors (timeouts, 503, connection reset) — never 400/404/business errors.
+- Use **exponential backoff + jitter**. Without jitter, all clients retry in lockstep → synchronized thundering herd. Jitter spreads them out.
+- Use a **retry budget / token bucket**: cap retries to e.g. 10% of normal traffic, so a failing dependency can't be hammered to death. Stop retrying when the budget is empty.
+
+> [!TIP] **"Equal jitter" / "full jitter"** (AWS Architecture Blog): \`sleep = random(0, base * 2^attempt)\`. Full jitter spreads retries best. Cap with a max backoff. Combine with a *deadline*: don't retry past the request's overall budget.
+
+### 3. Circuit Breaker — stop calling a dead service
+
+Wraps a remote call in a state machine. When failures cross a threshold it **opens** and fails fast (returns immediately / fallback) instead of piling up doomed calls. This gives the sick service room to recover and protects the caller's threads.
+
+\`\`\`mermaid
+stateDiagram-v2
+  [*] --> CLOSED
+  CLOSED --> OPEN: failure rate >= threshold\\n(over sliding window)
+  OPEN --> HALF_OPEN: after waitDurationInOpenState
+  HALF_OPEN --> CLOSED: trial calls succeed
+  HALF_OPEN --> OPEN: a trial call fails
+  CLOSED --> CLOSED: success
+  OPEN --> OPEN: fail fast (no call made)
+\`\`\`
+
+**Resilience4j states:**
+- **CLOSED** — calls flow; track failure rate over a sliding window (count- or time-based).
+- **OPEN** — fail fast immediately for \`waitDurationInOpenState\`; no real calls made.
+- **HALF_OPEN** — allow a few trial calls; if they succeed → CLOSED, if they fail → back to OPEN.
+- Plus **DISABLED** (always allow) and **FORCED_OPEN** (always block) for ops control.
+
+> [!EU] **Interviewers probe the difference between timeout and circuit breaker.** Timeout bounds *one* call. The circuit breaker uses the *history* of recent calls to stop making them at all when the dependency is clearly down. They compose: timeouts feed failures into the breaker's window.
+
+### 4. Bulkhead — isolate resource pools
+
+Named after ship compartments: a hull breach floods one compartment, not the ship. Give each dependency its **own** thread pool / concurrency limit so a slow dependency can only exhaust *its* pool, not the shared one. Resilience4j offers a semaphore bulkhead (limit concurrent calls) and a thread-pool bulkhead (isolate on separate threads).
+
+### 5. Fallback — graceful degradation
+
+When a call fails (or the breaker is open), return a *degraded* answer instead of an error: a cached value, a default, an empty list, "recommendations unavailable." Partial functionality beats a 500. The recommendation widget failing should never break checkout.
+
+### 6. Idempotency — the glue that makes retries safe
+
+If retries and at-least-once delivery exist, **every mutating operation must be idempotent.** Client sends an \`Idempotency-Key\`; the server records "I already processed key X → here's the same result" and refuses to do the work twice. This is what lets you retry a POST safely.
+
+### Order of composition (outer → inner)
+
+\`\`\`
+Retry( CircuitBreaker( Bulkhead( TimeLimiter( RateLimiter( call ) ) ) ) )
+\`\`\`
+
+Retry wraps the breaker (retry a fail-fast). The breaker wraps the bulkhead/time-limiter so a timeout counts as a failure in the window. Resilience4j applies decorators in this conventional order.
+
+> [!SUCCESS] **Strong answer:** "Every remote call gets a timeout derived from the dependency's p99, retries only on idempotent ops with exponential backoff + full jitter and a retry budget, a circuit breaker to fail fast when the dependency is clearly down, a bulkhead so it can't exhaust shared threads, and a fallback for graceful degradation. I propagate deadlines so inner timeouts are tighter than outer ones, and I make mutations idempotent so retries and at-least-once delivery are safe."`,
+            code: [
+              {
+                lang: `java`,
+                title: `RUNNABLE: circuit breaker state machine + retry w/ full jitter`,
+                runnable: true,
+                note: `Plain Java, no libs. Models CLOSED/OPEN/HALF_OPEN with a sliding window and a flaky dependency.`,
+                code: `import java.util.*;
+import java.util.concurrent.*;
+
+/** Self-contained circuit breaker + jittered retry. Demonstrates how the breaker
+ *  trips OPEN under load, fails fast, then probes via HALF_OPEN to recover. */
+public class ResilienceDemo {
+  enum State { CLOSED, OPEN, HALF_OPEN }
+
+  static final class CircuitBreaker {
+    private State state = State.CLOSED;
+    private final Deque<Boolean> window = new ArrayDeque<>(); // recent outcomes (true=fail)
+    private final int windowSize, minCalls; private final double failThreshold;
+    private final long openMillis; private long openedAt;
+    private int halfOpenProbes, maxProbes = 3, halfOpenSuccesses;
+
+    CircuitBreaker(int windowSize, int minCalls, double failThreshold, long openMillis) {
+      this.windowSize = windowSize; this.minCalls = minCalls;
+      this.failThreshold = failThreshold; this.openMillis = openMillis;
+    }
+
+    synchronized boolean allowRequest() {
+      if (state == State.OPEN) {
+        if (System.currentTimeMillis() - openedAt >= openMillis) {
+          state = State.HALF_OPEN; halfOpenProbes = 0; halfOpenSuccesses = 0;
+          return true;                              // let a probe through
+        }
+        return false;                               // FAIL FAST
+      }
+      if (state == State.HALF_OPEN) return halfOpenProbes++ < maxProbes;
+      return true;                                  // CLOSED
+    }
+
+    synchronized void record(boolean failed) {
+      if (state == State.HALF_OPEN) {
+        if (failed) { trip(); }                     // any probe fail -> reopen
+        else if (++halfOpenSuccesses >= maxProbes) { reset(); } // recovered
+        return;
+      }
+      window.addLast(failed);
+      if (window.size() > windowSize) window.removeFirst();
+      if (window.size() >= minCalls) {
+        long fails = window.stream().filter(b -> b).count();
+        if ((double) fails / window.size() >= failThreshold) trip();
+      }
+    }
+    private void trip()  { state = State.OPEN; openedAt = System.currentTimeMillis(); window.clear(); }
+    private void reset() { state = State.CLOSED; window.clear(); }
+    State state() { return state; }
+  }
+
+  // A dependency that's broken between calls 5..14, healthy otherwise.
+  static String flakyDependency(int call) {
+    if (call >= 5 && call < 15) throw new RuntimeException("dependency down");
+    return "OK";
+  }
+
+  // Retry with full jitter + a small budget; only retries because call() is idempotent here.
+  static String callWithRetry(CircuitBreaker cb, int call, Random rnd) {
+    int maxAttempts = 3; long base = 20;
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      if (!cb.allowRequest()) return "FAST-FAIL (breaker " + cb.state() + ") -> fallback";
+      try {
+        String r = flakyDependency(call);
+        cb.record(false);
+        return r;
+      } catch (RuntimeException e) {
+        cb.record(true);
+        long sleep = (long) (rnd.nextDouble() * (base * Math.pow(2, attempt))); // full jitter
+        try { Thread.sleep(sleep); } catch (InterruptedException ignored) {}
+      }
+    }
+    return "EXHAUSTED retries -> fallback";
+  }
+
+  public static void main(String[] args) {
+    CircuitBreaker cb = new CircuitBreaker(10, 5, 0.5, 200);
+    Random rnd = new Random(42);
+    for (int call = 0; call < 25; call++) {
+      String result = callWithRetry(cb, call, rnd);
+      System.out.printf("call %2d  state=%-9s -> %s%n", call, cb.state(), result);
+      try { Thread.sleep(30); } catch (InterruptedException ignored) {}
+    }
+    System.out.println("\\nNote how the breaker OPENs during the outage (fast-fail, no piled-up calls),");
+    System.out.println("then HALF_OPEN probes let it recover once the dependency is healthy again.");
+  }
+}`
+              },
+              {
+                lang: `yaml`,
+                title: `Resilience4j config — breaker, retry, bulkhead, time limiter`,
+                runnable: false,
+                note: `Needs resilience4j-spring-boot3. Reference config for the patterns above.`,
+                code: `resilience4j:
+  circuitbreaker:
+    instances:
+      inventoryService:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 10        # don't trip on too little data
+        failureRateThreshold: 50        # % over the window
+        slowCallRateThreshold: 80       # slow calls count as failures too
+        slowCallDurationThreshold: 2s
+        waitDurationInOpenState: 10s    # OPEN -> HALF_OPEN after this
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+  retry:
+    instances:
+      inventoryService:
+        maxAttempts: 3
+        waitDuration: 200ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        enableRandomizedWait: true      # JITTER — avoid synchronized retries
+        retryExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+        ignoreExceptions:               # never retry business/4xx errors
+          - com.shop.BusinessException
+  bulkhead:
+    instances:
+      inventoryService:
+        maxConcurrentCalls: 25          # isolate: this dep can't eat all threads
+  timelimiter:
+    instances:
+      inventoryService:
+        timeoutDuration: 3s             # bound every call`
+              },
+              {
+                lang: `java`,
+                title: `Resilience4j + idempotency key (annotations)`,
+                runnable: false,
+                note: `Needs resilience4j + Spring. Shows composition order and a safe-retry POST.`,
+                code: `import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
+import io.github.resilience4j.bulkhead.annotation.Bulkhead;
+
+@Service
+class InventoryClient {
+
+  // Decorator order at runtime (outer->inner): Retry( CircuitBreaker( Bulkhead( call ) ) )
+  @Retry(name = "inventoryService")
+  @CircuitBreaker(name = "inventoryService", fallbackMethod = "reserveFallback")
+  @Bulkhead(name = "inventoryService")
+  public ReservationResult reserve(String orderId, String sku, int qty) {
+    return http.post("/reserve", new Reserve(orderId, sku, qty)); // bounded by timelimiter
+  }
+
+  // Fallback signature = original args + the Throwable. Graceful degradation.
+  private ReservationResult reserveFallback(String orderId, String sku, int qty, Throwable t) {
+    return ReservationResult.deferred(orderId); // queue for async reconcile, don't 500
+  }
+}
+
+// Idempotency on the SERVER so the @Retry above is safe on a write:
+@PostMapping("/reserve")
+ResponseEntity<?> reserve(@RequestHeader("Idempotency-Key") String key, @RequestBody Reserve r) {
+  return idempotencyStore.findResult(key)            // already processed this key?
+      .map(prev -> ResponseEntity.ok(prev))          // -> return SAME result, no re-do
+      .orElseGet(() -> {
+        var result = service.reserve(r);
+        idempotencyStore.save(key, result);          // record key -> result atomically
+        return ResponseEntity.ok(result);
+      });
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is failure amplification / the cascade, and how do resilience patterns stop it?`,
+                a: `One slow dependency makes callers block and exhaust thread pools; their callers then fail, propagating up. Timeouts bound waits, bulkheads isolate pools, and circuit breakers stop calling the sick service — each breaks the propagation chain.`
+              },
+              {
+                q: `Why is a remote call with no timeout dangerous?`,
+                a: `It can block a thread indefinitely; under load the pool fills with stuck threads and the service stops responding — the root cause of most cascades. Every call needs a connect+read timeout, ideally derived from the dependency's p99.`
+              },
+              {
+                q: `What is deadline propagation and why does it matter in a call chain?`,
+                a: `Passing the remaining time budget down the chain so inner timeouts are tighter than outer ones. Without it, A→B→C with 30s each lets A wait 90s; with it, each hop gives up before its caller does.`
+              },
+              {
+                q: `When is it safe to retry, and what three guards must hold?`,
+                a: `Only retry idempotent operations, only on transient/retriable errors (timeout/503/reset, never 4xx/business errors), and with backoff. Add jitter and a retry budget so you don't create a storm.`
+              },
+              {
+                q: `Why add jitter to exponential backoff?`,
+                a: `Without jitter, all clients that failed together retry at the same instants → a synchronized thundering herd that re-overloads the recovering service. Jitter (full/equal jitter) randomizes the spacing.`
+              },
+              {
+                q: `What is a retry budget?`,
+                a: `A cap (often token-bucket) limiting retries to a small fraction of normal traffic (e.g. 10%). When the budget is exhausted, stop retrying — prevents retries from hammering a failing dependency to death.`
+              },
+              {
+                q: `Name the circuit breaker states and the transitions.`,
+                a: `CLOSED (calls flow, track failure rate) → OPEN when the rate crosses threshold over the window (fail fast) → HALF_OPEN after waitDurationInOpenState (allow trial calls) → CLOSED if probes succeed, back to OPEN if any probe fails. Plus DISABLED/FORCED_OPEN for ops.`
+              },
+              {
+                q: `How does a circuit breaker differ from a timeout?`,
+                a: `A timeout bounds a single call. A circuit breaker uses the *history* of recent calls (failure/slow-call rate over a window) to stop making calls at all when the dependency is clearly down. They compose — timeouts feed failures into the breaker.`
+              },
+              {
+                q: `What is the bulkhead pattern?`,
+                a: `Isolating each dependency in its own thread pool / concurrency limit (like ship compartments) so a slow dependency can exhaust only its own pool, not shared resources. Resilience4j offers semaphore and thread-pool bulkheads.`
+              },
+              {
+                q: `What is a fallback and give a good example.`,
+                a: `Returning a degraded-but-useful response when a call fails or the breaker is open — cached data, a default, an empty list, 'recommendations unavailable'. Partial functionality beats a 500; the recs widget must never break checkout.`
+              },
+              {
+                q: `Why is idempotency the glue that makes retries safe?`,
+                a: `With retries + at-least-once delivery, mutations can run twice. An idempotency key lets the server detect a repeat and return the prior result instead of redoing the work, so retrying a POST won't double-charge/double-order.`
+              },
+              {
+                q: `What's the conventional decorator order for Resilience4j and why?`,
+                a: `Retry( CircuitBreaker( Bulkhead( TimeLimiter( RateLimiter( call ) ) ) ) ). Retry wraps the breaker so it retries fast-fails; the breaker wraps the time limiter so a timeout counts as a failure in the window; the bulkhead caps concurrency innermost.`
+              },
+              {
+                q: `Why count slow calls (not just errors) toward tripping a breaker?`,
+                a: `A dependency that responds slowly (but doesn't error) still exhausts caller threads and amplifies failure. Resilience4j's slowCallRateThreshold/slowCallDurationThreshold trip the breaker on chronic slowness, not just outright errors.`
+              }
+            ]
+          },
+          {
+            title: `Data Management: Database-per-Service, Eventual Consistency, CQRS`,
+            notes: `## Data Management
+
+This is where microservices get genuinely hard. Splitting compute is easy; splitting *data* breaks the two things relational databases gave you for free — **ACID transactions** and **JOINs**.
+
+### Database-per-service — the rule
+
+Each service owns its data store and exposes it **only** through its API. No other service touches its tables.
+
+> [!WARNING] The instant two services share a database (or even a schema), you've created hidden coupling: you can't change a column without coordinating across teams, you lose clear ownership, and you've recreated a distributed monolith. The shared DB is the single most common way microservices fail.
+
+Benefits: independent schema evolution, the right store per service (Postgres for orders, Elasticsearch for search, a time-series DB for metrics), and a real ownership boundary. The cost: you lose cross-service ACID and cross-service JOINs.
+
+\`\`\`mermaid
+graph TB
+  O[Order Service] --> ODB[(Postgres: orders)]
+  C[Catalog Service] --> CDB[(Elasticsearch: products)]
+  P[Payment Service] --> PDB[(Postgres: payments)]
+  I[Inventory Service] --> IDB[(Postgres: stock)]
+  O -. "no direct DB access" .-x CDB
+  O -->|API call / events| C
+\`\`\`
+
+### Why you can't just JOIN across services
+
+The data lives in different databases (maybe different engines, different clouds). There is no \`SELECT ... JOIN\` across a network boundary you'd want to run. Your options:
+
+1. **API Composition** — the caller (or a BFF) queries each service and joins *in memory*. Simple, fresh data. But it's N network calls (latency adds), can't do efficient filtering/sorting/pagination across services, and fails if any service is down. Good for small result sets and detail views.
+2. **CQRS read model / data replication** — maintain a denormalized read-optimized view that pre-joins data from multiple services, kept up to date via events. Fast reads, survives source outages. But it's **eventually consistent** and you own the replication pipeline. Good for dashboards, search, list views.
+
+| | API Composition | CQRS / Replicated Read Model |
+|---|---|---|
+| Freshness | strong (live query) | eventual (event lag) |
+| Read latency | sum of N calls | single local read (fast) |
+| Cross-service filter/sort/page | poor | excellent (pre-joined) |
+| Resilience to source outage | low (any down → fail) | high (read model is independent) |
+| Complexity | low | high (replication pipeline, dedupe) |
+| Best for | detail views, small joins | dashboards, search, big list/aggregate views |
+
+### Eventual consistency — embrace it
+
+Cross-service writes can't be atomic without distributed transactions (2PC), which are slow, lock resources, and don't survive coordinator failure well — avoid them. Instead, accept **eventual consistency**: the system converges to a correct state after a short delay. The mechanism is the **saga** (covered in depth in the next module): a sequence of local transactions, each publishing an event that triggers the next, with **compensating actions** to undo on failure (you can't roll back, so you semantically reverse — refund instead of un-charge).
+
+> [!EU] **Interviewers probe:** "How do you keep order, payment, and inventory consistent without a distributed transaction?" Strong answer: a saga — local ACID transaction per service + events to chain them + compensating transactions to unwind failures. Combined with idempotent consumers and an outbox to avoid the dual-write problem.
+
+### The dual-write problem & the Transactional Outbox
+
+A subtle, critical bug: a service that does \`db.commit()\` **and then** \`broker.publish(event)\` as two separate steps can crash between them — DB updated, event lost (or vice versa). They aren't atomic.
+
+**Fix — Transactional Outbox:** write the event to an \`outbox\` table in the *same local transaction* as the business data. A separate relay (polling or CDC like Debezium reading the DB log) publishes outbox rows to the broker and marks them sent. Now the state change and the intent-to-publish commit atomically; the relay guarantees the event eventually goes out (at-least-once → consumers must dedupe).
+
+\`\`\`mermaid
+sequenceDiagram
+  participant S as Order Service
+  participant DB as Order DB (Postgres)
+  participant R as Relay (Debezium/poller)
+  participant B as Broker (Kafka)
+  S->>DB: BEGIN; insert order; insert outbox(event); COMMIT
+  Note over DB: business row + event committed ATOMICALLY
+  R->>DB: read unsent outbox rows (or tail WAL)
+  R->>B: publish OrderPlaced
+  R->>DB: mark outbox row sent
+\`\`\`
+
+### CQRS — Command Query Responsibility Segregation
+
+Separate the **write model** (commands, normalized, validates invariants) from the **read model** (queries, denormalized, optimized for how it's read). They can be different schemas or even different databases, synced via events. Pairs naturally with event sourcing but doesn't require it.
+
+> [!TIP] CQRS is powerful but not free — you now manage two models and the sync between them, and reads are eventually consistent. Apply it surgically where read and write shapes genuinely diverge (e.g. a high-fanout dashboard over many services), not as a blanket default. Most services are fine with a single model.
+
+> [!SUCCESS] **Strong answer on cross-service queries:** "I never JOIN across services. For fresh detail views I use API composition; for heavy list/dashboard/search workloads I maintain a CQRS read model updated by events, accepting eventual consistency. Cross-service writes use sagas with compensating transactions, and I close the dual-write gap with a transactional outbox plus idempotent, deduplicating consumers."`,
+            code: [
+              {
+                lang: `text`,
+                title: `Transactional Outbox — SQL schema + atomic write`,
+                runnable: false,
+                note: `Reference. The business write and the outbox insert commit in ONE local transaction.`,
+                code: `-- Outbox table lives in the SAME database as the business data.
+CREATE TABLE outbox (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  aggregate_id UUID NOT NULL,
+  event_type   TEXT NOT NULL,
+  payload      JSONB NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ            -- NULL until the relay publishes it
+);
+CREATE INDEX outbox_unpublished ON outbox (created_at) WHERE published_at IS NULL;
+
+-- The service does business write + outbox insert ATOMICALLY:
+BEGIN;
+  INSERT INTO orders (id, customer_id, status, total)
+    VALUES ('o-123', 'c-9', 'PENDING', 4999);
+  INSERT INTO outbox (aggregate_id, event_type, payload)
+    VALUES ('o-123', 'OrderPlaced',
+            '{"orderId":"o-123","customerId":"c-9","total":4999}');
+COMMIT;   -- both rows, or neither. No dual-write gap.
+
+-- A relay (Debezium tailing the WAL, or a poller) then publishes unsent rows:
+--   SELECT * FROM outbox WHERE published_at IS NULL ORDER BY created_at LIMIT 100;
+--   ...publish to Kafka...
+--   UPDATE outbox SET published_at = now() WHERE id = $1;
+-- At-least-once: a crash after publish but before UPDATE re-sends -> consumers dedupe.`
+              },
+              {
+                lang: `java`,
+                title: `RUNNABLE: API composition vs replicated read model`,
+                runnable: true,
+                note: `Plain Java. Contrasts in-memory join (fresh, N calls) with a pre-joined read model (fast, eventual).`,
+                code: `import java.util.*;
+import java.util.concurrent.*;
+
+/** Two ways to answer 'show me orders with product names & stock' when the data
+ *  lives in three services that own separate databases. */
+public class CrossServiceQueryDemo {
+  // --- "service" stubs (each owns its own data) ---
+  record Order(String id, String sku, int qty) {}
+  static final Map<String,Order>   orders   = Map.of("o1", new Order("o1","SKU-A",2));
+  static final Map<String,String>  catalog  = Map.of("SKU-A","Mechanical Keyboard");
+  static final Map<String,Integer> stock    = new ConcurrentHashMap<>(Map.of("SKU-A", 37));
+
+  static Order   orderSvc(String id)   { sleep(15); return orders.get(id); }     // network hops
+  static String  catalogSvc(String sku){ sleep(20); return catalog.get(sku); }
+  static int     stockSvc(String sku)  { sleep(18); return stock.get(sku); }
+
+  // 1) API COMPOSITION: live-query each service, join in memory. Fresh, but N round-trips.
+  static String apiComposition(String orderId) {
+    long t = System.currentTimeMillis();
+    Order o = orderSvc(orderId);
+    String name = catalogSvc(o.sku());
+    int onHand  = stockSvc(o.sku());
+    long ms = System.currentTimeMillis() - t;
+    return String.format("[composition %dms] order %s: %dx %s (stock %d) [FRESH]",
+        ms, o.id(), o.qty(), name, onHand);
+  }
+
+  // 2) READ MODEL: a denormalized row pre-joined from events. One local read, but eventual.
+  record OrderView(String id, int qty, String name, int stockAtBuild) {}
+  static final Map<String,OrderView> readModel = new ConcurrentHashMap<>();
+  static void onEvent_rebuild(String orderId) {                 // updated by events, async
+    Order o = orders.get(orderId);
+    readModel.put(orderId, new OrderView(o.id(), o.qty(), catalog.get(o.sku()), stock.get(o.sku())));
+  }
+  static String fromReadModel(String orderId) {
+    long t = System.currentTimeMillis();
+    OrderView v = readModel.get(orderId);                       // single fast local read
+    long ms = System.currentTimeMillis() - t;
+    return String.format("[readmodel  %dms] order %s: %dx %s (stock %d) [EVENTUAL]",
+        ms, v.id(), v.qty(), v.name(), v.stockAtBuild());
+  }
+
+  public static void main(String[] args) {
+    System.out.println(apiComposition("o1"));                   // ~50ms, always fresh
+    onEvent_rebuild("o1");                                      // event arrived -> build view
+    System.out.println(fromReadModel("o1"));                   // ~0ms, may be stale
+
+    stock.put("SKU-A", 5);                                      // stock changes...
+    System.out.println(apiComposition("o1"));                  // composition sees 5 immediately
+    System.out.println(fromReadModel("o1"));                   // read model still shows 37 (lag!)
+    System.out.println("-> read model is fast but eventually consistent until the next event.");
+  }
+  static void sleep(long ms){ try{Thread.sleep(ms);}catch(InterruptedException e){} }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the database-per-service rule and the main reason for it.`,
+                a: `Each service owns its data store and exposes it only via its API — no other service touches its tables. It gives independent schema evolution, the right store per service, and a real ownership boundary; sharing a DB recreates a distributed monolith.`
+              },
+              {
+                q: `Why can't you JOIN across services, and what are the two alternatives?`,
+                a: `The data lives in separate (often heterogeneous) databases across the network. Alternatives: API composition (query each service, join in memory — fresh but N calls) and a CQRS replicated read model (pre-joined via events — fast but eventually consistent).`
+              },
+              {
+                q: `API composition vs replicated read model — when to use each?`,
+                a: `API composition for detail views / small joins where freshness matters and you can tolerate N calls. Replicated read model for dashboards, search, and big list/aggregate views where read latency, cross-service filter/sort/page, and outage resilience matter more than instant freshness.`
+              },
+              {
+                q: `Why avoid distributed transactions (2PC) across services?`,
+                a: `They hold locks across the network (low throughput), block on slow participants, and recover poorly from coordinator failure. Prefer eventual consistency via sagas with compensating transactions.`
+              },
+              {
+                q: `What is a saga, briefly?`,
+                a: `A sequence of local ACID transactions, each publishing an event that triggers the next service's step, with compensating transactions to semantically undo prior steps on failure (e.g. refund instead of un-charge). It replaces a distributed transaction.`
+              },
+              {
+                q: `What is the dual-write problem?`,
+                a: `A service that commits to its DB and then separately publishes an event can crash between the two, leaving them inconsistent (DB updated but event lost, or vice versa). The two writes aren't atomic.`
+              },
+              {
+                q: `How does the Transactional Outbox pattern fix dual-write?`,
+                a: `Write the event into an outbox table in the *same* local transaction as the business data, so they commit atomically. A separate relay (poller or CDC like Debezium tailing the WAL) publishes outbox rows and marks them sent — at-least-once, so consumers dedupe.`
+              },
+              {
+                q: `What is CQRS and when should you apply it?`,
+                a: `Command Query Responsibility Segregation: separate write model (normalized, enforces invariants) from read model (denormalized, query-optimized), synced via events. Apply surgically where read/write shapes genuinely diverge — not as a default — because you now manage two models and eventual consistency.`
+              },
+              {
+                q: `Does CQRS require event sourcing?`,
+                a: `No. CQRS just separates read and write models; it pairs naturally with event sourcing but works fine with conventional storage and event-based sync between the two models.`
+              },
+              {
+                q: `What does 'eventual consistency' guarantee and not guarantee?`,
+                a: `It guarantees the system converges to a correct state after a delay (no permanent divergence), given the events flow. It does NOT guarantee a read immediately reflects the latest write — there's replication lag, so reads can be stale temporarily.`
+              },
+              {
+                q: `Why must read models and saga consumers be idempotent/deduplicating?`,
+                a: `Outbox relays and brokers deliver at-least-once, so the same event can arrive multiple times. Rebuilding a read model or advancing a saga step twice must be safe — dedupe by event id or use idempotent updates.`
+              },
+              {
+                q: `Give a concrete cost of API composition under load.`,
+                a: `It makes N network calls per query (latency adds up), can't push filtering/sorting/pagination across services efficiently, and fails if any one service is down — so it doesn't scale to large cross-service list/aggregate queries.`
+              }
+            ]
+          },
+          {
+            title: `Cross-cutting: Config, Distributed Tracing, 12-Factor, Observability`,
+            notes: `## Cross-cutting Concerns
+
+With dozens of services, the things that were trivial in a monolith — read a config, follow a stack trace, find a log line — become distributed problems. These concerns are *horizontal*; solve them once, consistently.
+
+### The 12-Factor App — the baseline contract
+
+Heroku's 12 factors are the table-stakes checklist for cloud-native services. The ones interviewers care most about:
+
+| Factor | What it means | Why it matters |
+|---|---|---|
+| III. Config | Config in the **environment**, not code | Same artifact promotes dev→prod; no secrets in git |
+| IV. Backing services | DBs/queues as attachable **resources** via URL | Swap a managed DB without code change |
+| VI. Processes | Services are **stateless**; state in backing services | Any instance handles any request; horizontal scale |
+| IX. Disposability | Fast startup, **graceful shutdown** (SIGTERM) | Safe rolling deploys, autoscaling, spot instances |
+| XI. Logs | Logs are an **event stream to stdout** | Platform aggregates; don't write/rotate files yourself |
+
+> [!WARNING] Factor VI (statelessness) is the one people violate accidentally — sticky in-memory session state or a local cache that assumes a single instance. The moment you scale to N instances or do a rolling deploy, that state vanishes or diverges. Push session/cache state to Redis or make it per-request.
+
+### Centralized / externalized configuration
+
+You can't SSH into 50 services to change a setting. Externalize config to a config server (**Spring Cloud Config** backed by Git, **Consul KV**, **AWS Parameter Store/AppConfig**, **Kubernetes ConfigMaps/Secrets**). Key properties:
+
+- **Per-environment** values resolved at boot (12-factor III).
+- **Versioned/audited** (Git-backed) — config changes are reviewable.
+- **Dynamic refresh** where supported (\`@RefreshScope\` + \`/actuator/refresh\` or Spring Cloud Bus to broadcast) so you can change a flag without redeploy.
+- **Secrets** go in a real secret manager (Vault, AWS Secrets Manager, sealed Kubernetes Secrets) — *never* in the Git config repo in plaintext.
+
+### Distributed tracing & correlation IDs — the killer feature
+
+In a monolith one request = one stack trace. Across services, a single user action becomes a tree of calls over many processes. A **correlation/trace ID** generated at the edge and propagated through every hop (HTTP headers / message headers) lets you stitch them back together.
+
+- **Trace** = the whole request tree; **Span** = one unit of work (one service's handling); spans nest with parent IDs.
+- Standard: **W3C Trace Context** (\`traceparent\` header). Instrumentation: **OpenTelemetry** (vendor-neutral) → export to Jaeger/Zipkin/Tempo/Honeycomb.
+- In Spring: **Micrometer Tracing** (successor to Spring Cloud Sleuth) auto-propagates IDs and puts them in the **MDC**, so every log line carries \`[traceId, spanId]\`.
+
+\`\`\`mermaid
+sequenceDiagram
+  participant U as Client
+  participant G as Gateway
+  participant O as Order
+  participant P as Payment
+  U->>G: POST /orders  (no trace yet)
+  G->>G: generate traceId=abc, spanId=1
+  G->>O: traceparent: ...abc-1...
+  O->>O: span 2 (parent 1)
+  O->>P: traceparent: ...abc-2...
+  P->>P: span 3 (parent 2)
+  Note over U,P: One traceId 'abc' stitches all spans into a single timeline in Jaeger
+\`\`\`
+
+> [!EU] **Interviewers probe debugging:** "A request is slow — how do you find which service?" Strong answer: open the trace by its correlation ID in Jaeger/Tempo; the waterfall shows each span's duration so you see exactly which hop ate the time. Without trace propagation you're grepping logs across N services hoping timestamps line up — which is why correlation IDs are non-negotiable from day one.
+
+### Observability — the three pillars (+ a caveat)
+
+- **Metrics** (Micrometer → Prometheus): aggregate numbers — latency p50/p95/p99, error rate, throughput, saturation. Cheap, great for alerting/dashboards (Grafana). The **RED** method: Rate, Errors, Duration. The **USE** method for resources: Utilization, Saturation, Errors.
+- **Logs** (structured JSON → Loki/ELK): discrete events with the trace ID. Structure them so you can query fields, not regex.
+- **Traces** (OpenTelemetry → Jaeger/Tempo): request flow across services.
+
+> [!TIP] **Monitoring vs observability:** monitoring answers *known* questions ("is error rate > 1%?"). Observability lets you ask *new* questions about *unknown* failures after the fact ("why are requests from this one tenant on this one shard slow?") — which needs high-cardinality, well-correlated telemetry. Use **exemplars** to jump from a slow metric straight to a representative trace.
+
+### Deployment, versioning & graceful change
+
+- **Deploy strategies:** rolling (default), blue-green (instant switch + rollback), canary (route 1% → watch metrics → ramp). Decouple deploy from release with **feature flags**.
+- **API versioning:** prefer **additive, backward-compatible** changes (Protobuf field numbers, optional JSON fields). When you must break, version the path (\`/v2\`) or content type, run **old and new in parallel**, and migrate consumers before retiring v1. Honor **Tolerant Reader** (ignore unknown fields) on both sides.
+- **Graceful shutdown:** on SIGTERM, stop accepting new requests, deregister from discovery, drain in-flight, then exit within the platform's grace period — otherwise rolling deploys drop requests.
+- **Health probes:** separate **liveness** (am I alive? restart if not) from **readiness** (can I take traffic? pull from LB if not, e.g. while warming caches or a dependency is down).
+
+> [!SUCCESS] **Strong answer on operating microservices:** "Stateless 12-factor services with config in the environment and a config server for shared/dynamic values, secrets in Vault. Every request carries a W3C trace context propagated via OpenTelemetry so I can open one trace and see the slow hop. RED metrics drive alerts, structured logs carry the trace ID, and I correlate the three with exemplars. Deploys are canary with feature flags, APIs evolve additively with tolerant readers, and graceful shutdown + readiness probes make rolling deploys lossless."`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Spring Cloud Config + Micrometer Tracing + Actuator probes`,
+                runnable: false,
+                note: `Needs Spring Cloud Config, Micrometer Tracing + OTel exporter. Reference config.`,
+                code: `# --- a service: externalized config + tracing + probes ---
+spring:
+  application:
+    name: order-service
+  config:
+    import: "optional:configserver:http://config-server:8888"  # pull config at boot
+  cloud:
+    config:
+      profile: \${SPRING_PROFILES_ACTIVE:dev}
+      label: main            # git branch/tag in the config repo
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,refresh
+  endpoint:
+    health:
+      probes:
+        enabled: true        # exposes /health/liveness and /health/readiness
+      group:
+        readiness:
+          include: readinessState, db, redis   # not ready if DB/redis down
+  tracing:
+    sampling:
+      probability: 0.1       # sample 10% of traces in prod (cost vs visibility)
+  otlp:
+    tracing:
+      endpoint: http://otel-collector:4318/v1/traces
+
+# Put trace ids in every log line:
+logging:
+  pattern:
+    level: "%5p [\${spring.application.name},%X{traceId:-},%X{spanId:-}]"`
+              },
+              {
+                lang: `java`,
+                title: `RUNNABLE: correlation-ID propagation across simulated services`,
+                runnable: true,
+                note: `Plain Java. Shows trace/span creation at the edge and propagation via headers + MDC-like context.`,
+                code: `import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/** How a correlation/trace id is generated at the edge and propagated so logs
+ *  across services share one traceId — the basis of distributed tracing. */
+public class TracingDemo {
+  // A 'request context' carried per hop (in real life: HTTP/message headers + MDC).
+  record Ctx(String traceId, String spanId, String parentSpanId) {}
+  static final AtomicInteger SPAN_SEQ = new AtomicInteger();
+
+  static String newId(String p){ return p + "-" + Integer.toHexString(new Random().nextInt(0xffff)); }
+
+  static void log(Ctx c, String svc, String msg) {
+    // Mimics a log line whose pattern includes [traceId,spanId] from MDC.
+    System.out.printf("[%s,%s] %-9s %s%n", c.traceId(), c.spanId(), svc, msg);
+  }
+
+  // Each service makes a NEW span but keeps the SAME traceId, linking to its parent.
+  static Ctx childSpan(Ctx parent) {
+    return new Ctx(parent.traceId(), "span" + SPAN_SEQ.incrementAndGet(), parent.spanId());
+  }
+
+  static void payment(Ctx in) {
+    Ctx c = childSpan(in);
+    log(c, "payment", "charging card (parent=" + c.parentSpanId() + ")");
+  }
+  static void order(Ctx in) {
+    Ctx c = childSpan(in);
+    log(c, "order", "persisting order (parent=" + c.parentSpanId() + ")");
+    payment(c);                                  // propagate context downstream
+  }
+
+  public static void main(String[] args) {
+    // EDGE (gateway): no incoming trace -> generate a fresh one.
+    Ctx root = new Ctx(newId("trace"), "span" + SPAN_SEQ.incrementAndGet(), null);
+    log(root, "gateway", "POST /orders received -> started new trace");
+    order(root);
+    System.out.println("\\nAll lines share traceId '" + root.traceId() +
+        "' -> Jaeger stitches them into one waterfall, so you see the slow span instantly.");
+  }
+}`
+              },
+              {
+                lang: `bash`,
+                title: `Graceful shutdown + readiness in practice (k8s + Spring)`,
+                runnable: false,
+                note: `Reference. Ties SIGTERM handling, preStop drain, and probes together.`,
+                code: `# Spring Boot: enable graceful shutdown so SIGTERM drains in-flight requests.
+#   application.yml:
+#     server.shutdown: graceful
+#     spring.lifecycle.timeout-per-shutdown-phase: 30s
+
+# Kubernetes deployment wiring (excerpt):
+#   spec.containers[].lifecycle.preStop.exec.command:
+#     ["sh","-c","sleep 5"]            # let LB notice readiness=false before we die
+#   spec.terminationGracePeriodSeconds: 40   # > shutdown timeout above
+#
+#   livenessProbe:   httpGet /actuator/health/liveness   # restart if process wedged
+#   readinessProbe:  httpGet /actuator/health/readiness  # pull from Service when not ready
+
+# Rolling deploy sequence per pod (lossless):
+#  1. k8s sends SIGTERM + marks pod Terminating
+#  2. preStop sleep + readiness flips false -> Service stops sending new traffic
+#  3. Spring graceful shutdown drains in-flight requests (up to 30s)
+#  4. process exits before terminationGracePeriodSeconds (40s) -> no killed requests
+
+# Verify a trace propagates end to end:
+curl -s -H 'traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01' \\
+     http://gateway/api/orders/o-123 -o /dev/null -w 'http=%{http_code}\\n'
+# then look up trace 0af7651916cd43dd8448eb211c80319c in Jaeger/Tempo.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Which 12 factors do interviewers care about most and why?`,
+                a: `III Config (in the environment → same artifact dev→prod, no secrets in git), IV Backing services (attach via URL), VI Processes (stateless → horizontal scale), IX Disposability (fast start, graceful SIGTERM shutdown → safe rolling deploys), XI Logs (stdout event stream → platform aggregates).`
+              },
+              {
+                q: `What's the most commonly violated 12-factor and how does it bite you?`,
+                a: `VI, statelessness — sticky in-memory session/cache state assuming one instance. Scaling to N instances or a rolling deploy makes that state vanish or diverge. Fix: push session/cache to Redis or keep it per-request.`
+              },
+              {
+                q: `Why externalize configuration, and what belongs in a config server vs a secret manager?`,
+                a: `You can't edit config on 50 running services by hand. A config server (Spring Cloud Config/Consul KV/Parameter Store) holds per-env, versioned, dynamically refreshable config; secrets (passwords, keys) go in a real secret manager like Vault — never plaintext in the config git repo.`
+              },
+              {
+                q: `Define trace vs span.`,
+                a: `A trace is the entire request tree across services identified by one traceId; a span is a single unit of work (one service's handling of the request), with a parent span id, so spans nest into the trace's timeline.`
+              },
+              {
+                q: `How does a correlation/trace ID get propagated and standardized?`,
+                a: `Generated at the edge if absent, then passed on every hop via headers (W3C Trace Context \`traceparent\`) for HTTP and message headers for async. OpenTelemetry instruments it; Micrometer Tracing puts traceId/spanId in the MDC so every log line carries them.`
+              },
+              {
+                q: `How do you find which service made a request slow?`,
+                a: `Open the trace by its correlation ID in Jaeger/Tempo; the span waterfall shows each hop's duration, pinpointing the slow service. Without propagated trace ids you're grepping logs across services by timestamp — unreliable.`
+              },
+              {
+                q: `Name the three pillars of observability and a method for each.`,
+                a: `Metrics (Micrometer→Prometheus; RED = Rate/Errors/Duration, USE = Utilization/Saturation/Errors), Logs (structured JSON with trace id → Loki/ELK), Traces (OpenTelemetry → Jaeger/Tempo). Exemplars link a metric to a representative trace.`
+              },
+              {
+                q: `Monitoring vs observability.`,
+                a: `Monitoring answers known questions with predefined dashboards/alerts ('is error rate >1%?'). Observability lets you ask new questions about unknown failures after the fact, which needs high-cardinality, well-correlated telemetry (metrics+logs+traces).`
+              },
+              {
+                q: `Liveness vs readiness probes.`,
+                a: `Liveness = 'is the process alive?' — fail → restart the container. Readiness = 'can it take traffic right now?' — fail → pull it from the load balancer (e.g. while warming caches or a dependency is down) without restarting.`
+              },
+              {
+                q: `How do you achieve lossless rolling deploys?`,
+                a: `Graceful shutdown: on SIGTERM, flip readiness false (preStop drain), deregister, stop accepting new requests, drain in-flight, then exit within the grace period (terminationGracePeriodSeconds > shutdown timeout). The LB stops sending traffic before the process dies.`
+              },
+              {
+                q: `How should microservice APIs be versioned to avoid breaking consumers?`,
+                a: `Prefer additive, backward-compatible changes (Protobuf field numbers, optional JSON fields) with tolerant readers (ignore unknown fields). For real breaks, version the path/content type, run v1 and v2 in parallel, migrate consumers, then retire v1.`
+              },
+              {
+                q: `What do feature flags add on top of deploy strategies like canary?`,
+                a: `They decouple *deploy* (code shipped) from *release* (feature on). You can dark-launch code, ramp exposure independent of pod rollout, and instantly disable a bad feature without redeploying — and target by user/tenant.`
               }
             ]
           }
@@ -26625,242 +27809,1193 @@ class DependencyHealthIndicator implements HealthIndicator {
       {
         id: `6.2`,
         title: `Apache Kafka & Event Streaming`,
-        hours: 4,
+        hours: 6,
         sections: [
           {
-            title: `Kafka Architecture — Topics, Partitions & Consumer Groups`,
-            notes: `## Kafka Architecture — Topics, Partitions & Consumer Groups
+            title: `Architecture & the Commit Log — Partitions, Replication, ISR, KRaft`,
+            notes: `## Architecture & the Commit Log
 
-### Core Concepts
+Kafka is **not a message queue** — it is a **distributed, replicated, append-only commit log**. Internalising that single sentence resolves 80% of senior-level confusion: messages are not "consumed and deleted" like RabbitMQ, they are **read by offset** and retained until a retention policy evicts them. Consumers are just cursors over an immutable log.
 
-\`\`\`
-Topic: named stream of records (like a table in a database)
-  └── Partition 0:  [msg0][msg1][msg2]...[msgN]  ← append-only log
-  └── Partition 1:  [msg0][msg3][msg5]...
-  └── Partition 2:  [msg1][msg4][msg6]...
-
-Each message has:
-  - Offset: sequential ID within a partition (immutable)
-  - Key: optional; determines partition assignment (same key → same partition)
-  - Value: the payload (bytes — usually JSON or Avro)
-  - Timestamp, headers
-\`\`\`
-
-### Producers
-
-\`\`\`java
-// Producer sends records; Kafka decides partition (by key hash) or round-robin
-@Configuration
-public class KafkaConfig {
-    @Bean
-    public ProducerFactory<String, Object> producerFactory() {
-        return new DefaultKafkaProducerFactory<>(Map.of(
-            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9092",
-            ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,   StringSerializer.class,
-            ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class,
-            ProducerConfig.ACKS_CONFIG, "all",      // wait for all replicas
-            ProducerConfig.RETRIES_CONFIG, 3,
-            ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true  // exactly-once send
-        ));
-    }
-}
-
-@Service
-public class OrderEventPublisher {
-    private final KafkaTemplate<String, OrderEvent> kafka;
-
-    public void publish(Order order) {
-        var event = new OrderEvent(order.id(), order.status(), Instant.now());
-        // Key = order.customerId() → same customer's events → same partition → ordered
-        kafka.send("order-events", order.customerId(), event)
-            .whenComplete((result, ex) -> {
-                if (ex != null) log.error("Failed to publish: {}", ex.getMessage());
-                else log.info("Published to partition {} offset {}",
-                    result.getRecordMetadata().partition(),
-                    result.getRecordMetadata().offset());
-            });
-    }
-}
-\`\`\`
-
-### Consumers & Consumer Groups
+### The hierarchy
 
 \`\`\`
-Consumer Group "order-processor" with 3 consumers:
-  Topic "order-events" (4 partitions)
-  Consumer 1 → Partition 0, 1
-  Consumer 2 → Partition 2
-  Consumer 3 → Partition 3
-
-  → Parallelism = min(consumers, partitions)
-  → Adding a 5th consumer: one consumer gets NO partition (idle)
-  → Partition count is the max parallelism ceiling
-
-Two groups reading same topic:
-  "order-processor" reads for order fulfillment
-  "analytics"       reads same events for reporting
-  → Each group gets ALL events independently (pub-sub model)
+Cluster
+ └── Broker (a JVM process, e.g. 6 brokers)
+      └── Topic  (logical stream, e.g. "orders")
+           └── Partition  (unit of parallelism + ordering, e.g. 12 partitions)
+                └── Segment  (a .log file on disk, e.g. 1 GB rolled)
+                     └── Record  (offset, key, value, headers, timestamp)
 \`\`\`
 
-\`\`\`java
-@Service
-public class OrderEventConsumer {
-    @KafkaListener(topics = "order-events", groupId = "order-processor",
-                   concurrency = "3")  // 3 consumer threads
-    public void handle(OrderEvent event, Acknowledgment ack) {
-        try {
-            processOrder(event);
-            ack.acknowledge();  // manual commit — control exactly when offset advances
-        } catch (RetryableException e) {
-            // Don't ack — Kafka will re-deliver
-            log.warn("Will retry: {}", e.getMessage());
-        } catch (NonRetryableException e) {
-            ack.acknowledge(); // ack to skip, send to dead letter topic
-            deadLetter.send("order-events.DLT", event);
-        }
-    }
-}
+- **Topic** — a named, logical stream. Pure naming; it has no physical existence beyond its partitions.
+- **Partition** — the real unit. **Ordering is guaranteed per-partition only.** It is an append-only log; each record gets a monotonically increasing **offset** (a 64-bit integer, *not* globally unique — unique only within the partition).
+- **Segment** — a partition is physically a directory of segment files (\`00000000000000000000.log\`, \`.index\`, \`.timeindex\`). The **active segment** is the one being appended; older segments are immutable and are the unit of retention/deletion and compaction. Default \`log.segment.bytes=1GB\` or \`log.roll.ms=7d\`.
+- **Offset** — the consumer's position. \`__consumer_offsets\` (a compacted internal topic, 50 partitions by default) stores committed offsets per (group, topic, partition).
+
+> [!TIP]
+> "Offset" is overloaded. Distinguish: **current position** (next offset to read), **committed offset** (last durably stored progress), **log-end-offset / LEO** (next offset the broker will write), **high-water mark / HWM** (highest offset replicated to all ISR — the boundary of what consumers can read). **Lag = LEO − committed offset.**
+
+### Why the log is fast: sequential I/O + zero-copy
+
+Kafka's throughput (millions of msgs/s on commodity hardware) comes from physics, not magic:
+- **Sequential disk writes** — appending to a log is sequential I/O; a spinning disk does ~100 MB/s random but ~600 MB/s sequential. Kafka leans on the OS **page cache** rather than an in-JVM cache (so a broker with 64 GB RAM uses most of it as page cache, not heap — keep Kafka heap at ~6 GB).
+- **Zero-copy** (\`sendfile\` syscall) — data goes disk → page cache → NIC **without** copying through user space / the JVM heap. This breaks when you enable TLS or broker-side decompression/re-compression, which is a real throughput cliff.
+- **Batching** — producers and the broker operate on record batches, amortising per-message overhead.
+
+### Replication: leader, followers, ISR
+
+Each partition has **N replicas** (\`replication.factor\`, typically 3). One replica is the **leader**; the rest are **followers**.
+
+- **All reads and writes go to the leader.** Followers only replicate (KIP-392 added follower fetching for rack-locality reads, but the default is leader-only).
+- **ISR (In-Sync Replica set)** — the subset of replicas that are "caught up" (within \`replica.lag.time.max.ms\`, default 30s, of the leader's LEO). A follower that falls behind is kicked out of ISR; it rejoins when it catches up.
+- **High-water mark** advances only when a record is replicated to **all** members of the ISR. Consumers can only read up to the HWM — so an un-replicated record is invisible, preventing consumers from reading data that could be lost on leader failure.
+
+> [!WARNING]
+> **\`min.insync.replicas\` is the durability lever, not \`replication.factor\`.** With RF=3 and \`acks=all\`, a producer write succeeds only if at least \`min.insync.replicas\` replicas ack. Set \`min.insync.replicas=2\` (not 3): it tolerates **one** broker down while still writing. If you set it to 3 with RF=3, a single broker failure makes the partition **unwritable** (\`NotEnoughReplicasException\`). The classic durable config is **RF=3, min.insync.replicas=2, acks=all**.
+
+\`\`\`mermaid
+graph TD
+  P[Producer  acks=all] -->|write| L[(Leader  P0  broker-1)]
+  L -->|fetch / replicate| F1[(Follower  broker-2  in ISR)]
+  L -->|fetch / replicate| F2[(Follower  broker-3  in ISR)]
+  F3[(Follower  broker-4  LAGGING)]:::out -.->|>30s behind| L
+  L -->|read up to HWM| C[Consumer]
+  classDef out fill:#fdd,stroke:#c00;
+  subgraph "ISR = {L, F1, F2}  (min.insync.replicas=2 satisfied)"
+    L
+    F1
+    F2
+  end
 \`\`\`
 
-### Retention & Replayability
+### Controller & cluster metadata: KRaft vs ZooKeeper
 
-\`\`\`
-Kafka retains messages for a configurable period (default 7 days)
-→ Consumers can replay from any offset
+The **controller** is a special broker role that manages cluster metadata: partition leader election, ISR changes, topic create/delete, broker membership.
 
-Use cases for replay:
-- Deploy a new service that needs to process historical events
-- Bug in consumer — fix code, reset offset, replay
-- Build a new read model from event history (event sourcing)
+| Aspect | ZooKeeper (legacy, ≤2.x default) | KRaft (Kafka Raft, 3.3+ GA, 4.0 only) |
+|---|---|---|
+| Metadata store | External ZK ensemble (3-5 nodes) | Internal \`__cluster_metadata\` Raft log |
+| Controller | One elected broker talks to ZK | A quorum of controller nodes (Raft) |
+| Failover | Controller re-reads full state from ZK (seconds-to-minutes on big clusters) | Followers already have the metadata log; failover is fast |
+| Scale ceiling | ~200k partitions/cluster | Millions of partitions |
+| Operational cost | Two systems to run, patch, secure | One system |
 
-# Reset consumer group to beginning
-kafka-consumer-groups.sh --reset-offsets --to-earliest --group my-group --topic my-topic
-\`\`\``,
+> [!SUCCESS]
+> **KRaft** removes ZooKeeper. Metadata becomes an event log replicated by Raft to controller nodes; brokers consume it like any other log. Kafka 3.3 GA'd it, 3.5 deprecated ZK, **4.0 removed ZK entirely**. Staff-level talking point: KRaft turns "controller failover = expensive ZK state reload" into "controller failover = catch up on a log you're already tailing", which is why partition-count limits jumped by ~10x.
+
+### Ordering guarantees — the #1 interview trap
+
+- **Per-partition: total order.** Records in one partition are strictly ordered by offset.
+- **Across partitions: NO order.** Topic-wide ordering does not exist.
+- Therefore: to keep all events for an entity ordered, **send them to the same partition** — i.e. give them the **same key** (e.g. \`orderId\`). All \`order-123\` events land on the same partition and are processed in order.
+
+> [!DANGER]
+> If you need ordering and use \`acks=all\` with retries, you **must** either enable the idempotent producer or set \`max.in.flight.requests.per.connection=1\`. Otherwise a retried batch can be re-ordered behind a later in-flight batch. (Idempotence caps in-flight at 5 and preserves order — see section 2.)
+
+### What interviewers probe (architecture)
+- "Where does ordering hold and where does it break?" → per-partition only; key routing.
+- "RF=3 — how many brokers can you lose and still write?" → depends on \`min.insync.replicas\`; with =2 you lose one.
+- "What is the high-water mark and why can't consumers read past it?" → durability boundary.
+- "Why is Kafka fast?" → sequential I/O, page cache, zero-copy, batching — and when zero-copy breaks (TLS).
+- "What did KRaft change?" → metadata as a Raft log, no ZK, faster failover, more partitions.`,
             code: [
-              `import org.apache.kafka.clients.producer.*;
-import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.common.serialization.*;
-import java.util.*;
-import java.time.Duration;
+              {
+                lang: `java`,
+                title: `Partition routing simulator (key hash % partitions)`,
+                code: `import java.util.*;
 
-// Kafka producer + consumer without Spring (plain Java API)
-public class KafkaRawDemo {
-    static final String BOOTSTRAP = "localhost:9092";
-    static final String TOPIC = "order-events";
+/**
+ * PartitionRouting — simulates how Kafka's DefaultPartitioner routes records.
+ *
+ * Key takeaways demonstrated:
+ *  - Same key  -> same partition  -> ordering preserved for that entity.
+ *  - Null key  -> sticky/round-robin spread (here: round-robin for clarity).
+ *  - Adding partitions REBALANCES key->partition mapping (ordering hazard!).
+ *
+ * Kafka uses murmur2(key) % numPartitions. We use a stable hash to mirror
+ * the "same key is sticky, different keys spread" behaviour.
+ */
+public class PartitionRouting {
 
-    static void produce() throws Exception {
-        Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.ACKS_CONFIG, "all");
-        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true");
-
-        try (var producer = new KafkaProducer<String, String>(props)) {
-            for (int i = 0; i < 10; i++) {
-                String key = "customer-" + (i % 3);   // 3 customers → 3 partitions used
-                String value = "{"orderId":" + i + ","total":" + (i * 10.0) + "}";
-                var record = new ProducerRecord<>(TOPIC, key, value);
-                producer.send(record, (meta, ex) -> {
-                    if (ex != null) System.err.println("Error: " + ex.getMessage());
-                    else System.out.printf("Sent → partition=%d offset=%d key=%s%n",
-                        meta.partition(), meta.offset(), key);
-                });
-            }
-            producer.flush();
-        }
+    // Mirrors Kafka's murmur2-based stickiness with a deterministic hash.
+    static int partitionFor(String key, int numPartitions) {
+        if (key == null) return -1; // signal: use round-robin
+        int h = murmur2(key.getBytes());
+        // toPositive then modulo, exactly like Kafka's Utils.toPositive
+        return (h & 0x7fffffff) % numPartitions;
     }
 
-    static void consume() {
-        Properties props = new Properties();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "order-processor-v1");
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false"); // manual commit
-
-        try (var consumer = new KafkaConsumer<String, String>(props)) {
-            consumer.subscribe(List.of(TOPIC));
-            while (true) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
-                for (var r : records) {
-                    System.out.printf("[P%d @%d] key=%s value=%s%n",
-                        r.partition(), r.offset(), r.key(), r.value());
-                }
-                consumer.commitSync(); // commit after processing batch
-            }
+    // Simplified murmur2 (Kafka's actual algorithm, MIT-licensed origin).
+    static int murmur2(byte[] data) {
+        int length = data.length, seed = 0x9747b28c;
+        int m = 0x5bd1e995, r = 24;
+        int h = seed ^ length;
+        int len4 = (length / 4) * 4;
+        for (int i = 0; i < len4; i += 4) {
+            int k = (data[i] & 0xff) | ((data[i+1] & 0xff) << 8)
+                  | ((data[i+2] & 0xff) << 16) | ((data[i+3] & 0xff) << 24);
+            k *= m; k ^= k >>> r; k *= m;
+            h *= m; h ^= k;
         }
+        switch (length % 4) {
+            case 3: h ^= (data[len4+2] & 0xff) << 16;
+            case 2: h ^= (data[len4+1] & 0xff) << 8;
+            case 1: h ^= (data[len4] & 0xff); h *= m;
+        }
+        h ^= h >>> 13; h *= m; h ^= h >>> 15;
+        return h;
+    }
+
+    static void route(String[] keys, int partitions) {
+        System.out.println("\\n=== Routing across " + partitions + " partitions ===");
+        Map<Integer, List<String>> byPartition = new TreeMap<>();
+        int rr = 0;
+        for (String key : keys) {
+            int p = partitionFor(key, partitions);
+            if (p < 0) { p = rr % partitions; rr++; }     // null-key round-robin
+            byPartition.computeIfAbsent(p, k -> new ArrayList<>()).add(String.valueOf(key));
+        }
+        for (var e : byPartition.entrySet())
+            System.out.printf("  P%d -> %s%n", e.getKey(), e.getValue());
+    }
+
+    public static void main(String[] args) {
+        String[] keys = {
+            "order-1","order-2","order-1","order-3","order-2","order-1",
+            "order-7","order-9","order-4","order-5"
+        };
+
+        System.out.println("Observe: every 'order-1' lands on the SAME partition (ordering kept).");
+        route(keys, 3);
+
+        System.out.println("\\nNow grow the topic 3 -> 4 partitions:");
+        route(keys, 4);
+        System.out.println("\\n>> DANGER: a given key's partition CHANGED. In-flight ordering for");
+        System.out.println(">> that entity is broken across the resize. This is why you size");
+        System.out.println(">> partitions up-front and rarely add partitions to keyed topics.");
+
+        // Null-key spread
+        System.out.println("\\n=== Null keys (no ordering need) spread round-robin ===");
+        route(new String[]{null,null,null,null,null,null}, 3);
     }
 }`,
-              `// Spring Kafka — producer + consumer with dead letter topic
-import org.springframework.kafka.annotation.*;
-import org.springframework.kafka.core.*;
-import org.springframework.kafka.support.*;
-import org.springframework.stereotype.*;
+                runnable: true
+              },
+              {
+                lang: `bash`,
+                title: `Durable topic config + ISR inspection`,
+                code: `// === Durable topic config — RF=3, min.insync.replicas=2, acks=all ===
+// Create with the CLI (note: --replication-factor=3 needs >=3 brokers)
 
-record OrderEvent(String orderId, String customerId, String status, double total) {}
+// bash
+kafka-topics.sh --create \\
+  --bootstrap-server broker1:9092 \\
+  --topic orders \\
+  --partitions 12 \\
+  --replication-factor 3 \\
+  --config min.insync.replicas=2 \\
+  --config retention.ms=604800000 \\
+  --config segment.bytes=1073741824
 
-@Service
-class OrderProducer {
-    private final KafkaTemplate<String, OrderEvent> kafka;
-
-    OrderProducer(KafkaTemplate<String, OrderEvent> k) { this.kafka = k; }
-
-    void publish(OrderEvent event) {
-        // Key ensures all events for same customer go to same partition → ordered
-        kafka.send("orders", event.customerId(), event)
-            .thenAccept(r -> System.out.printf("[SENT] partition=%d offset=%d%n",
-                r.getRecordMetadata().partition(), r.getRecordMetadata().offset()))
-            .exceptionally(ex -> { System.err.println("[FAIL] " + ex.getMessage()); return null; });
-    }
-}
-
-@Service
-class OrderConsumer {
-    @KafkaListener(topics = "orders", groupId = "fulfillment", concurrency = "4")
-    public void handle(
-            @org.springframework.messaging.handler.annotation.Payload OrderEvent event,
-            @org.springframework.messaging.handler.annotation.Header(KafkaHeaders.RECEIVED_PARTITION) int partition,
-            @org.springframework.messaging.handler.annotation.Header(KafkaHeaders.OFFSET) long offset,
-            Acknowledgment ack) {
-        System.out.printf("[RECV p=%d @%d] order=%s customer=%s%n",
-            partition, offset, event.orderId(), event.customerId());
-        try {
-            processOrder(event);
-            ack.acknowledge(); // commit offset only after successful processing
-        } catch (Exception e) {
-            System.err.println("Processing failed: " + e.getMessage());
-            // Don't ack → Kafka re-delivers (configure max.poll.records + retry topics)
-        }
-    }
-
-    // Dead letter listener
-    @KafkaListener(topics = "orders.DLT", groupId = "dlt-handler")
-    public void handleDlt(OrderEvent event) {
-        System.err.println("[DLT] Failed permanently: " + event.orderId());
-        // Alert, save to error DB, manual intervention
-    }
-
-    private void processOrder(OrderEvent e) { System.out.println("Processing: " + e.orderId()); }
-}`
+// Inspect replication / ISR health:
+kafka-topics.sh --describe --topic orders --bootstrap-server broker1:9092
+// Topic: orders  Partition: 0  Leader: 1  Replicas: 1,2,3  Isr: 1,2,3
+// If Isr shrinks below min.insync.replicas, producers with acks=all FAIL fast
+// with NotEnoughReplicasException — a deliberate availability/durability trade.`,
+                runnable: false,
+                note: `Needs Kafka + spring-kafka — reference`
+              }
             ],
             flashcards: [
               {
-                q: `What is a Kafka partition and why does it matter for ordering and parallelism?`,
-                a: `A partition is an ordered, immutable sequence of records within a topic. Records with the same key always go to the same partition (hash(key) % numPartitions), ensuring ordering per key. Partitions enable parallelism: each partition is consumed by exactly one consumer in a group, so throughput scales with partition count. Adding consumers beyond partition count: extra consumers are idle (no partition). Rule: choose partitions as the max parallelism you'll ever need — increasing partitions later is possible but disrupts key-based ordering.`
+                q: `What is the unit of ordering in Kafka, and where does ordering break?`,
+                a: `The partition. Records within one partition are totally ordered by offset; there is NO ordering across partitions. To keep an entity's events ordered, route them to one partition via the same key (e.g. orderId).`
               },
               {
-                q: `What is a consumer group and how does it enable both queue and pub-sub semantics?`,
-                a: `A consumer group is a set of consumers that collectively consume a topic — each partition assigned to one consumer in the group (competing consumers / queue semantics). Multiple groups can read the same topic independently, each getting all messages (pub-sub semantics). Example: "order-processor" group handles fulfillment; "analytics" group reads same events for reporting. Each group maintains its own offset — they progress independently. Add consumers to a group to scale throughput; add groups to fan-out to new consumers.`
+                q: `Distinguish LEO, HWM, committed offset, and lag.`,
+                a: `LEO (log-end-offset) = next offset the broker will write. HWM (high-water mark) = highest offset replicated to all ISR; consumers can only read up to it. Committed offset = last durably stored consumer progress. Lag = LEO − committed offset.`
               },
               {
-                q: `What is the difference between at-most-once, at-least-once, and exactly-once delivery in Kafka?`,
-                a: `At-most-once: auto-commit offset before processing — if processing fails, message is lost (no retry). At-least-once: commit offset only after successful processing — if processing succeeds but commit fails, message is redelivered (processed twice). Requires idempotent consumers (deduplication by message ID). Exactly-once: Kafka's transactional API (enable.idempotence=true, transactions across produce+commit) — no duplicates and no loss, but lower throughput. Most production systems use at-least-once + idempotent consumers.`
+                q: `RF=3 with acks=all — how many brokers can you lose and still produce?`,
+                a: `It depends on min.insync.replicas, not RF. With min.insync.replicas=2 you tolerate one broker down. If min.insync.replicas=3, a single broker loss makes the partition unwritable (NotEnoughReplicasException).`
               },
               {
-                q: `What is a Dead Letter Topic (DLT) and when should you use one?`,
-                a: `A DLT is a separate topic where messages are sent when they fail processing after all retries. Without DLT: a poison pill message (one that always fails) blocks the consumer forever — that partition stops progressing. With DLT: after N retries, the message is moved to orders.DLT, the consumer acknowledges and continues. A separate consumer (or human process) handles DLT messages: alert, save to error DB, manual fix. Configure with Spring Kafka: @RetryableTopic(attempts=3, dltStrategy=DltStrategy.FAIL_ON_ERROR).`
+                q: `What is the ISR and what removes a replica from it?`,
+                a: `In-Sync Replica set: replicas caught up within replica.lag.time.max.ms (default 30s) of the leader's LEO. A follower lagging beyond that is ejected and rejoins on catch-up. The HWM only advances once a record reaches all ISR members.`
+              },
+              {
+                q: `Why is Kafka fast at the OS level?`,
+                a: `Sequential disk writes (append-only log), reliance on the OS page cache (not JVM heap), zero-copy via sendfile (disk -> page cache -> NIC, bypassing user space), and batching. Zero-copy is defeated by TLS or broker-side recompression.`
+              },
+              {
+                q: `What did KRaft change vs ZooKeeper?`,
+                a: `Metadata moves from an external ZK ensemble into an internal Raft-replicated __cluster_metadata log consumed by controller nodes. Controller failover becomes 'catch up on a log you already tail' instead of a full ZK state reload, enabling faster failover and ~10x more partitions. ZK removed entirely in Kafka 4.0.`
+              },
+              {
+                q: `What is the controller's job?`,
+                a: `Manages cluster metadata: partition leader election, ISR updates, topic create/delete, broker membership. In ZK mode one broker holds the role; in KRaft a Raft quorum of controller nodes does.`
+              },
+              {
+                q: `What is a log segment and how does it relate to retention?`,
+                a: `A partition is physically a sequence of segment files (.log + .index + .timeindex). The active segment is appended; older immutable segments are the unit of retention deletion and compaction. So effective retention slightly exceeds configured retention.ms (active segment must roll first).`
+              },
+              {
+                q: `Why must you enable idempotence (or max.in.flight=1) when you need ordering with retries?`,
+                a: `A retried batch can otherwise land after a later in-flight batch, reordering the partition. The idempotent producer (PID + per-partition sequence) lets the broker reject out-of-order batches and preserves order while allowing up to 5 in-flight requests.`
+              },
+              {
+                q: `Two consumer groups on one topic — what's the relationship?`,
+                a: `Each group independently consumes the full stream (pub/sub fan-out). Within a single group, each partition is owned by exactly one consumer (competing-consumers / work queue).`
+              },
+              {
+                q: `What does the high-water mark prevent consumers from doing?`,
+                a: `Reading records not yet replicated to all ISR. This stops consumers from seeing data that could vanish if the leader fails before replication — a durability boundary.`
+              }
+            ]
+          },
+          {
+            title: `Producers — Keys, acks, Idempotence, Batching, Transactions`,
+            notes: `## Producers — Keys, acks, Idempotence, Batching, Transactions
+
+The producer is where you tune the **durability ↔ throughput ↔ latency** triangle. Every knob below is a senior interview target.
+
+### The send path
+
+\`\`\`
+send(record)
+  -> Serializer (key, value)
+  -> Partitioner (key hash -> partition, or sticky round-robin)
+  -> RecordAccumulator: per-partition batch buffer (batch.size, linger.ms)
+  -> Sender thread: drains batches -> broker (compressed, max.in.flight in parallel)
+  -> Broker leader writes to log, replicates to ISR, returns RecordMetadata
+\`\`\`
+
+\`send()\` is **asynchronous**: it returns a \`Future\`/invokes a callback. The record sits in an in-memory accumulator (\`buffer.memory\`, default 32 MB) until a batch fills (\`batch.size\`, default 16 KB) or \`linger.ms\` elapses.
+
+### acks — the durability dial
+
+| acks | Leader waits for | Throughput | Durability | Data loss window |
+|---|---|---|---|---|
+| \`0\` | nothing (fire-and-forget) | highest | lowest | loses on any failure; no retries possible |
+| \`1\` | leader's own write | high | medium | **loses if leader dies before followers replicate** |
+| \`all\` (\`-1\`) | all ISR replicas | lower | highest | none, given \`min.insync.replicas≥2\` |
+
+> [!WARNING]
+> \`acks=1\` is the silent data-loss config. Leader acks, then crashes before any follower fetched the batch → a new leader is elected from a follower that never saw the record → **gone**, with the producer believing it succeeded. For anything that matters, \`acks=all\` + \`min.insync.replicas=2\`.
+
+### Idempotent producer — exactly-once *per partition*
+
+\`enable.idempotence=true\` (the **default since Kafka 3.0**) makes the producer assign each batch a **producer ID (PID)** + monotonic **sequence number** per partition. The broker dedups: if it sees a sequence it already wrote (e.g. a retry after a network timeout where the ack was lost), it **drops the duplicate** and returns success. This solves the "retry caused a duplicate" problem **within a partition, within a producer session**.
+
+Enabling idempotence implicitly requires/sets:
+- \`acks=all\`
+- \`retries > 0\` (effectively MAX_INT)
+- \`max.in.flight.requests.per.connection <= 5\`
+
+> [!TIP]
+> Idempotence preserves ordering even with up to 5 in-flight requests, because the broker rejects out-of-sequence batches and the producer re-sends in order. Without idempotence you needed \`max.in.flight=1\` to guarantee order under retries — at a big throughput cost. This is why "set max.in.flight=1" is now outdated advice.
+
+### Batching, compression, linger — throughput levers
+
+- **\`batch.size\`** (16 KB default) — max bytes per partition batch. Bigger = better compression + fewer requests, more memory.
+- **\`linger.ms\`** (0 default) — wait up to N ms to accumulate a batch before sending. \`linger.ms=0\` = lowest latency, smallest batches. **Bumping to 5–20 ms is the single highest-leverage throughput tweak** under load — it trades a few ms of latency for dramatically larger, better-compressed batches.
+- **\`compression.type\`** — \`none|gzip|snappy|lz4|zstd\`. **\`zstd\`** (KIP-110) and **\`lz4\`** are the modern picks: zstd for best ratio (great for JSON), lz4 for lowest CPU. Compression is per-batch, so it pairs with linger.ms. Producer-side compression also means the broker can store and serve compressed bytes via zero-copy.
+
+> [!EU]
+> For EU/GDPR-heavy pipelines, prefer **producer-side compression + broker keeps compressed** so PII payloads aren't re-expanded in broker memory, and pin **rack-aware replica placement** (\`broker.rack\`) so a partition's replicas span availability zones in your eu-west region — surviving an AZ loss without cross-region replication of personal data.
+
+### Transactions — atomic multi-partition writes + EOS
+
+\`transactional.id\` upgrades idempotence to **cross-partition, cross-session atomicity**. A producer can write to many partitions/topics and **commit or abort them all atomically**. This is the foundation of Kafka's exactly-once **stream processing** (consume → process → produce, all in one transaction, including the consumer offset commit via \`sendOffsetsToTransaction\`).
+
+\`\`\`mermaid
+sequenceDiagram
+  participant P as Producer (txnal.id)
+  participant TC as Transaction Coordinator
+  participant B as Partition Leaders
+  participant C as Consumer (read_committed)
+  P->>TC: initTransactions (fence old PID epoch)
+  P->>TC: beginTransaction
+  P->>B: send to topic-A P0, topic-B P3 (buffered, marked uncommitted)
+  P->>TC: sendOffsetsToTransaction (consumer group offsets)
+  P->>TC: commitTransaction
+  TC->>B: write COMMIT markers to all involved partitions
+  Note over C: read_committed consumer now SEES the records
+  Note over C: (before commit, records were invisible to it)
+\`\`\`
+
+> [!DANGER]
+> Transactions add latency (two-phase commit + control records) and a **transaction.timeout.ms** (default 60s). The \`transactional.id\` must be **stable per logical producer** so the coordinator can **fence** a zombie/old instance (epoch bump) — a restarted producer with the same id invalidates the previous one. Reusing a random id per run defeats fencing and EOS.
+
+### What interviewers probe (producers)
+- "acks=1 vs all — show me the exact data-loss scenario." (leader crash pre-replication)
+- "What does the idempotent producer actually dedup, and what are its limits?" (per-partition, per-session; PID+seq).
+- "How do you keep ordering under retries at high throughput?" (idempotence + max.in.flight≤5, not =1).
+- "linger.ms and batch.size — which way do you turn them for throughput vs latency?"
+- "What does transactional.id buy you that idempotence doesn't?" (cross-partition atomicity, fencing, EOS read-process-write).`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Durable idempotent batched producer (Spring)`,
+                code: `// Spring Boot producer config — durable, idempotent, batched.  [reference]
+// application.yml
+spring:
+  kafka:
+    bootstrap-servers: broker1:9092,broker2:9092,broker3:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      acks: all                         # durability
+      retries: 2147483647               # retry "forever" (idempotence makes this safe)
+      properties:
+        enable.idempotence: true        # default in 3.x; explicit for clarity
+        max.in.flight.requests.per.connection: 5
+        linger.ms: 20                    # batch window -> throughput
+        compression.type: zstd
+        delivery.timeout.ms: 120000      # upper bound on send() incl. retries
+      batch-size: 65536                  # 64 KB
+      buffer-memory: 67108864            # 64 MB accumulator
+    properties:
+      schema.registry.url: http://schema-registry:8081`,
+                runnable: false,
+                note: `Needs Kafka + spring-kafka — reference`
+              },
+              {
+                lang: `java`,
+                title: `Transactional producer — atomic read-process-write (EOS)`,
+                code: `// Transactional producer + KafkaTemplate (read-process-write EOS).  [reference]
+@Configuration
+public class TxnProducerConfig {
+
+  @Bean
+  public ProducerFactory<String, OrderEvent> pf() {
+    var props = new HashMap<String, Object>();
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "broker1:9092");
+    props.put(ProducerConfig.ACKS_CONFIG, "all");
+    props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+    // STABLE per instance — coordinator uses it to fence zombies:
+    props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, "order-svc-tx-1");
+    var pf = new DefaultKafkaProducerFactory<String, OrderEvent>(props);
+    pf.setTransactionIdPrefix("order-svc-tx-"); // unique per instance/partition
+    return pf;
+  }
+
+  @Bean
+  public KafkaTemplate<String, OrderEvent> kafkaTemplate(ProducerFactory<String, OrderEvent> pf) {
+    return new KafkaTemplate<>(pf);
+  }
+}
+
+@Service
+class FulfilmentService {
+  private final KafkaTemplate<String, OrderEvent> template;
+  FulfilmentService(KafkaTemplate<String, OrderEvent> t) { this.template = t; }
+
+  // @Transactional + KafkaTransactionManager => offsets + produces are atomic.
+  @Transactional("kafkaTransactionManager")
+  public void process(ConsumerRecord<String, OrderEvent> in) {
+    var enriched = enrich(in.value());
+    // BOTH sends + the consumer offset commit are one atomic Kafka txn:
+    template.send("orders.enriched", in.key(), enriched);
+    template.send("orders.audit", in.key(), audit(enriched));
+    // Spring's container sends offsets to the transaction on commit.
+  }
+  private OrderEvent enrich(OrderEvent e) { return e; }
+  private OrderEvent audit(OrderEvent e)  { return e; }
+}`,
+                runnable: false,
+                note: `Needs Kafka + spring-kafka — reference`
+              }
+            ],
+            flashcards: [
+              {
+                q: `acks=0 vs 1 vs all — what does the leader wait for and what's the data-loss risk?`,
+                a: `0: nothing (fire-and-forget, can't retry, loses on any failure). 1: leader's own write only — loses if the leader dies before followers replicate. all/-1: all ISR replicas ack — no loss given min.insync.replicas>=2. acks=1 is the silent data-loss config.`
+              },
+              {
+                q: `Show the exact acks=1 data-loss scenario.`,
+                a: `Leader writes and acks the producer, then crashes before any follower fetched the batch. A follower that never saw the record is elected leader -> the record is gone, but the producer believed it succeeded.`
+              },
+              {
+                q: `What exactly does the idempotent producer dedup, and what are its limits?`,
+                a: `Each batch gets a producer ID (PID) + monotonic per-partition sequence number; the broker drops a duplicate sequence (e.g. retry after a lost ack). Scope: per-partition, per-producer-session only. Default since Kafka 3.0. Requires acks=all, retries>0, max.in.flight<=5.`
+              },
+              {
+                q: `How do you preserve ordering under retries at high throughput now?`,
+                a: `Enable the idempotent producer and keep max.in.flight.requests.per.connection<=5. The old advice of max.in.flight=1 is outdated and throughput-killing; idempotence preserves order while allowing parallel in-flight batches.`
+              },
+              {
+                q: `linger.ms and batch.size — which way for throughput vs latency?`,
+                a: `Throughput: raise linger.ms (5-50ms) and batch.size so batches are larger and better-compressed. Latency: linger.ms=0, smaller batches. Bumping linger.ms is often the single highest-leverage throughput tweak under load.`
+              },
+              {
+                q: `Which compression types are the modern picks and why?`,
+                a: `zstd (best ratio, great for JSON) and lz4 (lowest CPU). Compression is per-batch so it pairs with linger.ms; producer-side compression lets brokers store/serve compressed bytes via zero-copy.`
+              },
+              {
+                q: `What does transactional.id buy you over plain idempotence?`,
+                a: `Cross-partition, cross-topic, cross-session atomicity: commit or abort writes to many partitions together, and atomically commit consumer offsets via sendOffsetsToTransaction. Foundation of Kafka EOS read-process-write.`
+              },
+              {
+                q: `Why must transactional.id be stable per logical producer?`,
+                a: `The transaction coordinator uses it to fence zombies: a restarted producer with the same id bumps the epoch, invalidating the old instance's in-flight transaction. A random id per run defeats fencing and breaks EOS.`
+              },
+              {
+                q: `What does send() actually do — sync or async?`,
+                a: `Asynchronous: it serializes, partitions, and appends the record to an in-memory RecordAccumulator batch, returning a Future. A background Sender thread drains batches to brokers when batch.size fills or linger.ms elapses.`
+              },
+              {
+                q: `What is buffer.memory and what happens when it fills?`,
+                a: `The total memory (default 32MB) for unsent record batches. When full, send() blocks up to max.block.ms then throws — a sign producers are outrunning the brokers/network.`
+              },
+              {
+                q: `What config combination is the canonical durable producer?`,
+                a: `acks=all, enable.idempotence=true, min.insync.replicas=2 on the topic, retries high, and a bounded delivery.timeout.ms. RF=3 on the topic.`
+              }
+            ]
+          },
+          {
+            title: `Consumers — Groups, Rebalancing, Offsets, Lag`,
+            notes: `## Consumers — Groups, Rebalancing, Offsets, Lag
+
+### Consumer groups: the scaling unit
+
+A **consumer group** (\`group.id\`) is a set of consumers that **cooperatively** divide a topic's partitions. The rule that explains everything:
+
+> **Each partition is assigned to exactly one consumer within a group.** Across different groups, every group gets its own full copy of the stream.
+
+Consequences:
+- **Max parallelism = partition count.** 12 partitions → at most 12 useful consumers in a group; a 13th sits idle. **Partition count is your concurrency ceiling — size it for peak.**
+- Two groups on the same topic = pub/sub fan-out (each sees all records).
+- One group = competing consumers / work queue.
+
+\`\`\`mermaid
+graph LR
+  subgraph Topic "orders" (4 partitions)
+    P0[P0]; P1[P1]; P2[P2]; P3[P3]
+  end
+  subgraph "Group: fulfilment (3 consumers)"
+    C1[Consumer A]; C2[Consumer B]; C3[Consumer C]
+  end
+  P0 --> C1
+  P1 --> C1
+  P2 --> C2
+  P3 --> C3
+  subgraph "Group: analytics (own copy)"
+    D1[Consumer X]
+  end
+  P0 --> D1
+  P1 --> D1
+  P2 --> D1
+  P3 --> D1
+\`\`\`
+
+(Group \`fulfilment\` splits 4 partitions over 3 consumers — A gets two. Group \`analytics\` independently consumes all 4.)
+
+### Rebalancing — the operational pain point
+
+When membership changes (a consumer joins, dies, or misses a heartbeat) or partitions change, the **group coordinator** (a broker) triggers a **rebalance** to reassign partitions. The **group leader** (a chosen consumer) runs the assignment strategy.
+
+| Protocol | Behaviour | Impact |
+|---|---|---|
+| **Eager** (RangeAssignor / RoundRobin) | **Stop-the-world**: every consumer revokes ALL partitions, then the whole group is reassigned | Full processing pause on every rebalance — bad for large groups |
+| **Cooperative Sticky** (CooperativeStickyAssignor, default-recommended 2.4+) | Incremental: only the partitions that must move are revoked; everyone else keeps processing | Minimal disruption; the modern default |
+
+> [!TIP]
+> **Static membership** (\`group.instance.id\`) is the other half of taming rebalances. With a stable instance id, a consumer that restarts within \`session.timeout.ms\` **rejoins with its old partitions and triggers NO rebalance**. Combine \`group.instance.id\` + \`CooperativeStickyAssignor\` to make rolling deploys near-silent.
+
+#### Liveness: two independent timers
+- **\`heartbeat.interval.ms\`** (3s) / **\`session.timeout.ms\`** (45s) — a background thread heartbeats; miss \`session.timeout.ms\` worth and you're declared dead → rebalance.
+- **\`max.poll.interval.ms\`** (5 min) — the **app** must call \`poll()\` again within this window. If your processing of a batch takes longer, the consumer is considered stuck, **leaves the group**, and its partitions are reassigned — even though heartbeats were fine.
+
+> [!DANGER]
+> The classic "rebalance storm" / duplicate-processing bug: slow processing exceeds \`max.poll.interval.ms\`, the consumer is evicted mid-batch, partitions reassign, the new owner reprocesses, the evicted one's offset commit is **rejected** (\`CommitFailedException\`). Fix: reduce \`max.poll.records\`, speed up processing, or move work off the poll thread — **don't** just crank the timeout blindly.
+
+### Offset commit semantics
+
+The offset you commit is the **next** offset to read (last processed + 1). Where you commit determines delivery semantics:
+
+- **Auto-commit** (\`enable.auto.commit=true\`, every \`auto.commit.interval.ms=5s\`) — commits on a timer **regardless of whether processing finished**. Easy, but a crash after commit / before processing = **lost message** (at-most-once-ish) and a crash after processing / before commit = **reprocessing**. Convenient, not safe.
+- **Manual commit** (\`enable.auto.commit=false\`) — you call \`commitSync()\`/\`commitAsync()\` **after** processing. Commit-after-process = **at-least-once** (the standard). Commit-before-process = at-most-once.
+
+> [!WARNING]
+> At-least-once is the default reality and means **your consumer must be idempotent** (dedup by event id / upsert by natural key). Plan for redelivery; it WILL happen on every rebalance and every commit-failure.
+
+### The poll loop (mental model)
+
+\`\`\`
+while (running) {
+  records = consumer.poll(Duration.ofMillis(500));   // fetches a batch, heartbeats
+  for (r : records) process(r);                       // YOUR work — must finish < max.poll.interval.ms
+  consumer.commitSync();                              // commit AFTER -> at-least-once
+}
+\`\`\`
+
+\`poll()\` does triple duty: fetches records, drives the rebalance protocol, and (for the foreground path) keeps liveness. **Never block the poll thread on slow external calls** without bounding batch size.
+
+### Lag
+
+**Consumer lag = log-end-offset − committed-offset**, per partition. It's the #1 health metric: rising lag = consumers can't keep up. Watch **per-partition** lag (a single hot partition can lag while others are fine), and watch the **rate of change**, not just the absolute value. Tools: \`kafka-consumer-groups.sh --describe\`, Burrow, or JMX \`records-lag-max\`.
+
+### What interviewers probe (consumers)
+- "More consumers than partitions — what happens?" → extras idle; partition count caps parallelism.
+- "Eager vs cooperative-sticky rebalancing — why does cooperative matter?" → no stop-the-world.
+- "session.timeout vs max.poll.interval — what's the difference?" → heartbeat liveness vs processing liveness.
+- "Walk me through a rebalance storm and how you'd fix it."
+- "Where exactly do you commit for at-least-once, and what makes the consumer correct?" (after process + idempotent).
+- "How do you compute and alert on lag?"`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Manual-ack at-least-once consumer (Spring + cooperative-sticky)`,
+                code: `// Manual-ack, at-least-once consumer with Spring.  [reference]
+// application.yml
+spring:
+  kafka:
+    consumer:
+      group-id: fulfilment
+      enable-auto-commit: false                 # we commit manually
+      auto-offset-reset: earliest               # or 'latest' for new groups
+      max-poll-records: 100                      # bound batch -> bound poll-loop time
+      properties:
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 45000
+        partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+    listener:
+      ack-mode: MANUAL                           # we ack per batch after processing
+      concurrency: 4                             # 4 listener threads (<= partitions)
+
+// ---- listener ----
+@Component
+class OrderConsumer {
+
+  @KafkaListener(topics = "orders", groupId = "fulfilment")
+  public void onMessage(ConsumerRecord<String, OrderEvent> rec, Acknowledgment ack) {
+    try {
+      // IDEMPOTENT processing — dedup by event id / upsert by natural key:
+      if (alreadyProcessed(rec.value().eventId())) { ack.acknowledge(); return; }
+      handle(rec.value());
+      ack.acknowledge();                          // commit AFTER success -> at-least-once
+    } catch (TransientException e) {
+      // do NOT ack -> redelivered on next poll / rebalance
+      throw e;
+    }
+  }
+  private boolean alreadyProcessed(String id) { return false; }
+  private void handle(OrderEvent e) { }
+}`,
+                runnable: false,
+                note: `Needs Kafka + spring-kafka — reference`
+              },
+              {
+                lang: `bash`,
+                title: `Inspect lag, assignment, and reset offsets`,
+                code: `// Inspect lag and assignment from the CLI.  [reference]
+// bash
+kafka-consumer-groups.sh --bootstrap-server broker1:9092 \\
+  --describe --group fulfilment
+
+// GROUP      TOPIC   PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG   CONSUMER-ID    HOST
+// fulfilment orders  0          14523           14530           7     consumer-A-1   /10.0.0.5
+// fulfilment orders  1          98110           102433          4323  consumer-A-2   /10.0.0.6   <-- HOT/SLOW
+// fulfilment orders  2          70001           70001           0     consumer-B-1   /10.0.0.7
+// fulfilment orders  3          51200           51208           8     consumer-C-1   /10.0.0.8
+
+// Reset a group to reprocess (consumers must be STOPPED):
+kafka-consumer-groups.sh --bootstrap-server broker1:9092 --group fulfilment \\
+  --topic orders --reset-offsets --to-earliest --execute`,
+                runnable: false,
+                note: `Needs Kafka + spring-kafka — reference`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What caps consumer parallelism within a group?`,
+                a: `Partition count. Each partition is owned by exactly one consumer in the group, so N partitions support at most N working consumers; extras sit idle. Size partitions for peak consumer count.`
+              },
+              {
+                q: `Eager vs cooperative-sticky rebalancing — what's the difference?`,
+                a: `Eager (Range/RoundRobin) is stop-the-world: all consumers revoke ALL partitions then everything is reassigned, pausing the whole group. Cooperative-sticky (default-recommended 2.4+) is incremental: only partitions that must move are revoked; others keep processing.`
+              },
+              {
+                q: `session.timeout.ms vs max.poll.interval.ms?`,
+                a: `session.timeout.ms (45s) is heartbeat liveness — miss heartbeats (background thread) and you're declared dead. max.poll.interval.ms (5min) is processing liveness — the app must call poll() again within it or the consumer leaves the group even though heartbeats were fine.`
+              },
+              {
+                q: `Describe a rebalance storm and how to fix it.`,
+                a: `Slow processing exceeds max.poll.interval.ms (or pods flap), consumers are evicted, partitions reassign, the new owner reprocesses, the evicted owner's commit fails (CommitFailedException), repeat. Fix: cooperative-sticky + static membership, reduce max.poll.records, speed up or offload processing — don't just raise the timeout.`
+              },
+              {
+                q: `What is static membership and why use it?`,
+                a: `group.instance.id gives a consumer a stable identity; a restart within session.timeout.ms rejoins with its old partitions and triggers NO rebalance. Combined with CooperativeStickyAssignor it makes rolling deploys near-silent.`
+              },
+              {
+                q: `Auto-commit vs manual commit — implications for delivery semantics?`,
+                a: `Auto-commit (every 5s on a timer, regardless of processing) risks loss (commit before processing) or reprocessing (crash before timer). Manual commit-after-process gives standard at-least-once; commit-before-process gives at-most-once.`
+              },
+              {
+                q: `Why must an at-least-once consumer be idempotent?`,
+                a: `Redelivery is guaranteed on every rebalance and every commit failure. The consumer must dedup (by event id) or upsert (by natural key) so reprocessing converges to the same result.`
+              },
+              {
+                q: `What three jobs does poll() do?`,
+                a: `Fetches a batch of records, drives the rebalance/join protocol, and (foreground path) maintains liveness toward max.poll.interval. Never block the poll thread on slow external calls without bounding max.poll.records.`
+              },
+              {
+                q: `How do you compute consumer lag and what should you watch?`,
+                a: `Lag = log-end-offset − committed-offset, per partition. Watch per-partition lag (a hot partition can lag while others are fine) and the rate of change, not just the absolute value. Tools: kafka-consumer-groups.sh, Burrow, JMX records-lag-max.`
+              },
+              {
+                q: `What does auto.offset.reset control?`,
+                a: `Where a consumer starts when it has no committed offset (new group) or its offset is out of range: earliest (replay from start) or latest (only new records). It does NOT apply when a valid committed offset exists.`
+              },
+              {
+                q: `What is the offset you commit, exactly?`,
+                a: `The NEXT offset to read = last successfully processed offset + 1. Committing it after processing yields at-least-once.`
+              }
+            ]
+          },
+          {
+            title: `Delivery Semantics & Exactly-Once (Effectively-Once) + Outbox`,
+            notes: `## Delivery Semantics & Exactly-Once (really *Effectively*-Once)
+
+### The three semantics
+
+| Semantics | How you get it | Failure outcome | Cost |
+|---|---|---|---|
+| **At-most-once** | commit offset **before** processing (or \`acks=0\`) | message may be **lost**, never duplicated | cheapest; rarely acceptable |
+| **At-least-once** | commit **after** processing; producer retries | message may be **duplicated**, never lost | default; needs idempotent consumers |
+| **Exactly-once** | idempotent producer + transactions + \`read_committed\` (+ EOS framework) | no loss, no duplicate (within Kafka) | highest latency/complexity |
+
+> [!TIP]
+> 95% of production systems run **at-least-once + idempotent consumers**. EOS is real but narrow: it covers **Kafka-to-Kafka** read-process-write (Streams / transactional producer). The moment your side effect is an external DB call, an email, or a payment, Kafka's EOS **does not extend to it** — you still need application-level idempotency.
+
+### Why "exactly-once" is really "effectively-once"
+
+Distributed exactly-once **delivery** is impossible (two generals / FLP). What Kafka actually delivers is **exactly-once *processing semantics* within the Kafka boundary**: it may physically deliver a record more than once, but the **effects** (offsets committed, output records produced) appear exactly once because they're wrapped in an atomic transaction and duplicates are deduped (PID+seq). The honest framing for a staff interview: *"Kafka gives effectively-once by combining at-least-once delivery with idempotent dedup and atomic commit — not by delivering each byte exactly once."*
+
+\`read_committed\` consumers complete the picture: they only see records up to the **Last Stable Offset (LSO)** — i.e. they never read records from an in-flight or aborted transaction. \`read_uncommitted\` (default) sees everything including soon-to-be-aborted records.
+
+### Idempotency & dedup patterns (the real-world EOS)
+
+Because your processing usually touches a non-Kafka system, **build idempotency in**:
+1. **Natural-key upsert** — \`INSERT ... ON CONFLICT (order_id) DO UPDATE\`. Reprocessing converges to the same row.
+2. **Dedup table / processed-id set** — record \`eventId\` in a table with a unique constraint; second insert fails → skip. TTL it to bound size.
+3. **Conditional / versioned writes** — only apply if \`event.version > current.version\` (handles redelivery and reordering).
+
+### The Transactional Outbox — the pattern interviewers want
+
+**Problem:** you must update your DB **and** publish an event. Doing both as separate calls is a **dual-write**: the DB commits, then the broker publish fails (or vice-versa) → DB and stream diverge. There is no distributed transaction across Postgres and Kafka you'd actually want.
+
+**Solution:** write the event into an \`outbox\` table **in the same local DB transaction** as the business change. A separate relay reads the outbox and publishes to Kafka, marking rows sent. The DB transaction makes the business write + outbox insert atomic; the relay provides at-least-once publish (idempotent consumers dedup).
+
+\`\`\`mermaid
+sequenceDiagram
+  participant App
+  participant DB as Postgres (one local txn)
+  participant Relay as Outbox Relay (CDC / poller)
+  participant K as Kafka
+  participant Cons as Consumer (idempotent)
+  App->>DB: BEGIN
+  App->>DB: UPDATE orders SET status='PAID'
+  App->>DB: INSERT INTO outbox(event_id, payload, sent=false)
+  App->>DB: COMMIT  (atomic: both or neither)
+  Relay->>DB: poll/CDC unsent rows
+  Relay->>K: publish event (at-least-once)
+  Relay->>DB: mark sent=true
+  K->>Cons: deliver (maybe twice)
+  Note over Cons: dedup by event_id -> effectively-once
+\`\`\`
+
+> [!SUCCESS]
+> Modern outbox uses **CDC** (Debezium reading the WAL/binlog) instead of polling: the relay tails the database log, so there's no poll lag and no extra load. This is the canonical microservices answer to "how do you reliably publish events from a service that owns a database?"
+
+> [!DANGER]
+> The outbox guarantees **at-least-once publish**, not exactly-once. The relay can crash after publishing but before marking \`sent=true\` → republish. Therefore the **consumer must still be idempotent**. Anyone who claims the outbox gives exactly-once end-to-end without idempotent consumers is wrong.
+
+### What interviewers probe (delivery)
+- "Is exactly-once real? Explain precisely what Kafka guarantees." → effectively-once within Kafka; not across external side effects.
+- "Two services, one DB write + one Kafka publish — how do you avoid the dual-write problem?" → transactional outbox (+ CDC).
+- "Your consumer is at-least-once — what makes it correct?" → idempotent processing (upsert / dedup table / versioned writes).
+- "read_committed vs read_uncommitted and the LSO."`,
+            code: [
+              {
+                lang: `java`,
+                title: `At-least-once + idempotent dedup = effectively-once (simulator)`,
+                code: `import java.util.*;
+import java.util.concurrent.*;
+
+/**
+ * DeliverySemantics — simulates at-least-once redelivery and shows how an
+ * IDEMPOTENT consumer makes duplicate delivery "effectively-once".
+ *
+ * No Kafka, no libs. Models: a broker that may redeliver, a non-idempotent
+ * sink (double counts) and an idempotent sink (dedup by eventId).
+ */
+public class DeliverySemantics {
+
+  record Event(String eventId, String orderId, int amountCents) {}
+
+  // --- a sink that naively applies every delivery (BUG under redelivery) ---
+  static final Map<String,Integer> naiveBalance = new HashMap<>();
+  static void applyNaive(Event e) {
+    naiveBalance.merge(e.orderId(), e.amountCents(), Integer::sum);
+  }
+
+  // --- an idempotent sink: dedup table keyed by eventId ---
+  static final Set<String> processed = new HashSet<>();
+  static final Map<String,Integer> idempotentBalance = new HashMap<>();
+  static void applyIdempotent(Event e) {
+    if (!processed.add(e.eventId())) {            // already seen -> skip
+      System.out.println("  [idempotent] duplicate " + e.eventId() + " skipped");
+      return;
+    }
+    idempotentBalance.merge(e.orderId(), e.amountCents(), Integer::sum);
+  }
+
+  public static void main(String[] args) {
+    // Stream of distinct events; broker will redeliver some (at-least-once).
+    List<Event> source = List.of(
+      new Event("e1","order-1", 1000),
+      new Event("e2","order-1",  500),
+      new Event("e3","order-2", 2000)
+    );
+
+    // Simulate at-least-once: e1 and e3 get delivered twice (ack lost on first).
+    List<Event> asDelivered = new ArrayList<>();
+    for (Event e : source) {
+      asDelivered.add(e);
+      if (e.eventId().equals("e1") || e.eventId().equals("e3"))
+        asDelivered.add(e); // redelivery
+    }
+    Collections.shuffle(asDelivered, new Random(7)); // reordering across keys is allowed
+
+    System.out.println("Delivered sequence (with redeliveries):");
+    asDelivered.forEach(e -> System.out.println("  " + e.eventId() + " " + e.orderId()));
+
+    System.out.println("\\n--- Naive (non-idempotent) consumer ---");
+    asDelivered.forEach(DeliverySemantics::applyNaive);
+    System.out.println("  balances = " + new TreeMap<>(naiveBalance)
+        + "   <-- order-1 / order-2 OVER-COUNTED");
+
+    System.out.println("\\n--- Idempotent consumer (dedup by eventId) ---");
+    asDelivered.forEach(DeliverySemantics::applyIdempotent);
+    System.out.println("  balances = " + new TreeMap<>(idempotentBalance)
+        + "   <-- correct: effectively-once");
+
+    System.out.println("\\nLesson: at-least-once delivery + idempotent processing");
+    System.out.println("= effectively-once. Kafka EOS automates this WITHIN Kafka;");
+    System.out.println("for external side-effects YOU own the dedup.");
+  }
+}`,
+                runnable: true
+              },
+              {
+                lang: `java`,
+                title: `Transactional Outbox — atomic DB write + event, CDC relay`,
+                code: `-- Transactional Outbox schema + atomic write.  [reference]
+-- sql / pseudo
+CREATE TABLE outbox (
+  id          BIGSERIAL PRIMARY KEY,
+  event_id    UUID NOT NULL UNIQUE,         -- consumer dedup key
+  aggregate   TEXT NOT NULL,                -- e.g. 'order'
+  payload     JSONB NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  sent        BOOLEAN DEFAULT false
+);
+
+-- In ONE local transaction (Spring @Transactional on the JDBC/JPA datasource):
+@Transactional
+public void payOrder(UUID orderId, OrderEvent ev) {
+  orderRepo.markPaid(orderId);                       // business change
+  outboxRepo.insert(new Outbox(ev.eventId(), "order", toJson(ev)));  // event row
+}                                                    // COMMIT = both or neither
+
+-- A relay (Debezium CDC tailing the WAL, OR a poller) publishes unsent rows to
+-- Kafka and marks them sent. At-least-once publish -> consumers dedup by event_id.`,
+                runnable: false,
+                note: `Needs Kafka + spring-kafka — reference`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Define at-most-once, at-least-once, exactly-once and how you achieve each.`,
+                a: `At-most-once: commit before processing (or acks=0) — may lose, never duplicate. At-least-once: commit after processing + producer retries — may duplicate, never lose (default). Exactly-once: idempotent producer + transactions + read_committed (EOS framework) — no loss or duplicate within Kafka.`
+              },
+              {
+                q: `Is exactly-once real? State precisely what Kafka guarantees.`,
+                a: `Exactly-once DELIVERY is impossible in distributed systems. Kafka delivers exactly-once PROCESSING within the Kafka boundary: physical delivery may repeat, but effects (offsets + output records) appear once via atomic transactions + PID/seq dedup. Honest term: effectively-once.`
+              },
+              {
+                q: `Where does Kafka EOS NOT extend?`,
+                a: `To external side effects — DB writes, emails, payments, third-party calls. The transaction only spans Kafka partitions and offsets, so for external effects you must build application-level idempotency.`
+              },
+              {
+                q: `What is the dual-write problem and how does the outbox solve it?`,
+                a: `Updating your DB and publishing to Kafka as two separate operations can partially fail, diverging the DB and stream. The outbox writes the event into an outbox table in the SAME local DB transaction as the business change (atomic); a relay later publishes unsent rows to Kafka.`
+              },
+              {
+                q: `Does the transactional outbox give end-to-end exactly-once?`,
+                a: `No — it gives at-least-once publish (the relay can crash after publishing but before marking sent=true, causing republish). Consumers must still be idempotent for effectively-once end to end.`
+              },
+              {
+                q: `Polling vs CDC for the outbox relay?`,
+                a: `Polling queries unsent rows on an interval (simple, adds load + lag). CDC (e.g. Debezium tailing the WAL/binlog) tails the DB log — no poll lag, minimal load. CDC is the modern canonical approach.`
+              },
+              {
+                q: `What does read_committed do and what is the LSO?`,
+                a: `A read_committed consumer only reads up to the Last Stable Offset — records from in-flight or aborted transactions are invisible. read_uncommitted (default) sees everything, including records that may later be aborted.`
+              },
+              {
+                q: `Name three application-level idempotency patterns.`,
+                a: `1) Natural-key upsert (INSERT ... ON CONFLICT DO UPDATE). 2) Dedup table with a unique constraint on eventId (second insert fails -> skip). 3) Conditional/versioned writes (apply only if event.version > current.version), which also handles reordering.`
+              },
+              {
+                q: `Why is at-least-once + idempotent consumer the dominant production choice?`,
+                a: `It's simple, robust, and covers external side effects that Kafka EOS can't. Full Kafka EOS adds latency and complexity and only covers Kafka-to-Kafka read-process-write, so most systems reserve it for pure streaming pipelines.`
+              },
+              {
+                q: `What is a tombstone in a compacted topic?`,
+                a: `A record with a null value. In a compacted topic it signals deletion of that key, so compaction eventually removes prior values for the key.`
+              }
+            ]
+          },
+          {
+            title: `Kafka with Spring — KafkaTemplate, @KafkaListener, Retry/DLT, Avro`,
+            notes: `## Kafka with Spring (\`spring-kafka\`)
+
+\`spring-kafka\` wraps the raw client with \`KafkaTemplate\` (producer), \`@KafkaListener\` + \`MessageListenerContainer\` (consumer), and a rich **error-handling / retry / DLT** stack.
+
+### Producing: \`KafkaTemplate\`
+
+\`KafkaTemplate.send(...)\` returns a \`CompletableFuture<SendResult>\`. **Don't ignore the future** — a failed send is only observable via the callback/exception. For request-correctness, either block on it or attach a callback that logs/alerts.
+
+### Consuming: \`@KafkaListener\` + container
+
+- \`concurrency = N\` spins up N container threads, each a consumer in the group — but **N is capped by partition count**; extra threads idle.
+- Container ack modes: \`RECORD\`, \`BATCH\` (default), \`MANUAL\`, \`MANUAL_IMMEDIATE\`, \`TIME\`, \`COUNT\`. For at-least-once with explicit control, use \`MANUAL\`/\`MANUAL_IMMEDIATE\` and an \`Acknowledgment\` parameter.
+
+### Error handling, retry & Dead-Letter Topic (DLT)
+
+The modern stack (spring-kafka 2.7+):
+- **\`DefaultErrorHandler\`** (replaced \`SeekToCurrentErrorHandler\`) — on a failed record it re-seeks and retries with a **\`BackOff\`** (e.g. \`ExponentialBackOff\`). After exhausting retries it invokes a **recoverer**.
+- **\`DeadLetterPublishingRecoverer\`** — the recoverer publishes the poison record to \`<topic>.DLT\` (preserving original headers, exception, partition).
+- **\`@RetryableTopic\`** — declarative **non-blocking retries**: failed records go to \`topic-retry-0\`, \`topic-retry-1\` (with increasing delay) instead of blocking the main partition; final failure → DLT. This is preferred over blocking \`DefaultErrorHandler\` retries because **blocking retries stall the whole partition** (head-of-line blocking + max.poll.interval risk).
+
+> [!WARNING]
+> **Blocking retry (in-listener \`Thread.sleep\` / DefaultErrorHandler with long backoff) blocks the partition** — every record behind the poison message waits, and you risk breaching \`max.poll.interval.ms\` → rebalance. For anything but trivial fixed retries, use \`@RetryableTopic\` (separate retry topics) so the main partition keeps flowing.
+
+> [!TIP]
+> Classify exceptions: **transient** (timeout, 503) → retry; **fatal** (deserialization failure, validation error) → straight to DLT, never retry. Configure \`DefaultErrorHandler.addNotRetryableExceptions(...)\`. A \`DeserializationException\` retried forever is a classic poison-pill outage — use \`ErrorHandlingDeserializer\` so a bad payload becomes a DLT record instead of an infinite crash loop.
+
+### Serialization: Avro + Schema Registry
+
+JSON is convenient but schemaless and verbose. Production event platforms use **Avro** (or Protobuf) + **Confluent Schema Registry**:
+- The serializer registers/looks up the schema and prepends a **5-byte header** (magic byte + 4-byte schema id); the payload is compact binary.
+- The registry enforces **compatibility** (\`BACKWARD\` default): a new schema must be readable by consumers using the old one → you can **add optional fields** but not remove required ones. This is how you evolve events without breaking consumers.
+
+| Compatibility | Allowed change | Who upgrades first |
+|---|---|---|
+| BACKWARD | add optional / delete field | consumers first |
+| FORWARD | add field / delete optional | producers first |
+| FULL | both | either |
+
+> [!SUCCESS]
+> Schema Registry + Avro is the difference between "we changed the event and three downstream services broke in prod" and "CI rejected the incompatible schema before merge". Wire the registry's compatibility check into your build.
+
+### What interviewers probe (Spring)
+- "How do you do non-blocking retries and why not just sleep-and-retry?" → \`@RetryableTopic\`; partition head-of-line blocking.
+- "A bad message poison-pills your consumer — how do you survive it?" → \`ErrorHandlingDeserializer\` + DLT + non-retryable classification.
+- "What does Schema Registry enforce and how do you evolve a schema safely?" → compatibility modes; add optional fields.
+- "concurrency=10 on a 4-partition topic — what happens?" → 6 idle threads.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Non-blocking retries (@RetryableTopic) + DLT + fatal classification`,
+                code: `// spring-kafka error handling: non-blocking retries + DLT.  [reference]
+@Configuration
+public class KafkaErrorConfig {
+
+  // DefaultErrorHandler for *blocking* path: a few quick retries then DLT.
+  @Bean
+  public DefaultErrorHandler errorHandler(KafkaTemplate<Object,Object> template) {
+    var recoverer = new DeadLetterPublishingRecoverer(template);   // -> <topic>.DLT
+    var backOff = new ExponentialBackOffWithMaxRetries(3);
+    backOff.setInitialInterval(500);
+    backOff.setMultiplier(2.0);
+    var handler = new DefaultErrorHandler(recoverer, backOff);
+    // Fatal -> straight to DLT, never retry (avoid poison-pill loops):
+    handler.addNotRetryableExceptions(
+        DeserializationException.class, ValidationException.class);
+    return handler;
+  }
+}
+
+@Component
+class PaymentConsumer {
+
+  // Non-blocking retries: retry topics + DLT, main partition keeps flowing.
+  @RetryableTopic(
+      attempts = "4",
+      backoff = @Backoff(delay = 1000, multiplier = 2.0),
+      dltStrategy = DltStrategy.FAIL_ON_ERROR,
+      autoCreateTopics = "true")            // creates payments-retry-0/1/2 + .DLT
+  @KafkaListener(topics = "payments", groupId = "payment-proc")
+  public void onPayment(ConsumerRecord<String, PaymentEvent> rec) {
+    if (rec.value() == null) throw new ValidationException("null payload"); // -> DLT
+    process(rec.value());                    // transient failure -> retry topics
+  }
+
+  @DltHandler
+  public void dlt(ConsumerRecord<String, PaymentEvent> rec,
+                  @Header(KafkaHeaders.EXCEPTION_MESSAGE) String err) {
+    alerting.page("payment poison: " + rec.key() + " : " + err);
+  }
+  private void process(PaymentEvent e) { }
+}`,
+                runnable: false,
+                note: `Needs Kafka + spring-kafka — reference`
+              },
+              {
+                lang: `yaml`,
+                title: `Avro + Schema Registry (poison-pill-safe ErrorHandlingDeserializer)`,
+                code: `// Avro + Schema Registry config (poison-pill safe).  [reference]
+// application.yml
+spring:
+  kafka:
+    consumer:
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        # delegate real work to Avro; bad bytes become a DLT record, not a crash loop
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: io.confluent.kafka.serializers.KafkaAvroDeserializer
+        schema.registry.url: http://schema-registry:8081
+        specific.avro.reader: true        # deserialize to generated SpecificRecord
+
+// order_event.avsc — evolve with BACKWARD compatibility (add optional fields):
+{
+  "type": "record",
+  "name": "OrderEvent",
+  "namespace": "com.shop.events",
+  "fields": [
+    { "name": "eventId",   "type": "string" },
+    { "name": "orderId",   "type": "string" },
+    { "name": "amountCents","type": "long" },
+    { "name": "currency",  "type": ["null","string"], "default": null }
+  ]
+}`,
+                runnable: false,
+                note: `Needs Kafka + spring-kafka — reference`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why prefer @RetryableTopic over blocking in-listener retries?`,
+                a: `Blocking retries (Thread.sleep / long DefaultErrorHandler backoff) stall the whole partition — every record behind the poison message waits, risking a max.poll.interval breach and rebalance. @RetryableTopic routes failures to separate retry topics so the main partition keeps flowing (non-blocking).`
+              },
+              {
+                q: `How do you survive a poison pill (un-deserializable record)?`,
+                a: `Wrap deserializers in ErrorHandlingDeserializer so bad bytes become a failed record routed to the DLT instead of crashing the consumer in an infinite loop, and classify deserialization/validation exceptions as non-retryable.`
+              },
+              {
+                q: `What replaced SeekToCurrentErrorHandler and what does it do?`,
+                a: `DefaultErrorHandler — on failure it re-seeks the record and retries with a BackOff (e.g. ExponentialBackOff). After retries are exhausted it invokes a recoverer, typically DeadLetterPublishingRecoverer to publish to <topic>.DLT.`
+              },
+              {
+                q: `How should you classify exceptions for retry?`,
+                a: `Transient (timeout, 503, lock contention) -> retry. Fatal (deserialization failure, validation error) -> straight to DLT, never retry. Use addNotRetryableExceptions to avoid poison-pill retry loops.`
+              },
+              {
+                q: `What does Schema Registry enforce and how do you store the schema?`,
+                a: `Schema compatibility (BACKWARD default). The serializer prepends a 5-byte header (magic byte + 4-byte schema id) and stores compact binary; the registry rejects incompatible schema changes.`
+              },
+              {
+                q: `BACKWARD vs FORWARD vs FULL compatibility?`,
+                a: `BACKWARD: new schema reads old data (add optional / delete field) — consumers upgrade first. FORWARD: old schema reads new data (add field / delete optional) — producers upgrade first. FULL: both directions — either order.`
+              },
+              {
+                q: `concurrency=10 on a 4-partition topic — what happens?`,
+                a: `Spring starts 10 consumer threads but only 4 can own partitions; the other 6 sit idle. Concurrency is capped by partition count.`
+              },
+              {
+                q: `Why must you not ignore the KafkaTemplate.send() future?`,
+                a: `send() is async and returns CompletableFuture<SendResult>; a failed send is only observable via the future/callback. Ignoring it silently drops produce failures — attach a callback or block for correctness-critical paths.`
+              },
+              {
+                q: `What ack modes does the listener container support and which for at-least-once?`,
+                a: `RECORD, BATCH (default), MANUAL, MANUAL_IMMEDIATE, TIME, COUNT. For explicit at-least-once control use MANUAL/MANUAL_IMMEDIATE with an Acknowledgment parameter, acking after successful processing.`
+              },
+              {
+                q: `How do you safely evolve an Avro event schema?`,
+                a: `Under BACKWARD compatibility, add fields as optional (union with null + default) and avoid removing required fields. Wire the registry's compatibility check into CI so incompatible changes fail the build, not production.`
+              }
+            ]
+          },
+          {
+            title: `Operations & Tuning — Retention, Partition Sizing, Lag, Incidents`,
+            notes: `## Operations & Tuning
+
+### Retention & cleanup policies
+
+Two cleanup policies (\`cleanup.policy\`):
+- **\`delete\`** (default) — drop **whole segments** older than \`retention.ms\` (default 7d) or beyond \`retention.bytes\`. Retention is per-segment, so an active segment isn't deleted until it rolls — your effective retention is a bit longer than configured.
+- **\`compact\`** — **log compaction**: keep at least the **latest value per key**, garbage-collecting superseded values. Turns a topic into a "latest-state-per-key" changelog (used by \`__consumer_offsets\`, Kafka Streams state stores, CDC topics). A \`null\` value is a **tombstone** = delete that key.
+- \`compact,delete\` — compact **and** time-bound.
+
+> [!TIP]
+> Use **delete** for event streams (orders, clicks). Use **compact** when the topic represents current state keyed by entity (e.g. \`customer-profile-changelog\`) and consumers rebuild state by replaying it. Compaction does **not** guarantee no duplicates of a key in the log — only that the latest survives eventually.
+
+### Partition sizing — the trade-off that bites
+
+Partition count is a **one-way-ish door** (you can add but adding **breaks key→partition mapping and per-key ordering**, and you can't reduce). Choose deliberately:
+
+**More partitions →**
+- ✅ higher max consumer parallelism, higher throughput
+- ❌ more open file handles & memory per broker; **longer leader-election / failover** (controller must move more leaders); more end-to-end **latency** (more requests, more replication fan-out); bigger rebalances
+
+Rules of thumb:
+- Target ~**partition count ≥ peak consumer count** (your concurrency ceiling).
+- A common heuristic: \`max(throughput/producer_per_partition, throughput/consumer_per_partition)\`, then round up for headroom.
+- Keep total partitions per broker reasonable (low thousands on ZK clusters; KRaft relaxes this). **Don't default everything to 50 partitions** — empty partitions still cost replication, files, and rebalance time.
+
+> [!DANGER]
+> **Adding partitions to a keyed topic re-shards keys.** \`order-123\` that lived on P2 may now hash to P5, so its new events interleave with a different partition's history → **ordering for that key is broken across the change**, and any partition-local state (dedup, aggregation) is wrong. If you must scale a keyed topic, prefer **creating a new topic with more partitions and migrating**, or design keys/partitions for peak from day one.
+
+### Hot partitions / skew
+
+If one key (or a small set) dominates traffic, its partition becomes a **hot partition**: one consumer maxes out while others idle; lag piles up on that single partition. Causes & fixes:
+- **Low-cardinality / skewed keys** (e.g. keying by \`country\` where 80% = one country). Fix: composite key (\`country|userId\`) or salt the key.
+- **Genuine super-entities** (one whale customer). Fix: sub-partition that entity, or route it specially.
+- Detect via **per-partition lag** and per-partition byte-rate; a flat topic lag can hide one hot partition.
+
+### Throughput vs latency tuning (cheat sheet)
+
+| Goal | Producer | Consumer / Broker |
+|---|---|---|
+| **Throughput** | \`linger.ms=10-50\`, big \`batch.size\`, \`compression.type=zstd/lz4\`, \`acks=1\` if loss-tolerant | \`fetch.min.bytes\` higher, \`max.poll.records\` higher, more partitions |
+| **Latency** | \`linger.ms=0\`, smaller batches, \`compression=none\` | \`fetch.min.bytes=1\`, \`fetch.max.wait.ms\` low |
+| **Durability** | \`acks=all\`, idempotence, \`min.insync.replicas=2\` | — |
+
+You can't max all three. Senior answer: state the SLO first (e.g. p99 < 50 ms vs 1 GB/s), then pick the trade.
+
+### Common production incidents (war stories interviewers love)
+
+1. **Under-replicated partitions spike** — a broker is slow/GC-thrashing; followers fall out of ISR; with \`min.insync.replicas=2\` producers start failing. Metric: \`UnderReplicatedPartitions > 0\`. Root cause often disk I/O saturation or a long GC pause. Mitigation: fix the slow broker, check \`num.replica.fetchers\`, page-cache pressure.
+2. **Rebalance storm** — frequent consumer joins/leaves (slow processing > \`max.poll.interval.ms\`, or flapping pods) cause continuous reassignment; throughput collapses. Fix: cooperative-sticky + static membership; bound \`max.poll.records\`; move work off poll thread.
+3. **Poison pill** — one un-deserializable record crashes the consumer in a loop, lag grows unbounded. Fix: \`ErrorHandlingDeserializer\` + DLT.
+4. **Disk fills** — retention too long / partitions too many / no \`retention.bytes\` cap; broker hits disk-full and stops. Fix: cap \`retention.bytes\`, alert at 70% disk.
+5. **Consumer lag blowup after deploy** — a new version is slower or a bug throws on every record; lag climbs. Watch \`records-lag-max\` with alerting on rate-of-change.
+6. **Hot partition** — covered above; key skew.
+
+> [!SUCCESS]
+> The four golden Kafka metrics to alert on: **UnderReplicatedPartitions** (durability at risk), **consumer lag / records-lag-max** (consumers falling behind), **request handler idle ratio** (broker saturation), and **active controller count = 1** (split-brain detection). Memorise these; they're a frequent ops-screen question.
+
+### What interviewers probe (ops)
+- "How many partitions for topic X?" → tie to peak consumer parallelism + throughput, mention the costs of too many.
+- "What breaks if you add partitions to a keyed topic?" → key re-sharding, ordering, partition-local state.
+- "delete vs compact retention — when each?"
+- "Walk me through diagnosing rising consumer lag." → per-partition lag, hot partition, slow processing, GC.
+- "Top metrics you'd alert on?" → under-replicated, lag, controller count, idle ratio.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `Operational CLI: under-replicated, retention, reassignment`,
+                code: `// Operational CLI quick-reference.  [reference]
+// bash
+
+// 1. Find under-replicated / offline partitions (durability check):
+kafka-topics.sh --bootstrap-server b1:9092 --describe --under-replicated-partitions
+kafka-topics.sh --bootstrap-server b1:9092 --describe --unavailable-partitions
+
+// 2. Change retention live (e.g. shrink to 3 days to reclaim disk):
+kafka-configs.sh --bootstrap-server b1:9092 --alter \\
+  --entity-type topics --entity-name orders \\
+  --add-config retention.ms=259200000,retention.bytes=53687091200
+
+// 3. Add partitions (DANGER on keyed topics — re-shards keys):
+kafka-topics.sh --bootstrap-server b1:9092 --alter --topic clicks --partitions 24
+
+// 4. Enable compaction on a state topic:
+kafka-configs.sh --bootstrap-server b1:9092 --alter \\
+  --entity-type topics --entity-name customer-profile \\
+  --add-config cleanup.policy=compact,min.cleanable.dirty.ratio=0.1
+
+// 5. Throttle a partition reassignment so it doesn't saturate the network:
+kafka-reassign-partitions.sh --bootstrap-server b1:9092 \\
+  --reassignment-json-file plan.json --execute --throttle 50000000  // 50 MB/s`,
+                runnable: false,
+                note: `Needs Kafka + spring-kafka — reference`
+              },
+              {
+                lang: `text`,
+                title: `Key broker/consumer/producer JMX metrics to alert on`,
+                code: `// Key broker / client JMX metrics to scrape.  [reference]
+// text
+BROKER (durability + saturation)
+  kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions   -> alert > 0
+  kafka.controller:type=KafkaController,name=ActiveControllerCount   -> must == 1 cluster-wide
+  kafka.controller:type=KafkaController,name=OfflinePartitionsCount  -> alert > 0
+  kafka.network:type=RequestHandlerAvgIdlePercent                    -> alert < 0.2 (saturated)
+  kafka.server:type=BrokerTopicMetrics,name=BytesInPerSec / BytesOutPerSec
+
+CONSUMER (keeping up)
+  kafka.consumer:type=consumer-fetch-manager-metrics,name=records-lag-max  -> alert on rise
+  kafka.consumer:...,name=fetch-latency-avg
+  commit-rate, rebalance-rate-per-hour                                -> rebalance storm signal
+
+PRODUCER (health)
+  kafka.producer:type=producer-metrics,name=record-error-rate         -> alert > 0
+  ...,name=record-retry-rate, request-latency-avg, batch-size-avg`,
+                runnable: false,
+                note: `Needs Kafka + spring-kafka — reference`
+              }
+            ],
+            flashcards: [
+              {
+                q: `delete vs compact cleanup policy — when each?`,
+                a: `delete: drop whole segments past retention.ms / retention.bytes — for event streams (orders, clicks). compact: keep at least the latest value per key — for topics representing current keyed state (changelogs, __consumer_offsets, Streams state). compact,delete combines both.`
+              },
+              {
+                q: `What breaks if you add partitions to a keyed topic?`,
+                a: `Key->partition mapping (murmur2(key) % N) changes, so a key may move to a different partition: per-key ordering breaks across the change and any partition-local state (dedup, aggregation) becomes wrong. Prefer sizing for peak up front, or migrate to a new topic.`
+              },
+              {
+                q: `Costs of too many partitions?`,
+                a: `More open file handles and memory per broker, longer leader-election/failover (controller moves more leaders), higher end-to-end latency (more requests + replication fan-out), and bigger rebalances. Empty partitions still cost replication and files.`
+              },
+              {
+                q: `How do you size partition count?`,
+                a: `At least peak consumer parallelism (the concurrency ceiling), plus throughput / per-partition-rate with headroom. Keep total partitions per broker reasonable (KRaft relaxes the old few-thousand ZK limit). Don't blanket-default to 50.`
+              },
+              {
+                q: `What is a hot partition and how do you fix it?`,
+                a: `One key/partition dominates traffic so one consumer maxes out while others idle and lag piles on that partition. Causes: low-cardinality/skewed keys or super-entities. Fixes: composite/salted keys, sub-partition the whale, route it specially. Detect via per-partition lag and byte-rate.`
+              },
+              {
+                q: `Levers for throughput vs latency?`,
+                a: `Throughput: linger.ms 10-50, big batch.size, zstd/lz4, higher fetch.min.bytes/max.poll.records, more partitions. Latency: linger.ms=0, small batches, compression none, fetch.min.bytes=1, low fetch.max.wait.ms. State the SLO first — you can't max throughput, latency, and durability together.`
+              },
+              {
+                q: `What are under-replicated partitions and why do they matter?`,
+                a: `Partitions whose ISR is smaller than the replica set — a follower fell behind (slow/GC-thrashing broker, disk I/O saturation). With min.insync.replicas=2 a further shrink makes producers with acks=all fail. Alert on UnderReplicatedPartitions > 0.`
+              },
+              {
+                q: `The four golden Kafka metrics to alert on?`,
+                a: `UnderReplicatedPartitions (>0 = durability risk), consumer lag / records-lag-max (falling behind), RequestHandlerAvgIdlePercent (broker saturation when low), and ActiveControllerCount (must be exactly 1 cluster-wide — split-brain detection).`
+              },
+              {
+                q: `Walk through diagnosing rising consumer lag.`,
+                a: `Check per-partition lag (isolate a hot partition vs whole-group), then look at processing time / GC pauses / a recent slow deploy, broker saturation (idle ratio), and rebalance rate. Fix the actual bottleneck — scale partitions/consumers, speed processing, or fix skew.`
+              },
+              {
+                q: `Why can a broker hit disk-full and how do you prevent it?`,
+                a: `Retention too long, too many partitions, or no retention.bytes cap. Prevent with a retention.bytes ceiling per partition and disk-usage alerts around 70%; retention deletes whole segments, so the active segment must roll before space frees.`
+              },
+              {
+                q: `What does ActiveControllerCount != 1 indicate?`,
+                a: `0 = no controller (cluster can't manage metadata/leader elections); >1 = split-brain (two brokers think they're controller). It must be exactly 1 cluster-wide; alert otherwise.`
               }
             ]
           }
@@ -26869,232 +29004,2003 @@ class OrderConsumer {
       {
         id: `6.3`,
         title: `Saga Pattern & Distributed Transactions`,
-        hours: 3,
+        hours: 5,
         sections: [
           {
-            title: `Saga Pattern — Choreography vs Orchestration`,
-            notes: `## Saga Pattern — Choreography vs Orchestration
+            title: `Why Distributed Transactions Are Hard: 2PC/XA, CAP & the Dual-Write Problem`,
+            notes: `
+# Why Distributed Transactions Are Hard
 
-### Why Distributed Transactions Are Hard
+In a monolith with a single database, a business operation that spans multiple tables is trivially correct:
 
-\`\`\`
-Monolith: BEGIN TX → update orders → update inventory → update payments → COMMIT
-  → ACID guarantees, rollback on failure
-
-Microservices: each service has its own DB
-  → Can't use a single transaction across services
-  → Two-Phase Commit (2PC) exists but: blocking, performance, availability issues
-  → Saga is the practical alternative
-\`\`\`
-
-### Saga Pattern
-
-\`\`\`
-A Saga is a sequence of local transactions, each publishing an event/message
-to trigger the next step. Failure → compensating transactions undo prior steps.
-
-Choreography Saga (event-driven, no central coordinator):
-  Order Service → creates order → publishes "OrderCreated"
-    → Inventory Service: reserves stock → publishes "StockReserved"
-      → Payment Service: charges card → publishes "PaymentCompleted"
-        → Order Service: marks order CONFIRMED
-
-  On failure (e.g. payment fails):
-  Payment Service → publishes "PaymentFailed"
-    ← Inventory Service: releases stock (compensating tx)
-      ← Order Service: cancels order (compensating tx)
+\`\`\`sql
+BEGIN;
+  INSERT INTO orders ...;
+  UPDATE inventory SET qty = qty - 1 WHERE ...;
+  INSERT INTO payments ...;
+COMMIT;   -- ACID: all-or-nothing, isolated, durable
 \`\`\`
 
-### Orchestration Saga
+The database gives you **A**tomicity (all-or-nothing), **C**onsistency, **I**solation, and **D**urability across all three writes for free. Split those tables across three services with three databases and that guarantee evaporates. You can no longer wrap them in one transaction because **transactions don't cross network/process boundaries** (no shared lock manager, no shared WAL, no shared commit point).
+
+## The Two Hard Problems
+
+There are really two distinct problems people conflate:
+
+1. **Multi-resource atomicity** — one logical unit of work must touch *N* independent transactional resources (DB-A, DB-B, a message broker) and either all commit or all abort.
+2. **The dual-write problem** — a single service must update *its own DB* **and** publish a *message/event* atomically. These are two different systems (Postgres + Kafka) with no shared transaction.
+
+2PC/XA attempts to solve (1). The Outbox pattern (section 4) solves (2). Sagas sidestep (1) entirely by giving up atomicity in favor of eventual consistency.
+
+---
+
+## Two-Phase Commit (2PC / XA) Mechanics
+
+2PC is the classic textbook answer. A **Transaction Coordinator (TC)** drives all participants through two phases:
+
+\`\`\`mermaid
+sequenceDiagram
+    participant TC as Coordinator
+    participant A as Inventory DB
+    participant B as Payment DB
+    Note over TC,B: Phase 1 — PREPARE (voting)
+    TC->>A: prepare
+    A-->>TC: VOTE-COMMIT (locks held, redo logged)
+    TC->>B: prepare
+    B-->>TC: VOTE-COMMIT (locks held, redo logged)
+    Note over TC,B: Phase 2 — COMMIT (decision)
+    TC->>A: commit
+    A-->>TC: ack
+    TC->>B: commit
+    B-->>TC: ack
+\`\`\`
+
+**Phase 1 (Prepare/Voting):** the TC asks every participant "can you commit?". Each participant does the work, writes redo/undo to its log, **acquires and holds locks**, and replies VOTE-COMMIT or VOTE-ABORT. After voting yes, a participant is in a *prepared* (in-doubt) state and is **bound** — it cannot unilaterally abort; it must wait for the TC.
+
+**Phase 2 (Commit/Decision):** if all voted commit, the TC writes a commit record (this is the atomic commit point) and tells everyone to commit; otherwise it tells everyone to abort. Locks release only after phase 2.
+
+This is implemented in Java via **JTA/XA**: \`javax.transaction.UserTransaction\`, an XA-capable datasource (\`XADataSource\`), and a TM like Atomikos, Narayana (JBoss/WildFly), or Bitronix.
+
+## Why 2PC Doesn't Scale
+
+> [!DANGER]
+> **2PC is a blocking, availability-reducing protocol.** Its failure modes are exactly the ones that bite hardest at scale, which is why most large-scale microservice architectures avoid it.
+
+| Problem | What actually happens |
+|---|---|
+| **Blocking / locks held across the network** | Locks (rows, possibly gaps) are held from PREPARE until COMMIT — i.e. across **multiple network round-trips**. Under contention this serializes throughput and tanks latency. |
+| **Coordinator is a SPOF** | If the TC crashes *after* participants voted commit but *before* sending the decision, participants are stuck **in-doubt**: they hold locks and cannot safely commit or abort. They must block until the TC recovers (or a human runs \`xa recover\`/\`xa rollback\`). |
+| **Availability (CAP)** | A prepared participant has surrendered autonomy. If it can't reach the TC, it cannot make progress — so a partition makes the whole transaction unavailable. 2PC chooses **C over A**. |
+| **Latency** | At minimum 2 round-trips + 2 fsyncs per participant on the critical path. Tail latency dominated by the slowest participant. |
+| **Heterogeneity** | Requires every resource to speak XA. Kafka, most NoSQL stores, and external HTTP APIs (Stripe, etc.) are **not XA participants** — you simply cannot enlist them. |
+
+> [!WARNING]
+> Classic 2PC has **no timeout in the in-doubt state by design** — that's what guarantees atomicity. 3PC adds a timeout phase to reduce blocking but assumes a synchronous network with bounded delay and no partitions, which is unrealistic, so 3PC is essentially never used in practice.
+
+---
+
+## CAP Framing
+
+CAP says under a network **P**artition you must choose **C**onsistency or **A**vailability. 2PC sits firmly on the **CP** side: when the coordinator or a participant is unreachable, the transaction blocks (unavailable) to preserve atomic consistency. Microservices typically want **AP-leaning** behavior — keep taking orders even if the payment service is briefly unreachable — and accept **eventual consistency**. Sagas are the AP-leaning answer: each step commits locally and immediately (high availability), and the system converges to a consistent end-state asynchronously.
+
+> [!TIP]
+> Interview soundbite: *"2PC trades availability for atomicity; sagas trade atomicity (and isolation) for availability, replacing rollback with compensation and ACID with BASE/eventual consistency."*
+
+---
+
+## The Dual-Write Problem (the trap nearly everyone hits)
+
+The single most common distributed-data bug. A service must do two writes to two systems:
 
 \`\`\`java
-// Central Saga Orchestrator manages the workflow
+// BUG: two writes, no atomicity. Any crash between them corrupts state.
+orderRepository.save(order);          // (1) commits to Postgres
+kafkaTemplate.send("orders", event);  // (2) publishes to Kafka
+\`\`\`
+
+Four failure interleavings, two of them break correctness:
+
+| Crash point | DB | Broker | Result |
+|---|---|---|---|
+| after (1), before (2) | committed | not sent | **Lost event** — downstream never reserves stock; order stuck. |
+| (2) succeeds, (1)'s tx rolls back | rolled back | sent | **Phantom event** — consumers act on an order that doesn't exist. |
+| reorder send-first, then DB fails | rolled back | sent | Phantom event. |
+| both succeed | committed | sent | Correct (the only good case). |
+
+> [!DANGER]
+> You **cannot** fix this by reordering, by try/catch, or by "send then save". There is always an interleaving that loses or duplicates. Retrying the send after a DB commit still loses the event if the process is killed before the retry. The only robust fix is to make the event part of the **same local transaction** as the data — that is the **Transactional Outbox** (section 4).
+
+> [!EU]
+> Compliance angle: a lost \`PaymentCaptured\` or duplicated \`FundsTransferred\` event isn't just a bug — under PSD2/SOX it's a reconciliation and audit failure. The outbox + idempotency story is what auditors want to see for financial event flows.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `JTA/XA two-phase commit — what it looks like (and why it blocks)`,
+                runnable: false,
+                note: `Reference — needs a JTA TM (Atomikos/Narayana) + XADataSources`,
+                code: `// Two XA-capable datasources enlisted in ONE global transaction.
+// The JTA TransactionManager runs 2PC across both on commit().
 @Service
-public class CreateOrderSaga {
-    // Steps: 1.Reserve Inventory → 2.Charge Payment → 3.Confirm Order
-    // On failure: compensate in reverse
+public class XaTransferService {
 
-    @Transactional
-    public SagaResult execute(CreateOrderCommand cmd) {
-        String sagaId = UUID.randomUUID().toString();
-        SagaState state = new SagaState(sagaId, cmd);
+    @Autowired private DataSource inventoryXaDs; // XADataSource
+    @Autowired private DataSource paymentXaDs;   // XADataSource
 
-        try {
-            // Step 1
-            state.setInventoryReservationId(
-                inventoryClient.reserve(cmd.productId(), cmd.quantity()));
-            state.setStep(SagaStep.INVENTORY_RESERVED);
+    // @Transactional here uses JtaTransactionManager (global tx), not a
+    // single-DB DataSourceTransactionManager.
+    @Transactional // -> jtaTransactionManager
+    public void placeOrder(Order o) {
+        // Both writes enlist their XAResource in the same global tx.
+        try (var c = inventoryXaDs.getConnection()) {
+            c.prepareStatement("UPDATE inventory SET qty = qty - 1 ...").executeUpdate();
+        } catch (Exception e) { throw new RuntimeException(e); }
 
-            // Step 2
-            state.setPaymentId(
-                paymentClient.charge(cmd.customerId(), cmd.amount()));
-            state.setStep(SagaStep.PAYMENT_CHARGED);
+        try (var c = paymentXaDs.getConnection()) {
+            c.prepareStatement("INSERT INTO payments ...").executeUpdate();
+        } catch (Exception e) { throw new RuntimeException(e); }
 
-            // Step 3
-            orderRepo.updateStatus(cmd.orderId(), OrderStatus.CONFIRMED);
-            return SagaResult.success();
+        // On method exit, the TM runs:
+        //   PHASE 1: xa_prepare(inventory); xa_prepare(payment);  // locks HELD
+        //   PHASE 2: xa_commit(inventory);  xa_commit(payment);   // locks released
+        //
+        // FAILURE MODE: if the TM (coordinator) crashes between phase 1 and
+        // phase 2, both resources are left "in-doubt": rows locked, neither
+        // committed nor aborted, until recovery scans the TM log and resolves
+        // them. Operators sometimes resort to: XA RECOVER; XA ROLLBACK '...';
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Walk me through what a participant does after it votes COMMIT in phase 1 of 2PC, and why that's dangerous.`,
+                a: `It enters the in-doubt/prepared state: the work is done, redo/undo is durably logged, and locks are HELD. Crucially it has surrendered autonomy — it can no longer unilaterally abort and must await the coordinator's decision. If the coordinator crashes before sending the decision, the participant blocks indefinitely (locks held, no progress) until coordinator recovery or manual XA RECOVER/ROLLBACK. This blocking-under-coordinator-failure is 2PC's core scalability/availability problem.`
+              },
+              {
+                q: `Why can't you enlist Kafka or Stripe in an XA transaction with your Postgres write?`,
+                a: `XA/2PC requires every participant to implement the XAResource protocol (prepare/commit/rollback with durable in-doubt logging). Kafka has no XA participant interface, and external HTTP APIs like Stripe are request/response with no prepare phase or coordinator-driven recovery. You physically cannot enlist them, which is why the dual-write (DB + broker) problem needs the Outbox pattern, not XA.`
+              },
+              {
+                q: `Place 2PC and sagas on the CAP spectrum.`,
+                a: `2PC is CP: under partition (coordinator/participant unreachable) it blocks to preserve atomic consistency, sacrificing availability. Sagas are AP-leaning: each local transaction commits immediately for high availability and the system reaches consistency eventually via compensations. Sagas trade strong isolation/atomicity for availability and accept eventual consistency (BASE).`
+              },
+              {
+                q: `Describe the dual-write problem precisely and prove you can't fix it by reordering.`,
+                a: `A service must update its DB and publish a message, but they're separate systems with no shared transaction. Save-then-send loses the event if the process dies before/ during send; send-then-save creates a phantom event if the DB tx rolls back. There is always a crash interleaving that loses or duplicates. The robust fix is to write the event into the SAME DB transaction (outbox table) and relay it asynchronously.`
+              },
+              {
+                q: `What is the atomic commit point in 2PC?`,
+                a: `The moment the coordinator durably writes its COMMIT record to its own log (after collecting all VOTE-COMMITs). Before that point the global tx can still abort; after it, the decision is irrevocable and the coordinator will drive all participants to commit, replaying through crashes via its log.`
+              },
+              {
+                q: `Why is 3PC not used in practice despite reducing blocking?`,
+                a: `3PC adds a pre-commit phase + timeouts so participants can make progress if the coordinator is lost, reducing blocking. But its safety relies on a synchronous network with bounded message delay and no network partitions. Real networks partition, so 3PC can produce inconsistent decisions under partition. The cost/complexity isn't worth it versus just using sagas/eventual consistency.`
+              },
+              {
+                q: `Your team says "we'll just use @Transactional across services with Spring." What's wrong?`,
+                a: `@Transactional only governs the local resources of one JVM/datasource. It does not and cannot span another service's database over HTTP/gRPC. There's no shared transaction context, lock manager, or commit point across the network. You need either XA (heavy, blocking, and impossible for non-XA resources) or, in practice, a saga with compensations plus an outbox for reliable messaging.`
+              },
+              {
+                q: `In 2PC, what determines the transaction's latency and throughput ceiling?`,
+                a: `Latency is bounded by the slowest participant (tail latency) and requires at least two round-trips plus durable fsyncs of prepare and commit records per participant on the critical path. Throughput is capped by lock hold time: locks are held from prepare until commit across network round-trips, so under contention concurrent transactions serialize, sharply limiting throughput.`
+              },
+              {
+                q: `When is 2PC/XA actually a reasonable choice?`,
+                a: `Within a single bounded context where all resources are XA-capable, latencies are low/LAN-local, contention is modest, and you genuinely need synchronous atomicity (e.g., a JMS broker + a single RDBMS in one app, or multiple datasources in a monolith). It is reasonable precisely when it is NOT distributed across autonomous services or non-XA systems.`
+              },
+              {
+                q: `What distinguishes the "multi-resource atomicity" problem from the "dual-write" problem?`,
+                a: `Multi-resource atomicity is N independent transactional resources needing all-or-nothing across services — the thing 2PC and sagas address. Dual-write is the narrower case of one service atomically updating its own DB and emitting a message to a broker. Outbox solves dual-write; sagas/compensation solve cross-service atomicity. Conflating them leads people to reach for XA when an outbox would do.`
+              }
+            ]
+          },
+          {
+            title: `Saga Fundamentals: Compensation, Semantic Locks & Isolation Anomalies`,
+            notes: `
+# Saga Fundamentals
 
-        } catch (InventoryException e) {
-            // Nothing to compensate — failed at step 1
-            orderRepo.updateStatus(cmd.orderId(), OrderStatus.FAILED);
-            return SagaResult.failure("Out of stock");
+> **A saga is a sequence of local transactions T1, T2, ... Tn, where each Ti commits independently in its own service/DB. If some Tj fails, the saga executes compensating transactions Cj-1, ..., C1 to semantically undo the already-committed work.** (Garcia-Molina & Salem, 1987 — originally about long-running DB transactions, now the backbone of microservice consistency.)
 
-        } catch (PaymentException e) {
-            // Compensate step 1: release inventory
-            inventoryClient.release(state.getInventoryReservationId());
-            orderRepo.updateStatus(cmd.orderId(), OrderStatus.FAILED);
-            return SagaResult.failure("Payment failed");
+There is **no global rollback**. Each Ti is already committed and visible. "Undo" is not a DB rollback — it's a *new* forward transaction that semantically reverses the effect.
+
+## Compensating Transactions
+
+A compensation Ci semantically undoes Ti. It is **not** a binary inverse:
+
+| Ti (do) | Ci (compensate) | Note |
+|---|---|---|
+| reserve 1 unit of stock | release 1 unit of stock | clean inverse |
+| charge $50 to card | refund $50 | NOT identical to "never charged" — customer saw a charge then a refund |
+| send confirmation email | send "order cancelled" email | you cannot un-send; you emit a counter-effect |
+| ship the package | ... | **irreversible** — must be a *pivot* step (see below) |
+
+> [!WARNING]
+> Compensations must themselves be **idempotent** and **retried until success** (they can fail too). \`Ci\` running twice must equal \`Ci\` running once. A compensation that can permanently fail breaks the saga's guarantee — design every compensation to be eventually-successful or escalate to a human.
+
+### Pivot, Compensatable, and Retriable steps
+
+A useful taxonomy (from Microservices Patterns, Richardson):
+
+- **Compensatable transaction** — can be undone by a compensation (reserve stock, authorize payment).
+- **Pivot transaction** — the point of no return. Once it commits, the saga *will* complete forward; it has no compensation. Often the last compensatable step is followed by the pivot.
+- **Retriable transaction** — comes after the pivot; guaranteed to eventually succeed (with retries). E.g., \`shipOrder\`, \`sendReceipt\`.
+
+Ordering steps as **[compensatable...] → pivot → [retriable...]** minimizes the blast radius: you only ever compensate the cheap/reversible prefix, and everything after the pivot is forward-only.
+
+## Backward vs Forward Recovery
+
+- **Backward recovery (compensation):** on failure, roll back by compensating prior steps. The saga ends in the *aborted* state. Used for compensatable steps.
+- **Forward recovery (retry):** on failure, keep retrying the failed step (and proceed) until it succeeds. The saga ends in the *completed* state. Used for retriable steps after the pivot, where undoing is impossible or undesirable.
+
+Real sagas mix both: compensate the prefix up to the pivot, retry the suffix after it.
+
+\`\`\`mermaid
+stateDiagram-v2
+    [*] --> T1
+    T1 --> T2: ok
+    T2 --> PIVOT: ok
+    T2 --> C1: fail (backward)
+    T1 --> C1: fail
+    C1 --> Aborted
+    PIVOT --> T4: committed (no compensation)
+    T4 --> T4: retry on fail (forward)
+    T4 --> Completed
+    Aborted --> [*]
+    Completed --> [*]
+\`\`\`
+
+---
+
+## Isolation Anomalies — the part interviewers love
+
+Sagas give up the **I** in ACID. Between Ti committing and the saga completing/compensating, **partial, uncommitted-in-spirit state is visible** to other transactions. This produces classic anomalies. Know all three and their countermeasures.
+
+| Anomaly | What goes wrong | Countermeasure |
+|---|---|---|
+| **Lost update** | Saga A reads a record, saga B updates and commits it, A overwrites with stale data. | **Semantic lock**: mark the record \`PENDING\`/locked so B refuses to touch it; optimistic version columns. |
+| **Dirty read** | Another tx reads data written by a saga step that later gets compensated (it read money that got refunded). | **Semantic lock** + status flags so readers know the value is tentative; **commutative updates** (e.g. \`balance += x\` rather than \`balance = y\`). |
+| **Fuzzy / non-repeatable read** | Saga reads the same data twice and gets different values because another saga mutated it mid-flight. | **Reread & re-validate** before acting; pessimistic semantic lock for the saga's duration. |
+
+### Countermeasures in depth
+
+> [!TIP]
+> **Semantic lock** = an application-level lock implemented as a status flag (e.g. \`order.state = PENDING\`, \`account.locked = true\`). Other sagas check the flag and either fail fast, retry later, or queue. The flag is released when the saga completes or compensates. It is *not* a DB lock — it survives across local transactions and across services.
+
+Other countermeasures:
+- **Commutative updates** — design operations so order doesn't matter (\`credit\`/\`debit\` deltas commute), so a compensation of \`+x\` is just \`-x\` regardless of interleaving.
+- **Pessimistic view** — reorder saga steps so the step most likely to fail / least reversible runs early, shrinking the window of visible tentative state.
+- **Reread value** — before updating, re-read and verify the record hasn't changed (optimistic concurrency); abort & restart the saga if it has.
+- **By-value strategy** — use business risk to decide per-request whether to use a saga (high concurrency tolerance) or fall back to 2PC for the few high-risk requests.
+
+> [!DANGER]
+> **The countermeasure you'll be asked about most: a customer can see a charge that later gets refunded (dirty read of money).** Mitigate with semantic locks + clearly modeling tentative states (\`PAYMENT_PENDING\`) in the UI/API so downstream and humans never treat tentative state as final.
+
+> [!SUCCESS]
+> Mental model: a saga is **ACD, not ACID** — Atomic (eventually, via compensation), Consistent, Durable, but **NOT Isolated**. You reintroduce a *weak* form of isolation manually with semantic locks and careful state modeling.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `Semantic lock + commutative update (anti-anomaly design)`,
+                runnable: false,
+                note: `Reference — illustrates the pattern, needs JPA/DB`,
+                code: `// SEMANTIC LOCK: an application-level "this row is mid-saga" flag.
+// Other sagas see PENDING and refuse to mutate, avoiding lost-update/dirty-read.
+@Entity
+class Account {
+    @Id Long id;
+    @Version long version;          // optimistic lock -> reread/lost-update guard
+    long balanceCents;
+    boolean lockedBySaga;           // semantic lock flag
+    String lockOwnerSagaId;         // who holds it (for debugging / release)
+}
+
+// COMMUTATIVE UPDATE: apply a delta, never set an absolute value.
+// debit(+x) then compensate(-x) is correct regardless of interleaving,
+// and two concurrent deltas don't clobber each other.
+@Modifying
+@Query("update Account a set a.balanceCents = a.balanceCents - :amt " +
+       "where a.id = :id and a.lockedBySaga = false")
+int debitIfUnlocked(@Param("id") Long id, @Param("amt") long amt);
+// returns 0 rows -> someone holds the semantic lock -> retry/back off, do NOT overwrite.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is a saga "ACD but not ACID", and what do you do about the missing letter?`,
+                a: `Each local tx is atomic+durable and the saga is eventually atomic via compensation and keeps data consistent — but isolation is gone: partially-completed saga state is visible to others between steps. You manually reintroduce weak isolation with semantic locks (status flags like PENDING), commutative updates, reread-and-revalidate (optimistic versions), and pessimistic step ordering.`
+              },
+              {
+                q: `A compensating transaction is not a DB rollback. Explain.`,
+                a: `By the time you need to undo Ti, it's already committed and visible. There's nothing to ROLLBACK. The compensation Ci is a brand-new forward local transaction that semantically reverses the effect (refund the charge, release the reservation, send a cancellation). Side effects already observed (emails, external charges) can't be erased, only counter-acted.`
+              },
+              {
+                q: `Define pivot, compensatable, and retriable transactions and why ordering them matters.`,
+                a: `Compensatable: undoable by a compensation. Pivot: the point of no return, no compensation; once it commits the saga must complete forward. Retriable: after the pivot, guaranteed to eventually succeed via retries. Ordering as compensatable...→pivot→retriable... means you only ever compensate the cheap reversible prefix, and everything after the pivot is forward-only — minimizing rollback blast radius.`
+              },
+              {
+                q: `Contrast backward and forward recovery; do real sagas pick one?`,
+                a: `Backward recovery = compensate prior steps and end Aborted (used for compensatable steps). Forward recovery = keep retrying the failing step until it succeeds and end Completed (used for retriable steps after the pivot, where undo is impossible/undesirable). Real sagas mix both: compensate up to the pivot, retry-forward after it.`
+              },
+              {
+                q: `What is a semantic lock and how does it differ from a database lock?`,
+                a: `A semantic lock is an application-level flag (e.g., order.state=PENDING, account.lockedBySaga=true) signaling that a record is mid-saga so other sagas refuse or defer mutation. Unlike a DB lock it persists across separate local transactions and across services (DB locks die with their transaction), it's released explicitly on saga complete/compensate, and you must handle the case where a saga crashes holding it (timeout/cleanup).`
+              },
+              {
+                q: `A customer sees a charge then a refund seconds later. Which saga anomaly is this and how do you mitigate?`,
+                a: `A dirty read of tentative state: the charge step committed and was observed, then the saga compensated. Mitigations: model tentative states explicitly (PAYMENT_PENDING) so UIs/downstream don't treat it as final, hold a semantic lock during the saga, prefer authorize-then-capture (authorize is reversible, capture is the pivot), and order the pivot late so you minimize the visible-charge window.`
+              },
+              {
+                q: `Why must compensations be idempotent and how do you guarantee they eventually succeed?`,
+                a: `The saga coordinator may retry a compensation after a crash or timeout, so Ci-twice must equal Ci-once (track a compensated flag / use commutative deltas). Eventual success: make compensations retriable with backoff, never let them permanently fail silently — if they exhaust retries, escalate to a DLQ/human, because a permanently-failed compensation leaves the system inconsistent and breaks the saga's whole guarantee.`
+              },
+              {
+                q: `How do commutative updates help with saga isolation?`,
+                a: `If updates are deltas (balance += x) instead of absolute sets (balance = y), concurrent sagas don't clobber each other and a compensation is just the negated delta (-x), correct regardless of interleaving. This neutralizes lost-update and makes compensation order-independent, which is why financial systems model ledger entries as append-only deltas rather than mutable balances.`
+              },
+              {
+                q: `What is the "reread value" countermeasure and what concurrency mechanism implements it?`,
+                a: `Before a saga step mutates a record, re-read it and verify it hasn't changed since the saga first observed it; if it changed, abort/restart the saga. It's implemented with optimistic concurrency — a @Version column; the UPDATE includes WHERE version = :seen and a 0-row result signals a conflicting concurrent change. It defends against lost updates and non-repeatable reads.`
+              },
+              {
+                q: `Why might you order the most failure-prone or least-reversible saga step early (pessimistic view)?`,
+                a: `Doing the risky/irreversible step early shrinks the window during which tentative, possibly-to-be-compensated state is visible, and lets you fail before incurring expensive or hard-to-undo work. E.g., validate/reserve before charging; if reservation fails you never charged. It reduces both the probability and cost of compensation and limits dirty-read exposure.`
+              },
+              {
+                q: `Your saga crashes while holding a semantic lock on an order. What breaks and how do you handle it?`,
+                a: `The order stays PENDING forever, blocking other sagas indefinitely (a stuck semantic lock = an application-level deadlock). Handle it with: a lock owner + timestamp, a timeout/reaper that detects stale locks and triggers compensation or recovery for the orphaned saga, and durable saga state (event-sourced log) so a restarted coordinator can resume or compensate, then release the lock.`
+              }
+            ]
+          },
+          {
+            title: `Choreography vs Orchestration`,
+            notes: `
+# Choreography vs Orchestration
+
+Two ways to coordinate the steps of a saga. This is the most common saga interview question, so be able to draw both and defend a choice.
+
+## Choreography — event-driven, no central brain
+
+Each service reacts to events and emits its own. There is **no coordinator**; the workflow is *emergent* from local rules.
+
+\`\`\`mermaid
+graph LR
+    O[Order Service] -- OrderCreated --> I[Inventory Service]
+    I -- StockReserved --> P[Payment Service]
+    P -- PaymentCaptured --> S[Shipping Service]
+    S -- OrderShipped --> O
+    P -- PaymentFailed --> I
+    I -- StockReleased --> O
+    I -- OutOfStock --> O
+\`\`\`
+
+- Happy path: \`OrderCreated → StockReserved → PaymentCaptured → OrderShipped\`.
+- Failure path: \`PaymentFailed → StockReleased → OrderCancelled\` (each service compensates on the relevant failure event).
+
+> [!TIP]
+> Choreography shines for **short sagas (2–4 steps)** with **few participants** and **loose coupling** — adding a service that just subscribes to an existing event needs zero changes to producers.
+
+## Orchestration — a central coordinator (state machine)
+
+A dedicated **orchestrator** (the "Order Saga") owns the workflow as an explicit state machine. It sends commands and reacts to replies, deciding the next step (or compensation).
+
+\`\`\`mermaid
+sequenceDiagram
+    participant C as Client
+    participant SO as Order Saga (Orchestrator)
+    participant I as Inventory
+    participant P as Payment
+    participant Sh as Shipping
+
+    C->>SO: createOrder
+    SO->>SO: state = ORDER_CREATED
+    SO->>I: ReserveStock (command)
+    I-->>SO: StockReserved (reply)
+    SO->>SO: state = STOCK_RESERVED
+    SO->>P: ChargePayment (command)
+    P-->>SO: PaymentCaptured (reply)
+    SO->>SO: state = PAYMENT_DONE
+    SO->>Sh: ShipOrder (command)
+    Sh-->>SO: OrderShipped (reply)
+    SO->>SO: state = COMPLETED
+    SO-->>C: order confirmed
+
+    Note over SO,P: --- Compensation path (payment fails) ---
+    P-->>SO: PaymentFailed
+    SO->>SO: state = COMPENSATING
+    SO->>I: ReleaseStock (compensation)
+    I-->>SO: StockReleased
+    SO->>SO: state = ABORTED
+    SO-->>C: order rejected
+\`\`\`
+
+The orchestrator persists its **saga state** after each step (durable, so it survives crashes and resumes). Steps are commands with explicit replies, and the orchestrator knows the full compensation map.
+
+---
+
+## Side-by-side
+
+| Dimension | Choreography | Orchestration |
+|---|---|---|
+| Control | Decentralized; emergent from events | Centralized; explicit state machine |
+| Coupling | Loose (services know only events) | Services coupled to orchestrator (commands) |
+| Visibility | **Hard** — flow is spread across services, no single place shows "where is order #42?" | **Easy** — orchestrator persists current state; one place to query/observe |
+| Adding a step | Easy if it only subscribes; **hard** if it changes ordering | Edit the orchestrator's state machine in one place |
+| Cyclic dependency risk | **High** — services emitting events others react to can form cycles/infinite loops | Low — orchestrator imposes a DAG |
+| Testing | Hard — must simulate event choreography end-to-end | Easier — unit-test the state machine with mocked steps |
+| Single point of failure | None (but no single owner either) | Orchestrator (mitigate: make it stateless+durable, HA, persisted state) |
+| Best for | Short, simple, stable workflows; high autonomy | Complex/long workflows, many steps, branching, strong observability needs |
+
+> [!WARNING]
+> **Cyclic dependency / event storm risk in choreography.** If Service A emits an event B reacts to, and B emits one A reacts to, you can create feedback loops, hard-to-trace cascades, and ordering bugs. As the number of participants grows, the emergent flow becomes a black box: nobody can answer "what is the current state of this order and why is it stuck?" without tracing logs across N services. This is the #1 reason teams migrate choreography → orchestration as workflows grow.
+
+> [!DANGER]
+> Don't put **business logic in the orchestrator's steps**. The orchestrator should coordinate (send commands, track state, decide next/compensate) — the *domain logic* (how to reserve stock) lives in the owning service. A "god orchestrator" that does the work itself recreates a distributed monolith.
+
+## When to pick which
+
+> [!SUCCESS]
+> Rule of thumb: **start with choreography for 2–4 step, stable flows; switch to orchestration when** the saga grows past ~4 steps, gains conditional branching, needs strong operational visibility ("where is this order?"), or when the implicit event graph starts forming cycles. Many systems use **both**: choreography between bounded contexts, orchestration *within* a complex context.
+`,
+            code: [
+              {
+                lang: `text`,
+                title: `Decision checklist — choreography vs orchestration`,
+                runnable: false,
+                code: `Pick CHOREOGRAPHY when:
+  [x] 2-4 steps, simple linear flow
+  [x] Participants are stable (you rarely add/reorder steps)
+  [x] You want maximum service autonomy / loose coupling
+  [x] No complex branching or conditional compensation
+  [x] Acceptable to trace flow across services (good distributed tracing in place)
+
+Pick ORCHESTRATION when:
+  [x] 5+ steps, or branching / conditional paths
+  [x] You need to answer "where is order #42 right now?" cheaply
+  [x] Compensation logic is non-trivial (partial rollbacks, retries with policy)
+  [x] The implicit event graph is forming cycles (event A -> B -> ... -> A)
+  [x] Strong SLAs / auditability / human-in-the-loop steps
+
+Smell that you've outgrown choreography:
+  - A new joiner can't draw the full flow from any single service
+  - Bugs are "event X arrived before event Y" ordering races
+  - You added a "manager" service that subscribes to everything -> that IS an
+    accidental orchestrator; make it explicit.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Give the crisp definition distinguishing choreography from orchestration.`,
+                a: `Choreography: decentralized, event-driven — each service reacts to events and emits its own; the workflow is emergent with no central coordinator. Orchestration: a dedicated orchestrator owns the saga as an explicit, persisted state machine, sending commands to services and reacting to replies to decide the next step or compensation. Choreography = react to events; orchestration = obey commands from a coordinator.`
+              },
+              {
+                q: `What is the cyclic-dependency risk in choreography and why does it worsen with scale?`,
+                a: `Because services both emit and react to events, A→B→...→A feedback loops and event storms can form, causing infinite loops, cascades, and ordering bugs. As participants grow the emergent flow becomes a black box with no single source of truth for an order's state, so cycles are hard to detect and debug. Orchestration imposes a DAG via one coordinator, eliminating this.`
+              },
+              {
+                q: `In an orchestrated saga, what must the orchestrator persist and why?`,
+                a: `Its current saga state/step after each transition (durably, often via event sourcing or a saga-state table). This lets a crashed orchestrator restart and resume or compensate exactly where it left off, makes "where is order #42?" a single query, and provides an audit trail. Without durable state a crash mid-saga would orphan reservations/charges and break recovery.`
+              },
+              {
+                q: `Why is observability the strongest practical argument for orchestration?`,
+                a: `With orchestration the entire workflow state lives in one place, so you can query/alert on stuck sagas, see exactly which step failed, and drive dashboards/timeouts centrally. With choreography the flow is smeared across N services with no owner, so answering "what state is this order in and why is it stuck?" requires correlating logs/traces across services — operationally expensive and error-prone.`
+              },
+              {
+                q: `What's the anti-pattern of a "god orchestrator" and how do you avoid it?`,
+                a: `An orchestrator that contains the domain logic itself (computing inventory, doing the charge) rather than only coordinating — recreating a distributed monolith with services as dumb CRUD. Avoid it by keeping domain logic in the owning service: the orchestrator only sends commands (ReserveStock), tracks state, and decides next/compensate. Coordination vs. computation must stay separate.`
+              },
+              {
+                q: `Adding a new participant: compare the cost in choreography vs orchestration.`,
+                a: `Choreography: trivial if the new service only subscribes to an existing event (zero producer changes) — but painful if it requires reordering steps or new events others must emit. Orchestration: you edit the orchestrator's state machine in one place to insert the step/command/compensation, which is explicit and reviewable but touches the central component. Net: choreography wins for pure add-on subscribers; orchestration wins for ordering/branching changes.`
+              },
+              {
+                q: `Can the orchestrator be a single point of failure, and how do you mitigate?`,
+                a: `Yes — it's the central coordinator. Mitigate by making it stateless in-memory but durable in storage (persist saga state every transition), running multiple HA instances behind a queue with idempotent command/reply handling and leader election or partitioned ownership, and ensuring at-least-once delivery so a restarted instance resumes from persisted state. The state store, not the process, is the source of truth.`
+              },
+              {
+                q: `How does compensation differ operationally between choreography and orchestration?`,
+                a: `Choreography: each service must itself listen for failure events and emit its own compensation (StockReleased on PaymentFailed) — the compensation logic is distributed and implicit, easy to get wrong/incomplete. Orchestration: the orchestrator holds the full compensation map and explicitly issues compensations in reverse order with retry policy, so partial rollbacks and ordering are centralized and testable.`
+              },
+              {
+                q: `What's the hybrid approach many mature systems use?`,
+                a: `Use both at different granularities: orchestration WITHIN a complex bounded context (a clear state machine, strong visibility) and choreography BETWEEN bounded contexts (loose coupling, autonomy, integration events). This keeps complex internal flows observable while preserving decoupling at the system boundaries — rather than treating it as a strict either/or.`
+              },
+              {
+                q: `Name a concrete sign your team has accidentally built an orchestrator inside a choreography.`,
+                a: `A "manager"/"coordinator" service appears that subscribes to nearly all events and emits the next commands, effectively centralizing the flow — but informally, without persisted saga state or an explicit state machine. That's an implicit orchestrator with none of the benefits (no durable state, no single status query). The fix is to make it explicit: model the state machine and persist transitions.`
+              },
+              {
+                q: `Why is testing generally easier with orchestration?`,
+                a: `The workflow is an explicit state machine in one component, so you can unit-test transitions with mocked step clients, inject failures at any step, and assert the exact compensation sequence deterministically. Choreography testing requires standing up/event-simulating multiple services and reproducing event timing/ordering, which is integration-heavy and flaky. Orchestration localizes the coordination logic that you most want to test.`
+              }
+            ]
+          },
+          {
+            title: `Transactional Outbox, CDC & Idempotency (Exactly-Once Effect)`,
+            notes: `
+# Transactional Outbox, CDC & Idempotency
+
+This section solves the **dual-write problem** from section 1 and makes message processing **exactly-once-in-effect** despite at-least-once delivery.
+
+## Transactional Outbox
+
+The insight: **don't publish to the broker directly inside business logic.** Instead, in the *same local DB transaction* that changes your data, insert a row into an \`outbox\` table. Because it's one transaction, the data change and the "intent to publish" commit atomically — no dual write.
+
+\`\`\`mermaid
+sequenceDiagram
+    participant App as Order Service
+    participant DB as Postgres (orders + outbox)
+    participant Relay as Relay / Debezium (CDC)
+    participant K as Kafka
+
+    App->>DB: BEGIN
+    App->>DB: INSERT INTO orders ...
+    App->>DB: INSERT INTO outbox (event) ...
+    App->>DB: COMMIT  (atomic: data + event together)
+    Note over DB,Relay: later, asynchronously
+    Relay->>DB: read new outbox rows (poll OR tail WAL)
+    Relay->>K: publish event
+    Relay->>DB: mark outbox row published (or rely on CDC offset)
+\`\`\`
+
+A **message relay** then ships outbox rows to the broker. Two flavors:
+
+1. **Polling publisher** — a background job \`SELECT ... WHERE published=false ORDER BY id LIMIT N\`, publish, mark published. Simple, but adds DB load and latency; needs careful locking to avoid double-publish across instances (\`FOR UPDATE SKIP LOCKED\`).
+2. **CDC / log tailing (Debezium)** — tail the database **WAL/binlog**. Debezium captures every committed insert into \`outbox\` and streams it to Kafka. No polling, lower latency, no app code, no extra DB load from polling. This is the production-grade choice.
+
+> [!TIP]
+> Debezium's dedicated **Outbox Event Router** SMT reads your \`outbox\` table and routes each row to a topic based on \`aggregate_type\`, using \`aggregate_id\` as the Kafka key (preserving per-aggregate ordering). You get the outbox pattern with near-zero custom relay code.
+
+> [!WARNING]
+> The relay is **at-least-once**. After publishing, the relay can crash before marking the row \`published\` (or before committing the Kafka offset), so the same event is published again. **This is fine and expected** — you make consumers idempotent rather than trying to make delivery exactly-once. (True exactly-once delivery across a network is impossible; exactly-once *effect* is achievable.)
+
+## Inbox / Dedup & Idempotency Keys
+
+On the consumer side, defend against duplicates with an **inbox** (processed-message) table and **idempotency keys**.
+
+- Every message carries a stable, unique **message id / idempotency key** (e.g. a UUID generated by the producer at outbox-insert time — NOT a Kafka offset, which changes on replay).
+- The consumer, **in the same transaction** as its business write, inserts the message id into a \`processed_messages\` table with a unique constraint.
+- If the insert violates the unique constraint, this is a **duplicate** → skip (the effect already happened). Otherwise process and commit together.
+
+This gives **exactly-once effect**: at-least-once delivery + idempotent consumer = each message's effect applied exactly once.
+
+\`\`\`mermaid
+graph LR
+    K[Kafka msg<br/>id=uuid] --> C{seen id<br/>in inbox?}
+    C -- yes --> Skip[ack & drop<br/>duplicate]
+    C -- no --> Tx[BEGIN: apply effect<br/>+ INSERT id into inbox<br/>COMMIT]
+    Tx --> Ack[ack]
+\`\`\`
+
+## Message Ordering
+
+At-least-once + retries can also **reorder** messages. Defenses:
+
+- **Partition by aggregate key** (Kafka key = \`order_id\`/\`aggregate_id\`) — Kafka preserves order *within a partition*, so all events for one order are ordered. (No global order across partitions, and you don't need it.)
+- **Version / sequence numbers** in the event; consumers reject/buffer out-of-order events (\`if event.version <= lastSeen: skip\`).
+- **Idempotency + commutativity** so that even if order varies the end state is the same.
+
+> [!SUCCESS]
+> **The exactly-once recipe:** Outbox (atomic produce) + at-least-once relay (CDC) + idempotency key + inbox dedup in the consumer's transaction + partition-by-key for ordering. This is the de-facto standard for reliable event-driven microservices.
+
+> [!EU]
+> For financial/PII event streams, the outbox row and inbox dedup row are your **audit + reconciliation backbone**: you can prove every state change emitted exactly one logical event and every consumer applied it exactly once — essential for SOX/PSD2 reconciliation.
+`,
+            code: [
+              {
+                lang: `sql`,
+                title: `Outbox + inbox tables (Postgres) — production shape`,
+                runnable: false,
+                note: `Reference — DDL for outbox/inbox pattern`,
+                code: `-- OUTBOX: written in the SAME tx as the business change.
+CREATE TABLE outbox (
+    id             BIGSERIAL PRIMARY KEY,
+    message_id     UUID        NOT NULL UNIQUE,     -- stable idempotency key for consumers
+    aggregate_type VARCHAR(64) NOT NULL,            -- "order"  -> routes to topic
+    aggregate_id   VARCHAR(64) NOT NULL,            -- "42"     -> Kafka key (per-aggregate ordering)
+    event_type     VARCHAR(64) NOT NULL,            -- "OrderCreated"
+    payload        JSONB       NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published      BOOLEAN     NOT NULL DEFAULT false  -- only used by polling relay; CDC ignores it
+);
+-- Polling relay needs to find unpublished rows cheaply:
+CREATE INDEX idx_outbox_unpublished ON outbox (id) WHERE published = false;
+
+-- Business write + event in ONE transaction (this is the whole point):
+-- BEGIN;
+--   INSERT INTO orders (id, state) VALUES (42, 'PENDING');
+--   INSERT INTO outbox (message_id, aggregate_type, aggregate_id, event_type, payload)
+--     VALUES (gen_random_uuid(), 'order', '42', 'OrderCreated', '{"orderId":42}');
+-- COMMIT;   -- data + event commit atomically. No dual write.
+
+-- Polling relay claim query (multi-instance safe): no two relays grab the same row.
+-- SELECT * FROM outbox WHERE published = false
+--   ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED;
+
+-- INBOX / dedup on the CONSUMER side:
+CREATE TABLE processed_messages (
+    message_id   UUID PRIMARY KEY,                  -- unique constraint = the dedup guard
+    consumer     VARCHAR(64) NOT NULL,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Consumer, in ONE tx:
+-- BEGIN;
+--   INSERT INTO processed_messages (message_id, consumer) VALUES (:mid, 'inventory')
+--     ON CONFLICT (message_id) DO NOTHING;   -- 0 rows affected => duplicate => skip business write
+--   <apply business effect>;
+-- COMMIT;`
+              },
+              {
+                lang: `json`,
+                title: `Debezium connector — outbox event router (CDC, no polling)`,
+                runnable: false,
+                note: `Reference — Kafka Connect connector config`,
+                code: `{
+  "name": "order-outbox-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "debezium",
+    "database.dbname": "orders",
+    "plugin.name": "pgoutput",
+    "table.include.list": "public.outbox",
+    "tombstones.on.delete": "false",
+
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+    "transforms.outbox.table.field.event.id": "message_id",
+    "transforms.outbox.route.by.field": "aggregate_type",
+    "transforms.outbox.route.topic.replacement": "\${routedByValue}.events",
+    "transforms.outbox.table.fields.additional.placement": "event_type:header",
+
+    "_comment": "aggregate_id becomes the Kafka key -> per-order ordering preserved. CDC tails the WAL: no app polling, low latency, at-least-once delivery."
+  }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Explain why the transactional outbox actually solves the dual-write problem.`,
+                a: `The business change and the outbox row are inserted in the SAME local DB transaction, so they commit or abort atomically — there is no window where the data is saved but the event is lost or vice versa. The only remaining step is shipping committed outbox rows to the broker, which is decoupled and retriable. You converted a cross-system dual write into a single-system single-transaction write plus an idempotent relay.`
+              },
+              {
+                q: `Polling publisher vs CDC/Debezium relay — trade-offs?`,
+                a: `Polling: simple, no extra infra, but adds continuous DB load, higher latency, and needs FOR UPDATE SKIP LOCKED to be multi-instance safe. CDC (Debezium tails the WAL/binlog): near-real-time, no polling load, no relay code (Outbox Event Router SMT), preserves commit order — but adds operational complexity (Kafka Connect, replication slot management, WAL retention). CDC is the production-grade default; polling is fine for small scale.`
+              },
+              {
+                q: `Why is the relay at-least-once, and why is that acceptable?`,
+                a: `After publishing to the broker, the relay can crash before marking the row published / committing its offset, so it republishes on restart — at-least-once. It's acceptable because true exactly-once delivery over a network is impossible; instead you make consumers idempotent (inbox dedup on a stable message id), achieving exactly-once EFFECT. Chasing exactly-once delivery is the wrong goal.`
+              },
+              {
+                q: `Why must the idempotency key be a producer-generated UUID, not the Kafka offset?`,
+                a: `The key must be stable across redeliveries and topic replays/reprocessing so the consumer recognizes the same logical message. A Kafka offset changes if the message is republished by the relay or if you replay/migrate topics, so dedup keyed on offset would let duplicates through. A UUID minted at outbox-insert time is intrinsic to the event and survives any redelivery path.`
+              },
+              {
+                q: `Walk through the consumer-side inbox dedup and why it must share the business transaction.`,
+                a: `In one DB transaction the consumer INSERTs the message_id into processed_messages (unique PK) and applies the business effect, then commits. If the insert hits a conflict, it's a duplicate — skip. Sharing one transaction is essential: if dedup-insert and business write committed separately, a crash between them could mark processed-but-not-applied (lost effect) or applied-but-not-marked (reprocessed). Atomicity makes the effect exactly-once.`
+              },
+              {
+                q: `How do you preserve message ordering with at-least-once delivery and retries?`,
+                a: `Partition by aggregate key (Kafka key = order_id) so all events for one aggregate land in one partition where Kafka preserves order; you don't need global order. Add a version/sequence number in events so consumers can reject or buffer out-of-order ones. Combine with idempotency and commutative updates so even reordering converges to the same state.`
+              },
+              {
+                q: `What does Debezium's Outbox Event Router SMT do, and what fields drive it?`,
+                a: `It reads CDC change events from the outbox table and transforms each into a routed Kafka message: aggregate_type selects the destination topic, aggregate_id becomes the Kafka key (preserving per-aggregate order), message_id is the event id (dedup key), and payload becomes the value. It turns raw row-change events into clean domain events with near-zero custom relay code.`
+              },
+              {
+                q: `Define exactly-once-effect and the full recipe to achieve it.`,
+                a: `Exactly-once-effect = each logical message's side effect is applied exactly once even though delivery is at-least-once. Recipe: Outbox (atomic produce, no dual write) + at-least-once relay/CDC + producer-generated idempotency key + consumer inbox dedup inside the business transaction + partition-by-key for ordering. Delivery may duplicate; effects do not.`
+              },
+              {
+                q: `A naive relay marks rows published, then publishes. What bug appears, and the fix?`,
+                a: `If it marks published BEFORE the broker actually accepts the message and then crashes, the event is lost (marked done but never delivered) — turning at-least-once into at-most-once. Fix: publish FIRST, then mark published (accepting possible duplicates on crash), and rely on consumer idempotency. The relay should always err toward duplicates, never toward loss.`
+              },
+              {
+                q: `How do you keep the outbox table from growing unbounded?`,
+                a: `Periodically purge/archive published rows (a retention job deleting WHERE published=true AND created_at < now()-interval, or partitioning by day and dropping old partitions). With CDC you can drop rows once they're past the replication slot's confirmed LSN. Keep enough history for audit/reconciliation windows (often dictated by compliance) but bound the hot table size so inserts and the relay stay fast.`
+              },
+              {
+                q: `Why can't you just enable Kafka transactions / exactly-once-semantics (EOS) instead of an outbox?`,
+                a: `Kafka EOS gives exactly-once between Kafka consume→produce→commit WITHIN Kafka — it does not span your external database. The dual-write is DB + Kafka, two different systems; Kafka transactions can't atomically include a Postgres row write. The outbox keeps the atomic boundary inside one DB transaction and uses CDC to bridge to Kafka, which EOS alone cannot do.`
+              }
+            ]
+          },
+          {
+            title: `Implementing Sagas in Java/Spring: An Orchestrated Order Saga`,
+            notes: `
+# Implementing Sagas in Java / Spring
+
+We'll build an **orchestrated Order saga**: \`createOrder → reserveInventory → chargePayment → shipOrder\`, with compensations \`releaseInventory\` and \`refundPayment\` on failure. The runnable demo below is pure Java (no frameworks) so you can run and watch the rollback. After it, a Spring/durable sketch shows the production shape.
+
+## The state machine
+
+\`\`\`
+NEW -> ORDER_CREATED -> INVENTORY_RESERVED -> PAYMENT_CHARGED -> SHIPPED (= COMPLETED)
+                              |                     |
+                              v                     v
+                        (fail) COMPENSATING ---- run compensations in REVERSE ----> ABORTED
+\`\`\`
+
+- \`shipOrder\` is the **pivot/retriable** step: once we've charged and reserved, shipping is forward-only (retry until success). \`reserve\` and \`charge\` are **compensatable**.
+- Each step records that it *succeeded* so the orchestrator knows exactly which compensations to run (only for completed compensatable steps, in reverse order).
+
+## Failure handling, retries, timeouts
+
+> [!TIP]
+> **Per-step policy:** wrap each step in (a) a **timeout** (don't let a hung downstream wedge the saga), (b) **bounded retries with exponential backoff + jitter** for transient errors, and (c) classification: *retryable* (timeouts, 503, deadlock) vs *non-retryable* (business rejection: out-of-stock, card declined). Only non-retryable / retry-exhausted failures trigger compensation.
+
+> [!WARNING]
+> **Compensations need their own retries.** A \`refundPayment\` can also fail transiently. Retry compensations with backoff; if they exhaust, push to a DLQ + alert a human — never silently drop, or you leave money/stock inconsistent.
+
+> [!DANGER]
+> **Make every step and compensation idempotent and crash-safe.** The orchestrator may resend a command after a crash/timeout (at-least-once). \`reserveInventory(orderId)\` called twice must reserve once (dedup on orderId/idempotency key). Persist saga state after every transition so a restarted orchestrator resumes or compensates exactly where it stopped — never re-run completed steps.
+
+## Testing sagas
+
+- **Unit-test the state machine**: mock each step client; drive happy path and assert final state COMPLETED.
+- **Failure injection**: make step \`k\` throw, assert compensations for steps \`k-1..1\` run in reverse and final state is ABORTED.
+- **Idempotency tests**: deliver the same command twice; assert single effect.
+- **Crash/recovery tests**: persist state, simulate orchestrator restart mid-saga, assert it resumes/compensates correctly (no double charge, no orphan reservation).
+- **Contract tests** per step service so command/reply schemas don't drift.
+
+> [!SUCCESS]
+> In real systems use a battle-tested engine rather than hand-rolling: **Spring Statemachine**, **Axon Framework** (saga support), **Eventuate Tram Saga** (Richardson's lib), **Camunda/Zeebe**, or **Temporal** (durable execution — arguably the cleanest modern answer; it persists workflow state and replays on crash so you write saga logic as straight-line code).
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `RUNNABLE: orchestrated Order saga with compensation (pure Java)`,
+                runnable: true,
+                note: `java SagaDemo.java — simulates a payment failure and rolls back`,
+                code: `import java.util.*;
+
+/**
+ * Self-contained orchestrated saga: createOrder -> reserveInventory ->
+ * chargePayment -> shipOrder, with compensations run in reverse on failure.
+ * No libraries. Run: \`java SagaDemo.java\`  (Java 11+ single-file mode).
+ */
+public class SagaDemo {
+
+    /** A saga step: a forward action + its compensation. */
+    interface SagaStep {
+        String name();
+        void execute(Map<String,Object> ctx) throws Exception; // forward (Ti)
+        void compensate(Map<String,Object> ctx);               // undo   (Ci) — must be idempotent
+    }
+
+    /** The orchestrator: runs steps in order; on failure, compensates completed steps in reverse. */
+    static class SagaOrchestrator {
+        private final List<SagaStep> steps;
+        SagaOrchestrator(List<SagaStep> steps) { this.steps = steps; }
+
+        boolean run(Map<String,Object> ctx) {
+            Deque<SagaStep> done = new ArrayDeque<>(); // stack of completed compensatable steps
+            for (SagaStep step : steps) {
+                try {
+                    log("EXEC ", step.name());
+                    step.execute(ctx);
+                    done.push(step);                  // remember success (LIFO for reverse compensation)
+                } catch (Exception ex) {
+                    log("FAIL ", step.name() + " -> " + ex.getMessage());
+                    System.out.println("   ... starting BACKWARD RECOVERY (compensating in reverse)");
+                    while (!done.isEmpty()) {
+                        SagaStep c = done.pop();
+                        // In production: retry compensation with backoff; DLQ on exhaustion.
+                        log("COMP ", c.name());
+                        c.compensate(ctx);
+                    }
+                    System.out.println("=> SAGA ABORTED. System restored to a consistent state.");
+                    return false;
+                }
+            }
+            System.out.println("=> SAGA COMPLETED. All steps committed.");
+            return true;
         }
     }
+
+    static void log(String tag, String msg) { System.out.println("[" + tag + "] " + msg); }
+
+    // --- Steps. chargePayment is wired to FAIL to demonstrate rollback. ---
+    static SagaStep createOrder() {
+        return new SagaStep() {
+            public String name() { return "createOrder"; }
+            public void execute(Map<String,Object> c) { c.put("orderId", 42); System.out.println("        order #42 created (PENDING)"); }
+            public void compensate(Map<String,Object> c) { System.out.println("        order #42 marked CANCELLED"); }
+        };
+    }
+    static SagaStep reserveInventory() {
+        return new SagaStep() {
+            public String name() { return "reserveInventory"; }
+            public void execute(Map<String,Object> c) { c.put("reserved", true); System.out.println("        reserved 1 unit of SKU-7"); }
+            public void compensate(Map<String,Object> c) {
+                if (Boolean.TRUE.equals(c.get("reserved"))) { System.out.println("        released 1 unit of SKU-7"); c.put("reserved", false); } // idempotent
+            }
+        };
+    }
+    static SagaStep chargePayment(boolean fail) {
+        return new SagaStep() {
+            public String name() { return "chargePayment"; }
+            public void execute(Map<String,Object> c) throws Exception {
+                if (fail) throw new Exception("card declined (non-retryable business failure)");
+                c.put("charged", true); System.out.println("        charged $50.00");
+            }
+            public void compensate(Map<String,Object> c) {
+                if (Boolean.TRUE.equals(c.get("charged"))) { System.out.println("        refunded $50.00"); c.put("charged", false); }
+            }
+        };
+    }
+    static SagaStep shipOrder() { // pivot / retriable in real life: forward-only after this point
+        return new SagaStep() {
+            public String name() { return "shipOrder"; }
+            public void execute(Map<String,Object> c) { System.out.println("        shipment booked"); }
+            public void compensate(Map<String,Object> c) { /* no-op: shipping is the pivot, not compensatable */ }
+        };
+    }
+
+    public static void main(String[] args) {
+        System.out.println("===== RUN 1: happy path =====");
+        new SagaOrchestrator(List.of(createOrder(), reserveInventory(), chargePayment(false), shipOrder()))
+                .run(new HashMap<>());
+
+        System.out.println("\\n===== RUN 2: payment fails -> compensate reserveInventory + createOrder =====");
+        new SagaOrchestrator(List.of(createOrder(), reserveInventory(), chargePayment(true), shipOrder()))
+                .run(new HashMap<>());
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Spring orchestrator sketch (durable, idempotent, retrying)`,
+                runnable: false,
+                note: `Reference — needs Spring/DB; shows persisted saga state + retries`,
+                code: `// Production shape: persisted saga state, idempotent commands, retries, compensation.
+@Entity
+class OrderSaga {
+    @Id String sagaId;
+    @Enumerated(EnumType.STRING) SagaState state;   // ORDER_CREATED, INVENTORY_RESERVED, ...
+    @Version long version;                          // optimistic lock for concurrent transitions
+    String orderId;
+    Instant updatedAt;
 }
+enum SagaState { STARTED, INVENTORY_RESERVED, PAYMENT_CHARGED, SHIPPED, COMPENSATING, ABORTED, COMPLETED }
+
+@Service
+class OrderSagaOrchestrator {
+    private final InventoryClient inventory;
+    private final PaymentClient payment;
+    private final ShippingClient shipping;
+    private final OrderSagaRepository sagas;
+
+    /** Drive one transition; PERSIST state after each step so a crash can resume. */
+    @Transactional
+    public void onStep(String sagaId) {
+        OrderSaga s = sagas.findById(sagaId).orElseThrow();
+        try {
+            switch (s.state) {
+                case STARTED -> {
+                    // idempotent: keyed on sagaId/orderId; safe to retry after crash
+                    inventory.reserve(s.orderId, sagaId);
+                    s.state = SagaState.INVENTORY_RESERVED;
+                }
+                case INVENTORY_RESERVED -> {
+                    payment.charge(s.orderId, sagaId);
+                    s.state = SagaState.PAYMENT_CHARGED;
+                }
+                case PAYMENT_CHARGED -> {
+                    shipping.ship(s.orderId, sagaId);   // pivot: retried forever, never compensated
+                    s.state = SagaState.COMPLETED;
+                }
+                default -> { /* terminal */ }
+            }
+        } catch (BusinessRejectedException nonRetryable) {
+            compensate(s);                              // out-of-stock / declined -> backward recovery
+        } catch (TransientException retryable) {
+            throw retryable;                            // let @Retryable / broker redelivery retry the step
+        }
+        sagas.save(s);                                  // durable transition (with @Version guard)
+    }
+
+    private void compensate(OrderSaga s) {
+        s.state = SagaState.COMPENSATING;
+        // Run compensations for completed compensatable steps, in REVERSE. Each is
+        // idempotent and retried with backoff; exhausted -> DLQ + human alert.
+        if (s.state.ordinal() >= SagaState.PAYMENT_CHARGED.ordinal()) payment.refund(s.orderId, s.sagaId);
+        if (s.state.ordinal() >= SagaState.INVENTORY_RESERVED.ordinal()) inventory.release(s.orderId, s.sagaId);
+        s.state = SagaState.ABORTED;
+    }
+}
+
+// @Retryable(retryFor=TransientException.class, maxAttempts=4,
+//            backoff=@Backoff(delay=200, multiplier=2, random=true))  // exp backoff + jitter
+// + @Transactional outbox for emitting the saga's own events. Or use Temporal/Axon
+// to get durable execution + retries + timeouts without hand-rolling any of this.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `In an orchestrator, why run compensations in reverse order and only for completed compensatable steps?`,
+                a: `Later steps may depend on earlier ones, so undoing must mirror the do-order (LIFO): refund before releasing the reservation that justified the charge, etc. You compensate only steps that actually completed (tracked on a stack/persisted state) — compensating a step that never ran could itself corrupt state. Steps after the pivot have no compensation; they're retried forward instead.`
+              },
+              {
+                q: `Differentiate retryable vs non-retryable step failures and how each affects the saga.`,
+                a: `Retryable (timeout, 503, DB deadlock, transient network) → retry the step with bounded exponential backoff + jitter; only after exhaustion does it become terminal. Non-retryable / business rejection (out-of-stock, card declined) → don't retry; immediately trigger backward recovery (compensation). Misclassifying a business decline as retryable wastes time and may double-charge; treating a transient blip as terminal triggers needless rollbacks.`
+              },
+              {
+                q: `Why must the orchestrator persist saga state after every transition?`,
+                a: `So a crashed/restarted orchestrator (or a redelivered command) can resume exactly where it left off — re-run the in-flight step idempotently, never re-execute completed steps, and know which compensations to run. Without durable state a crash mid-saga orphans reservations/charges with no record of progress. State is persisted with an optimistic @Version to serialize concurrent transitions of the same saga.`
+              },
+              {
+                q: `Compensations can fail too. How do you handle a failing refundPayment?`,
+                a: `Retry it with exponential backoff (it's idempotent, so retries are safe). If retries exhaust, do NOT drop it: route to a dead-letter queue and alert a human / open a ticket, because a permanently failed compensation leaves money or stock inconsistent and breaks the saga guarantee. Track compensation status in the persisted saga state so recovery can re-drive it.`
+              },
+              {
+                q: `Why is shipOrder modeled as a pivot/retriable rather than compensatable?`,
+                a: `Once inventory is reserved and payment captured, the order should complete; shipping is hard/undesirable to undo and is the point of no return. So you make it retriable (retry until success) rather than giving it a compensation. Ordering compensatable steps before the pivot means any failure compensates only the cheap reversible prefix, and after the pivot the saga is forward-only.`
+              },
+              {
+                q: `How do you make an idempotent reserveInventory(orderId) on the service side?`,
+                a: `Dedup on a stable key (orderId or a per-command idempotency key): in one transaction, attempt INSERT into a reservations/processed table with a unique constraint on that key; if it already exists, return the prior result without reserving again. So a redelivered ReserveStock command (at-least-once) reserves exactly once. Combine with the inbox/processed-messages pattern for full crash safety.`
+              },
+              {
+                q: `What are the key test categories for a saga and what does each assert?`,
+                a: `(1) Happy path: mock steps, assert final COMPLETED. (2) Failure injection: make step k fail, assert compensations k-1..1 run in reverse and final ABORTED. (3) Idempotency: deliver the same command twice, assert single effect. (4) Crash/recovery: persist state, restart mid-saga, assert resume/compensate with no double charge or orphan reservation. (5) Contract tests so command/reply schemas between orchestrator and services don't drift.`
+              },
+              {
+                q: `Why use Temporal/Axon/Camunda instead of hand-rolling a saga orchestrator?`,
+                a: `They provide durable execution: workflow state is persisted and replayed on crash, so you write saga logic as straight-line code while the engine handles retries, timeouts, idempotency, and recovery. Hand-rolled orchestrators must reimplement persistence, at-least-once command handling, compensation tracking, and crash recovery — easy to get subtly wrong. For non-trivial sagas the engine pays for itself in correctness and observability.`
+              },
+              {
+                q: `Where does the outbox pattern fit inside an orchestrated saga implementation?`,
+                a: `The orchestrator and each step service emit their commands/replies/events via the outbox (written in the same transaction as their state change), so saga messaging itself doesn't suffer the dual-write problem and is reliably at-least-once. Combined with inbox dedup on the receiving side, command/reply delivery becomes exactly-once-effect, which is what makes idempotent step re-execution and crash recovery actually safe.`
+              },
+              {
+                q: `A reviewer says "just throw and let @Transactional roll back the saga." Why is that wrong?`,
+                a: `@Transactional rolls back only the orchestrator's own local DB writes, not the already-committed effects in the inventory and payment services (separate DBs, separate committed transactions). There's nothing to roll back across services — you must issue explicit compensating transactions. Relying on @Transactional gives the illusion of atomicity while leaving stranded reservations and charges in other services.`
+              },
+              {
+                q: `What timeout strategy protects an orchestrated saga from a hung downstream service?`,
+                a: `Put a per-step timeout on each command (and on awaiting its reply), so a hung inventory/payment call doesn't wedge the saga forever. On timeout, classify as retryable and retry with backoff up to a cap; if the cap is hit, treat as a failure and compensate. Also add an overall saga deadline/sweeper that detects sagas stuck in a non-terminal state too long and forces recovery, releasing any semantic locks.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `6.4`,
+        title: `RabbitMQ & AMQP Messaging`,
+        hours: 5,
+        sections: [
+          {
+            title: `The AMQP Model — Smart Broker, Dumb Consumer`,
+            notes: `## The AMQP Model — A Smart Router at the Center
+
+RabbitMQ implements **AMQP 0-9-1**, a wire-level protocol whose mental model is the
+inverse of Kafka. Kafka is a **dumb broker / smart consumer**: the broker is an
+append-only log, and consumers track their own offsets and decide what to read.
+RabbitMQ is a **smart broker / dumb consumer**: the broker *routes* each message to
+the right queue(s) and *pushes* it to consumers; consumers just ack and move on.
+
+> [!TIP]
+> One sentence to win the whiteboard: *"Kafka is a replayable log you pull from;
+> RabbitMQ is a routing engine that pushes to queues."* Everything else — ordering,
+> retention, ack semantics — falls out of that distinction.
+
+### The seven nouns
+
+| Concept | Role |
+|---|---|
+| **Producer** | Publishes a message to an **exchange** (never directly to a queue). |
+| **Exchange** | The router. Receives messages, applies type + bindings, copies to queues. |
+| **Binding** | A rule linking an exchange to a queue, often with a **binding key**. |
+| **Queue** | An ordered buffer holding messages until a consumer acks them. |
+| **Consumer** | Subscribes to a queue; receives pushed messages; acks/nacks. |
+| **Channel** | A lightweight virtual connection multiplexed over one TCP connection. |
+| **Vhost** | A logical namespace (own exchanges/queues/permissions) for multi-tenancy. |
+
+> [!WARNING]
+> A producer **cannot** publish to a queue directly. It always publishes to an
+> exchange with a **routing key**. If no binding matches, the message is silently
+> dropped (unless the exchange is configured \`mandatory\` or has an alternate
+> exchange). "My messages vanished" is almost always an unbound / misrouted exchange.
+
+### The routing pipeline
+
+\`\`\`mermaid
+flowchart LR
+  P[Producer] -->|"publish(routingKey=order.created.eu)"| X{{Exchange<br/>type=topic}}
+  X -->|binding: order.*.eu| Q1[(Queue: eu-orders)]
+  X -->|binding: order.created.#| Q2[(Queue: audit)]
+  X -->|binding: payment.#| Q3[(Queue: payments)]
+  Q1 --> C1[Consumer A]
+  Q1 --> C2[Consumer B]
+  Q2 --> C3[Audit Consumer]
+  style X fill:#5a3,stroke:#333,color:#fff
 \`\`\`
 
-### Choreography vs Orchestration Trade-offs
+Note the two arrows out of \`eu-orders\`: multiple consumers on **one** queue form a
+**competing-consumer** group — each message goes to exactly *one* of them
+(round-robin / by prefetch). This is RabbitMQ's native load-balancing primitive,
+and it works at **per-message** granularity — unlike Kafka, where parallelism is
+bounded by partition count.
+
+### Channels & connections
+
+TCP connections are expensive; opening one per operation would crush the broker.
+AMQP multiplexes many **channels** over a single TCP connection. Rule of thumb:
+
+> [!TIP]
+> One **connection per process**, one **channel per thread**. Channels are *not*
+> thread-safe — sharing a channel across threads corrupts the frame stream and
+> produces \`PRECONDITION_FAILED\` / unexpected-frame errors. Spring's
+> \`CachingConnectionFactory\` manages a channel cache for you.
+
+### Vhosts
+
+A **virtual host** is a complete isolated AMQP universe: its own exchanges, queues,
+bindings, and user permissions. Use vhosts to separate environments or tenants on a
+shared cluster (e.g. \`/payments\`, \`/staging\`). They are an isolation boundary, not a
+performance one — all vhosts share the same Erlang VM and node resources.
+
+> [!EU]
+> In EU fintech/regulated shops, vhosts (plus per-vhost user permissions) are a
+> common way to enforce tenant data isolation on a shared broker — interviewers in
+> Amsterdam and Frankfurt like to ask how you'd isolate two product lines without
+> standing up two clusters. Answer: separate vhosts + scoped credentials, and for
+> hard isolation, separate clusters.
+
+### Why "smart broker" matters
+
+Because routing logic lives in the broker, **the topology *is* your architecture**.
+You can add a new consumer (a new queue + binding) to an existing event stream with
+**zero producer changes** — the producer keeps publishing to the same exchange. This
+is the single biggest ergonomic win over point-to-point integration and the reason
+RabbitMQ shines for complex, evolving routing.`,
+            code: [
+              {
+                lang: `text`,
+                title: `Producer → exchange → binding → queue → consumer (mental model)`,
+                code: `Producer
+   │  basic.publish(exchange="orders", routingKey="order.created.eu", body=...)
+   ▼
+┌──────────────────────────────┐
+│  Exchange "orders" (topic)   │   ← the SMART part: applies bindings
+└──────────────────────────────┘
+   │ matches binding key "order.*.eu"        │ matches "order.created.#"
+   ▼                                         ▼
+[ Queue: eu-orders ]                   [ Queue: audit-log ]
+   │  push (prefetch=10)                     │  push
+   ├──► Consumer A  ── ack ──┐               └──► Audit Consumer ── ack
+   └──► Consumer B  ── ack ──┘
+        (competing consumers: each msg to ONE of A/B)
+
+Kafka contrast:
+  Producer ──► [Partitioned LOG] ◄── Consumer pulls by OFFSET (broker is dumb)`,
+                runnable: false,
+                note: `Conceptual — text only`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why can't a producer publish directly to a queue in AMQP?`,
+                a: `The AMQP model interposes an exchange as the router. Producers publish to an exchange with a routing key; bindings decide which queue(s) receive a copy. This decouples producers from consumers — you can add queues/consumers by adding bindings, with zero producer changes.`
+              },
+              {
+                q: `Contrast "smart broker / dumb consumer" with Kafka's model.`,
+                a: `RabbitMQ routes and pushes messages; consumers just ack (smart broker). Kafka is an append-only log where consumers pull and track offsets themselves (dumb broker, smart consumer). This drives every downstream difference: ordering, retention, replay, ack granularity.`
+              },
+              {
+                q: `What is a channel and why not just use TCP connections?`,
+                a: `A channel is a lightweight virtual connection multiplexed over one TCP connection. TCP connections are expensive (handshake, file descriptors, memory). Channels let one connection carry many concurrent streams of AMQP commands cheaply.`
+              },
+              {
+                q: `Are channels thread-safe? What's the recommended pattern?`,
+                a: `No. A channel must not be shared across threads — concurrent use corrupts the frame ordering. Pattern: one connection per process, one channel per thread. Spring's CachingConnectionFactory caches channels per thread to enforce this.`
+              },
+              {
+                q: `What is a vhost and what does it isolate?`,
+                a: `A virtual host is a logical namespace with its own exchanges, queues, bindings, and user permissions. It isolates configuration and access (multi-tenancy / environment separation) but NOT performance — all vhosts share the same node/Erlang VM resources.`
+              },
+              {
+                q: `What is a binding key vs a routing key?`,
+                a: `A routing key is set by the producer on each published message. A binding key is set when binding a queue to an exchange. The exchange compares them (per its type: exact match for direct, pattern match for topic) to decide routing.`
+              },
+              {
+                q: `What happens to a message that matches no binding?`,
+                a: `It is silently dropped by default. To detect this, publish with the mandatory flag (broker returns it via a Return listener) or configure an alternate-exchange on the exchange to catch unrouted messages.`
+              },
+              {
+                q: `How does RabbitMQ achieve competing-consumer load balancing?`,
+                a: `Multiple consumers subscribe to the SAME queue. The broker dispatches each message to exactly one consumer (round-robin, bounded by prefetch). Parallelism is per-message and not tied to a fixed partition count — unlike Kafka where it's capped by partitions.`
+              },
+              {
+                q: `If you need to add a new downstream consumer to an existing event flow, what changes in RabbitMQ?`,
+                a: `Add a new queue and bind it to the existing exchange with an appropriate binding key. Producers are untouched — they keep publishing to the same exchange. The "smart broker" makes topology evolution cheap.`
+              },
+              {
+                q: `What does "the topology is your architecture" mean in RabbitMQ?`,
+                a: `Because routing logic lives in the broker (exchange types + bindings), your exchange/queue/binding graph encodes how events flow through the system. Designing topology = designing integration, in contrast to Kafka where routing is mostly producer-side partitioning + consumer subscriptions.`
+              }
+            ]
+          },
+          {
+            title: `Exchange Types & Messaging Topologies`,
+            notes: `## Exchange Types & Topologies
+
+The exchange **type** decides the routing algorithm. Four built-in types cover
+almost every pattern.
+
+### 1. Direct — exact routing-key match
+
+Routes to queues whose binding key **equals** the message routing key. The default
+nameless exchange (\`""\`) is a direct exchange where the binding key is the queue
+name — that's why "publishing to a queue" appears to work in tutorials.
 
 \`\`\`
-                    Choreography              Orchestration
-─────────────────────────────────────────────────────────────
-Coupling            Loose (event-driven)      Central coordinator
-Visibility          Hard (events scattered)   Easy (one place)
-Failure handling    Distributed / hard        Centralised / clear
-Testing             Complex                   Simpler
-Single point of     None                      Orchestrator (must be resilient)
-  failure?
-Suitable for        Simple 2-3 step flows     Complex multi-step, long-running
+publish(routingKey="error")  ──► binding "error"  ──► [logs.error]
+                              └─► binding "info"   ──► (no match)
 \`\`\`
 
-### Outbox Pattern — Guaranteed Event Publishing
+### 2. Fanout — broadcast, ignore routing key
+
+Copies every message to **all** bound queues. The routing key is ignored. This is
+pub/sub: N independent subscribers each get their own copy.
+
+\`\`\`
+publish(anything) ──► fanout ──► [queue.search]
+                              ──► [queue.cache]
+                              ──► [queue.analytics]
+\`\`\`
+
+### 3. Topic — pattern match on dotted routing keys
+
+The workhorse. Routing keys are dot-delimited words; binding keys use wildcards:
+\`*\` = exactly one word, \`#\` = zero or more words.
+
+| Binding key | Matches | Doesn't match |
+|---|---|---|
+| \`order.*.eu\` | \`order.created.eu\`, \`order.shipped.eu\` | \`order.eu\`, \`order.created.us\` |
+| \`order.#\` | \`order\`, \`order.created\`, \`order.created.eu\` | \`payment.created\` |
+| \`*.created.*\` | \`order.created.eu\` | \`order.created\` |
+| \`#\` | everything | — |
+
+> [!TIP]
+> Design routing keys as a **hierarchy from general to specific**:
+> \`<entity>.<event>.<region>\` e.g. \`order.created.eu\`. Then any consumer can subscribe
+> at the granularity it needs — \`order.#\` for everything orders, \`*.*.eu\` for all EU
+> traffic — without producers knowing who listens.
+
+### 4. Headers — match on message headers, not routing key
+
+Routes by matching message **header** attributes. The binding declares
+\`x-match=all\` (AND) or \`x-match=any\` (OR). Rarely needed; use it when routing depends
+on multiple non-hierarchical attributes (e.g. \`format=pdf\` AND \`region=eu\`). Slower
+than topic; prefer topic when you can encode the decision in a routing key.
+
+\`\`\`mermaid
+flowchart LR
+  P[Producer] --> EX{{topic exchange<br/>'orders'}}
+  EX -- "order.*.eu" --> EUQ[(eu-orders)]
+  EX -- "order.*.us" --> USQ[(us-orders)]
+  EX -- "order.created.#" --> NEW[(new-order-emails)]
+  EX -- "#" --> AUD[(audit-everything)]
+  EUQ --> W1[EU worker 1]
+  EUQ --> W2[EU worker 2]
+\`\`\`
+
+### Classic topologies
+
+> [!SUCCESS]
+> **Work queue (competing consumers).** One queue, many workers, prefetch to bound
+> in-flight work. Direct/default exchange. Scales horizontally by adding consumers.
+
+> [!SUCCESS]
+> **Pub/Sub.** Fanout exchange; each subscriber binds its own queue and gets a full
+> copy of the stream. Adding a subscriber = adding a queue + binding.
+
+> [!SUCCESS]
+> **Topic routing.** Topic exchange; consumers subscribe to slices of the stream by
+> pattern. The most flexible and most common production pattern.
+
+### RPC over AMQP
+
+Request/response using two queues and a correlation id:
+
+\`\`\`
+Client ──(reply_to=amq.rabbitmq.reply-to, correlation_id=abc)──► [rpc_queue] ──► Server
+Server ──(routingKey=reply_to, correlation_id=abc)──────────────► Client matches abc
+\`\`\`
+
+Use the **direct reply-to** pseudo-queue (\`amq.rabbitmq.reply-to\`) to avoid creating a
+temporary queue per request. Spring's \`RabbitTemplate.convertSendAndReceive()\` does all
+this for you.
+
+> [!WARNING]
+> RPC over a message broker reintroduces synchronous coupling and head-of-line latency.
+> If you find yourself doing lots of request/response, ask whether HTTP/gRPC is the
+> better fit. RPC-over-AMQP earns its keep mainly for fan-in to a worker pool or when
+> you already have the broker and want backpressure/queueing on the request side.
+
+### Priority queues
+
+Declare with \`x-max-priority=10\`; publish with a \`priority\` property. Higher priority
+messages jump ahead — but only among messages **currently in the queue**. With fast
+consumers the queue is near-empty and priority rarely kicks in. Priority queues use
+more memory (one sub-queue per level).
+
+### Delayed messages
+
+AMQP has no native scheduled delivery. Two approaches:
+
+1. **TTL + DLX trick:** publish to a queue with a per-message TTL and no consumer; on
+   expiry the message dead-letters to your real queue. Classic but fiddly (TTL applies
+   to the head of the queue → ordering quirks).
+2. **\`rabbitmq_delayed_message_exchange\` plugin:** a special exchange type
+   \`x-delayed-message\` holds messages and releases them after \`x-delay\` ms. Cleaner;
+   the de-facto standard for scheduled/retry-with-backoff messages.`,
+            code: [
+              {
+                lang: `text`,
+                title: `Topic routing cheat-sheet (* = one word, # = zero+ words)`,
+                code: `routing key:  order.created.eu
+
+binding "order.created.eu"  → MATCH (exact)
+binding "order.*.eu"        → MATCH (* = "created")
+binding "order.#"           → MATCH (# = "created.eu")
+binding "*.created.*"       → MATCH
+binding "#"                 → MATCH (catch-all)
+binding "order.*"           → NO    (* is one word; "created.eu" is two)
+binding "payment.#"         → NO
+binding "order.created"     → NO    (no trailing word to consume)`,
+                runnable: false,
+                note: `Reference table`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Differentiate direct, fanout, topic, and headers exchanges.`,
+                a: `Direct: route on exact routing-key == binding-key. Fanout: copy to all bound queues, ignore routing key (broadcast). Topic: pattern-match dotted routing keys with * (one word) and # (zero+ words). Headers: match on message header attributes via x-match=all/any.`
+              },
+              {
+                q: `What does the default (nameless "") exchange do?`,
+                a: `It's a direct exchange where every queue is automatically bound using its name as the binding key. So publishing with routingKey=queueName delivers straight to that queue — which is why beginner tutorials seem to publish "to a queue".`
+              },
+              {
+                q: `In a topic binding, what's the difference between * and #?`,
+                a: `* matches exactly one word (between dots); # matches zero or more words. So order.* matches order.created but not order.created.eu, while order.# matches order, order.created, and order.created.eu.`
+              },
+              {
+                q: `When would you use a headers exchange over topic?`,
+                a: `When routing depends on multiple independent attributes that don't form a natural hierarchy (e.g. format AND region AND priority). Headers exchanges match on header maps with x-match all/any. They're slower; prefer topic if you can encode the decision in a dotted routing key.`
+              },
+              {
+                q: `Describe the competing-consumers (work queue) pattern.`,
+                a: `Multiple workers consume from a single queue; the broker dispatches each message to exactly one worker, balanced by prefetch. Scale throughput by adding consumers. Use manual ack + prefetch so a slow/crashed worker's messages get redelivered.`
+              },
+              {
+                q: `How is pub/sub implemented in RabbitMQ?`,
+                a: `A fanout exchange with one queue per subscriber. Each subscriber binds its own queue and receives a full independent copy of every message. Adding a subscriber means adding a queue + binding — producers are unaffected.`
+              },
+              {
+                q: `How does RPC-over-AMQP correlate responses?`,
+                a: `The client sets reply_to (a callback queue, often the direct reply-to pseudo-queue amq.rabbitmq.reply-to) and a unique correlation_id. The server publishes the response to reply_to echoing the correlation_id; the client matches it to the pending request.`
+              },
+              {
+                q: `Why might a priority queue not actually prioritize?`,
+                a: `Priority only reorders messages currently buffered in the queue. If consumers keep the queue near-empty, there's nothing to reorder. Priority queues also cost more memory (a sub-queue per level) and you must declare x-max-priority up front.`
+              },
+              {
+                q: `Two ways to implement delayed/scheduled delivery in RabbitMQ?`,
+                a: `(1) Per-message TTL on a holding queue with no consumer + a dead-letter exchange that routes expired messages to the real queue. (2) The rabbitmq_delayed_message_exchange plugin (x-delayed-message exchange type) with an x-delay header — cleaner and the de-facto standard.`
+              },
+              {
+                q: `What's a caveat of the TTL+DLX delay trick regarding ordering?`,
+                a: `TTL is enforced from the head of the queue. A message with a long TTL at the head blocks expiry checks of shorter-TTL messages behind it, so messages can dead-letter out of "due" order. Use the delayed-message plugin or per-message TTL carefully when timing matters.`
+              },
+              {
+                q: `How do you add a brand-new analytics consumer to an existing order stream with no producer changes?`,
+                a: `Declare a new queue and bind it to the existing exchange. For a fanout, just bind it; for a topic, bind with the pattern you need (e.g. order.#). The producer keeps publishing to the same exchange — topology change only.`
+              }
+            ]
+          },
+          {
+            title: `Reliability & Delivery Guarantees`,
+            notes: `## Reliability & Delivery — Confirms, Acks, DLX, Idempotency
+
+A message can be lost at three boundaries: **producer → broker**, **broker durability**,
+and **broker → consumer**. RabbitMQ gives you a knob for each. Default settings are
+**fast but lossy** — you opt into safety.
+
+### 1. Publisher confirms (producer → broker)
+
+Plain \`basic.publish\` is fire-and-forget: the broker may have crashed before persisting.
+Enable **publisher confirms** (\`confirm.select\`): the broker sends an async \`basic.ack\`
+once the message is safely handled (routed + persisted if durable). On \`basic.nack\` or
+timeout, the producer must retry.
+
+> [!DANGER]
+> Without publisher confirms, "the send returned successfully" only means it left your
+> socket buffer. A broker restart mid-publish loses the message and your code never knows.
+> For anything you can't afford to lose, confirms are mandatory.
+
+### 2. Durability & persistence (broker survives restart)
+
+Two independent flags must **both** be set to survive a broker restart:
+
+- **Durable queue** (\`durable=true\`) — the queue definition survives restart.
+- **Persistent message** (\`delivery_mode=2\` / \`MessageDeliveryMode.PERSISTENT\`) — the
+  message body is written to disk.
+
+A persistent message in a non-durable queue is still lost (queue gone). A transient
+message in a durable queue is also lost (never written). You need both.
+
+> [!WARNING]
+> Persistence is not instantaneous fsync. There's a small window where a persistent
+> message sits in the OS page cache before hitting disk. Combine durable+persistent
+> **with publisher confirms** for an end-to-end guarantee — the confirm waits for the
+> message to be persisted.
+
+### 3. Consumer acknowledgements (broker → consumer)
+
+| Action | Effect |
+|---|---|
+| \`basic.ack\` | Message processed; broker deletes it. |
+| \`basic.nack\` / \`basic.reject\` (requeue=true) | Put back on queue for redelivery. |
+| \`basic.nack\` / \`basic.reject\` (requeue=false) | Dead-letter it (if DLX) or drop. |
+| **No ack (autoAck=false)** | Message stays *unacked*; redelivered if consumer dies. |
+
+> [!DANGER]
+> **autoAck=true is at-most-once.** The broker deletes the message the instant it's
+> pushed, before your code runs. A crash mid-processing loses it. For at-least-once,
+> use manual ack and ack only *after* successful processing.
+
+### 4. Prefetch / QoS — the most important tuning knob
+
+\`basic.qos(prefetch_count=N)\` caps how many **unacked** messages the broker pushes to a
+consumer at once. \`prefetch=1\` = strict fairness (don't give me message N+1 until I ack N)
+— great for slow, uneven jobs. High prefetch = throughput but risks one greedy consumer
+hogging the queue and big redelivery storms on crash.
+
+> [!TIP]
+> Start with prefetch ≈ \`(round-trip-time / processing-time)\` per consumer, often 10–50.
+> prefetch=1 for long heterogeneous tasks; high prefetch for tiny fast messages. There is
+> no single right number — measure.
+
+### 5. Dead-letter exchanges (DLX) & the poison message
+
+A **poison message** keeps failing and, with \`requeue=true\`, loops forever, blocking the
+queue. The fix: **don't requeue indefinitely** — route failures to a **DLX**.
+
+A queue declared with \`x-dead-letter-exchange\` dead-letters a message when it is:
+1. rejected/nacked with \`requeue=false\`,
+2. expires via TTL, or
+3. exceeds \`x-max-length\` (overflow).
+
+\`\`\`mermaid
+sequenceDiagram
+  participant P as Producer
+  participant B as Broker (work queue)
+  participant C as Consumer
+  participant DLX as DLX → dead-letter-queue
+  P->>B: publish (confirm-mode)
+  B-->>P: basic.ack (persisted)
+  B->>C: deliver (prefetch=10, unacked)
+  Note over C: processing throws on attempt 1..N
+  C->>B: basic.nack(requeue=false) after maxAttempts
+  B->>DLX: dead-letter the message
+  Note over DLX: alert / inspect / replay manually
+  C->>B: basic.ack (on eventual success)
+\`\`\`
+
+**Retry-then-DLQ pattern:** retry a few times (with backoff), and after \`maxAttempts\`,
+\`nack(requeue=false)\` so it dead-letters for human/automated inspection. Track an
+\`x-death\` header (RabbitMQ adds it) or your own attempt counter to know when to give up.
+
+> [!TIP]
+> For **delayed retry with backoff**, dead-letter to a *waiting* queue with a TTL that
+> dead-letters *back* to the work queue after the delay. Chain multiple TTL queues for
+> exponential backoff (5s → 30s → 5m), then a terminal DLQ.
+
+### 6. At-least-once + idempotency
+
+Manual ack gives **at-least-once**: a consumer can process a message, then crash before
+the ack lands, causing **redelivery**. RabbitMQ has no exactly-once delivery. The
+industry answer is the same as everywhere: make consumers **idempotent**.
+
+> [!SUCCESS]
+> Idempotency recipe: give each message a stable business key (orderId) or a producer-set
+> messageId; on receipt, check a dedup store (DB unique constraint / Redis SETNX) before
+> acting. Reprocessing a duplicate becomes a no-op. This is non-negotiable for money.
+
+> [!EU]
+> EU payments / PSD2 and idempotent transfer APIs map cleanly onto this: messageId acts as
+> the idempotency key, and a unique constraint on (idempotencyKey) in the ledger DB makes
+> redelivery safe. Interviewers love walking the redelivery-during-payment scenario.`,
+            code: [
+              {
+                lang: `properties`,
+                title: `Reliability checklist (settings that actually matter)`,
+                code: `# Producer side
+publisher-confirms      = true     # broker acks that it persisted/routed
+publisher-returns       = true     # get unroutable messages back (mandatory flag)
+message.delivery-mode   = 2        # PERSISTENT (write body to disk)
+
+# Queue side
+queue.durable           = true     # queue definition survives restart
+queue.x-dead-letter-exchange = dlx.orders
+queue.x-message-ttl     = 600000   # optional: 10 min TTL -> DLX on expiry
+queue.x-max-length      = 100000   # overflow -> DLX (backpressure)
+
+# Consumer side
+consumer.acknowledge-mode = manual  # ack AFTER processing (at-least-once)
+consumer.prefetch         = 20      # unacked messages in flight per consumer
+# NEVER: acknowledge-mode = auto  -> at-most-once, silent loss on crash`,
+                runnable: false,
+                note: `Reference — the safety knobs are opt-in; defaults are lossy`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What guarantee does a plain basic.publish (no confirms) give?`,
+                a: `None beyond "it left my socket". The broker may crash before routing/persisting and the producer never finds out. Enable publisher confirms (confirm.select) so the broker sends an async ack once the message is safely handled, and retry on nack/timeout.`
+              },
+              {
+                q: `Which two flags are both required for a message to survive a broker restart?`,
+                a: `Durable queue (queue definition persisted) AND persistent message (delivery_mode=2, body written to disk). One without the other still loses data: a persistent message in a transient queue, or a transient message in a durable queue, is gone after restart.`
+              },
+              {
+                q: `Why is durable+persistent still not a full guarantee without confirms?`,
+                a: `Persistence isn't an instant fsync — there's a window where the message sits in the OS page cache. Publisher confirms close the loop: the broker only confirms after the message is actually persisted, giving an end-to-end producer guarantee.`
+              },
+              {
+                q: `Why is autoAck=true at-most-once?`,
+                a: `The broker deletes the message the moment it's pushed to the consumer, before the consumer code runs. If the consumer crashes mid-processing, the message is already gone. For at-least-once you must use manual ack and ack only after successful processing.`
+              },
+              {
+                q: `What does basic.nack/reject with requeue=true vs requeue=false do?`,
+                a: `requeue=true puts the message back on the queue for redelivery (risk: poison-message infinite loop). requeue=false either dead-letters it (if the queue has a DLX) or drops it. Use requeue=false + DLX to quarantine failures after retries.`
+              },
+              {
+                q: `What does prefetch (basic.qos) control and how do you pick a value?`,
+                a: `It caps the number of unacked messages the broker pushes to a consumer at once. prefetch=1 = strict fairness for slow/uneven jobs; higher = throughput but risk of one consumer hogging work and large redelivery storms on crash. Tune roughly to RTT/processing-time; measure.`
+              },
+              {
+                q: `What is a poison message and how do you stop it?`,
+                a: `A message that always fails processing. With requeue=true it loops forever and can block the queue. Fix: limit retries (with backoff), then nack(requeue=false) so it dead-letters to a DLX/DLQ for inspection or replay instead of requeueing endlessly.`
+              },
+              {
+                q: `Name the three conditions that cause a message to be dead-lettered.`,
+                a: `(1) Rejected/nacked with requeue=false, (2) message TTL (or queue TTL) expired, (3) queue length limit exceeded (x-max-length overflow). The queue must be declared with x-dead-letter-exchange for any of these to route somewhere instead of dropping.`
+              },
+              {
+                q: `How do you implement delayed retry with exponential backoff using DLX?`,
+                a: `Dead-letter failures to a waiting queue with a TTL; when the TTL expires the message dead-letters BACK to the work queue. Chain several waiting queues with increasing TTLs (5s, 30s, 5m) for exponential backoff, then a terminal DLQ after max attempts.`
+              },
+              {
+                q: `Does RabbitMQ offer exactly-once delivery? What's the practical answer?`,
+                a: `No. Manual ack gives at-least-once; a crash between processing and ack causes redelivery. The practical answer is idempotent consumers: dedup on a stable business key or messageId (DB unique constraint / Redis SETNX) so reprocessing a duplicate is a no-op.`
+              },
+              {
+                q: `Where does RabbitMQ record redelivery history for a dead-lettered message?`,
+                a: `In the x-death header (an array of entries with count, reason, queue, time). You can read it to implement attempt counting / max-retry logic, or set your own attempt-count header before requeueing.`
+              }
+            ]
+          },
+          {
+            title: `RabbitMQ vs Kafka — Choosing the Right Tool`,
+            notes: `## RabbitMQ vs Kafka — A Senior's Decision Framework
+
+This is the question every distributed-systems interview asks. The wrong answer is
+"Kafka is newer/faster so use Kafka." The right answer starts from **access pattern**.
+
+> [!TIP]
+> The one-liner: *"RabbitMQ is a message queue / smart router optimized for flexible
+> routing, per-message acknowledgement, and competing consumers. Kafka is a distributed,
+> replayable commit log optimized for high-throughput streaming, ordered partitions, and
+> replay. Choose by whether you need flexible routing + task semantics (Rabbit) or a
+> durable replayable event stream + scale (Kafka)."*
+
+### Decision table
+
+| Dimension | RabbitMQ | Kafka |
+|---|---|---|
+| **Model** | Smart broker, push, queues | Dumb broker, pull, append-only log |
+| **Primary use** | Task/work queues, complex routing, RPC | Event streaming, log aggregation, CDC, replay |
+| **Routing** | Rich: direct/fanout/topic/headers, bindings | Producer picks partition; consumer subscribes to topic |
+| **Consumption** | Message removed after ack | Message stays; consumer advances an offset |
+| **Replay** | No (gone after ack) | Yes — re-read by resetting offset |
+| **Retention** | Until consumed (then deleted) | Time/size-based (e.g. 7 days), independent of consumption |
+| **Ordering** | Per-queue (lost across competing consumers) | Strict per-partition |
+| **Ack granularity** | Per-message (ack/nack/requeue) | Per-partition offset commit (coarser) |
+| **Parallelism** | Add consumers to a queue (per-message) | Bounded by partition count |
+| **Throughput** | High (tens–hundreds K msg/s) | Very high (millions msg/s) |
+| **Priority queues** | Yes (x-max-priority) | No native priority |
+| **Delayed/scheduled** | Yes (plugin / TTL+DLX) | No native (workarounds) |
+| **Backpressure** | Natural (queue depth, flow control) | Consumer lag metric; broker doesn't push back |
+| **Message size** | Small messages (KB), not for huge payloads | Handles larger batched payloads well |
+| **Multiple independent readers** | Each needs its own queue (fanout) | Each consumer group reads the same log independently |
+
+### Choose **RabbitMQ** when…
+
+> [!SUCCESS]
+> - You need **complex routing** (topic/headers) decided by the broker.
+> - You run **task/job queues** with competing consumers and **per-message retry/ack**.
+> - You need **priority** or **delayed/scheduled** messages.
+> - You want **request/reply (RPC)** with correlation.
+> - The workload is **commands/tasks** ("do this once") rather than a replayable event stream.
+
+### Choose **Kafka** when…
+
+> [!SUCCESS]
+> - You need a **durable, replayable event log** (re-read history, rebuild state, late
+>   consumers, new consumers reading from the start).
+> - **Very high throughput** and horizontal scale via partitions.
+> - **Strict per-key ordering** at scale (partition by key).
+> - **Multiple independent consumer groups** read the same stream without duplicating it.
+> - **Event sourcing / CDC / stream processing** (Kafka Streams, ksqlDB).
+
+### The nuance interviewers want
+
+- **Ordering:** Kafka gives strict per-partition order; RabbitMQ gives per-queue order
+  *only if a single consumer* — competing consumers break order. Need ordering + parallelism
+  in Rabbit? Use a **consistent-hash exchange** or one queue per key — clunky vs Kafka partitions.
+- **Replay:** Rabbit messages are gone after ack. If you might need to reprocess history
+  (bug in consumer, new downstream), that pushes you toward Kafka, or toward an
+  outbox/event-store you can replay from.
+- **Backpressure:** Rabbit pushes; if consumers are slow, queues grow and you can apply flow
+  control / TTL / max-length. Kafka decouples via retention — slow consumers just lag; the
+  broker never pushes back.
+- **Operational shape:** Kafka mandates ZooKeeper/KRaft + partition planning; Rabbit is
+  simpler to start but quorum queues / clustering have their own gotchas.
+
+> [!WARNING]
+> "Use both" is a legitimate and common answer — Kafka as the backbone event log, RabbitMQ
+> for command/task routing and RPC at the edges. Don't force one tool to do the other's job
+> (e.g. building replay on RabbitMQ, or per-message priority on Kafka).
+
+> [!EU]
+> Many EU enterprises (banks, telcos, gov) have a long-standing RabbitMQ footprint for
+> integration/ESB-style routing and are layering Kafka for analytics/streaming. Showing you
+> can articulate the boundary — and migrate selectively rather than rip-and-replace — reads
+> as staff-level.`,
+            code: [
+              {
+                lang: `text`,
+                title: `Decision flow — Rabbit vs Kafka`,
+                code: `Do you need to RE-READ / REPLAY history, or support new consumers
+reading from the beginning of the stream?
+   │ yes ─────────────────────────────────────────► KAFKA
+   │ no
+Do you need COMPLEX broker-side ROUTING (topic/headers),
+PRIORITY, DELAYED messages, or RPC request/reply?
+   │ yes ─────────────────────────────────────────► RABBITMQ
+   │ no
+Is it a high-throughput EVENT STREAM with per-key ORDERING
+and multiple independent consumer groups?
+   │ yes ─────────────────────────────────────────► KAFKA
+   │ no  (discrete TASKS/COMMANDS, competing workers,
+   │      per-message retry/ack) ──────────────────► RABBITMQ
+
+Often correct: BOTH — Kafka as event backbone, Rabbit for task routing/RPC.`,
+                runnable: false,
+                note: `Heuristic, not a law — validate against ordering/replay/throughput needs`
+              }
+            ],
+            flashcards: [
+              {
+                q: `In one sentence, when do you pick RabbitMQ over Kafka?`,
+                a: `When you need flexible broker-side routing, per-message ack/retry, competing-consumer task queues, priority/delayed messages, or RPC — i.e. command/task semantics — rather than a high-throughput replayable event log.`
+              },
+              {
+                q: `What is the single most important question to decide Rabbit vs Kafka?`,
+                a: `"Do you need to replay / re-read the history (new or recovering consumers reading from the start)?" If yes → Kafka (retained, offset-based log). If no, and you need rich routing/priority/RPC → RabbitMQ.`
+              },
+              {
+                q: `How does message lifecycle differ between the two?`,
+                a: `RabbitMQ deletes a message once it's acked (consumption is destructive; retention = until consumed). Kafka retains messages by time/size regardless of consumption; consumers just advance an offset, and many groups can read the same data independently.`
+              },
+              {
+                q: `Compare ordering guarantees.`,
+                a: `Kafka: strict ordering within a partition. RabbitMQ: ordering within a queue only if a single consumer — competing consumers process out of order. To get ordering+parallelism in Rabbit you need a consistent-hash exchange or one queue per key, which is clunkier than Kafka partitions.`
+              },
+              {
+                q: `Compare parallelism limits.`,
+                a: `RabbitMQ parallelism scales by adding consumers to a queue, at per-message granularity, with no fixed cap. Kafka parallelism within a consumer group is capped by the number of partitions — extra consumers sit idle beyond that.`
+              },
+              {
+                q: `How do the two handle multiple independent readers of the same data?`,
+                a: `Kafka: each consumer group independently reads the same retained log — natural and cheap. RabbitMQ: each independent reader needs its own queue bound to a fanout/topic exchange (the broker copies the message per queue).`
+              },
+              {
+                q: `Which handles backpressure more naturally and how?`,
+                a: `RabbitMQ pushes, so slow consumers cause queues to grow; you apply flow control, TTL, x-max-length, or DLX. Kafka decouples via retention — slow consumers just accumulate lag; the broker never pushes back, so you monitor consumer lag instead.`
+              },
+              {
+                q: `Which supports native priority and delayed messages?`,
+                a: `RabbitMQ: priority queues (x-max-priority) and delayed delivery (delayed-message plugin or TTL+DLX). Kafka: neither natively — you'd need application-level workarounds (e.g. separate topics per priority, scheduled re-publish).`
+              },
+              {
+                q: `Give a "use both" architecture and why it's valid.`,
+                a: `Kafka as the durable, replayable event backbone for streaming/analytics/CDC; RabbitMQ at the edges for command/task routing, RPC, and priority/delayed jobs. They optimize different access patterns, so combining them avoids forcing either tool to do the other's job.`
+              },
+              {
+                q: `Why is "Kafka is faster, so always Kafka" a weak interview answer?`,
+                a: `It ignores access pattern. Kafka wins raw throughput but is poor at per-message ack, flexible routing, priority, delayed delivery, and RPC. The correct framing is matching the tool to routing/replay/ordering/ack requirements, not raw msg/s.`
+              },
+              {
+                q: `What operational differences should you mention?`,
+                a: `Kafka requires partition capacity planning and a coordination layer (ZooKeeper or KRaft), and scaling means repartitioning. RabbitMQ is simpler to start but has its own clustering concerns (quorum vs classic-mirrored queues, network partitions / split-brain, memory/flow control).`
+              }
+            ]
+          },
+          {
+            title: `Spring AMQP in Practice`,
+            notes: `## Spring AMQP — RabbitTemplate, @RabbitListener, Retry, DLQ
+
+Spring AMQP wraps the Java client with familiar Spring idioms: a \`RabbitTemplate\` for
+sending, \`@RabbitListener\` for consuming, declarative topology beans, message converters,
+and built-in retry/DLQ support.
+
+### Sending — RabbitTemplate
 
 \`\`\`java
-// Problem: save to DB + publish to Kafka atomically
-// What if DB commits but Kafka publish fails?
+rabbitTemplate.convertAndSend("orders", "order.created.eu", orderEvent);
+//                              exchange   routingKey          payload (auto-converted)
+\`\`\`
 
-// Solution: Outbox table — same DB transaction as business data
-@Service @Transactional
-public class OrderService {
-    public Order createOrder(CreateOrderRequest req) {
-        Order order = orderRepo.save(new Order(req));
+The template uses a **message converter** to serialize. The default is Java serialization
+(avoid it). Configure a \`Jackson2JsonMessageConverter\` so payloads are JSON and
+interoperable with non-JVM consumers.
 
-        // Write to outbox in SAME transaction — atomic
-        outboxRepo.save(new OutboxEvent(
-            UUID.randomUUID().toString(),
-            "order-events",
-            order.customerId(),        // Kafka key
-            toJson(new OrderCreated(order.id(), order.status()))
-        ));
-        // If this tx rolls back → outbox entry also gone → no orphan event
-        return order;
-    }
-}
+> [!WARNING]
+> Default \`SimpleMessageConverter\` uses Java serialization → fragile, insecure, JVM-only.
+> Register a \`Jackson2JsonMessageConverter\` bean. Spring picks it up for both
+> \`RabbitTemplate\` and \`@RabbitListener\`.
 
-// Separate relay process reads outbox and publishes to Kafka
-@Scheduled(fixedDelay = 100)
-public void relay() {
-    List<OutboxEvent> pending = outboxRepo.findUnpublished();
-    for (OutboxEvent e : pending) {
-        kafka.send(e.topic(), e.key(), e.payload());
-        outboxRepo.markPublished(e.id());
-    }
-}
-// Tools: Debezium (CDC — captures DB changes via WAL), Transactional Outbox libraries
-\`\`\``,
+### Receiving — @RabbitListener
+
+\`\`\`java
+@RabbitListener(queues = "eu-orders", concurrency = "4-8")
+public void handle(OrderEvent e) { ... }
+\`\`\`
+
+\`concurrency = "4-8"\` runs 4–8 consumer threads. Combine with **prefetch** (set on the
+listener container factory) to bound in-flight work.
+
+### Acknowledgement modes
+
+- **AUTO** (default in Spring): ack on normal return, reject (requeue) on exception. *Note:*
+  this is Spring's container-level auto-ack, **not** AMQP \`autoAck=true\`; the broker still
+  uses manual acks under the hood. It's safe-ish but uncontrolled requeue can loop poison messages.
+- **MANUAL**: inject \`Channel\` + \`deliveryTag\`, call \`channel.basicAck/basicNack\` yourself.
+  Use when ack must align with a DB commit or you need fine control.
+
+### Retry & DLQ — the production pattern
+
+Two layers:
+
+1. **Stateful/stateless retry** (Spring Retry interceptor) — retry the listener N times with
+   backoff *in-process*. Good for transient failures (network blip).
+2. **DLQ after exhaustion** — once retries are exhausted, **don't requeue forever**. Configure
+   \`defaultRequeueRejected=false\` and a **dead-letter exchange** on the queue so failures go to
+   a DLQ. Spring Boot supports a \`RepublishMessageRecoverer\` that republishes the failed message
+   (with stack-trace headers) to a DLQ exchange — cleaner than nack-requeue.
+
+\`\`\`mermaid
+sequenceDiagram
+  participant T as RabbitTemplate
+  participant X as orders (topic)
+  participant Q as eu-orders
+  participant L as @RabbitListener
+  participant DLX as dlx -> eu-orders.dlq
+  T->>X: convertAndSend("order.created.eu", json)
+  X->>Q: route via binding order.*.eu
+  Q->>L: deliver (prefetch, concurrency 4-8)
+  loop retry up to maxAttempts (backoff)
+    L-->>L: process() throws (transient)
+  end
+  L->>DLX: RepublishMessageRecoverer -> DLQ
+  Note over DLX: alert + manual/automated replay
+\`\`\`
+
+### Idempotent consumers
+
+> [!SUCCESS]
+> Because delivery is at-least-once, every listener that mutates state must be idempotent.
+> Use a producer-set \`messageId\`/business key + a dedup table with a unique constraint, and
+> check-then-act (or rely on \`INSERT ... ON CONFLICT DO NOTHING\`). Spring's
+> \`MessageProcessingIdempotentReceiver\` / your own interceptor can centralize this.
+
+### Operational concerns
+
+| Concern | What to watch / do |
+|---|---|
+| **Queue length** | Alert on depth/growth. Use \`x-max-length\` + DLX to cap unbounded growth. |
+| **Memory & flow control** | Broker blocks publishers when memory/disk alarms trip (\`vm_memory_high_watermark\`). Publishers see \`channel.flow\` / blocked connections. |
+| **Lazy queues** | Store messages on disk by default (low memory footprint) — for long/large backlogs. Trade latency for stability. |
+| **Quorum queues** | Raft-based, replicated, the modern HA default. Replace classic **mirrored** queues (deprecated) for durability/failover. |
+| **Connection/channel churn** | Reuse connections; cache channels (\`CachingConnectionFactory\`). Per-request connections kill the broker. |
+| **Prefetch tuning** | Too high → unfair load + redelivery storms; too low → idle consumers. Measure. |
+
+> [!DANGER]
+> **Classic mirrored queues are deprecated.** For new HA deployments use **quorum queues**
+> (\`x-queue-type=quorum\`). They handle network partitions with Raft consensus instead of the
+> fragile mirror-sync of classic queues. Know this — it's a current-events interview signal.
+
+> [!TIP]
+> When the broker hits its memory high-watermark it **blocks producers** (flow control), not
+> consumers — so a slow consumer can stall all producers. Watch \`vm_memory_high_watermark\`,
+> use **lazy queues** for big backlogs, and cap queues with \`x-max-length\`.
+
+> [!EU]
+> For regulated EU workloads, quorum queues across 3 availability zones give you durable,
+> partition-tolerant messaging without the split-brain risk of classic mirrored queues —
+> a strong answer when asked "how do you make RabbitMQ HA?"`,
             code: [
-              `import java.util.*;
-import java.util.concurrent.*;
+              {
+                lang: `java`,
+                title: `Runnable: pure-Java topic-exchange routing simulator`,
+                code: `import java.util.*;
+import java.util.regex.*;
 
-// Saga orchestration simulation
-public class SagaDemo {
-    enum SagaStep { STARTED, INVENTORY_RESERVED, PAYMENT_CHARGED, CONFIRMED, FAILED }
+/**
+ * Self-contained simulation of a RabbitMQ TOPIC exchange.
+ * No broker needed — demonstrates how binding keys ('*'=one word, '#'=zero+ words)
+ * match routing keys, and how a message fans out to all matching queues.
+ */
+public class TopicExchangeDemo {
 
-    record SagaState(String id, String orderId, SagaStep step,
-                     String reservationId, String paymentId) {
-        SagaState withStep(SagaStep s) { return new SagaState(id,orderId,s,reservationId,paymentId); }
-        SagaState withReservation(String r) { return new SagaState(id,orderId,step,r,paymentId); }
-        SagaState withPayment(String p) { return new SagaState(id,orderId,step,reservationId,p); }
+    // A queue is just a name + an ordered list of delivered messages.
+    static final class Queue {
+        final String name;
+        final List<String> messages = new ArrayList<>();
+        Queue(String name) { this.name = name; }
     }
 
-    record CreateOrderCmd(String orderId, String productId, int qty, double amount, String customerId) {}
-    record SagaResult(boolean success, String message) {}
+    // A binding links a queue to the exchange via a binding-key pattern.
+    record Binding(String bindingKey, Queue queue, Pattern regex) {}
 
-    // Simulated service clients
-    static String reserveInventory(String productId, int qty) {
-        if (qty > 100) throw new RuntimeException("Out of stock: " + productId);
-        return "RES-" + productId + "-" + qty;
-    }
-    static String chargePayment(String customerId, double amount) {
-        if (amount > 10000) throw new RuntimeException("Card declined: limit exceeded");
-        return "PAY-" + customerId + "-" + (int)amount;
-    }
-    static void releaseInventory(String reservationId) {
-        System.out.println("[COMPENSATE] Released reservation: " + reservationId);
-    }
-    static void refundPayment(String paymentId) {
-        System.out.println("[COMPENSATE] Refunded payment: " + paymentId);
-    }
+    static final class TopicExchange {
+        private final List<Binding> bindings = new ArrayList<>();
 
-    static SagaResult executeSaga(CreateOrderCmd cmd) {
-        var state = new SagaState(UUID.randomUUID().toString(),
-            cmd.orderId(), SagaStep.STARTED, null, null);
-        System.out.println("[SAGA] Starting for order: " + cmd.orderId());
+        void bind(String bindingKey, Queue queue) {
+            bindings.add(new Binding(bindingKey, queue, compile(bindingKey)));
+        }
 
-        try {
-            // Step 1: Reserve inventory
-            String resId = reserveInventory(cmd.productId(), cmd.qty());
-            state = state.withReservation(resId).withStep(SagaStep.INVENTORY_RESERVED);
-            System.out.println("[SAGA] Inventory reserved: " + resId);
+        // Translate an AMQP topic pattern into a regex.
+        // '*' -> exactly one word;  '#' -> zero or more words.
+        // We build the FULL pattern as a sequence of "word" tokens joined by dots,
+        // letting '#' absorb its adjacent dot so 'order.created.#' matches 'order.created'.
+        private static Pattern compile(String key) {
+            String[] words = key.split("\\\\.", -1);
+            // dotWord = a literal word followed by its leading dot, e.g. "\\.foo"
+            StringBuilder sb = new StringBuilder("^");
+            for (int i = 0; i < words.length; i++) {
+                String w = words[i];
+                String token;        // matches one word
+                if (w.equals("#"))      token = "[^.]+";          // a single word; repeated below
+                else if (w.equals("*")) token = "[^.]+";
+                else                    token = Pattern.quote(w);
 
-            // Step 2: Charge payment
-            String payId = chargePayment(cmd.customerId(), cmd.amount());
-            state = state.withPayment(payId).withStep(SagaStep.PAYMENT_CHARGED);
-            System.out.println("[SAGA] Payment charged: " + payId);
+                if (w.equals("#")) {
+                    // zero or more words, with their separating dots absorbed
+                    if (i == 0) sb.append("(?:" + token + "(?:\\\\." + token + ")*)?");
+                    else        sb.append("(?:\\\\." + token + ")*");
+                } else {
+                    if (i == 0) sb.append(token);
+                    else        sb.append("\\\\." + token);
+                }
+            }
+            return Pattern.compile(sb.append("$").toString());
+        }
 
-            // Step 3: Confirm order
-            state = state.withStep(SagaStep.CONFIRMED);
-            System.out.println("[SAGA] Order CONFIRMED: " + cmd.orderId());
-            return new SagaResult(true, "Order confirmed");
-
-        } catch (Exception e) {
-            System.out.println("[SAGA] FAILED at step " + state.step() + ": " + e.getMessage());
-            // Compensate in reverse
-            if (state.paymentId() != null) refundPayment(state.paymentId());
-            if (state.reservationId() != null) releaseInventory(state.reservationId());
-            return new SagaResult(false, e.getMessage());
+        // Publish: deliver a copy to EVERY queue whose binding matches.
+        void publish(String routingKey, String body) {
+            System.out.println("\\nPUBLISH routingKey=\\"" + routingKey + "\\"  body=" + body);
+            boolean routed = false;
+            // Use a set so a queue bound by two matching patterns gets ONE copy.
+            Set<Queue> delivered = new LinkedHashSet<>();
+            for (Binding b : bindings) {
+                if (b.regex().matcher(routingKey).matches()) {
+                    if (delivered.add(b.queue())) {
+                        b.queue().messages.add(body);
+                        System.out.printf("   -> matched binding \\"%s\\"  =>  queue [%s]%n",
+                                b.bindingKey(), b.queue().name);
+                        routed = true;
+                    }
+                }
+            }
+            if (!routed) System.out.println("   -> UNROUTED (no binding matched) -- message dropped");
         }
     }
 
     public static void main(String[] args) {
-        // Success case
-        var r1 = executeSaga(new CreateOrderCmd("ORD-001","PROD-A",5,150.0,"CUST-1"));
-        System.out.println("Result: " + r1 + "
-");
+        TopicExchange orders = new TopicExchange();
 
-        // Payment failure — inventory must be released
-        var r2 = executeSaga(new CreateOrderCmd("ORD-002","PROD-B",2,15000.0,"CUST-2"));
-        System.out.println("Result: " + r2 + "
-");
+        Queue euOrders   = new Queue("eu-orders");
+        Queue usOrders   = new Queue("us-orders");
+        Queue newOrders  = new Queue("new-order-emails");
+        Queue audit      = new Queue("audit-everything");
 
-        // Inventory failure — nothing to compensate
-        var r3 = executeSaga(new CreateOrderCmd("ORD-003","PROD-C",200,50.0,"CUST-3"));
-        System.out.println("Result: " + r3);
+        // bindings
+        orders.bind("order.*.eu",     euOrders);   // any EU order event
+        orders.bind("order.*.us",     usOrders);   // any US order event
+        orders.bind("order.created.#", newOrders); // creations in any region
+        orders.bind("#",              audit);      // catch-all
+
+        // publish a stream of events
+        orders.publish("order.created.eu", "{id:1,region:eu}");
+        orders.publish("order.shipped.eu", "{id:1,region:eu}");
+        orders.publish("order.created.us", "{id:2,region:us}");
+        orders.publish("payment.captured.eu", "{id:9}");   // only audit matches
+        orders.publish("order.created",   "{id:3,region:none}"); // newOrders via '#', audit
+        orders.publish("login.failed",    "{user:bob}");   // only audit
+
+        // show final queue contents
+        System.out.println("\\n===== FINAL QUEUE CONTENTS =====");
+        for (Queue q : List.of(euOrders, usOrders, newOrders, audit)) {
+            System.out.printf("[%s] (%d msgs): %s%n", q.name, q.messages.size(), q.messages);
+        }
     }
-}`
+}`,
+                runnable: true,
+                note: `Pure Java — run with: javac TopicExchangeDemo.java && java TopicExchangeDemo`
+              },
+              {
+                lang: `java`,
+                title: `Reference: Spring AMQP producer + consumer + DLX + idempotency`,
+                code: `import org.springframework.amqp.core.*;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.context.annotation.*;
+import org.springframework.stereotype.*;
+
+@Configuration
+class AmqpTopology {
+    static final String EXCHANGE = "orders";
+    static final String QUEUE    = "eu-orders";
+    static final String DLX      = "orders.dlx";
+    static final String DLQ      = "eu-orders.dlq";
+
+    @Bean TopicExchange ordersExchange() { return new TopicExchange(EXCHANGE, true, false); }
+    @Bean DirectExchange dlx()           { return new DirectExchange(DLX, true, false); }
+
+    @Bean Queue euOrders() {
+        return QueueBuilder.durable(QUEUE)
+                .withArgument("x-queue-type", "quorum")          // modern HA queue
+                .withArgument("x-dead-letter-exchange", DLX)     // failures -> DLX
+                .withArgument("x-dead-letter-routing-key", DLQ)
+                .build();
+    }
+    @Bean Queue euOrdersDlq() { return QueueBuilder.durable(DLQ).build(); }
+
+    @Bean Binding bindMain(TopicExchange ordersExchange, Queue euOrders) {
+        return BindingBuilder.bind(euOrders).to(ordersExchange).with("order.*.eu");
+    }
+    @Bean Binding bindDlq(DirectExchange dlx, Queue euOrdersDlq) {
+        return BindingBuilder.bind(euOrdersDlq).to(dlx).with(DLQ);
+    }
+
+    @Bean Jackson2JsonMessageConverter jsonConverter() {
+        return new Jackson2JsonMessageConverter();   // JSON, not Java serialization
+    }
+}
+
+@Service
+class OrderProducer {
+    private final RabbitTemplate rabbit;
+    OrderProducer(RabbitTemplate rabbit) {
+        this.rabbit = rabbit;
+        rabbit.setMessageConverter(new Jackson2JsonMessageConverter());
+        // publisher confirms configured on the ConnectionFactory (publisher-confirm-type: correlated)
+    }
+
+    void publish(OrderEvent e) {
+        rabbit.convertAndSend(AmqpTopology.EXCHANGE, "order.created.eu", e, msg -> {
+            msg.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+            msg.getMessageProperties().setMessageId(e.orderId());   // idempotency key
+            return msg;
+        });
+    }
+}
+
+@Service
+class OrderConsumer {
+    private final ProcessedStore store;   // e.g. JDBC table with UNIQUE(message_id)
+    OrderConsumer(ProcessedStore store) { this.store = store; }
+
+    // Spring Retry (configure max-attempts + backoff in yaml). After exhaustion,
+    // RepublishMessageRecoverer sends the message to the DLX with error headers.
+    @RabbitListener(queues = AmqpTopology.QUEUE, concurrency = "4-8")
+    public void onOrder(OrderEvent e, org.springframework.messaging.handler.annotation.Header("amqp_messageId") String messageId) {
+        if (!store.markIfNew(messageId)) {     // idempotency: dedup on messageId
+            return;                            // duplicate redelivery -> no-op, just ack
+        }
+        process(e);                            // throws -> retry -> eventually DLQ
+    }
+    void process(OrderEvent e) { /* business logic */ }
+}
+
+record OrderEvent(String orderId, String region, double total) {}
+interface ProcessedStore { boolean markIfNew(String messageId); }`,
+                runnable: false,
+                note: `Reference — needs RabbitMQ + spring-amqp (spring-boot-starter-amqp)`
+              },
+              {
+                lang: `yaml`,
+                title: `Reference: application.yml — confirms, prefetch, retry/DLQ`,
+                code: `spring:
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    virtual-host: /payments            # tenant isolation via vhost
+    publisher-confirm-type: correlated # async publisher confirms (producer guarantee)
+    publisher-returns: true            # unrouted messages returned (mandatory)
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: auto         # container acks on success; rejects on throw
+        prefetch: 20                   # unacked messages in flight per consumer
+        concurrency: 4                 # min consumer threads
+        max-concurrency: 8             # max consumer threads
+        default-requeue-rejected: false # DON'T requeue forever -> let DLX handle it
+        retry:
+          enabled: true
+          max-attempts: 3              # in-process retries for transient failures
+          initial-interval: 1000ms
+          multiplier: 2.0              # exponential backoff: 1s, 2s, 4s
+          max-interval: 10000ms`,
+                runnable: false,
+                note: `Reference — Spring Boot RabbitMQ config; pair with RepublishMessageRecoverer bean for clean DLQ`
+              }
             ],
             flashcards: [
               {
-                q: `What is the Saga pattern and why is it needed in microservices?`,
-                a: `In microservices each service owns its database — traditional ACID transactions spanning multiple services aren't possible (or practical with 2PC). Saga solves this: a saga is a sequence of local transactions, one per service. Each step publishes an event/message triggering the next. On failure, compensating transactions undo previous steps (e.g. refund payment, release inventory). Two styles: Choreography (services react to each other's events — decoupled), Orchestration (central coordinator explicitly calls each service — clearer control flow).`
+                q: `Why must you replace Spring AMQP's default message converter?`,
+                a: `The default SimpleMessageConverter uses Java serialization — fragile, insecure (deserialization gadgets), and JVM-only. Register a Jackson2JsonMessageConverter bean so payloads are JSON and interoperable; Spring uses it for both RabbitTemplate and @RabbitListener.`
               },
               {
-                q: `What is the difference between choreography and orchestration sagas?`,
-                a: `Choreography: each service listens for events and reacts — no central controller. Order Service publishes "OrderCreated" → Inventory Service listens and reserves stock → publishes "StockReserved" → Payment Service listens and charges. Pros: loose coupling, no SPOF. Cons: hard to see the overall flow, failure handling scattered. Orchestration: a central Saga Orchestrator service explicitly calls each step and handles failures. Pros: clear flow in one place, easy debugging. Cons: orchestrator is a SPOF (must be resilient), more coupling. Use orchestration for complex multi-step processes.`
+                q: `What's the difference between Spring's AUTO ack mode and AMQP autoAck=true?`,
+                a: `They're different. AMQP autoAck=true tells the broker to delete on push (at-most-once). Spring's container AUTO mode still uses manual acks under the hood: it acks after the listener returns normally and rejects on exception — at-least-once, just managed by the container.`
               },
               {
-                q: `What is the Outbox pattern and what problem does it solve?`,
-                a: `Problem: you need to both save to your DB AND publish an event to Kafka atomically. If you save to DB then publish, and Kafka fails → DB has data but no event. If you publish then save → process crashes → event without data. Outbox solution: write the event to an outbox table in the SAME DB transaction as your business data. A separate relay process (or Debezium CDC) reads the outbox and publishes to Kafka, marking entries as published. If the relay fails, it retries (idempotent). Guaranteed: event is published if and only if the DB transaction committed.`
+                q: `How do you bound in-flight work and concurrency in @RabbitListener?`,
+                a: `Set prefetch on the listener container factory (unacked messages per consumer) and concurrency/max-concurrency (consumer thread range, e.g. "4-8"). Prefetch controls fairness and redelivery-storm risk; concurrency controls parallel throughput.`
               },
               {
-                q: `What are compensating transactions and what are their limitations?`,
-                a: `Compensating transactions undo the effect of a completed local transaction. Examples: if inventory was reserved → release it; if payment was charged → refund it. Limitations: they are not instant rollbacks — the original transaction already committed and side effects occurred. Between the original action and the compensation, other processes may have acted on that data. Compensation may itself fail (what if refund fails?). Time window between forward and compensating tx creates temporary inconsistency. Compensations must be idempotent (safe to call multiple times). Not all operations can be compensated (e.g. an email was sent).`
+                q: `Describe the production retry-then-DLQ pattern in Spring AMQP.`,
+                a: `Enable listener retry (max-attempts + exponential backoff) for transient failures. Set default-requeue-rejected=false and declare a DLX on the queue. After retries are exhausted, a RepublishMessageRecoverer republishes the failed message (with error headers) to the DLQ instead of requeueing forever.`
+              },
+              {
+                q: `Why does default-requeue-rejected=false matter?`,
+                a: `If a message keeps failing and is requeued (the default true), it loops forever and can block the queue (poison message). Setting it false sends exhausted/failed messages to the dead-letter exchange instead, quarantining them for inspection/replay.`
+              },
+              {
+                q: `How do you make a Spring AMQP consumer idempotent?`,
+                a: `Set a stable messageId (or business key) on the producer; in the listener, dedup against a store with a unique constraint (e.g. INSERT ... ON CONFLICT DO NOTHING or a markIfNew check) before acting. Duplicate redeliveries become no-ops and are simply acked.`
+              },
+              {
+                q: `What are quorum queues and why prefer them over mirrored queues?`,
+                a: `Quorum queues are Raft-replicated queues (x-queue-type=quorum) — the modern HA default. They handle network partitions via consensus, avoiding the split-brain and fragile sync of classic mirrored queues, which are now deprecated.`
+              },
+              {
+                q: `What happens at the memory high-watermark and who gets blocked?`,
+                a: `When the broker crosses vm_memory_high_watermark (or a disk alarm), it triggers flow control and BLOCKS PUBLISHERS (connections marked blocked), not consumers. So a slow consumer growing a queue can stall all producers — watch this metric and cap queues.`
+              },
+              {
+                q: `What are lazy queues and when do you use them?`,
+                a: `Lazy queues keep messages on disk by default rather than in memory, giving a small, stable memory footprint for long/large backlogs at the cost of some latency. Use them when you expect deep queues (catch-up, batch) and want to avoid memory-pressure flow control.`
+              },
+              {
+                q: `How do publisher confirms surface in Spring Boot config?`,
+                a: `Set spring.rabbitmq.publisher-confirm-type: correlated (async confirms with correlation data) and publisher-returns: true + template.mandatory: true to get unroutable messages back. Then register confirm/return callbacks on the RabbitTemplate to handle nacks/returns.`
+              },
+              {
+                q: `Why is CachingConnectionFactory important operationally?`,
+                a: `It reuses a small number of TCP connections and caches channels per thread, avoiding connection/channel churn that would exhaust broker resources. Opening a connection per request is a classic way to crash RabbitMQ under load.`
               }
             ]
           }
