@@ -7063,14 +7063,824 @@ class RealWorldDemo {
       ]
     },
 
-        {
+    {
       id: '0.8',
       title: 'Generics — Wildcards, Bounded Types, PECS',
       hours: 3,
-      notes: `*[Module 0.8 — under construction. Will cover: type parameters, bounded types, wildcards, PECS rule, type erasure. Roadmap: build after 0.7.]*`
+      sections: [
+        {
+          title: 'Generic Classes & Methods — The Basics',
+          notes: `## Generic Classes & Methods — The Basics
+
+Generics allow you to write classes and methods that work with **any type** while preserving full type safety at compile time. Before generics (pre-Java 5), collections stored \`Object\` and required unsafe casts everywhere.
+
+### Why Generics?
+
+\`\`\`java
+// Pre-generics — no type safety
+List list = new ArrayList();
+list.add("hello");
+list.add(42);             // silently accepted!
+String s = (String) list.get(1);  // ClassCastException at RUNTIME
+
+// With generics — type safety at COMPILE TIME
+List<String> strings = new ArrayList<>();
+strings.add("hello");
+// strings.add(42);      // compile error — caught early
+String s = strings.get(0);  // no cast needed
+\`\`\`
+
+### Generic Class
+
+Declare type parameters in angle brackets after the class name. Convention: single uppercase letters — \`T\` (Type), \`E\` (Element), \`K\` (Key), \`V\` (Value), \`R\` (Return), \`N\` (Number).
+
+\`\`\`java
+public class Box<T> {
+    private T value;
+
+    public Box(T value) { this.value = value; }
+
+    public T get()           { return value; }
+    public void set(T value) { this.value = value; }
+
+    public <R> Box<R> map(java.util.function.Function<T, R> f) {
+        return new Box<>(f.apply(value));
+    }
+
+    @Override
+    public String toString() { return "Box[" + value + "]"; }
+}
+
+Box<String>  strBox  = new Box<>("hello");
+Box<Integer> intBox  = new Box<>(42);
+Box<Double>  dblBox  = intBox.map(i -> i * 1.5);
+
+System.out.println(strBox);   // Box[hello]
+System.out.println(dblBox);   // Box[63.0]
+\`\`\`
+
+### Multiple Type Parameters
+
+\`\`\`java
+public class Pair<A, B> {
+    private final A first;
+    private final B second;
+
+    public Pair(A first, B second) { this.first = first; this.second = second; }
+
+    public A first()  { return first; }
+    public B second() { return second; }
+
+    public Pair<B, A> swap() { return new Pair<>(second, first); }
+
+    @Override
+    public String toString() { return "(" + first + ", " + second + ")"; }
+}
+
+Pair<String, Integer> p = new Pair<>("Alice", 30);
+System.out.println(p);          // (Alice, 30)
+System.out.println(p.swap());   // (30, Alice)
+\`\`\`
+
+### Generic Methods
+
+A method can be generic independently of its class — declare the type parameter before the return type:
+
+\`\`\`java
+public class Utils {
+    // Generic method — T is declared on the method
+    public static <T> T firstNonNull(T a, T b) {
+        return a != null ? a : b;
+    }
+
+    // Multiple type params
+    public static <K, V> java.util.Map<V, K> invertMap(java.util.Map<K, V> map) {
+        java.util.Map<V, K> result = new java.util.HashMap<>();
+        map.forEach((k, v) -> result.put(v, k));
+        return result;
+    }
+
+    // Type inference — compiler infers T from arguments
+    public static void main(String[] args) {
+        String s = firstNonNull(null, "default");   // T inferred as String
+        Integer n = firstNonNull(null, 42);          // T inferred as Integer
+        System.out.println(s + ", " + n);           // default, 42
+    }
+}
+\`\`\`
+
+### Type Erasure — The Key Constraint
+
+At compile time, generics are fully type-checked. At runtime, the type parameter is **erased** — \`List<String>\` and \`List<Integer>\` are both just \`List\` in the bytecode. This has important consequences:
+
+- You cannot use \`instanceof\` with a generic type: ~~\`obj instanceof List<String>\`~~ → compile error
+- You cannot create generic arrays: ~~\`new T[10]\`~~ → compile error
+- You cannot catch a generic exception type
+- You CAN use \`instanceof\` to check the raw type: \`obj instanceof List\`
+
+\`\`\`java
+// What the compiler sees at runtime (after erasure)
+public class Box {          // was Box<T>
+    private Object value;   // T → Object
+    public Object get()  { return value; }
+    public void set(Object value) { this.value = value; }
+}
+\`\`\`
+
+The compiler inserts **synthetic casts** at every point where you use the typed value, so type safety is preserved without needing runtime type information.`,
+          code: [
+            `import java.util.function.*;
+
+public class Box<T> {
+    private T value;
+
+    public Box(T value) { this.value = value; }
+
+    public T get()           { return value; }
+    public void set(T value) { this.value = value; }
+
+    // Generic method on a generic class — R is independent of T
+    public <R> Box<R> map(Function<T, R> mapper) {
+        return new Box<>(mapper.apply(value));
+    }
+
+    public Box<T> filter(Predicate<T> predicate) {
+        return predicate.test(value) ? this : new Box<>(null);
+    }
+
+    @Override public String toString() { return "Box[" + value + "]"; }
+
+    public static void main(String[] args) {
+        Box<String> strBox = new Box<>("hello world");
+
+        // Transform String → Integer
+        Box<Integer> lenBox = strBox.map(String::length);
+        System.out.println(lenBox);   // Box[11]
+
+        // Transform → uppercase
+        Box<String> upper = strBox.map(String::toUpperCase);
+        System.out.println(upper);    // Box[HELLO WORLD]
+
+        // Filter
+        Box<String> filtered = strBox.filter(s -> s.length() > 5);
+        System.out.println(filtered); // Box[hello world]
+        Box<String> empty = strBox.filter(s -> s.length() > 100);
+        System.out.println(empty);    // Box[null]
+    }
+}`,
+            `import java.util.*;
+
+public class GenericUtils {
+    // Generic method — declared before return type
+    public static <T extends Comparable<T>> T max(T a, T b) {
+        return a.compareTo(b) >= 0 ? a : b;
+    }
+
+    // Swap two elements in a list
+    public static <T> void swap(List<T> list, int i, int j) {
+        T tmp = list.get(i);
+        list.set(i, list.get(j));
+        list.set(j, tmp);
+    }
+
+    // Invert a map K→V to V→K
+    public static <K, V> Map<V, K> invert(Map<K, V> map) {
+        Map<V, K> result = new HashMap<>();
+        map.forEach((k, v) -> result.put(v, k));
+        return result;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(max("apple", "banana")); // banana
+        System.out.println(max(42, 17));            // 42
+        System.out.println(max(3.14, 2.71));        // 3.14
+
+        List<String> words = new ArrayList<>(Arrays.asList("a","b","c","d"));
+        swap(words, 0, 3);
+        System.out.println(words);                  // [d, b, c, a]
+
+        Map<String,Integer> scores = Map.of("Alice", 1, "Bob", 2);
+        System.out.println(invert(scores));         // {1=Alice, 2=Bob}
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is type erasure in Java generics?', a: 'At compile time, all type parameters are removed (erased) from bytecode. List<String> and List<Integer> both become List at runtime. The compiler inserts synthetic casts where needed to maintain type safety. Consequence: you cannot use instanceof with generic type parameters, and you cannot create generic arrays (new T[]).' },
+            { q: 'What are the naming conventions for type parameters?', a: 'T — Type (general), E — Element (collections), K — Key (maps), V — Value (maps), R — Return type (functions), N — Number. Use single uppercase letters. Multiple parameters: <K,V>, <T,R>.' },
+            { q: 'How does a generic method differ from a generic class?', a: 'A generic class declares type parameters on the class definition (class Box<T>). A generic method declares its own type parameters before the return type (public <T> T method()). A generic method can exist in a non-generic class, and its type parameter is independent of any class-level parameters.' },
+            { q: 'Why can\'t you write new T[] in Java?', a: 'Because of type erasure — at runtime, T is erased to Object, so the JVM would create Object[] but the reference would claim it\'s T[]. This is a heap pollution risk. Java prevents it at compile time. Workaround: accept a Class<T> token and use Array.newInstance(clazz, size).' },
+            { q: 'What is the diamond operator <> and when was it introduced?', a: 'Introduced in Java 7, <> allows type inference on the right side of variable declarations: new ArrayList<>() instead of new ArrayList<String>(). The compiler infers the type from the variable declaration. Java 9 extended this to anonymous classes.' }
+          ]
+        },
+        {
+          title: 'Bounded Type Parameters — extends & super',
+          notes: `## Bounded Type Parameters — extends & super
+
+Without bounds, a type parameter \`T\` can be any type at all, but you can only call methods from \`Object\` on it. Bounds let you restrict what \`T\` can be — and gain access to the methods of the bound type.
+
+### Upper Bound — \`extends\`
+
+\`<T extends Number>\` means T must be \`Number\` or a subclass. You can now call \`Number\` methods on T:
+
+\`\`\`java
+// Without bound — can only call Object methods on t
+public static <T> void print(T t) {
+    System.out.println(t.hashCode());  // OK — Object method
+    // t.doubleValue();  // compile error — T could be anything
+}
+
+// With upper bound — Number methods available
+public static <T extends Number> double sum(List<T> list) {
+    double total = 0;
+    for (T item : list) {
+        total += item.doubleValue();   // OK — Number has doubleValue()
+    }
+    return total;
+}
+
+sum(List.of(1, 2, 3));         // T inferred as Integer — works
+sum(List.of(1.5, 2.5, 3.0));  // T inferred as Double — works
+// sum(List.of("a", "b"));     // compile error — String doesn't extend Number
+\`\`\`
+
+### Multiple Bounds
+
+A type can be bounded by one class AND multiple interfaces (class must come first):
+
+\`\`\`java
+// T must extend Comparable AND implement Serializable
+public static <T extends Comparable<T> & java.io.Serializable> T minSerializable(T a, T b) {
+    return a.compareTo(b) <= 0 ? a : b;
+}
+
+// String satisfies both bounds
+System.out.println(minSerializable("banana", "apple")); // apple
+\`\`\`
+
+### Bounded Wildcards — \`?\`
+
+Wildcards (\`?\`) are used in **type declarations** (parameters, fields), not in generic class/method definitions. They represent an unknown type.
+
+\`\`\`java
+// Unbounded wildcard — "any type"
+public void printList(List<?> list) {
+    for (Object o : list) System.out.println(o);  // can only read as Object
+}
+
+// Upper bounded wildcard — "T or any subtype of T"
+public double sumNumbers(List<? extends Number> list) {
+    return list.stream().mapToDouble(Number::doubleValue).sum();
+}
+// sumNumbers accepts List<Integer>, List<Double>, List<Long>, etc.
+
+// Lower bounded wildcard — "T or any supertype of T"
+public void addIntegers(List<? super Integer> list) {
+    list.add(1);   // safe — Integer IS-A T (or more general)
+    list.add(2);
+    list.add(3);
+}
+// addIntegers accepts List<Integer>, List<Number>, List<Object>
+\`\`\`
+
+### The Key Difference: Bounded Type Param vs Bounded Wildcard
+
+| | Bounded type param \`<T extends X>\` | Bounded wildcard \`<? extends X>\` |
+|---|---|---|
+| Where | Method/class definition | Method parameters, fields, return types |
+| Can reference type | Yes — you can use T throughout | No — ? is anonymous, can't say \`? var\` |
+| Can add to collection | Yes (if T is concrete) | No for \`? extends\`, Yes for \`? super\` |
+
+\`\`\`java
+// Type param — T is named and reusable across the method
+public <T extends Comparable<T>> T max(List<T> list) {
+    return list.stream().max(Comparator.naturalOrder()).orElseThrow();
+}
+
+// Wildcard — you don't need a name for the type, just know it's a Number
+public double sum(List<? extends Number> list) {
+    return list.stream().mapToDouble(Number::doubleValue).sum();
+}
+\`\`\`
+
+### Covariance and Contravariance
+
+This is the core intuition behind wildcards:
+- \`List<Integer>\` is NOT a subtype of \`List<Number>\` (invariant)
+- \`List<? extends Number>\` accepts \`List<Integer>\`, \`List<Double>\`, etc. (covariant)
+- \`List<? super Integer>\` accepts \`List<Integer>\`, \`List<Number>\`, \`List<Object>\` (contravariant)
+
+\`\`\`java
+List<Integer> ints = List.of(1, 2, 3);
+List<Number> nums = ints;           // COMPILE ERROR — not a subtype!
+
+List<? extends Number> covariant = ints;    // OK — covariant wildcard
+// covariant.add(4);                        // ERROR — can't add (type unknown)
+Number n = covariant.get(0);               // OK — read as Number
+
+List<? super Integer> contravariant = new ArrayList<Number>();
+contravariant.add(42);                      // OK — Integer IS-A Integer (or supertype)
+Object o = contravariant.get(0);           // read as Object only
+\`\`\``,
+          code: [
+            `import java.util.*;
+
+public class BoundedDemo {
+    // Upper bound — T must extend Number
+    static <T extends Number & Comparable<T>> T clamp(T value, T min, T max) {
+        if (value.compareTo(min) < 0) return min;
+        if (value.compareTo(max) > 0) return max;
+        return value;
+    }
+
+    // Upper bounded wildcard — accepts List<Integer>, List<Double>, etc.
+    static double sum(List<? extends Number> list) {
+        return list.stream().mapToDouble(Number::doubleValue).sum();
+    }
+
+    // Lower bounded wildcard — accepts List<Integer>, List<Number>, List<Object>
+    static void fillIntegers(List<? super Integer> list, int count) {
+        for (int i = 1; i <= count; i++) list.add(i);
+    }
+
+    public static void main(String[] args) {
+        // Upper bound — same method works for Int and Double
+        System.out.println(clamp(15, 0, 10));    // 10
+        System.out.println(clamp(5,  0, 10));    // 5
+        System.out.println(clamp(3.7, 0.0, 3.5)); // 3.5
+
+        // Covariant wildcard
+        List<Integer> ints    = Arrays.asList(1, 2, 3, 4);
+        List<Double>  doubles = Arrays.asList(1.5, 2.5, 3.5);
+        System.out.println(sum(ints));    // 10.0
+        System.out.println(sum(doubles)); // 7.5
+
+        // Contravariant wildcard
+        List<Number> numList = new ArrayList<>();
+        fillIntegers(numList, 5);
+        System.out.println(numList);  // [1, 2, 3, 4, 5]
+    }
+}`,
+            `import java.util.*;
+
+public class CovarianceDemo {
+    // Invariance: List<Integer> is NOT a subtype of List<Number>
+    static void addTen(List<Number> list) { list.add(10); }
+
+    // Covariant: can READ from List<? extends Number>
+    static double average(List<? extends Number> list) {
+        return list.stream().mapToDouble(Number::doubleValue).average().orElse(0);
+    }
+
+    // Contravariant: can WRITE Integer to List<? super Integer>
+    static void populate(List<? super Integer> list) {
+        for (int i = 1; i <= 3; i++) list.add(i);
+    }
+
+    public static void main(String[] args) {
+        List<Integer> ints = new ArrayList<>(Arrays.asList(1, 2, 3));
+        // addTen(ints);  // COMPILE ERROR — List<Integer> not List<Number>
+
+        // Covariant — read OK, write forbidden
+        List<? extends Number> cov = ints;
+        System.out.println("Avg: " + average(cov)); // 2.0
+        // cov.add(4);  // COMPILE ERROR
+
+        // Contravariant — write OK, read as Object only
+        List<Number> nums = new ArrayList<>();
+        populate(nums);
+        System.out.println("Nums: " + nums);        // [1, 2, 3]
+        Object first = nums.get(0);                 // can only read as Object from List<? super Integer>
+        System.out.println("First: " + first);      // 1
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'Is List<Integer> a subtype of List<Number>?', a: 'No — generics are invariant. List<Integer> and List<Number> are unrelated types. If it were allowed, you could do List<Number> n = intList; n.add(3.14); — corrupting an integer list. Use List<? extends Number> (covariant wildcard) to accept both.' },
+            { q: 'What is the difference between <T extends Number> and <? extends Number>?', a: '<T extends Number> is a bounded type parameter — T is named and can be referenced throughout the method signature and body. <? extends Number> is a wildcard — the type is anonymous and cannot be named. Use type parameters when you need to refer to the type; use wildcards when you just need to accept a family of types.' },
+            { q: 'What methods can you call on a value of type T when <T extends Comparable<T> & Serializable>?', a: 'All methods of Comparable (compareTo), all methods of Serializable (just a marker), and all methods of Object. Multiple bounds give access to all bound types\' methods.' },
+            { q: 'Can you add elements to a List<? extends Number>?', a: 'No. With an upper-bounded wildcard (? extends Number), the compiler does not know the exact type — it could be List<Integer>, List<Double>, or any other subtype. Adding any Number would risk type corruption. You can only read (as Number). Lower-bounded wildcard (? super Integer) is needed for writing.' },
+            { q: 'What is the result of multiple bounds <T extends A & B & C>?', a: 'T must be a subtype of A, B, and C simultaneously. The first bound must be a class (or Object); all subsequent bounds must be interfaces (Java has single inheritance). You gain access to methods from all bound types inside the generic method or class.' }
+          ]
+        },
+        {
+          title: 'PECS — Producer Extends, Consumer Super',
+          notes: `## PECS — Producer Extends, Consumer Super
+
+PECS is the golden rule for choosing between \`? extends T\` and \`? super T\`. It was coined by Joshua Bloch in *Effective Java* and appears in almost every Java interview at the mid-senior level.
+
+### The Rule
+
+> **P**roducer **E**xtends, **C**onsumer **S**uper
+
+- If a collection **produces** values for you to **read** → use \`? extends T\`
+- If a collection **consumes** values you **write** → use \`? super T\`
+- If you do both (read AND write) → use the exact type (no wildcard)
+
+### Walking Through the Rule
+
+\`\`\`java
+// PRODUCER — we read from src (src produces E for us)
+public static <E> void copy(List<? extends E> src, List<? super E> dst) {
+    for (E item : src) {   // reading from src — it PRODUCES E
+        dst.add(item);     // writing to dst  — it CONSUMES E
+    }
+}
+
+// Usage:
+List<Integer> integers = Arrays.asList(1, 2, 3);
+List<Number>  numbers  = new ArrayList<>();
+copy(integers, numbers);  // E = Integer; src=List<Integer>, dst=List<Number>
+System.out.println(numbers);  // [1, 2, 3]
+\`\`\`
+
+This is exactly how \`Collections.copy(dest, src)\` is implemented in the JDK.
+
+### Why NOT just use \`List<E>\` for both?
+
+\`\`\`java
+// Naive version — TOO RESTRICTIVE
+public static <E> void copy(List<E> src, List<E> dst) { ... }
+
+// Now this fails — E can't be both Integer and Number
+List<Integer> ints  = List.of(1, 2, 3);
+List<Number>  nums  = new ArrayList<>();
+copy(ints, nums);   // COMPILE ERROR — E would need to be Integer AND Number
+\`\`\`
+
+With PECS, \`E = Integer\`, \`src = List<? extends Integer>\` (or more specific), \`dst = List<? super Integer>\` (or more general) — the asymmetry is expressed in the wildcards.
+
+### Practical PECS Examples
+
+\`\`\`java
+// PRODUCER — reading from a stack of T or subtypes
+public <T> void pushAll(Iterable<? extends T> src) {
+    for (T item : src) push(item);  // reading (producing) from src
+}
+
+// CONSUMER — writing into a collection of T or supertypes
+public <T> void popAll(Collection<? super T> dst) {
+    while (!isEmpty()) dst.add(pop());  // writing (consuming) to dst
+}
+
+// Stack<Number> stack
+Stack<Number> stack = new Stack<>();
+Iterable<Integer> ints = List.of(1, 2, 3);
+stack.pushAll(ints);              // Integer extends Number ✓
+
+List<Object> objects = new ArrayList<>();
+stack.popAll(objects);            // Object super Number ✓
+\`\`\`
+
+### The \`Comparator\` Pattern — PECS in Action
+
+\`\`\`java
+// JDK's Collections.sort uses PECS for Comparator
+public static <T> void sort(List<T> list, Comparator<? super T> c) { ... }
+// Comparator consumes T to compare — so super
+
+// A Comparator<Object> can sort a List<String>!
+Comparator<Object> byString = (a, b) -> a.toString().compareTo(b.toString());
+List<String> words = new ArrayList<>(Arrays.asList("banana","apple","cherry"));
+Collections.sort(words, byString);   // Comparator<Object> super String ✓
+System.out.println(words);           // [apple, banana, cherry]
+\`\`\`
+
+### Quick Memory Aid
+
+\`\`\`
+? extends T  →  GET (you get/read values of type T)
+? super T    →  PUT (you put/write values of type T)
+No wildcard  →  GET and PUT (exact type for read-write)
+\`\`\`
+
+Or think of it from the collection's perspective:
+- A \`List<? extends Fruit>\` produces Fruits for me → I can read Fruits from it
+- A \`List<? super Apple>\` consumes my Apples → I can add Apples to it
+
+### When Wildcards Don't Help
+
+\`\`\`java
+// Return types — prefer bounded type params over wildcards
+// BAD: caller can't use the result without casting
+public ? extends Number compute() { ... }  // not even valid syntax
+
+// GOOD: T is named and reusable
+public <T extends Number> T compute(Class<T> type) { ... }
+\`\`\`
+
+> **Interview insight:** PECS maximises API flexibility. The caller decides what collection to pass — you just express what guarantees you need. A method that takes \`List<? extends Number>\` is more useful than one that takes \`List<Number>\` because it accepts more types without sacrificing safety.`,
+          code: [
+            `import java.util.*;
+
+public class PecsDemo {
+    // PECS: src is producer (extends), dst is consumer (super)
+    static <E> void copy(List<? extends E> src, List<? super E> dst) {
+        for (E item : src) dst.add(item);
+    }
+
+    // Producer extends — reading frequencies out
+    static <T> Map<T, Integer> frequency(List<? extends T> list) {
+        Map<T, Integer> freq = new LinkedHashMap<>();
+        for (T item : list) freq.merge(item, 1, Integer::sum);
+        return freq;
+    }
+
+    // Consumer super — writing filtered results in
+    static <T> void filterInto(List<? extends T> src,
+                                List<? super T> dst,
+                                java.util.function.Predicate<? super T> pred) {
+        for (T item : src) if (pred.test(item)) dst.add(item);
+    }
+
+    public static void main(String[] args) {
+        // copy: E = Integer; src=List<Integer>, dst=List<Number>
+        List<Integer> ints = Arrays.asList(1, 2, 3, 2, 1);
+        List<Number>  nums = new ArrayList<>();
+        copy(ints, nums);
+        System.out.println("Copied: " + nums);   // [1, 2, 3, 2, 1]
+
+        // frequency
+        Map<Integer, Integer> freq = frequency(ints);
+        System.out.println("Freq: " + freq);     // {1=2, 2=2, 3=1}
+
+        // filterInto: T = Integer, dst accepts Integer or supertype
+        List<Object> evens = new ArrayList<>();
+        filterInto(ints, evens, n -> n % 2 == 0);
+        System.out.println("Evens: " + evens);   // [2, 2]
+    }
+}`,
+            `import java.util.*;
+
+// Classic Stack example from Effective Java — PECS in pushAll/popAll
+class Stack<E> {
+    private final Deque<E> data = new ArrayDeque<>();
+
+    public void push(E item) { data.push(item); }
+    public E pop() { return data.pop(); }
+    public boolean isEmpty() { return data.isEmpty(); }
+
+    // PRODUCER extends — src produces E values for us
+    public void pushAll(Iterable<? extends E> src) {
+        for (E e : src) push(e);
+    }
+
+    // CONSUMER super — dst consumes E values from us
+    public void popAll(Collection<? super E> dst) {
+        while (!isEmpty()) dst.add(pop());
+    }
+}
+
+public class StackPecsDemo {
+    public static void main(String[] args) {
+        Stack<Number> stack = new Stack<>();
+
+        // Push integers into a Number stack (Integer extends Number ✓)
+        List<Integer> ints   = Arrays.asList(1, 2, 3);
+        List<Double>  doubles = Arrays.asList(4.5, 5.5);
+        stack.pushAll(ints);
+        stack.pushAll(doubles);
+
+        // Pop into an Object list (Object super Number ✓)
+        List<Object> result = new ArrayList<>();
+        stack.popAll(result);
+        System.out.println("Popped: " + result);  // [5.5, 4.5, 3, 2, 1]
+
+        // Naive version without PECS would fail:
+        // stack.pushAll(ints);    // COMPILE ERROR if pushAll(Iterable<E>)
+        // stack.popAll(result);   // COMPILE ERROR if popAll(Collection<E>)
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What does PECS stand for and what is the rule?', a: 'Producer Extends, Consumer Super. If a collection produces (provides) values you read, use ? extends T. If a collection consumes (accepts) values you write, use ? super T. If you both read and write, use the exact type with no wildcard.' },
+            { q: 'Why does Collections.copy use (List<? super T> dest, List<? extends T> src)?', a: 'src produces T values for you to read → extends. dest consumes T values you write into → super. This lets you copy List<Integer> into List<Number> (or List<Object>) — the asymmetry in the wildcards captures the actual direction of data flow.' },
+            { q: 'What happens when you try to read from a List<? super Integer>?', a: 'You can only read the elements as Object — the compiler doesn\'t know whether it\'s a List<Integer>, List<Number>, or List<Object>. The only safe type is Object. To get a usable type back, you must cast manually.' },
+            { q: 'Why is Comparator<? super T> used in sort(List<T>, Comparator<? super T>)?', a: 'A Comparator consumes T values (it receives two T objects to compare), making it a consumer → super. This means a Comparator<Object> can sort a List<String> — the comparator accepts any Object, which certainly includes String. Without ? super, only an exact Comparator<String> would work.' },
+            { q: 'Can you use a wildcard as a method return type?', a: 'Technically yes but it\'s almost always wrong — the caller receives a value of unknown type and cannot use it without casting, defeating the purpose of generics. Use a bounded type parameter (<T extends X>) for return types instead. Wildcards belong in method parameters.' }
+          ]
+        },
+        {
+          title: 'Type Erasure, Raw Types & Generic Patterns',
+          notes: `## Type Erasure, Raw Types & Generic Patterns
+
+### Raw Types — the Legacy Trap
+
+A **raw type** is a generic class used without type arguments: \`List\` instead of \`List<String>\`. Raw types exist only for backward compatibility with pre-Java 5 code. **Never use them in new code.**
+
+\`\`\`java
+// Raw type — compiler warns "unchecked" but compiles
+List rawList = new ArrayList();
+rawList.add("hello");
+rawList.add(42);              // silently adds Integer
+String s = (String) rawList.get(1);  // ClassCastException at RUNTIME
+
+// Equivalent with generics — compile-time safety
+List<String> typedList = new ArrayList<>();
+typedList.add("hello");
+// typedList.add(42);         // compile error
+String safe = typedList.get(0);  // no cast
+\`\`\`
+
+### Type Erasure Deep Dive
+
+The compiler replaces type parameters with their **bounds** (or \`Object\` if unbounded), then inserts casts where needed:
+
+\`\`\`java
+// Written by you                  | Compiled bytecode (after erasure)
+// --------------------------------|--------------------------------------
+// class Box<T>                   | class Box
+//   private T value;             |   private Object value;
+//   public T get() { … }        |   public Object get() { … }
+//
+// class NumberBox<T extends Number> | class NumberBox
+//   private T value;               |   private Number value;
+//   public T get() { … }          |   public Number get() { … }
+\`\`\`
+
+The compiler also generates **bridge methods** to maintain polymorphism when a generic class is subclassed:
+
+\`\`\`java
+class StringBox extends Box<String> {
+    @Override public String get() { return "typed"; }
+}
+// Compiler generates a synthetic bridge:
+// public Object get() { return (Object) get(); }  // bridges Box.get() → StringBox.get()
+\`\`\`
+
+### Reifiable vs Non-Reifiable Types
+
+A **reifiable** type is one whose full type information is available at runtime:
+- Primitive types (\`int\`, \`long\`)
+- Non-generic classes (\`String\`, \`Object\`)
+- Raw types (\`List\`)
+- Unbounded wildcards (\`List<?>\`)
+- Arrays of reifiable types (\`String[]\`)
+
+**Non-reifiable** types lose information at runtime:
+- \`List<String>\` (erased to \`List\`)
+- \`List<? extends Number>\` (erased to \`List\`)
+
+This is why \`instanceof\` and arrays don't mix well with generics.
+
+### Generic Singleton Pattern
+
+Type erasure means one instance can serve all type parameters — a generic singleton:
+
+\`\`\`java
+// Identity function — returns its argument unchanged
+public class Functions {
+    private static final java.util.function.UnaryOperator<Object> IDENTITY =
+        x -> x;
+
+    @SuppressWarnings("unchecked")
+    public static <T> java.util.function.UnaryOperator<T> identity() {
+        return (java.util.function.UnaryOperator<T>) IDENTITY;
+    }
+}
+
+// Same object serves Integer and String at runtime (erasure)
+var intId  = Functions.<Integer>identity();
+var strId  = Functions.<String>identity();
+System.out.println(intId == strId);  // true — same object!
+System.out.println(intId.apply(42));    // 42
+System.out.println(strId.apply("hi")); // hi
+\`\`\`
+
+### Generic Builder Pattern
+
+\`\`\`java
+public abstract class Builder<T, B extends Builder<T, B>> {
+    protected abstract B self();
+    public abstract T build();
+}
+
+public class PersonBuilder extends Builder<Person, PersonBuilder> {
+    private String name;
+    private int age;
+
+    public PersonBuilder name(String name) { this.name = name; return self(); }
+    public PersonBuilder age(int age)      { this.age = age;   return self(); }
+
+    @Override protected PersonBuilder self() { return this; }
+    @Override public Person build() { return new Person(name, age); }
+}
+
+Person p = new PersonBuilder().name("Alice").age(30).build();
+\`\`\`
+
+### Checked Casts and @SuppressWarnings("unchecked")
+
+Sometimes you know more than the compiler does. When you suppress unchecked warnings, document why it is safe:
+
+\`\`\`java
+@SuppressWarnings("unchecked")  // safe: map always stores T values for key class
+public <T> T getInstance(Class<T> type) {
+    return (T) registry.get(type);  // cast is safe by construction
+}
+\`\`\`
+
+**Never suppress without a comment.** If the cast can fail, let it fail visibly.
+
+### Interview Quick-Fire
+
+| Question | Answer |
+|---|---|
+| Can you instantiate a type parameter? \`new T()\` | No — type is erased; use factory or \`Class<T>.newInstance()\` |
+| Can you compare with \`==\` across generic types? | Yes, but \`==\` is identity; use \`equals()\` for value comparison |
+| Is \`ArrayList<Integer>\` the same class as \`ArrayList<String>\`? | Yes — \`getClass()\` returns the same \`Class\` object |
+| What is heap pollution? | When a variable of parameterised type refers to an object of a different type — caused by raw types or unchecked casts |
+| What is the \`@SafeVarargs\` annotation? | Suppresses "possible heap pollution" warning on \`final\`/\`static\` varargs methods that are actually safe |`,
+          code: [
+            `import java.util.*;
+import java.util.function.*;
+
+// Type-safe heterogeneous container (Bloch Item 33)
+// Maps a Class<T> key to a T value — different types per entry
+public class TypedMap {
+    private final Map<Class<?>, Object> map = new HashMap<>();
+
+    public <T> void put(Class<T> type, T value) {
+        map.put(Objects.requireNonNull(type), value);
+    }
+
+    @SuppressWarnings("unchecked") // safe: put() ensures key→value type match
+    public <T> T get(Class<T> type) {
+        return type.cast(map.get(type));   // Class.cast() is runtime-safe
+    }
+
+    public static void main(String[] args) {
+        TypedMap container = new TypedMap();
+        container.put(String.class,  "hello");
+        container.put(Integer.class, 42);
+        container.put(Double.class,  3.14);
+
+        String  s = container.get(String.class);
+        Integer n = container.get(Integer.class);
+        Double  d = container.get(Double.class);
+        System.out.println(s + ", " + n + ", " + d);  // hello, 42, 3.14
+
+        // Type-safe — this would be a ClassCastException, not silent corruption
+        // String wrong = container.get(Integer.class);  // ClassCastException at get()
+    }
+}`,
+            `import java.util.*;
+import java.util.function.*;
+
+// Generic Stack with bounded peek
+public class GenericStack<E> {
+    private final Deque<E> data = new ArrayDeque<>();
+
+    public GenericStack<E> push(E item)    { data.push(item); return this; }
+    public E pop()                          { return data.pop(); }
+    public E peek()                         { return data.peek(); }
+    public boolean isEmpty()                { return data.isEmpty(); }
+    public int size()                       { return data.size(); }
+
+    // Covariant producer — read the stack into a List<? super E>
+    public void drainInto(Collection<? super E> target) {
+        while (!isEmpty()) target.add(pop());
+    }
+
+    // Transform all elements
+    public <R> GenericStack<R> map(Function<E, R> mapper) {
+        GenericStack<R> result = new GenericStack<>();
+        List<E> temp = new ArrayList<>();
+        drainInto(temp);
+        Collections.reverse(temp);          // maintain order
+        temp.forEach(e -> result.push(mapper.apply(e)));
+        return result;
+    }
+
+    @Override public String toString() { return data.toString(); }
+
+    public static void main(String[] args) {
+        GenericStack<Integer> stack = new GenericStack<>();
+        stack.push(1).push(2).push(3);
+        System.out.println("Stack: " + stack);     // [3, 2, 1]
+
+        // Map to String representation
+        GenericStack<String> strings = stack.map(i -> "item-" + i);
+        System.out.println("Mapped: " + strings);  // [item-3, item-2, item-1]
+
+        // Drain into a List<Object>
+        List<Object> result = new ArrayList<>();
+        strings.drainInto(result);
+        System.out.println("Drained: " + result);  // [item-3, item-2, item-1]
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is a raw type and why should you never use one in new code?', a: 'A raw type is a generic class without type arguments (List instead of List<String>). It bypasses all compile-time type checking — you get ClassCastException at runtime instead of compile errors. Raw types exist only for backward compatibility with pre-Java 5 libraries.' },
+            { q: 'What is heap pollution?', a: 'Heap pollution occurs when a variable of a parameterised type refers to an object of a different parameterised type. Caused by raw types or unchecked casts. Results in ClassCastException at unexpected places, sometimes far from the actual bug. Eliminated by avoiding raw types and suppressing warnings only when provably safe.' },
+            { q: 'What is a reifiable type?', a: 'A type whose complete type information is available at runtime. Primitives, non-generic classes, raw types, and unbounded wildcards (List<?>) are reifiable. Generic instantiations like List<String> are non-reifiable — their type argument is erased. Only reifiable types can be used with instanceof and array creation.' },
+            { q: 'What does @SafeVarargs suppress?', a: 'It suppresses the "possible heap pollution from parameterised vararg type" warning on methods with varargs of a generic type (T... items). Only use it when you are certain the method does not expose the array to unsafe operations. Can only be applied to static, final, or private methods.' },
+            { q: 'Why can the generic identity function return the same instance for all types?', a: 'Because of type erasure — at runtime, Function<Integer,Integer> and Function<String,String> are both just Function. The single Object-typed instance is safe because the identity function returns exactly what it receives, so no actual type mismatch can occur. The compiler cast is a no-op at runtime.' }
+          ]
+        }
+      ]
     },
 
-    {
+        {
       id: '0.9',
       title: 'Collections Deep Dive — List, Set, Map, Queue',
       hours: 4,
