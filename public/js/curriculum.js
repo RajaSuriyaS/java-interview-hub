@@ -19014,638 +19014,1713 @@ public class ParallelPitfallsDemo {
 
     {
       id: '2.4',
-      title: 'Virtual Threads & Structured Concurrency',
-      hours: 5,
-      notes: `
-# Virtual Threads & Structured Concurrency — From Zero to Senior Level
-
-## The Problem: Why Traditional Threads Don't Scale
-
-Imagine a web server handling 10,000 simultaneous requests. Each request:
-1. Receives HTTP request (fast)
-2. Queries the database (slow — 50ms wait)
-3. Calls an external API (slow — 100ms wait)
-4. Returns response (fast)
-
-With **platform threads** (one-per-request model):
-- Each OS thread costs ~1MB of stack + kernel scheduling overhead
-- 10,000 threads = 10GB of RAM just for stacks
-- OS scheduler can't efficiently manage 10,000 threads
-- **Result: you can only handle ~1,000–2,000 concurrent requests practically**
-
-The solution the industry adopted: **reactive/async programming** (WebFlux, CompletableFuture callbacks, RxJava). Instead of blocking threads, use callbacks — when I/O completes, continue processing.
-
-**But reactive has a massive cost:**
-\`\`\`java
-// Readable blocking code (can't scale):
-User user = db.findUser(id);             // blocks here
-Order order = api.fetchOrder(user);      // blocks here
-return new Response(user, order);
-
-// Reactive equivalent (scales, but painful):
-return db.findUser(id)
-    .flatMap(user -> api.fetchOrder(user)
-        .map(order -> new Response(user, order))
-        .onErrorResume(e -> Mono.error(new ServiceException(e))))
-    .subscribeOn(Schedulers.boundedElastic())
-    .doOnError(log::error);
-\`\`\`
-
-Stack traces become useless, debugging is hard, every library must be reactive-aware.
-
----
-
-## Virtual Threads: The Solution (Java 21, JEP 444)
-
-Virtual threads are **JVM-managed threads** that are NOT backed 1:1 by OS threads. Instead:
-
-\`\`\`
-Your application creates MILLIONS of virtual threads:
-VT1  VT2  VT3  VT4  ... VT1,000,000
-
-The JVM multiplexes them onto a SMALL pool of platform threads (carriers):
-PT1  PT2  PT3  PT4  (≈ number of CPU cores, e.g. 8)
-
-Each platform thread is backed by ONE OS thread:
-OS1  OS2  OS3  OS4  OS5  OS6  OS7  OS8
-\`\`\`
-
-**The magic: when a virtual thread blocks on I/O, it UNMOUNTS from its carrier**
-
-\`\`\`
-VT1 calls database query (blocking I/O):
-  1. VT1's stack is saved to HEAP (cheap — just memory copy)
-  2. VT1 is unmounted from PT1 (the carrier thread is free!)
-  3. PT1 immediately picks up VT2 and runs it
-  4. Database responds 50ms later
-  5. VT1 is rescheduled onto any free carrier (PT3, say)
-  6. VT1 resumes exactly where it left off
-\`\`\`
-
-This means 1 platform thread can handle thousands of virtual threads that are mostly waiting on I/O. You get the scalability of reactive with the readability of blocking code.
-
----
-
-## Creating Virtual Threads
-
-\`\`\`java
-// Option 1: Direct creation (for single tasks)
-Thread.startVirtualThread(() -> handleRequest(req));
-
-// Option 2: Builder API (control name, daemon status)
-Thread vt = Thread.ofVirtual()
-    .name("request-handler-", 0)  // auto-numbered
-    .start(() -> handleRequest(req));
-
-// Option 3: Executor (most common in frameworks)
-try (ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor()) {
-    for (Request req : requests) {
-        exec.submit(() -> handleRequest(req));  // one VT per task
-    }
-}  // try-with-resources: waits for all tasks to complete
-\`\`\`
-
-**Spring Boot 3.2+ enables virtual threads with one line:**
-\`\`\`yaml
-spring:
-  threads:
-    virtual:
-      enabled: true
-\`\`\`
-Every HTTP request then runs on a virtual thread. Zero code changes needed.
-
----
-
-## Virtual Threads vs Platform Threads: Full Comparison
-
-| Aspect | Platform Thread | Virtual Thread |
-|--------|----------------|----------------|
-| Creation | Expensive (~1ms, OS call) | Cheap (~1μs, JVM heap alloc) |
-| Stack size | Fixed ~1MB (OS) | Grows/shrinks dynamically (heap) |
-| Max practical count | ~10,000 per JVM | Millions per JVM |
-| Blocking on I/O | Blocks OS thread | Unmounts, OS thread freed |
-| CPU-bound work | Good | Same — no benefit |
-| ThreadLocal | Safe | Works, but memory risk at scale |
-| Scheduling | OS preemptive | JVM cooperative (FIFO ForkJoinPool) |
-| Stack traces | Clean | Clean (same as blocking code) |
-| Debugging | Normal | Normal (same tools) |
-
----
-
-## Pinning: The Critical Gotcha
-
-A virtual thread **cannot unmount** in two situations:
-1. Inside a \`synchronized\` block/method that blocks (calls I/O, sleep, etc.)
-2. During a native (JNI) method call
-
-When pinned, the virtual thread stays on its carrier platform thread, blocking it — just like an old platform thread. If all carriers are pinned, your server stalls.
-
-\`\`\`java
-// PINNING HAZARD: synchronized + blocking I/O
-synchronized (dbLock) {
-    result = db.query(sql);  // ← VT is PINNED here, carrier blocked for 50ms
-}
-
-// FIX: replace synchronized with ReentrantLock
-ReentrantLock dbLock = new ReentrantLock();
-dbLock.lock();
-try {
-    result = db.query(sql);  // ← VT unmounts here, carrier is FREE
-} finally {
-    dbLock.unlock();
-}
-\`\`\`
-
-**Diagnosing pinning:**
-\`\`\`
--Djdk.tracePinnedThreads=full
-\`\`\`
-Logs a stack trace whenever a virtual thread is pinned. Fix each pinning site before going to production.
-
-> [!TIP]
-> JDK 24 (2025) largely eliminates synchronized pinning at the JVM level. But until you upgrade, and for libraries that use \`synchronized\` internally (many JDBC drivers, some Kafka clients), pinning is still a real concern to monitor.
-
----
-
-## Structured Concurrency (Java 21+ Preview, JEP 453)
-
-When you run multiple concurrent tasks, errors and cancellations become messy:
-\`\`\`java
-// Unstructured concurrency (old way) — leaks and races:
-Future<User> userFuture = exec.submit(() -> fetchUser(id));
-Future<Order> orderFuture = exec.submit(() -> fetchOrder(id));
-User user = userFuture.get();    // if this throws, orderFuture still runs!
-Order order = orderFuture.get(); // timeout, memory leak, zombie threads
-\`\`\`
-
-**Structured concurrency** ties task lifetimes to a scope block — like structured programming ties control flow to blocks:
-
-\`\`\`java
-// ShutdownOnFailure: if any subtask fails, cancel siblings
-try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
-    Subtask<User>  userTask  = scope.fork(() -> fetchUser(id));
-    Subtask<Order> orderTask = scope.fork(() -> fetchOrder(id));
-
-    scope.join()           // wait for both to complete OR any to fail
-         .throwIfFailed(); // rethrow first exception
-
-    // Both succeeded:
-    return new Response(userTask.get(), orderTask.get());
-}
-// scope closes: all subtasks guaranteed done, resources cleaned up
-
-// ShutdownOnSuccess: return first result, cancel the rest (fastest-wins):
-try (var scope = new StructuredTaskScope.ShutdownOnSuccess<String>()) {
-    scope.fork(() -> fetchFromPrimary());
-    scope.fork(() -> fetchFromReplica());
-    scope.join();
-    return scope.result();  // whichever returned first
-}
-\`\`\`
-
-Benefits:
-- No leaked threads — scope close guarantees all subtasks done
-- Clear cancellation — scope cancels all subtasks if any fails
-- Clean stack traces — subtask failures attributed to the parent scope
-- Readable — looks like sequential code, is concurrent
-
----
-
-## Scoped Values: ThreadLocal Replacement for Virtual Threads
-
-With millions of virtual threads, \`ThreadLocal\` has a problem: if each VT stores a large object, you get millions of copies on the heap.
-
-**Scoped Values** (JDK 20+ preview, JEP 446) are an immutable, inheritable alternative:
-\`\`\`java
-// Declare:
-static final ScopedValue<User> CURRENT_USER = ScopedValue.newInstance();
-
-// Bind for a scope:
-ScopedValue.where(CURRENT_USER, authenticatedUser)
-           .run(() -> processRequest());  // user available within this scope
-
-// Read anywhere in the call tree:
-User user = CURRENT_USER.get();
-\`\`\`
-
-Unlike ThreadLocal: immutable (no accidental mutation), inheritable by child scopes, automatically cleaned up when scope exits, no remove() needed.
-
----
-
-## When to Use Virtual Threads (and When Not To)
-
-**USE virtual threads for:**
-- I/O-bound work: HTTP calls, database queries, file I/O
-- Thread-per-request servers (Spring MVC, Servlet-based)
-- Any code that blocks and waits
-
-**DON'T use virtual threads for:**
-- CPU-bound work (pure computation, no I/O) — no benefit, just overhead
-- Code that holds \`synchronized\` locks across blocking calls (until fixed)
-- Work that uses ThreadLocal heavily (use Scoped Values instead)
-
-> [!EU]
-> The 2024–2025 flagship Java topic. Expect: *"What are virtual threads and how do they differ from platform threads?"* Strong answer: VTs are JVM-scheduled, unmount on blocking I/O (freeing the carrier), enabling millions of thread-per-task units with blocking code. Contrast: platform threads are OS-scheduled, 1MB stack, ~1ms creation, max ~10k. Then cover pinning (synchronized + I/O = blocked carrier, fix with ReentrantLock) and structured concurrency (scope ties task lifetimes, prevents leaks). Finally pivot: "Spring Boot 3.2 enables VTs with one config line — our team moved from WebFlux to plain @RestController and code readability improved dramatically with the same throughput."
-`,
-      code: [
+      title: 'Virtual Threads & Structured Concurrency (Java 21)',
+      hours: 4,
+      sections: [
         {
-          lang: 'java',
-          title: 'A million virtual threads vs platform threads',
-          code: `import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
-import java.time.Duration;
+          title: 'Virtual Threads — Project Loom & the Platform Thread Problem',
+          notes: `## Virtual Threads — Project Loom & the Platform Thread Problem
 
-public class VirtualThreadDemo {
-    public static void main(String[] args) throws InterruptedException {
-        final int TASKS = 100_000;          // try 1_000_000 on JDK 21+
-        AtomicLong done = new AtomicLong();
+### Why Platform Threads Fall Short
+
+Traditional Java threads map 1:1 to OS threads. OS threads are expensive (~1MB stack each) and context-switching between them has high overhead. A server handling 10,000 concurrent connections needs 10,000 OS threads — this is the "thread-per-request" wall that pushed developers toward reactive/async programming.
+
+\`\`\`mermaid
+graph LR
+    PT[Platform Thread\nOS Thread 1:1\n~1MB stack\nmax ~thousands]
+    VT[Virtual Thread\nJVM-managed\n~few KB\nmax millions]
+    CT[Carrier Thread\nOS thread pool\nFixed size = CPU cores]
+    VT --> CT
+    CT --> OS[OS Scheduler]
+    PT --> OS
+    style VT fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style CT fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+\`\`\`
+
+### Virtual Threads (Java 21 — GA)
+
+Virtual threads are lightweight threads managed by the JVM, not the OS. They are mounted onto a small pool of **carrier threads** (OS threads, sized to CPU core count). When a virtual thread blocks (I/O, sleep, lock), the JVM **unmounts** it from the carrier thread and parks it in heap memory — the carrier thread is freed to run another virtual thread.
+
+\`\`\`java
+// Creating virtual threads — three ways
+
+// 1. Thread.ofVirtual()
+Thread vt = Thread.ofVirtual().start(() -> {
+    System.out.println("Running in: " + Thread.currentThread());
+    // prints: VirtualThread[#21]/runnable@ForkJoinPool-1-worker-1
+});
+vt.join();
+
+// 2. Executors.newVirtualThreadPerTaskExecutor()
+try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+    IntStream.range(0, 10_000).forEach(i ->
+        executor.submit(() -> {
+            Thread.sleep(Duration.ofSeconds(1));  // blocks — but carrier thread is freed!
+            return i * i;
+        })
+    );
+} // auto-close waits for all tasks
+
+// 3. Thread.startVirtualThread() — shortcut
+Thread.startVirtualThread(() -> doWork());
+
+// Check if current thread is virtual
+boolean isVirtual = Thread.currentThread().isVirtual(); // true
+\`\`\`
+
+### Mounting / Unmounting Lifecycle
+
+\`\`\`java
+// Virtual thread state machine
+// NEW → STARTED → RUNNING (mounted on carrier) → PARKING (I/O blocks) → RUNNABLE (I/O done) → TERMINATED
+
+// When a virtual thread calls blocking I/O:
+// 1. JVM detects the blocking call
+// 2. Virtual thread is UNMOUNTED from carrier thread
+// 3. Carrier thread picks up another ready virtual thread
+// 4. When I/O completes, virtual thread is scheduled back onto ANY available carrier
+
+// This means 1 OS thread can serve thousands of virtual threads
+try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+    // Spawn 100,000 tasks — all blocking, none wasting OS threads
+    var futures = IntStream.range(0, 100_000)
+        .mapToObj(i -> exec.submit(() -> {
+            // This blocks the VIRTUAL thread, not the OS thread
+            return httpClient.send(request, BodyHandlers.ofString());
+        }))
+        .toList();
+    // All 100,000 requests in flight simultaneously
+}
+\`\`\`
+
+### Virtual Thread vs Platform Thread Comparison
+
+\`\`\`java
+// Platform thread — blocks OS thread during I/O
+long start = System.nanoTime();
+try (var pool = Executors.newFixedThreadPool(200)) {  // limited by OS
+    var futures = IntStream.range(0, 1000)
+        .mapToObj(i -> pool.submit(() -> {
+            Thread.sleep(100);  // blocks OS thread!
+            return i;
+        }))
+        .toList();
+    futures.forEach(f -> f.get());
+}
+// Takes ~500ms (1000 tasks / 200 threads × 100ms)
+
+// Virtual thread — minimal OS thread waste
+try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+    var futures = IntStream.range(0, 1000)
+        .mapToObj(i -> exec.submit(() -> {
+            Thread.sleep(100);  // unmounts carrier, frees OS thread
+            return i;
+        }))
+        .toList();
+    futures.forEach(f -> f.get());
+}
+// Takes ~100ms (all 1000 virtual threads run "simultaneously")
+\`\`\``,
+          code: [
+            `import java.time.Duration;
+import java.util.concurrent.*;
+import java.util.stream.*;
+
+public class VirtualThreadBasics {
+    public static void main(String[] args) throws Exception {
+        System.out.println("Processors: " + Runtime.getRuntime().availableProcessors());
+
+        // 1. Simple virtual thread
+        var vt = Thread.ofVirtual().name("my-vt").start(() ->
+            System.out.println("Hello from: " + Thread.currentThread()));
+        vt.join();
+
+        // 2. Virtual thread per task executor — scale to 10,000
         long start = System.currentTimeMillis();
+        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = IntStream.range(0, 10_000)
+                .mapToObj(i -> exec.submit(() -> {
+                    Thread.sleep(Duration.ofMillis(50)); // simulate I/O
+                    return i;
+                }))
+                .toList();
 
-        // One virtual thread PER TASK — unthinkable with platform threads
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (int i = 0; i < TASKS; i++) {
-                executor.submit(() -> {
-                    try {
-                        Thread.sleep(Duration.ofMillis(100)); // simulates blocking I/O
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    done.incrementAndGet();
-                });
-            }
-        } // close() waits for all tasks
+            long sum = futures.stream().mapToLong(f -> {
+                try { return f.get(); } catch (Exception e) { return 0; }
+            }).sum();
+            System.out.printf("10,000 tasks, sum=%d, time=%dms%n",
+                sum, System.currentTimeMillis() - start);
+            // Should complete in ~50ms, not 10000*50ms/cores
+        }
 
-        System.out.println("Completed tasks : " + done.get());
-        System.out.println("Wall time (ms)  : " + (System.currentTimeMillis() - start));
-        System.out.println("Each task slept 100ms, yet total time is tiny — they all ran concurrently.");
-        System.out.println("A fixed platform pool of, say, 200 threads would need ~" +
-                           (TASKS / 200 * 100) + "ms.");
+        // 3. Compare virtual vs platform thread overhead
+        System.out.println("\nCreating 1000 platform threads...");
+        long pt = System.currentTimeMillis();
+        var ptList = IntStream.range(0, 1000)
+            .mapToObj(i -> Thread.ofPlatform().unstarted(() -> {}))
+            .toList();
+        ptList.forEach(Thread::start);
+        for (Thread t : ptList) t.join();
+        System.out.println("Platform: " + (System.currentTimeMillis() - pt) + "ms");
+
+        System.out.println("Creating 1000 virtual threads...");
+        long vts = System.currentTimeMillis();
+        var vtList = IntStream.range(0, 1000)
+            .mapToObj(i -> Thread.ofVirtual().unstarted(() -> {}))
+            .toList();
+        vtList.forEach(Thread::start);
+        for (Thread t : vtList) t.join();
+        System.out.println("Virtual:  " + (System.currentTimeMillis() - vts) + "ms");
+
+        System.out.println("\nIs virtual: " +
+            Thread.startVirtualThread(() -> {}).isVirtual());
     }
-}`
-        },
-        {
-          lang: 'java',
-          title: 'Structured concurrency style (JDK 21 preview API)',
-          code: `import java.util.concurrent.*;
+}`,
+            `import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import java.util.stream.*;
 
-// NOTE: StructuredTaskScope is a preview API; on the sandbox we emulate the
-// pattern with a virtual-thread executor to show the same "fan-out, join, combine" shape.
-public class StructuredDemo {
-    record User(String name) {}
-    record Order(String id, double total) {}
-    record Dashboard(User user, Order order) {}
+// Thread-local state with virtual threads
+public class VirtualThreadState {
+    // ThreadLocal works with virtual threads but can cause memory pressure
+    // if virtual threads are pooled (they aren't by default — VTs are not pooled)
+    static final ThreadLocal<String> REQUEST_ID = new ThreadLocal<>();
 
-    static User  fetchUser(long id)  throws InterruptedException { Thread.sleep(120); return new User("Raja#" + id); }
-    static Order fetchOrder(long id) throws InterruptedException { Thread.sleep(150); return new Order("ORD-" + id, 249.50); }
+    // ScopedValue (Java 21 preview) — preferred over ThreadLocal for VTs
+    // static final ScopedValue<String> REQUEST_ID = ScopedValue.newInstance();
+
+    static void handleRequest(int id) {
+        REQUEST_ID.set("req-" + id);
+        try {
+            processRequest();
+        } finally {
+            REQUEST_ID.remove(); // ALWAYS remove to prevent leaks
+        }
+    }
+
+    static void processRequest() {
+        // Simulate I/O — virtual thread unmounts here
+        try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        System.out.printf("[%s] processed by %s%n",
+            REQUEST_ID.get(), Thread.currentThread());
+    }
 
     public static void main(String[] args) throws Exception {
-        long id = 7;
-        long start = System.currentTimeMillis();
-
-        try (var scope = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<User>  user  = scope.submit(() -> fetchUser(id));
-            Future<Order> order = scope.submit(() -> fetchOrder(id));
-            Dashboard dash = new Dashboard(user.get(), order.get()); // both run concurrently
-            System.out.println("Dashboard : " + dash);
+        // Virtual threads are NOT pooled — new one per task, so ThreadLocal is safe
+        // BUT: avoid caching expensive objects in ThreadLocal with VTs
+        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = IntStream.range(0, 20)
+                .mapToObj(i -> exec.submit(() -> handleRequest(i)))
+                .toList();
+            futures.forEach(f -> { try { f.get(); } catch (Exception e) {} });
         }
-        // ~150ms (the slower call), not 270ms — the two I/O calls overlapped
-        System.out.println("Wall time : " + (System.currentTimeMillis() - start) + " ms (concurrent, not 270ms)");
+
+        // Thread factory for naming virtual threads
+        var factory = Thread.ofVirtual().name("worker-", 0).factory();
+        try (var exec = Executors.newThreadPerTaskExecutor(factory)) {
+            exec.submit(() -> System.out.println("Named: " + Thread.currentThread().getName()))
+                .get();
+        }
+        System.out.println("Done");
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What is a virtual thread and how does it differ from a platform thread?', a: 'A virtual thread is a lightweight thread managed by the JVM, not the OS. Platform threads map 1:1 to OS threads (~1MB stack each, expensive context switching). Virtual threads are multiplexed onto a small pool of OS "carrier" threads (sized to CPU count). When a virtual thread blocks on I/O, it is UNMOUNTED from the carrier thread (which picks up another virtual thread), then REMOUNTED when I/O completes. Cost: ~few KB heap each, millions can exist simultaneously.' },
+            { q: 'What happens when a virtual thread calls a blocking operation?', a: 'The JVM detects the blocking call, UNMOUNTS the virtual thread from its carrier thread, and parks the virtual thread state in heap memory. The carrier thread is immediately freed to mount and run another runnable virtual thread. When the blocking operation completes (e.g. I/O finishes), the virtual thread becomes runnable and is scheduled onto any available carrier thread. The OS thread never blocks — only the virtual thread does.' },
+            { q: 'How do you create virtual threads in Java 21?', a: 'Three ways: (1) Thread.ofVirtual().start(runnable) — creates and starts one; (2) Executors.newVirtualThreadPerTaskExecutor() — executor that creates a new virtual thread per submitted task; (3) Thread.startVirtualThread(runnable) — shorthand. Thread.ofVirtual() returns a builder for configuration (name, factory). Check with Thread.currentThread().isVirtual().' },
+            { q: 'Are virtual threads pooled like platform thread pools?', a: 'No. Virtual threads are intentionally NOT pooled — a new virtual thread is created for each task (hence newVirtualThreadPerTaskExecutor). This is safe because virtual threads are cheap to create (~microseconds, ~few KB). Pooling virtual threads would actually be harmful: it would prevent the runtime from disposing of them when done and could cause ThreadLocal leaks (since pool threads are reused). Always use newVirtualThreadPerTaskExecutor, not newFixedThreadPool, with virtual threads.' },
+            { q: 'What is "thread pinning" and when does it occur with virtual threads?', a: 'Pinning is when a virtual thread is stuck to its carrier thread and CANNOT be unmounted even during a blocking operation — defeating the purpose of virtual threads. It happens in two cases: (1) Inside a synchronized block or method — the JVM pins the virtual thread to the carrier for the duration. (2) When calling native code (JNI). Fix: replace synchronized with ReentrantLock. JVM flag -Djdk.tracePinnedThreads=full reports pinning events. Java 24+ will fix synchronized pinning.' }
+          ]
+        },
+        {
+          title: 'Structured Concurrency — StructuredTaskScope',
+          notes: `## Structured Concurrency — StructuredTaskScope
+
+Structured concurrency (Java 21 preview, finalised in Java 25) treats a group of related concurrent tasks as a single unit of work. The scope owns its tasks — when the scope exits, all tasks are guaranteed to be done or cancelled. No task outlives its scope.
+
+### The Problem with Unstructured Concurrency
+
+\`\`\`java
+// UNSTRUCTURED — hard to reason about, error-prone
+Future<User>   userFuture   = executor.submit(() -> fetchUser(userId));
+Future<Order>  orderFuture  = executor.submit(() -> fetchOrders(userId));
+Future<Wallet> walletFuture = executor.submit(() -> fetchWallet(userId));
+
+User   user   = userFuture.get();   // blocks, hides failures in other tasks
+Order  orders = orderFuture.get();  // if user throws, orders leaks!
+Wallet wallet = walletFuture.get();
+
+// Problems:
+// 1. If fetchUser fails, fetchOrders and fetchWallet keep running (wasted work)
+// 2. If the calling thread is interrupted, the futures don't cancel
+// 3. Thread leaks — tasks can outlive the caller
+\`\`\`
+
+### StructuredTaskScope — ShutdownOnFailure
+
+\`\`\`java
+// STRUCTURED — cancel on first failure, wait for all
+try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    // Fork tasks — they run concurrently
+    Subtask<User>   userTask   = scope.fork(() -> fetchUser(userId));
+    Subtask<Order>  orderTask  = scope.fork(() -> fetchOrders(userId));
+    Subtask<Wallet> walletTask = scope.fork(() -> fetchWallet(userId));
+
+    scope.join()           // wait for all tasks OR first failure
+         .throwIfFailed(); // propagate exception if any task failed
+
+    // All three succeeded — safe to get results
+    User   user   = userTask.get();
+    Order  orders = orderTask.get();
+    Wallet wallet = walletTask.get();
+    return new Dashboard(user, orders, wallet);
+} // scope.close() cancels any remaining tasks and waits for them to stop
+\`\`\`
+
+### StructuredTaskScope — ShutdownOnSuccess
+
+\`\`\`java
+// RACE — return the first successful result, cancel the rest
+try (var scope = new StructuredTaskScope.ShutdownOnSuccess<String>()) {
+    // Try two data sources in parallel — use whichever responds first
+    scope.fork(() -> fetchFromPrimaryDB(id));
+    scope.fork(() -> fetchFromReplicaDB(id));
+
+    scope.join();
+    return scope.result(); // the first successful result
+} // losers are cancelled automatically
+\`\`\`
+
+### Fan-Out Pattern (Custom Scope)
+
+\`\`\`java
+// Custom scope: collect all results, fail if any task fails
+record FanOutResult<T>(List<T> results) {}
+
+// With standard ShutdownOnFailure:
+try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    List<Subtask<String>> tasks = productIds.stream()
+        .map(id -> scope.fork(() -> fetchProduct(id)))
+        .toList();
+
+    scope.join().throwIfFailed();
+
+    List<String> products = tasks.stream()
+        .map(Subtask::get)
+        .toList();
+    return products;
+}
+\`\`\`
+
+### Nested Scopes and Scope Hierarchy
+
+\`\`\`java
+// Scopes can be nested — child scope lifetime bounded by parent
+try (var outer = new StructuredTaskScope.ShutdownOnFailure()) {
+    var userTask = outer.fork(() -> {
+        // Inner scope — bounded by outer task's lifetime
+        try (var inner = new StructuredTaskScope.ShutdownOnFailure()) {
+            var profileTask = inner.fork(() -> fetchProfile(userId));
+            var prefsTask   = inner.fork(() -> fetchPreferences(userId));
+            inner.join().throwIfFailed();
+            return new UserDetail(profileTask.get(), prefsTask.get());
         }
-      ],
-      flashcards: [
-        { q: 'What is a virtual thread and how does it differ from a platform thread?', a: 'A lightweight thread scheduled by the JVM (not the OS). Many virtual threads multiplex onto a small pool of carrier platform threads; on blocking I/O a virtual thread unmounts (its stack moves to the heap), freeing the carrier. You can run millions; platform threads cap in the thousands.' },
-        { q: 'What is pinning and how do you fix it?', a: 'A virtual thread cannot unmount from its carrier while blocking inside a synchronized block/method or a native call, so it stays pinned and reduces scalability. Fix by replacing synchronized (around blocking I/O) with ReentrantLock; diagnose via -Djdk.tracePinnedThreads=full.' },
-        { q: 'Should you pool virtual threads? Why or why not?', a: 'No. Pooling exists to amortise the cost of expensive platform threads. Virtual threads are cheap and disposable — create one per task (newVirtualThreadPerTaskExecutor).' },
-        { q: 'When should you NOT use virtual threads?', a: 'For CPU-bound work (no blocking point to unmount on — a bounded platform pool is better) and for tasks that hold synchronized across blocking calls until pinning is resolved.' },
-        { q: 'What does structured concurrency (StructuredTaskScope) give you?', a: 'It binds subtask lifetimes to a syntactic scope: fork subtasks, join all, propagate the first failure and auto-cancel siblings — eliminating leaked threads and making concurrent code reason like sequential code.' },
-        { q: 'How do virtual threads compare to reactive (WebFlux)?', a: 'Both scale I/O-bound workloads with few OS threads, but virtual threads keep simple imperative/blocking code that\'s easy to read, debug, and profile, whereas reactive uses callbacks/operators that are harder to maintain. Loom offers reactive-like scalability with synchronous readability.' }
+    });
+
+    var ordersTask = outer.fork(() -> fetchOrders(userId));
+
+    outer.join().throwIfFailed();
+    return new Dashboard(userTask.get(), ordersTask.get());
+}
+// If any inner task fails: inner scope shuts down → outer task fails → outer scope shuts down
+\`\`\`
+
+### Timeout with StructuredTaskScope
+
+\`\`\`java
+try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    var task1 = scope.fork(() -> slowOperation1());
+    var task2 = scope.fork(() -> slowOperation2());
+
+    // Timeout: if not done in 5 seconds, cancel all and throw
+    scope.joinUntil(Instant.now().plusSeconds(5));
+    scope.throwIfFailed();
+
+    return new Result(task1.get(), task2.get());
+} catch (TimeoutException e) {
+    throw new ServiceUnavailableException("Operations timed out", e);
+}
+\`\`\``,
+          code: [
+            `import java.util.concurrent.*;
+import java.util.concurrent.StructuredTaskScope.*;
+import java.util.*;
+import java.time.*;
+
+public class StructuredConcurrencyDemo {
+    record User(String name, int id) {}
+    record Order(int userId, double total) {}
+    record Wallet(int userId, double balance) {}
+    record Dashboard(User user, List<Order> orders, Wallet wallet) {}
+
+    static User fetchUser(int id) throws InterruptedException {
+        Thread.sleep(Duration.ofMillis(80));
+        return new User("Alice", id);
+    }
+    static List<Order> fetchOrders(int userId) throws InterruptedException {
+        Thread.sleep(Duration.ofMillis(120));
+        return List.of(new Order(userId, 99.99), new Order(userId, 49.50));
+    }
+    static Wallet fetchWallet(int userId) throws InterruptedException {
+        Thread.sleep(Duration.ofMillis(60));
+        return new Wallet(userId, 1250.00);
+    }
+
+    // ShutdownOnFailure — all must succeed
+    static Dashboard loadDashboard(int userId) throws Exception {
+        try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+            var userTask   = scope.fork(() -> fetchUser(userId));
+            var orderTask  = scope.fork(() -> fetchOrders(userId));
+            var walletTask = scope.fork(() -> fetchWallet(userId));
+
+            scope.join().throwIfFailed(); // waits for all; throws if any failed
+
+            return new Dashboard(userTask.get(), orderTask.get(), walletTask.get());
+        }
+    }
+
+    // ShutdownOnSuccess — race to first result
+    static String fetchWithFallback(int id) throws Exception {
+        try (var scope = new StructuredTaskScope.ShutdownOnSuccess<String>()) {
+            scope.fork(() -> { Thread.sleep(200); return "PRIMARY:" + id; });
+            scope.fork(() -> { Thread.sleep(50);  return "REPLICA:" + id; }); // faster
+            scope.join();
+            return scope.result(); // returns REPLICA result, PRIMARY is cancelled
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        long start = System.currentTimeMillis();
+        Dashboard dash = loadDashboard(42);
+        System.out.printf("Dashboard loaded in %dms%n", System.currentTimeMillis() - start);
+        System.out.println("User: " + dash.user());
+        System.out.println("Orders: " + dash.orders().size() + " orders, total $" +
+            dash.orders().stream().mapToDouble(Order::total).sum());
+        System.out.printf("Wallet: $%.2f%n", dash.wallet().balance());
+
+        // Time should be ~120ms (max of 80/120/60), not 80+120+60=260ms
+        System.out.println("\nFallback test:");
+        System.out.println(fetchWithFallback(99)); // REPLICA:99
+
+        // Timeout demo
+        System.out.println("\nTimeout demo:");
+        try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+            scope.fork(() -> { Thread.sleep(2000); return "slow"; });
+            scope.joinUntil(Instant.now().plusMillis(500));
+            scope.throwIfFailed();
+        } catch (TimeoutException e) {
+            System.out.println("Timed out as expected after 500ms");
+        }
+    }
+}`,
+            `import java.util.concurrent.*;
+import java.util.*;
+import java.util.stream.*;
+
+// Fan-out pattern: process list of items in parallel
+public class FanOutDemo {
+    record Product(int id, String name, double price) {}
+    record EnrichedProduct(Product p, double discountedPrice, int stock) {}
+
+    static Product fetchProduct(int id) throws InterruptedException {
+        Thread.sleep(30); // simulate DB call
+        return new Product(id, "Product-" + id, 10.0 + id);
+    }
+    static double getDiscount(int id) throws InterruptedException {
+        Thread.sleep(20); // simulate pricing service
+        return id % 2 == 0 ? 0.1 : 0.0;
+    }
+    static int checkStock(int id) throws InterruptedException {
+        Thread.sleep(15); // simulate inventory service
+        return (id * 7) % 10;
+    }
+
+    static EnrichedProduct enrichProduct(int id) throws Exception {
+        // Nested scope: fetch product data concurrently
+        try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+            var prodTask     = scope.fork(() -> fetchProduct(id));
+            var discountTask = scope.fork(() -> getDiscount(id));
+            var stockTask    = scope.fork(() -> checkStock(id));
+            scope.join().throwIfFailed();
+            var p = prodTask.get();
+            return new EnrichedProduct(p, p.price() * (1 - discountTask.get()), stockTask.get());
+        }
+    }
+
+    static List<EnrichedProduct> enrichAll(List<Integer> ids) throws Exception {
+        // Fan-out: enrich all products concurrently
+        try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+            var tasks = ids.stream()
+                .map(id -> scope.fork(() -> enrichProduct(id)))
+                .toList();
+            scope.join().throwIfFailed();
+            return tasks.stream().map(Subtask::get).toList();
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        var ids = IntStream.rangeClosed(1, 10).boxed().toList();
+
+        long start = System.currentTimeMillis();
+        var products = enrichAll(ids);
+        System.out.printf("Enriched %d products in %dms%n",
+            products.size(), System.currentTimeMillis() - start);
+        // Sequential would be 10 * (30+20+15) = 650ms
+        // Parallel is ~(30+20+15) = 65ms for all 10
+
+        products.forEach(ep ->
+            System.out.printf("  %s: $%.2f (%.0f%% off) stock=%d%n",
+                ep.p().name(), ep.discountedPrice(),
+                (1 - ep.discountedPrice()/ep.p().price()) * 100,
+                ep.stock()));
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is structured concurrency and what problem does it solve?', a: 'Structured concurrency is a programming model where concurrent tasks are organized into a scope — tasks cannot outlive their scope. It solves three problems with traditional unstructured concurrency: (1) Task leaks — tasks escape and run after the parent exits; (2) Partial failures — if one of several parallel tasks fails, the others keep running wastefully; (3) Cancellation — interrupting the calling thread doesn\'t propagate to child tasks. With StructuredTaskScope, if any child fails/is cancelled, all siblings are cancelled automatically.' },
+            { q: 'What is the difference between ShutdownOnFailure and ShutdownOnSuccess?', a: 'ShutdownOnFailure: waits for all forked tasks. If ANY task fails (throws), the scope shuts down and cancels the rest. Call .throwIfFailed() to propagate the exception. Use for: parallel fetches where ALL results are needed. ShutdownOnSuccess: shuts down as soon as ANY task succeeds. Returns the first result. Remaining tasks are cancelled. Use for: fallback/race patterns where the fastest response wins (primary DB vs replica, nearest cache node).' },
+            { q: 'How does StructuredTaskScope relate to virtual threads?', a: 'StructuredTaskScope is designed to work with virtual threads — scope.fork() creates a virtual thread for each task by default. This pairing is powerful: virtual threads handle blocking I/O without wasting OS threads, and structured concurrency handles cancellation and lifetime management. Together they make blocking concurrent code as efficient as reactive/async code but far simpler to write and reason about.' },
+            { q: 'How do you implement a timeout with StructuredTaskScope?', a: 'Use scope.joinUntil(Instant deadline) instead of scope.join(). If the deadline passes before all tasks complete, joinUntil returns and the scope automatically cancels remaining tasks. Then call scope.throwIfFailed() — but also check for TimeoutException from joinUntil. Pattern: try { scope.joinUntil(Instant.now().plusSeconds(5)); scope.throwIfFailed(); } catch (TimeoutException e) { handle timeout }.' },
+            { q: 'What guarantee does StructuredTaskScope give about task lifetime?', a: 'The try-with-resources scope.close() (called implicitly at the end of the try block) blocks until ALL forked tasks complete — either normally or by cancellation. It is impossible for a forked task to outlive its scope. This means no thread leaks: when the try block exits, you can be certain all child tasks are done. This is the fundamental "structured" guarantee — child concurrent work is bounded by the parent scope\'s lifetime.' }
+          ]
+        },
+        {
+          title: 'Virtual Thread Pinning, Limitations & When NOT to Use',
+          notes: `## Virtual Thread Pinning, Limitations & When NOT to Use
+
+### Thread Pinning
+
+Pinning is when a virtual thread **cannot unmount** from its carrier thread during a blocking call. The carrier thread blocks just like a platform thread — defeating the scalability benefit.
+
+\`\`\`java
+// PINNING: synchronized block pins the virtual thread
+synchronized (lock) {
+    Thread.sleep(1000); // PINS — carrier thread blocks for 1 second!
+}
+
+// FIX: use ReentrantLock instead
+ReentrantLock lock = new ReentrantLock();
+lock.lock();
+try {
+    Thread.sleep(1000); // OK — virtual thread unmounts, carrier is freed
+} finally {
+    lock.unlock();
+}
+\`\`\`
+
+\`\`\`java
+// Detect pinning at runtime with JVM flag:
+// -Djdk.tracePinnedThreads=full
+// Output when pinned:
+// Thread[#23,ForkJoinPool-1-worker-1,5,CarrierThreads]
+//     java.base/java.lang.VirtualThread$VThreadContinuation.onPinned(VirtualThread.java:...)
+//     ...
+
+// Two pinning causes:
+// 1. synchronized block/method (fixed in Java 24)
+// 2. Native frames (JNI calls) — no fix, inherent limitation
+\`\`\`
+
+### Object Pinning (Memory)
+
+\`\`\`java
+// Don't cache expensive resources in ThreadLocal with virtual threads
+// ThreadLocal with platform thread pool: thread is reused, resource is reused
+// ThreadLocal with virtual threads: new thread per task, so new resource per task = leak!
+
+// WRONG: with virtual threads
+static ThreadLocal<Connection> CONNECTION = ThreadLocal.withInitial(() -> {
+    return dataSource.getConnection(); // called once per task = NOT cached!
+});
+
+// RIGHT: get connection normally inside the task
+void handle(Request req) {
+    try (Connection conn = dataSource.getConnection()) { // scoped, pooled
+        // ...
+    }
+}
+
+// ScopedValue (Java 21 preview) — preferred for virtual threads
+static final ScopedValue<User> CURRENT_USER = ScopedValue.newInstance();
+
+ScopedValue.where(CURRENT_USER, user).run(() -> {
+    processRequest(); // CURRENT_USER.get() works throughout the call tree
+});
+// Immutable, inheritable, no remove() needed, works great with VTs
+\`\`\`
+
+### When NOT to Use Virtual Threads
+
+\`\`\`java
+// 1. CPU-BOUND work — virtual threads don't help, can hurt
+//    Virtual threads help ONLY when blocked on I/O
+//    For computation: use ForkJoinPool or parallel streams
+var result = Stream.of(bigDataset)
+    .parallel()               // use ForkJoinPool for CPU work
+    .map(this::expensiveCalc)
+    .toList();
+
+// WRONG: virtual threads for CPU-bound
+try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+    // All virtual threads compete for same carrier threads
+    // No better than fixed thread pool for pure computation
+}
+
+// 2. Thread pools are wrong for virtual threads
+//    Virtual threads should be "fire and forget" per task
+ExecutorService wrong = Executors.newFixedThreadPool(10,
+    Thread.ofVirtual().factory()); // DON'T pool virtual threads
+
+// RIGHT: one virtual thread per task
+ExecutorService right = Executors.newVirtualThreadPerTaskExecutor();
+
+// 3. Avoid synchronized in hot paths (until Java 24+)
+// Audit your libraries for synchronized — some JDBC drivers use it
+
+// 4. ThreadLocal caching pattern breaks with virtual threads
+// (see above)
+\`\`\`
+
+### Migration Strategy
+
+\`\`\`java
+// Minimal migration: swap executor, keep rest of code
+// BEFORE
+ExecutorService executor = Executors.newFixedThreadPool(200);
+
+// AFTER — often a one-line change for massive throughput gain
+ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
+// Spring Boot 3.2+: enable virtual threads globally
+// application.yml:
+// spring.threads.virtual.enabled: true
+// Tomcat, WebFlux, @Async, @Scheduled all use virtual threads
+
+// Tomcat manually:
+@Bean
+TomcatProtocolHandlerCustomizer<?> virtualThreadCustomizer() {
+    return handler -> handler.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+}
+\`\`\``,
+          code: [
+            `import java.util.concurrent.*;
+import java.util.concurrent.locks.*;
+
+public class PinningDemo {
+    static final Object SYNC_LOCK = new Object();
+    static final ReentrantLock REENTRANT_LOCK = new ReentrantLock();
+
+    // Simulates synchronized block (causes pinning)
+    static long syncWork(int i) throws InterruptedException {
+        synchronized (SYNC_LOCK) {
+            Thread.sleep(10); // pins carrier thread!
+            return i * i;
+        }
+    }
+
+    // ReentrantLock — no pinning
+    static long lockWork(int i) throws InterruptedException {
+        REENTRANT_LOCK.lock();
+        try {
+            Thread.sleep(10); // virtual thread unmounts, carrier freed
+            return i * i;
+        } finally {
+            REENTRANT_LOCK.unlock();
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        int tasks = 500;
+
+        // Synchronized (pinning) — slower
+        long start = System.currentTimeMillis();
+        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = new java.util.ArrayList<Future<Long>>();
+            for (int i = 0; i < tasks; i++) {
+                final int fi = i;
+                futures.add(exec.submit(() -> syncWork(fi)));
+            }
+            for (var f : futures) f.get();
+        }
+        long syncTime = System.currentTimeMillis() - start;
+
+        // ReentrantLock (no pinning) — faster
+        start = System.currentTimeMillis();
+        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = new java.util.ArrayList<Future<Long>>();
+            for (int i = 0; i < tasks; i++) {
+                final int fi = i;
+                futures.add(exec.submit(() -> lockWork(fi)));
+            }
+            for (var f : futures) f.get();
+        }
+        long lockTime = System.currentTimeMillis() - start;
+
+        System.out.printf("synchronized (pinning): %dms%n", syncTime);
+        System.out.printf("ReentrantLock (no pin): %dms%n", lockTime);
+        System.out.printf("Speedup: %.1fx%n", (double) syncTime / lockTime);
+    }
+}`,
+            `import java.util.concurrent.*;
+import java.util.stream.*;
+
+// CPU-bound vs I/O-bound: when VTs help and when they don't
+public class CpuVsIoBenchmark {
+    static double cpuWork(int n) {
+        // Pure CPU computation — no blocking
+        double result = 0;
+        for (int i = 0; i < 100_000; i++) result += Math.sqrt(n * i);
+        return result;
+    }
+
+    static double ioWork(int n) throws InterruptedException {
+        // Simulate I/O latency
+        Thread.sleep(5);
+        return n * 1.0;
+    }
+
+    static long benchmark(String label, int tasks, Callable<Void> work) {
+        long start = System.currentTimeMillis();
+        try { work.call(); } catch (Exception e) { e.printStackTrace(); }
+        long ms = System.currentTimeMillis() - start;
+        System.out.printf("%-35s %dms%n", label + ":", ms);
+        return ms;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int n = 1000;
+        System.out.println("=== CPU-bound (VTs offer no advantage) ===");
+
+        benchmark("ForkJoinPool (CPU)", n, () -> {
+            IntStream.range(0, n).parallel().mapToDouble(CpuVsIoBenchmark::cpuWork).sum();
+            return null;
+        });
+        benchmark("VirtualThreadPerTask (CPU)", n, () -> {
+            try (var e = Executors.newVirtualThreadPerTaskExecutor()) {
+                var fs = IntStream.range(0,n).mapToObj(i->e.submit(()->cpuWork(i))).toList();
+                for (var f:fs) f.get();
+            }
+            return null;
+        });
+
+        System.out.println("\n=== I/O-bound (VTs shine) ===");
+
+        benchmark("FixedThreadPool-50 (I/O)", n, () -> {
+            try (var e = Executors.newFixedThreadPool(50)) {
+                var fs = IntStream.range(0,n).mapToObj(i->e.submit(()->ioWork(i))).toList();
+                for (var f:fs) f.get();
+            }
+            return null;
+        });
+        benchmark("VirtualThreadPerTask (I/O)", n, () -> {
+            try (var e = Executors.newVirtualThreadPerTaskExecutor()) {
+                var fs = IntStream.range(0,n).mapToObj(i->e.submit(()->ioWork(i))).toList();
+                for (var f:fs) f.get();
+            }
+            return null;
+        });
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What causes virtual thread pinning and how do you fix it?', a: 'Two causes: (1) synchronized blocks/methods — when a virtual thread enters a synchronized block, the JVM pins it to the carrier thread for the entire duration. Fix: replace synchronized with ReentrantLock or other java.util.concurrent.locks. (2) Native/JNI frames — inherent, no fix. Detect pinning with JVM flag -Djdk.tracePinnedThreads=full. Java 24 fixes synchronized pinning for most cases.' },
+            { q: 'Why should you NOT use ThreadLocal caching with virtual threads?', a: 'With platform thread pools, threads are reused, so ThreadLocal state is reused across tasks — caching a DB connection in ThreadLocal is efficient. With virtual threads: a new virtual thread is created per task (not pooled), so ThreadLocal.withInitial() is called for EVERY task — you get a new (expensive) connection per task instead of sharing. Also, ThreadLocal state is never cleaned up. Use ScopedValue (Java 21) instead: immutable, inheritable, automatically scoped to the structured concurrency scope.' },
+            { q: 'When do virtual threads NOT improve performance?', a: 'Virtual threads do NOT help for CPU-bound work. They help only when threads are blocked waiting (I/O, sleep, locks). For CPU computation, all virtual threads compete for the same small pool of carrier threads — you get no more parallelism than a fixed thread pool sized to CPU count. For CPU work, use parallel streams (ForkJoinPool) or a fixed thread pool. Virtual threads shine for high-concurrency I/O: web servers, database calls, API clients.' },
+            { q: 'How do you enable virtual threads in Spring Boot 3.2+?', a: 'Set spring.threads.virtual.enabled=true in application.yml/properties. Spring Boot then uses virtual threads for: Tomcat request handling, @Async tasks, @Scheduled tasks, and other Spring-managed executors. No code changes needed in most apps. For manual Tomcat config: @Bean TomcatProtocolHandlerCustomizer<?> that calls handler.setExecutor(Executors.newVirtualThreadPerTaskExecutor()).' },
+            { q: 'What is the relationship between ScopedValue and virtual threads?', a: 'ScopedValue (Java 21 preview) is the recommended replacement for ThreadLocal when using virtual threads. Key differences: ScopedValue is IMMUTABLE (set once via ScopedValue.where().run()), automatically INHERITED by child virtual threads in a StructuredTaskScope, and automatically CLEANED UP when the scope exits — no remove() needed. This makes it composable with structured concurrency and free of the caching/leak issues that ThreadLocal has with virtual threads.' }
+          ]
+        },
+        {
+          title: 'Migration Patterns & Best Practices',
+          notes: `## Migration Patterns & Best Practices
+
+### Identifying Migration Candidates
+
+Virtual threads deliver the most value for **I/O-bound, high-concurrency** workloads:
+- REST API servers handling many concurrent requests
+- Services that call external APIs or databases
+- Message queue consumers
+- File processing with network I/O
+
+\`\`\`java
+// Checklist: good VT candidate
+// ✓ Threads spend most time waiting (I/O, sleep, locks)
+// ✓ High concurrency required (hundreds/thousands of concurrent operations)
+// ✓ Blocking library APIs (JDBC, REST client, file I/O)
+// ✗ CPU-intensive computation (use ForkJoinPool instead)
+// ✗ Code uses synchronized heavily (audit first, or defer to Java 24+)
+\`\`\`
+
+### Incremental Migration
+
+\`\`\`java
+// Step 1: Replace executor — minimum viable migration
+// BEFORE
+@Bean
+public ExecutorService taskExecutor() {
+    return Executors.newFixedThreadPool(100);
+}
+
+// AFTER
+@Bean
+public ExecutorService taskExecutor() {
+    return Executors.newVirtualThreadPerTaskExecutor();
+}
+
+// Step 2: Spring Boot 3.2+ — one line in application.yml
+// spring.threads.virtual.enabled: true
+
+// Step 3: Remove thread pool sizing tuning — no longer needed
+// REMOVE these — irrelevant for virtual threads:
+// server.tomcat.threads.max=200
+// spring.task.execution.pool.max-size=50
+// These configs have no effect when VTs are enabled
+
+// Step 4: Audit ThreadLocal usage
+grep -r "ThreadLocal" src/   // find all usages
+// For each: does it cache expensive resources? → move to request scope or ScopedValue
+\`\`\`
+
+### HTTP Client with Virtual Threads
+
+\`\`\`java
+// Before: WebClient (reactive) — complex but non-blocking
+return webClient.get()
+    .uri(url)
+    .retrieve()
+    .bodyToMono(String.class)
+    .flatMap(body -> processAsync(body));
+
+// After: HttpClient (blocking) with virtual threads — simple and equally fast
+HttpClient client = HttpClient.newBuilder()
+    .connectTimeout(Duration.ofSeconds(5))
+    .build();
+
+// This blocks the virtual thread — the carrier is freed during I/O
+HttpResponse<String> response = client.send(
+    HttpRequest.newBuilder().uri(URI.create(url)).build(),
+    HttpResponse.BodyHandlers.ofString()
+);
+String body = response.body();
+// Then process synchronously — no callback hell
+String result = processSync(body);
+\`\`\`
+
+### JDBC with Virtual Threads
+
+\`\`\`java
+// JDBC is blocking — perfect for virtual threads
+// Ensure connection pool is sized for concurrency (not thread count)
+// HikariCP: maximumPoolSize should match max DB connections, not thread count
+
+// application.yml
+// spring.datasource.hikari.maximum-pool-size: 20  ← DB connection limit
+// (Was previously set to match thread pool size, now independent)
+
+// Virtual threads will WAIT for a connection if pool is exhausted
+// But they wait efficiently (unmount while waiting)
+// Set connectionTimeout to avoid indefinite waiting
+// spring.datasource.hikari.connection-timeout: 3000
+
+// IMPORTANT: Some JDBC drivers use synchronized internally (pinning!)
+// PostgreSQL JDBC driver 42.6+ is virtual-thread-friendly
+// MySQL Connector/J 8.x may pin — check your driver version
+\`\`\`
+
+### Testing Virtual Thread Code
+
+\`\`\`java
+@Test
+void testConcurrentRequests() throws Exception {
+    int concurrency = 1000;
+    CountDownLatch latch = new CountDownLatch(concurrency);
+    AtomicInteger success = new AtomicInteger(0);
+
+    try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+        for (int i = 0; i < concurrency; i++) {
+            exec.submit(() -> {
+                try {
+                    String result = service.fetchData(42); // blocking call
+                    if (result != null) success.incrementAndGet();
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+        assertTrue(latch.await(10, TimeUnit.SECONDS),
+            "Should complete within 10s, not " + concurrency + " × latency");
+    }
+    assertEquals(concurrency, success.get());
+}
+\`\`\``,
+          code: [
+            `import java.net.http.*;
+import java.net.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.stream.*;
+import java.time.*;
+
+// HTTP fan-out: fetch many URLs concurrently with virtual threads
+public class HttpFanOutDemo {
+    static final HttpClient HTTP = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(3))
+        .build();
+
+    static String fetch(String url) {
+        try {
+            var req = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(5)).build();
+            var resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+            return resp.statusCode() + " " + url;
+        } catch (Exception e) {
+            return "ERROR " + url + ": " + e.getMessage();
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        var urls = List.of(
+            "https://httpbin.org/delay/1",
+            "https://httpbin.org/delay/1",
+            "https://httpbin.org/delay/1",
+            "https://httpbin.org/status/200",
+            "https://httpbin.org/status/200"
+        );
+
+        System.out.println("Fetching " + urls.size() + " URLs concurrently...");
+        long start = System.currentTimeMillis();
+
+        // All requests in parallel — blocks virtual threads, not OS threads
+        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            var tasks = urls.stream()
+                .map(url -> exec.submit(() -> fetch(url)))
+                .toList();
+            tasks.forEach(f -> {
+                try { System.out.println(f.get()); }
+                catch (Exception e) { System.out.println("Failed: " + e); }
+            });
+        }
+
+        System.out.printf("\nTotal: %dms (should be ~1000ms, not %dms)%n",
+            System.currentTimeMillis() - start, urls.size() * 1000);
+    }
+}`,
+            `import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+// Migration audit: find synchronized blocks that cause pinning
+public class MigrationAudit {
+    // BAD: synchronized method — pins virtual thread
+    synchronized void badMethod() {
+        try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
+    // GOOD: ReentrantLock equivalent
+    private final java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+    void goodMethod() throws InterruptedException {
+        lock.lock();
+        try {
+            Thread.sleep(10);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    // GOOD: use concurrent data structures instead of synchronized
+    // Instead of synchronized HashMap:
+    private final ConcurrentHashMap<String, Integer> cache = new ConcurrentHashMap<>();
+    // Instead of synchronized AtomicReference updates:
+    private final AtomicInteger counter = new AtomicInteger(0);
+
+    public static void main(String[] args) throws Exception {
+        var obj = new MigrationAudit();
+        int n = 200;
+
+        // Benchmark synchronized vs lock
+        long start = System.currentTimeMillis();
+        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            var fs = new java.util.ArrayList<Future<?>>();
+            for (int i = 0; i < n; i++) fs.add(exec.submit(obj::badMethod));
+            for (var f : fs) f.get();
+        }
+        System.out.printf("synchronized: %dms%n", System.currentTimeMillis() - start);
+
+        start = System.currentTimeMillis();
+        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            var fs = new java.util.ArrayList<Future<?>>();
+            for (int i = 0; i < n; i++) fs.add(exec.submit(obj::goodMethod));
+            for (var f : fs) f.get();
+        }
+        System.out.printf("ReentrantLock: %dms%n", System.currentTimeMillis() - start);
+
+        // Show thread identity
+        Thread.ofVirtual().start(() ->
+            System.out.println("Virtual: " + Thread.currentThread() +
+                " isVirtual=" + Thread.currentThread().isVirtual())).join();
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the minimum change needed to migrate a thread-pool-based app to virtual threads?', a: 'Replace Executors.newFixedThreadPool(N) with Executors.newVirtualThreadPerTaskExecutor(). In Spring Boot 3.2+, set spring.threads.virtual.enabled=true in application.yml — this switches Tomcat, @Async, @Scheduled all at once. Remove thread-pool-sizing configuration (server.tomcat.threads.max, spring.task.execution.pool.max-size) — these have no effect with virtual threads and mislead readers.' },
+            { q: 'How should HikariCP connection pool size be configured when using virtual threads?', a: 'Set maximumPoolSize to the maximum connections your DATABASE can handle — not to match the thread pool size. Previously, maximumPoolSize was set equal to the thread pool size so threads always had a connection. With virtual threads, you may have thousands of concurrent tasks but only need as many DB connections as your DB can serve (typically 10-50). Virtual threads wait efficiently for a connection without wasting OS threads. Also set connectionTimeout (e.g. 3000ms) to avoid indefinite waits.' },
+            { q: 'How do you test that code works correctly with high virtual thread concurrency?', a: 'Use CountDownLatch + newVirtualThreadPerTaskExecutor: spawn N concurrent tasks (e.g. 1000), each decrementing the latch on completion. Assert latch.await(timeout) returns true (all tasks finished in time, not N × latency). Also check correctness via an AtomicInteger success counter. Use -Djdk.tracePinnedThreads=full during tests to detect pinning. In Spring: @SpringBootTest with WebTestClient can be used for concurrency testing.' },
+            { q: 'Can virtual threads replace reactive programming (WebFlux)?', a: 'For most applications: yes. Virtual threads with blocking I/O achieve the same throughput as reactive non-blocking code but with synchronous, simpler code. There is no callback pyramid or Mono/Flux chain. However, reactive remains valuable for: (1) backpressure — reactive streams model data-flow with demand signals; (2) streaming pipelines with complex operators; (3) integrations with reactive-only libraries. Spring Boot 3.2+ supports both; for new projects with standard DB/HTTP I/O, virtual threads + blocking code is simpler.' },
+            { q: 'What should you audit before migrating a codebase to virtual threads?', a: '(1) synchronized blocks in hot paths — replace with ReentrantLock; (2) ThreadLocal caching of heavy resources (connections, parsers) — move to scoped resources or ScopedValue; (3) JDBC driver compatibility — ensure driver is virtual-thread-friendly (PostgreSQL 42.6+, MySQL 8.x may need newer version); (4) Third-party libraries that use synchronized internally (check release notes); (5) Remove thread pool size configurations that assumed fixed-size platform thread pools.' }
+          ]
+        }
       ]
     },
 
     {
       id: '2.5',
-      title: 'Records, Sealed Types & Pattern Matching',
+      title: 'Records, Sealed Types & Pattern Matching (Java 17–21)',
       hours: 3,
-      notes: `
-# Records, Sealed Types & Pattern Matching — From Zero to Senior Level
+      sections: [
+        {
+          title: 'Records — Immutable Data Carriers',
+          notes: `## Records — Immutable Data Carriers (Java 16+)
 
-## The Problem: Verbose, Error-Prone Data Classes
+Records are a concise way to declare immutable data-holding classes. The compiler generates the constructor, accessors, \`equals()\`, \`hashCode()\`, and \`toString()\` from the record components.
 
-Before Java 16, a simple data class required enormous boilerplate:
+### Declaring Records
+
 \`\`\`java
+// Full class (before records)
 public final class Point {
     private final int x;
     private final int y;
     public Point(int x, int y) { this.x = x; this.y = y; }
     public int x() { return x; }
     public int y() { return y; }
-    @Override public boolean equals(Object o) {
-        if (!(o instanceof Point)) return false;
-        Point p = (Point) o;
-        return x == p.x && y == p.y;
-    }
-    @Override public int hashCode() { return Objects.hash(x, y); }
+    @Override public boolean equals(Object o) { ... }
+    @Override public int hashCode() { ... }
     @Override public String toString() { return "Point[x=" + x + ", y=" + y + "]"; }
 }
+
+// Record — equivalent, 1 line
+public record Point(int x, int y) {}
+
+Point p = new Point(3, 4);
+p.x();           // 3 — accessor (not getX())
+p.y();           // 4
+p.toString();    // "Point[x=3, y=4]"
+new Point(3, 4).equals(new Point(3, 4)); // true — value-based equality
 \`\`\`
 
-With **records** (Java 16):
+### Compact Constructor & Validation
+
 \`\`\`java
-record Point(int x, int y) {}  // ALL of the above, in one line
+// Canonical constructor — all components, can add validation
+public record Range(int min, int max) {
+    // Canonical: same parameter names as components
+    public Range {  // compact constructor — no () list needed
+        if (min > max) throw new IllegalArgumentException("min > max: " + min + " > " + max);
+        // Can normalise: min = Math.min(min, max);
+    }
+}
+Range ok  = new Range(1, 10); // fine
+Range bad = new Range(10, 1); // throws IllegalArgumentException
+
+// Custom constructor must call canonical
+public record Temperature(double celsius) {
+    public static Temperature ofFahrenheit(double f) {
+        return new Temperature((f - 32) * 5.0 / 9.0);
+    }
+    public double fahrenheit() { return celsius * 9.0 / 5.0 + 32; }
+}
 \`\`\`
 
----
-
-## Records: Deep Dive
-
-A record is an immutable, transparent data carrier. The compiler auto-generates:
-- Private \`final\` fields for each component
-- A **canonical constructor** with all components as parameters
-- Public **accessor methods** (named after components — \`x()\`, not \`getX()\`)
-- \`equals\` — compares all components
-- \`hashCode\` — based on all components
-- \`toString\` — \`Point[x=1, y=2]\` format
+### Records with Interfaces & Generics
 
 \`\`\`java
-record Employee(String name, String dept, int salary) {}
+// Records can implement interfaces
+public record Money(BigDecimal amount, String currency) implements Comparable<Money> {
+    @Override
+    public int compareTo(Money other) {
+        if (!this.currency.equals(other.currency))
+            throw new IllegalArgumentException("Cannot compare different currencies");
+        return this.amount.compareTo(other.amount);
+    }
+}
 
-Employee e = new Employee("Alice", "ENG", 95000);
-e.name();    // "Alice" (accessor — no 'get' prefix)
-e.dept();    // "ENG"
-e.salary();  // 95000
+// Generic record
+public record Pair<A, B>(A first, B second) {
+    public Pair<B, A> swap() { return new Pair<>(second, first); }
+}
+Pair<String, Integer> p = new Pair<>("hello", 42);
+Pair<Integer, String> s = p.swap(); // (42, "hello")
 
-// equals/hashCode work correctly:
-new Employee("Alice", "ENG", 95000).equals(e);  // true
-Set<Employee> set = new HashSet<>();
-set.add(e);
-set.contains(new Employee("Alice", "ENG", 95000));  // true
+// Record as DTO in Spring (very common pattern)
+public record CreateUserRequest(
+    @NotBlank String username,
+    @Email    String email,
+    @Size(min = 8) String password
+) {}
+
+@PostMapping("/users")
+public ResponseEntity<User> create(@Valid @RequestBody CreateUserRequest req) {
+    return ResponseEntity.ok(userService.create(req.username(), req.email(), req.password()));
+}
 \`\`\`
 
-### Customising Records
+### Records Limitations
 
 \`\`\`java
-record Money(long amount, String currency) {
+// What records CANNOT do:
+// 1. Extend another class (implicitly extends Record)
+// 2. Have non-static mutable fields
+// 3. Have non-final fields
 
-    // Compact constructor: runs before the auto-generated one (for validation)
-    Money {
-        if (amount < 0) throw new IllegalArgumentException("negative amount");
-        currency = currency.toUpperCase();  // can normalise in compact constructor
+// What records CAN do:
+// ✓ Implement interfaces
+// ✓ Have static fields and methods
+// ✓ Have custom methods
+// ✓ Have annotations on components
+// ✓ Be generic
+// ✓ Be local records (inside methods)
+
+// Local record — great for grouping related data in a method
+void processOrders(List<Order> orders) {
+    record OrderSummary(String id, double total, boolean priority) {}
+
+    List<OrderSummary> summaries = orders.stream()
+        .map(o -> new OrderSummary(o.id(), o.total(), o.total() > 1000))
+        .sorted(Comparator.comparingDouble(OrderSummary::total).reversed())
+        .toList();
+}
+\`\`\``,
+          code: [
+            `import java.math.BigDecimal;
+import java.util.*;
+import java.util.stream.*;
+
+public class RecordsDemo {
+    // Basic record
+    record Point(int x, int y) {
+        // Compact constructor — validation
+        Point {
+            if (x < 0 || y < 0) throw new IllegalArgumentException("Coordinates must be non-negative");
+        }
+        double distanceTo(Point other) {
+            return Math.sqrt(Math.pow(x - other.x, 2) + Math.pow(y - other.y, 2));
+        }
     }
 
-    // Custom constructor (delegates to canonical):
-    Money(long amount) {
-        this(amount, "EUR");
+    // Generic record
+    record Pair<A, B>(A first, B second) {
+        static <T> Pair<T, T> of(T a, T b) { return new Pair<>(a, b); }
     }
 
-    // Additional methods are fine:
-    Money add(Money other) {
-        if (!currency.equals(other.currency)) throw new IllegalStateException("currency mismatch");
-        return new Money(amount + other.amount, currency);
+    // Record implementing interface
+    record Money(BigDecimal amount, String currency) implements Comparable<Money> {
+        Money { Objects.requireNonNull(currency); if (amount.compareTo(BigDecimal.ZERO) < 0) throw new IllegalArgumentException("Negative money"); }
+        static Money of(double amount, String currency) { return new Money(BigDecimal.valueOf(amount), currency); }
+        Money add(Money other) {
+            if (!currency.equals(other.currency)) throw new IllegalArgumentException("Currency mismatch");
+            return new Money(amount.add(other.amount), currency);
+        }
+        @Override public int compareTo(Money o) {
+            if (!currency.equals(o.currency)) throw new IllegalArgumentException();
+            return amount.compareTo(o.amount);
+        }
     }
 
-    // Static factory:
-    static Money euros(long cents) { return new Money(cents, "EUR"); }
-}
-\`\`\`
+    public static void main(String[] args) {
+        // Value-based equality
+        var p1 = new Point(3, 4);
+        var p2 = new Point(3, 4);
+        System.out.println("p1.equals(p2): " + p1.equals(p2)); // true
+        System.out.println("p1 == p2: " + (p1 == p2));         // false
+        System.out.println("toString: " + p1);                  // Point[x=3, y=4]
+        System.out.printf("distance(0,0): %.2f%n", p1.distanceTo(new Point(0, 0))); // 5.00
 
-### What Records CANNOT Do
+        // Generics
+        var pair = new Pair<>("Alice", 42);
+        System.out.println(pair.first() + " is " + pair.second());
 
-\`\`\`java
-// Records cannot:
-// 1. Extend another class (implicitly extend Record)
-// 2. Have mutable (non-final) fields
-// 3. Declare instance fields outside the record header
-// 4. Have an abstract modifier
+        // Money operations
+        var m1 = Money.of(100.00, "USD");
+        var m2 = Money.of(50.00, "USD");
+        System.out.println("Total: " + m1.add(m2));
+        System.out.println("m1 > m2: " + (m1.compareTo(m2) > 0));
 
-// Records CAN:
-// 1. Implement interfaces
-// 2. Have static fields and methods
-// 3. Have custom constructors (must delegate to canonical)
-// 4. Override accessor methods (e.g. to add defensive copying)
-// 5. Be generic: record Pair<A, B>(A first, B second) {}
-\`\`\`
+        // Records in streams
+        record Employee(String name, String dept, double salary) {}
+        var employees = List.of(
+            new Employee("Alice", "Eng", 95000), new Employee("Bob", "Eng", 72000),
+            new Employee("Carol", "HR", 68000),  new Employee("Dave", "Eng", 110000)
+        );
+        employees.stream()
+            .filter(e -> "Eng".equals(e.dept()))
+            .sorted(Comparator.comparingDouble(Employee::salary).reversed())
+            .forEach(e -> System.out.printf("  %-8s $%.0f%n", e.name(), e.salary()));
 
-### Records as Map Keys and in Sets
-
-Because records auto-generate correct \`equals\`/\`hashCode\` from all components, they're perfect immutable map keys:
-
-\`\`\`java
-record CacheKey(String userId, String resource) {}
-Map<CacheKey, Data> cache = new HashMap<>();
-cache.put(new CacheKey("u1", "orders"), data);
-cache.get(new CacheKey("u1", "orders"));  // works perfectly — equal keys
-\`\`\`
-
----
-
-## Sealed Classes and Interfaces: Closed Hierarchies
-
-A **sealed type** restricts which classes/interfaces can extend or implement it:
-
-\`\`\`java
-// Only Circle, Square, Rectangle can implement Shape
-sealed interface Shape permits Circle, Square, Rectangle {}
-
-// Each permitted subtype must be one of:
-// - final (can't be extended further)
-// - sealed (further restricted)
-// - non-sealed (open to anyone — escape hatch)
-record Circle(double radius) implements Shape {}          // implicit final (records)
-record Square(double side) implements Shape {}
-non-sealed class Rectangle implements Shape {            // open — anyone can extend
-    final double width, height;
-    Rectangle(double w, double h) { width = w; height = h; }
-}
-\`\`\`
-
-**Why sealed types matter:** the compiler knows the **complete set** of subtypes at compile time. This enables **exhaustiveness checking** in switch expressions.
-
-### Modelling Domain Results with Sealed Types
-
-This is the killer use case — a type-safe \`Result\` type (success OR failure):
-
-\`\`\`java
-sealed interface Result<T> permits Success, Failure {
-    record Success<T>(T value) implements Result<T> {}
-    record Failure<T>(String error, Throwable cause) implements Result<T> {}
-}
-
-// Usage:
-Result<Order> result = orderService.placeOrder(request);
-String message = switch (result) {
-    case Result.Success<Order>(Order o)  -> "Order " + o.id() + " placed";
-    case Result.Failure<Order>(String e, Throwable t) -> "Failed: " + e;
-    // NO default needed — compiler knows all cases are covered
-};
-\`\`\`
-
----
-
-## Pattern Matching: Evolution from instanceof to switch
-
-### instanceof Pattern (Java 16)
-\`\`\`java
-// Old way:
-if (obj instanceof String) {
-    String s = (String) obj;  // redundant cast
-    doSomething(s);
-}
-
-// New way (Java 16+):
-if (obj instanceof String s) {  // binding variable 's' in scope
-    doSomething(s);             // no cast needed
-}
-
-// With guard (Java 21+):
-if (obj instanceof String s && s.length() > 5) {
-    System.out.println("Long string: " + s);
-}
-\`\`\`
-
-### Switch Patterns (Java 21, JEP 441)
-
-\`\`\`java
-// Old switch: only works on int, String, enum
-// New switch: works on ANY type with pattern matching
-
-static String describe(Object obj) {
-    return switch (obj) {
-        case Integer i when i < 0 -> "negative int: " + i;     // guarded pattern
-        case Integer i            -> "positive int: " + i;
-        case String s when s.isEmpty() -> "empty string";
-        case String s             -> "string of length " + s.length();
-        case null                 -> "null";                    // explicit null handling
-        default                   -> "something else: " + obj;
-    };
-}
-
-// Area calculator with sealed type (NO default needed):
-static double area(Shape s) {
-    return switch (s) {
-        case Circle(double r)          -> Math.PI * r * r;
-        case Square(double side)       -> side * side;
-        case Rectangle r               -> r.width * r.height;  // bind whole record
-        // Exhaustive — compiler verified. Adding a new Shape subtype
-        // causes a COMPILE ERROR here until you add the case. Safe refactoring!
-    };
-}
-\`\`\`
-
-### Record Deconstruction Patterns (Java 21)
-\`\`\`java
-record Point(int x, int y) {}
-record Line(Point start, Point end) {}
-
-Object obj = new Line(new Point(0, 0), new Point(3, 4));
-
-// Nested deconstruction:
-if (obj instanceof Line(Point(int x1, int y1), Point(int x2, int y2))) {
-    double length = Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
-    System.out.println("Length: " + length);
-}
-\`\`\`
-
----
-
-## Text Blocks (Java 15+)
-
-Multi-line string literals with automatic indentation stripping:
-
-\`\`\`java
-// Old way:
-String json = "{\\n" +
-    "  \\"name\\": \\"Alice\\",\\n" +
-    "  \\"age\\": 30\\n" +
-    "}";
-
-// Text block:
-String json = """
-    {
-      "name": "Alice",
-      "age": 30
+        // Validation
+        try { new Point(-1, 5); } catch (IllegalArgumentException e) { System.out.println("Caught: " + e.getMessage()); }
     }
-    """;  // trailing """ determines indentation to strip
-\`\`\`
+}`,
+            `import java.util.*;
 
-Perfect for SQL queries, JSON templates, HTML, multi-line strings. The indentation of the closing \`"""\` controls how much whitespace is stripped from each line.
+// Records as DTOs, local records, and with collections
+public class RecordPatterns {
+    // HTTP response wrapper record
+    record ApiResponse<T>(int status, T body, String error) {
+        static <T> ApiResponse<T> ok(T body) { return new ApiResponse<>(200, body, null); }
+        static <T> ApiResponse<T> error(int status, String msg) { return new ApiResponse<>(status, null, msg); }
+        boolean isSuccess() { return status >= 200 && status < 300; }
+    }
 
----
+    // Nested records
+    record Address(String street, String city, String country) {}
+    record Person(String name, int age, Address address) {}
 
-## Enhanced Switch Expressions (Java 14+)
+    // Record as Map key — hashCode/equals auto-generated
+    record CacheKey(String type, int id) {}
 
-\`\`\`java
-// Old switch (statement, fall-through bugs, verbose):
-int days;
-switch (month) {
-    case JANUARY: case MARCH: case MAY:
-        days = 31;
-        break;  // ← forget break → bug!
-    ...
-}
+    public static void main(String[] args) {
+        // ApiResponse pattern
+        ApiResponse<String> ok  = ApiResponse.ok("Hello");
+        ApiResponse<String> err = ApiResponse.error(404, "Not found");
+        System.out.println(ok.isSuccess() + " " + ok.body());
+        System.out.println(err.isSuccess() + " " + err.error());
 
-// New switch expression (no fall-through, returns value):
-int days = switch (month) {
-    case JANUARY, MARCH, MAY, JULY, AUGUST, OCTOBER, DECEMBER -> 31;
-    case APRIL, JUNE, SEPTEMBER, NOVEMBER -> 30;
-    case FEBRUARY -> year % 4 == 0 ? 29 : 28;
-    // Exhaustive over enum — compiler checked
-};
-\`\`\`
+        // Nested records
+        var person = new Person("Alice", 30, new Address("1 Main St", "Dublin", "IE"));
+        System.out.println(person.name() + " lives in " + person.address().city());
 
-> [!EU]
-> Model your domain with **records + sealed interfaces + switch patterns** to show you write modern, type-safe Java. A common senior question: "Show me how you'd model an HTTP response that's either a success with data or an error with a code and message." The \`sealed interface Result<T> permits Success<T>, Failure\` pattern with exhaustive switch is the modern Java answer — it's compile-time safe (no unchecked casts), no Visitor boilerplate, and the compiler enforces completeness.
-`,
-      code: [
+        // Record as HashMap key — works perfectly because equals/hashCode are auto-generated
+        Map<CacheKey, String> cache = new HashMap<>();
+        cache.put(new CacheKey("user", 1), "Alice");
+        cache.put(new CacheKey("user", 2), "Bob");
+        System.out.println(cache.get(new CacheKey("user", 1))); // Alice
+
+        // Local record in a method
+        List<Integer> numbers = List.of(5, 2, 8, 1, 9, 3, 7);
+        record Indexed(int value, int index) {}
+        var sorted = numbers.stream()
+            .map((v) -> new Indexed(v, numbers.indexOf(v)))
+            .sorted(Comparator.comparingInt(Indexed::value))
+            .toList();
+        System.out.println("Sorted with original indices:");
+        sorted.forEach(i -> System.out.printf("  value=%d originalIndex=%d%n", i.value(), i.index()));
+
+        // Records are immutable — you "update" by creating new instance
+        var original = new Person("Alice", 30, new Address("1 Main St", "Dublin", "IE"));
+        var updated = new Person(original.name(), original.age() + 1, original.address()); // birthday
+        System.out.println("Updated age: " + updated.age());
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What does a record declaration auto-generate?', a: 'For record Point(int x, int y): (1) private final fields x and y; (2) canonical constructor Point(int x, int y); (3) public accessor methods x() and y() — NOT getX()/getY(); (4) equals() — compares all components by value; (5) hashCode() — based on all components; (6) toString() — "Point[x=3, y=4]". Records are implicitly final and extend java.lang.Record.' },
+            { q: 'What is a compact constructor in a record and when do you use it?', a: 'A compact constructor omits the parameter list (no parentheses): public record Range(int min, int max) { Range { if (min > max) throw new IllegalArgumentException(...); } }. The compiler injects the assignments (this.min = min; this.max = max;) after the body. Use compact constructors for: validation, normalisation of inputs (e.g. trim strings). You can reassign the parameters before the implicit assignments.' },
+            { q: 'What are the key limitations of records?', a: '(1) Cannot extend any class (implicitly extends Record). (2) Cannot declare instance fields beyond the record components. (3) All components are automatically final — records are immutable by definition. (4) Cannot be abstract. (5) Cannot be sealed (but a sealed interface can have record implementors). Records CAN: implement interfaces, have static fields/methods, have custom methods, be generic, be local (inside methods).' },
+            { q: 'Why are records ideal as Map keys or Set elements?', a: 'Records auto-generate equals() and hashCode() based on ALL components. This means two records with the same component values are equal and have the same hash code — they work correctly as map keys without any manual implementation. Example: new CacheKey("user", 1).equals(new CacheKey("user", 1)) is true, so cache.get(new CacheKey("user", 1)) correctly retrieves the value.' },
+            { q: 'How do you "update" a record field since records are immutable?', a: 'Create a new record instance with the changed value and all other fields copied from the original: Person updated = new Person(original.name(), original.age() + 1, original.address()). This is explicit but verbose for records with many fields. Java does not yet have built-in "wither" methods (unlike Kotlin data classes with copy()). Libraries like Lombok (@With) can generate wither methods for records.' }
+          ]
+        },
         {
-          lang: 'java',
-          title: 'Sealed + records + switch pattern matching',
-          code: `public class PatternDemo {
-    sealed interface Shape permits Circle, Square, Rectangle {}
-    record Circle(double r) implements Shape {}
-    record Square(double side) implements Shape {}
-    record Rectangle(double w, double h) implements Shape {}
+          title: 'Sealed Classes & Interfaces',
+          notes: `## Sealed Classes & Interfaces (Java 17+)
 
-    // Exhaustive switch with record deconstruction (JDK 21).
+Sealed types restrict which classes can extend or implement them. Combined with pattern matching, they enable exhaustive modelling of algebraic data types — a closed set of known subtypes.
+
+### Declaring Sealed Types
+
+\`\`\`java
+// Sealed interface — only the listed types can implement it
+public sealed interface Shape
+    permits Circle, Rectangle, Triangle {}
+
+// Permitted classes must be in the same package (or module)
+// Each must be: final, sealed, or non-sealed
+public record Circle(double radius)       implements Shape {}        // final (records are final)
+public record Rectangle(double w, double h) implements Shape {}     // final
+public sealed interface Triangle          implements Shape           // further sealed
+    permits EquilateralTriangle, RightTriangle {}
+public record EquilateralTriangle(double side) implements Triangle {} // final
+public record RightTriangle(double a, double b) implements Triangle {} // final
+
+// Non-sealed: opens the hierarchy back up for unknown subtypes
+public non-sealed class FreeformShape implements Shape {}
+\`\`\`
+
+### Exhaustive Switch on Sealed Types
+
+\`\`\`java
+// Compiler KNOWS all permitted subtypes → can enforce exhaustiveness
+double area(Shape shape) {
+    return switch (shape) {
+        case Circle c       -> Math.PI * c.radius() * c.radius();
+        case Rectangle r    -> r.w() * r.h();
+        case Triangle t     -> switch (t) {
+            case EquilateralTriangle et -> (Math.sqrt(3) / 4) * et.side() * et.side();
+            case RightTriangle rt       -> 0.5 * rt.a() * rt.b();
+        };
+        // case FreeformShape f -> ... // compiler requires this because FreeformShape is non-sealed
+        // No default needed if all sealed subtypes are covered!
+    };
+}
+
+// Adding a new permitted subtype (e.g. Ellipse) causes a compile error
+// in switch expressions that don't cover it — instant exhaustiveness checking
+\`\`\`
+
+### Sealed + Records: Algebraic Data Types
+
+\`\`\`java
+// Modelling a result type (like Rust's Result<T,E> or Haskell's Either)
+public sealed interface Result<T>
+    permits Result.Ok, Result.Err {
+
+    record Ok<T>(T value) implements Result<T> {}
+    record Err<T>(String message, Throwable cause) implements Result<T> {
+        Err(String message) { this(message, null); }
+    }
+
+    static <T> Result<T> ok(T value)   { return new Ok<>(value); }
+    static <T> Result<T> err(String msg) { return new Err<>(msg); }
+
+    default boolean isOk() { return this instanceof Ok<T>; }
+}
+
+// Usage — exhaustive switch
+Result<User> result = userService.findById(id);
+String display = switch (result) {
+    case Result.Ok<User>  ok  -> "Found: " + ok.value().name();
+    case Result.Err<User> err -> "Error: " + err.message();
+};
+\`\`\`
+
+### Sealed for Domain Modelling
+
+\`\`\`java
+// Payment event hierarchy — all variants known and closed
+public sealed interface PaymentEvent
+    permits PaymentEvent.Initiated, PaymentEvent.Authorised, PaymentEvent.Failed, PaymentEvent.Settled {
+
+    record Initiated(String paymentId, double amount, String currency) implements PaymentEvent {}
+    record Authorised(String paymentId, String authCode) implements PaymentEvent {}
+    record Failed(String paymentId, String reason) implements PaymentEvent {}
+    record Settled(String paymentId, Instant at) implements PaymentEvent {}
+}
+
+// Process every event — compiler ensures you handle all cases
+void processEvent(PaymentEvent event) {
+    switch (event) {
+        case PaymentEvent.Initiated i  -> log.info("Payment {} started: {} {}", i.paymentId(), i.amount(), i.currency());
+        case PaymentEvent.Authorised a -> log.info("Payment {} authorised: {}", a.paymentId(), a.authCode());
+        case PaymentEvent.Failed f     -> log.error("Payment {} failed: {}", f.paymentId(), f.reason());
+        case PaymentEvent.Settled s    -> log.info("Payment {} settled at {}", s.paymentId(), s.at());
+    }
+    // No default — if you add a new event type, compiler forces you to handle it here
+}
+\`\`\``,
+          code: [
+            `// Sealed types + exhaustive pattern matching
+public class SealedTypesDemo {
+    // Shape hierarchy
+    sealed interface Shape permits Circle, Rectangle, Triangle {}
+    record Circle(double radius)            implements Shape {}
+    record Rectangle(double width, double h) implements Shape {}
+    record Triangle(double base, double h)  implements Shape {}
+
     static double area(Shape s) {
         return switch (s) {
-            case Circle(double r)        -> Math.PI * r * r;
-            case Square(double side)     -> side * side;
-            case Rectangle(double w, double h) -> w * h;
-            // No default needed: 'permits' makes the set closed & exhaustive.
+            case Circle c    -> Math.PI * c.radius() * c.radius();
+            case Rectangle r -> r.width() * r.h();
+            case Triangle t  -> 0.5 * t.base() * t.h();
+            // No default — compiler checks exhaustiveness
         };
     }
 
-    static String describe(Object o) {
-        return switch (o) {
-            case Integer i when i > 100 -> "big int " + i;   // guarded pattern
-            case Integer i              -> "int " + i;
-            case String str             -> "string of length " + str.length();
-            case null                   -> "null!";
-            default                     -> "something else";
+    static String describe(Shape s) {
+        return switch (s) {
+            case Circle c    when c.radius() > 10 -> "Large circle r=" + c.radius();
+            case Circle c                          -> "Circle r=" + c.radius();
+            case Rectangle r when r.width() == r.h()-> "Square " + r.width();
+            case Rectangle r                       -> "Rectangle " + r.width() + "x" + r.h();
+            case Triangle t                        -> "Triangle base=" + t.base();
+        };
+    }
+
+    // Result type
+    sealed interface Result<T> permits Ok, Err {}
+    record Ok<T>(T value)              implements Result<T> {}
+    record Err<T>(String msg)          implements Result<T> {}
+
+    static Result<Integer> divide(int a, int b) {
+        if (b == 0) return new Err<>("Division by zero");
+        return new Ok<>(a / b);
+    }
+
+    public static void main(String[] args) {
+        var shapes = java.util.List.of(
+            new Circle(5), new Circle(15),
+            new Rectangle(4, 4), new Rectangle(3, 7),
+            new Triangle(6, 4)
+        );
+
+        shapes.forEach(s ->
+            System.out.printf("%-35s area=%.2f%n", describe(s), area(s)));
+
+        // Result type
+        System.out.println();
+        for (int[] args2 : new int[][]{{10,3},{10,0},{15,4}}) {
+            var result = divide(args2[0], args2[1]);
+            String out = switch (result) {
+                case Ok<Integer>  ok  -> args2[0] + "/" + args2[1] + " = " + ok.value();
+                case Err<Integer> err -> "Error: " + err.msg();
+            };
+            System.out.println(out);
+        }
+    }
+}`,
+            `import java.time.Instant;
+import java.util.*;
+
+// Domain modelling with sealed types
+public class PaymentDomain {
+    sealed interface PaymentEvent
+        permits PaymentEvent.Initiated, PaymentEvent.Authorised, PaymentEvent.Failed, PaymentEvent.Settled {
+        record Initiated(String id, double amount, String currency, Instant at) implements PaymentEvent {}
+        record Authorised(String id, String authCode, Instant at)               implements PaymentEvent {}
+        record Failed(String id, String reason, Instant at)                      implements PaymentEvent {}
+        record Settled(String id, double netAmount, Instant at)                  implements PaymentEvent {}
+    }
+
+    // State machine driven by sealed events
+    record PaymentState(String id, String status, double amount, List<String> log) {
+        PaymentState process(PaymentEvent event) {
+            return switch (event) {
+                case PaymentEvent.Initiated i  -> new PaymentState(i.id(), "INITIATED", i.amount(),
+                    append(log, "Initiated " + i.amount() + " " + i.currency()));
+                case PaymentEvent.Authorised a -> new PaymentState(id, "AUTHORISED", amount,
+                    append(log, "Authorised: " + a.authCode()));
+                case PaymentEvent.Failed f     -> new PaymentState(id, "FAILED", amount,
+                    append(log, "FAILED: " + f.reason()));
+                case PaymentEvent.Settled s    -> new PaymentState(id, "SETTLED", s.netAmount(),
+                    append(log, "Settled: net=" + s.netAmount()));
+            };
+        }
+        private static List<String> append(List<String> list, String s) {
+            var r = new ArrayList<>(list); r.add(s); return List.copyOf(r);
+        }
+    }
+
+    public static void main(String[] args) {
+        var now = Instant.now();
+        var events = List.of(
+            new PaymentEvent.Initiated("PAY-001", 150.00, "EUR", now),
+            new PaymentEvent.Authorised("PAY-001", "AUTH-XYZ", now.plusSeconds(1)),
+            new PaymentEvent.Settled("PAY-001", 147.50, now.plusSeconds(2))
+        );
+
+        PaymentState state = new PaymentState("PAY-001", "NEW", 0, List.of());
+        for (var event : events) state = state.process(event);
+
+        System.out.println("Final state: " + state.status());
+        System.out.println("Net amount: " + state.amount());
+        System.out.println("History:");
+        state.log().forEach(l -> System.out.println("  " + l));
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is a sealed class/interface and what does it enforce?', a: 'A sealed type restricts which classes can extend or implement it. You declare: sealed interface Shape permits Circle, Rectangle, Triangle {}. Only the listed permitted types can implement it. Each permitted type must be: final (closes the hierarchy), sealed (further restricts), or non-sealed (opens it back up). Permitted types must be in the same package (or module). The compiler can then check that switch expressions over sealed types are exhaustive — no default needed if all subtypes are covered.' },
+            { q: 'What is the difference between final, sealed, and non-sealed in the context of permitted subtypes?', a: 'When a permitted type is declared final, no further subclassing is possible — the hierarchy is completely closed at that type. When declared sealed, it can further restrict its own subtypes. When declared non-sealed, it re-opens the hierarchy — any class can extend it, but the compiler can no longer guarantee exhaustiveness. Records are implicitly final, so record Circle(...) implements Shape {} is automatically a closed subtype.' },
+            { q: 'How do sealed types enable exhaustiveness checking in switch?', a: 'When you switch over a sealed type and cover ALL permitted types (including subtypes of nested sealed types), the compiler verifies exhaustiveness — no default case is needed. If you add a new permitted type (e.g. add Ellipse to the permits list), every switch expression over Shape that doesn\'t cover Ellipse becomes a compile error. This is the key benefit: refactoring safely, knowing the compiler will find every switch that needs updating.' },
+            { q: 'What is an Algebraic Data Type (ADT) and how do records + sealed types implement it?', a: 'ADTs model data as a fixed set of variants, each carrying different data. Sum type (sealed) = "this is ONE OF these cases". Product type (record) = "this has ALL of these fields". Combined: sealed interface Result<T> permits Ok, Err {} with record Ok<T>(T value) and record Err<T>(String message) gives a type-safe result type that forces callers to handle both cases in a switch. Common ADT patterns: Result, Option, event hierarchies, AST nodes.' },
+            { q: 'When should you use sealed types over standard inheritance?', a: 'Use sealed when: (1) the set of subtypes is deliberately closed — you OWN all the variants; (2) you want the compiler to enforce exhaustive handling at every switch site; (3) modelling domain events, state machines, or discriminated unions. Avoid when: the type is an extension point for users/libraries (sealed breaks extensibility). Standard abstract class/interface is correct when third parties should be able to add subtypes.' }
+          ]
+        },
+        {
+          title: 'Pattern Matching — instanceof, Switch & Deconstruction',
+          notes: `## Pattern Matching — instanceof, Switch & Deconstruction
+
+### Pattern Matching for instanceof (Java 16+)
+
+\`\`\`java
+// Old
+if (obj instanceof String) {
+    String s = (String) obj; // explicit cast
+    System.out.println(s.length());
+}
+
+// New — binding variable declared in the pattern
+if (obj instanceof String s) {
+    System.out.println(s.length()); // s is in scope here
+}
+
+// Guards with &&
+if (obj instanceof String s && s.length() > 5) {
+    System.out.println("Long string: " + s);
+}
+
+// Negation pattern
+if (!(obj instanceof String s)) {
+    return; // s is NOT in scope after this early return
+}
+System.out.println(s.length()); // s IS in scope here (flow analysis)
+\`\`\`
+
+### Pattern Matching in Switch (Java 21+)
+
+\`\`\`java
+// Type patterns in switch
+Object obj = getObject();
+String result = switch (obj) {
+    case Integer i   -> "int: " + i;
+    case Long l      -> "long: " + l;
+    case Double d    -> "double: " + d;
+    case String s    -> "string: " + s;
+    case int[] arr   -> "int[]: len=" + arr.length;
+    case null        -> "null";   // explicit null handling
+    default          -> "other: " + obj.getClass().getSimpleName();
+};
+
+// Guarded patterns (when clause)
+String classify(Number n) {
+    return switch (n) {
+        case Integer i when i < 0   -> "negative int";
+        case Integer i when i == 0  -> "zero";
+        case Integer i              -> "positive int: " + i;
+        case Double d  when d.isNaN()-> "NaN";
+        case Double d               -> "double: " + d;
+        default                     -> "other number";
+    };
+}
+\`\`\`
+
+### Deconstruction Patterns (Java 21+)
+
+\`\`\`java
+// Record patterns — destructure inside switch or instanceof
+sealed interface Shape permits Circle, Rectangle {}
+record Circle(double radius)          implements Shape {}
+record Rectangle(double width, double height) implements Shape {}
+
+double area(Shape shape) {
+    return switch (shape) {
+        case Circle(var r)             -> Math.PI * r * r;
+        case Rectangle(var w, var h)   -> w * h;
+    };
+}
+
+// Nested deconstruction
+record Point(int x, int y) {}
+record Line(Point start, Point end) {}
+
+void process(Object obj) {
+    if (obj instanceof Line(Point(var x1, var y1), Point(var x2, var y2))) {
+        System.out.printf("Line from (%d,%d) to (%d,%d)%n", x1, y1, x2, y2);
+    }
+}
+\`\`\`
+
+### Switch Expressions vs Statements (Java 14+)
+
+\`\`\`java
+// Switch STATEMENT (old, still valid)
+switch (day) {
+    case MONDAY:
+    case TUESDAY:
+        System.out.println("Early week"); break;
+    case FRIDAY:
+        System.out.println("End week");   break;
+    default:
+        System.out.println("Mid week");
+}
+
+// Switch EXPRESSION — returns a value, exhaustiveness required
+int numLetters = switch (day) {
+    case MONDAY, FRIDAY, SUNDAY -> 6;
+    case TUESDAY                -> 7;
+    case THURSDAY, SATURDAY     -> 8;
+    case WEDNESDAY              -> 9;
+};
+
+// Yield — for multi-statement arms
+int result = switch (code) {
+    case 1 -> 100;
+    case 2 -> {
+        int x = compute();
+        yield x * 2; // yield in block arm
+    }
+    default -> 0;
+};
+\`\`\`
+
+### Text Blocks (Java 15+)
+
+\`\`\`java
+// Inline string — hard to read
+String json = "{\"name\": \"Alice\", \"age\": 30}";
+
+// Text block — preserves formatting, no escaping
+String json = """
+        {
+            "name": "Alice",
+            "age": 30
+        }
+        """;
+
+String sql = """
+        SELECT u.name, o.total
+        FROM users u
+        JOIN orders o ON o.user_id = u.id
+        WHERE u.active = true
+        ORDER BY o.total DESC
+        """;
+
+// Interpolation (not yet, but String.formatted() works)
+String query = """
+        SELECT * FROM %s WHERE id = %d
+        """.formatted(tableName, id);
+\`\`\``,
+          code: [
+            `// Pattern matching — instanceof and switch
+public class PatternMatchingDemo {
+    sealed interface JsonValue permits JsonNull, JsonBool, JsonNum, JsonStr, JsonArr {}
+    record JsonNull()                            implements JsonValue {}
+    record JsonBool(boolean value)               implements JsonValue {}
+    record JsonNum(double value)                 implements JsonValue {}
+    record JsonStr(String value)                 implements JsonValue {}
+    record JsonArr(java.util.List<JsonValue> elements) implements JsonValue {}
+
+    static String toJavaString(JsonValue v) {
+        return switch (v) {
+            case JsonNull()            -> "null";
+            case JsonBool(var b)       -> String.valueOf(b);
+            case JsonNum(var n)        -> n == Math.floor(n) ? String.valueOf((long)n) : String.valueOf(n);
+            case JsonStr(var s)        -> "\"" + s + "\"";
+            case JsonArr(var list)     -> "[" + list.stream()
+                .map(PatternMatchingDemo::toJavaString)
+                .collect(java.util.stream.Collectors.joining(", ")) + "]";
+        };
+    }
+
+    static double numericValue(Object obj) {
+        return switch (obj) {
+            case Integer i             -> i.doubleValue();
+            case Long l                -> l.doubleValue();
+            case Double d              -> d;
+            case String s when s.matches("-?\\d+(\\.\\d+)?") -> Double.parseDouble(s);
+            case null                  -> 0.0;
+            default                    -> throw new IllegalArgumentException("Not numeric: " + obj);
         };
     }
 
     public static void main(String[] args) {
-        Shape[] shapes = { new Circle(2), new Square(3), new Rectangle(2, 5) };
-        for (Shape s : shapes)
-            System.out.printf("%-28s area = %.2f%n", s, area(s));
+        var json = new JsonArr(java.util.List.of(
+            new JsonStr("hello"), new JsonNum(42), new JsonBool(true), new JsonNull()
+        ));
+        System.out.println(toJavaString(json));
 
-        System.out.println(describe(250));
-        System.out.println(describe("hello"));
-        System.out.println(describe(null));
+        // Type patterns
+        Object[] values = {42, 3.14, "hello", 100L, null, "99.5"};
+        for (var v : values) {
+            try { System.out.printf("%-10s -> %.2f%n", v, numericValue(v)); }
+            catch (IllegalArgumentException e) { System.out.println(v + " -> " + e.getMessage()); }
+        }
+
+        // instanceof with guard
+        java.util.List<Object> mixed = java.util.List.of("short", "a very long string", 42, "medium str");
+        mixed.stream()
+            .filter(o -> o instanceof String s && s.length() > 6)
+            .map(o -> (String) o)
+            .forEach(System.out::println);
+    }
+}`,
+            `import java.util.*;
+
+// Switch expressions, text blocks, and modern Java features together
+public class ModernJavaFeatures {
+    enum Status { PENDING, ACTIVE, SUSPENDED, CLOSED }
+
+    record Account(String id, Status status, double balance) {}
+
+    static String statusMessage(Account acc) {
+        return switch (acc.status()) {
+            case PENDING   -> "Account %s is awaiting activation".formatted(acc.id());
+            case ACTIVE    -> "Account %s active, balance: $%.2f".formatted(acc.id(), acc.balance());
+            case SUSPENDED -> {
+                String msg = acc.balance() > 0
+                    ? "suspended with $%.2f pending".formatted(acc.balance())
+                    : "suspended, zero balance";
+                yield "Account %s %s".formatted(acc.id(), msg);
+            }
+            case CLOSED    -> "Account %s is closed".formatted(acc.id());
+        };
+    }
+
+    // Text block for SQL
+    static String buildQuery(String table, String status, int limit) {
+        return """
+                SELECT id, name, balance, created_at
+                FROM %s
+                WHERE status = '%s'
+                  AND created_at > NOW() - INTERVAL '30 days'
+                ORDER BY balance DESC
+                LIMIT %d
+                """.formatted(table, status, limit);
+    }
+
+    public static void main(String[] args) {
+        var accounts = List.of(
+            new Account("ACC-001", Status.ACTIVE, 1250.00),
+            new Account("ACC-002", Status.PENDING, 0),
+            new Account("ACC-003", Status.SUSPENDED, 500.00),
+            new Account("ACC-004", Status.CLOSED, 0)
+        );
+
+        accounts.forEach(acc -> System.out.println(statusMessage(acc)));
+
+        // Text block
+        System.out.println("\n--- Generated SQL ---");
+        System.out.println(buildQuery("accounts", "ACTIVE", 10));
+
+        // Pattern matching with deconstruction
+        record Point(int x, int y) {}
+        sealed interface Shape permits Circ, Rect {}
+        record Circ(Point center, double r) implements Shape {}
+        record Rect(Point topLeft, Point bottomRight) implements Shape {}
+
+        Shape s = new Circ(new Point(0, 0), 5.0);
+        if (s instanceof Circ(Point(var cx, var cy), var r)) {
+            System.out.printf("Circle at (%d,%d) r=%.1f%n", cx, cy, r);
+        }
+
+        List<Shape> shapes = List.of(new Circ(new Point(1,1), 3), new Rect(new Point(0,0), new Point(4,3)));
+        shapes.forEach(shape -> System.out.println(switch (shape) {
+            case Circ(var p, var r2)                -> "Circle center=" + p + " area=" + String.format("%.2f", Math.PI*r2*r2);
+            case Rect(Point(var x1, var y1), Point(var x2, var y2)) -> "Rect area=" + Math.abs((x2-x1)*(y2-y1));
+        }));
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What does pattern matching for instanceof add over a regular instanceof check?', a: 'Pattern matching for instanceof (Java 16) combines the type check AND cast into one step: if (obj instanceof String s) declares a binding variable s that is already cast to String within the true branch. No separate cast line needed. The compiler tracks scope: if you negate the check (!(obj instanceof String s)) and return, then s is in scope after the return — "flow-sensitive typing". Also works with guards: instanceof String s && s.length() > 5.' },
+            { q: 'What is the difference between a switch statement and a switch expression?', a: 'Switch statement: produces no value, uses break, fall-through between cases is possible (a classic bug source), no exhaustiveness check. Switch expression (Java 14): produces a value, uses -> (arrow, no fall-through) or yield (in block), exhaustiveness is REQUIRED by compiler — all cases must be covered. Use switch expressions: as assignments, in return statements, and with pattern matching. Arrow cases remove fall-through; yield returns a value from a block arm.' },
+            { q: 'What are record patterns (deconstruction patterns) and what Java version introduced them?', a: 'Record patterns (Java 21) allow destructuring a record inside a pattern: case Circle(var r) -> ... or instanceof Line(Point(var x1,var y1), Point(var x2,var y2)). They extract component values directly without calling accessor methods. They compose: nested patterns like Line(Point(var x1,var y1), Point(var x2,var y2)) destructure deeply in one expression. This combines well with sealed type switch for concise, type-safe algebraic data type handling.' },
+            { q: 'What are text blocks and what whitespace rules apply?', a: 'Text blocks (Java 15) are multi-line string literals delimited by triple quotes. The opening """ must be followed by a newline. The closing """ determines indentation trimming: common leading whitespace is stripped based on the closing """ position. Escape sequences work as normal. String.formatted() can be chained for interpolation. Backslash-newline (\\<newline>) suppresses the newline. Text blocks preserve content between the outer quotes minus the common indent.' },
+            { q: 'What is a guarded pattern in a switch and when do you use it?', a: 'A guarded pattern adds a when clause to a type pattern: case Integer i when i > 0 -> "positive". The when predicate is evaluated after the type match succeeds. Multiple guards for the same type must be ordered from most specific to least (narrower first): case Integer i when i < 0 → "negative", case Integer i when i == 0 → "zero", case Integer i → "positive". The compiler checks that all patterns together are exhaustive but does NOT check for logical overlaps between guards — that\'s your responsibility.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What does a record generate for you?', a: 'A canonical constructor, private final fields, public accessors named after components, plus equals, hashCode, and toString derived from the components. Records are implicitly final and immutable.' },
-        { q: 'What problem do sealed types solve?', a: 'They restrict which classes may extend/implement a type (via permits), giving a closed hierarchy so the compiler can verify exhaustiveness in switch expressions and prevent unexpected subtypes.' },
-        { q: 'What is a guarded pattern in a switch?', a: 'A pattern with a boolean condition: case Integer i when i > 100 -> ... matches only when both the type pattern and the guard hold.' },
-        { q: 'How do sealed + records + switch patterns replace the Visitor pattern?', a: 'They provide exhaustive, type-safe dispatch with destructuring in one place; adding a new permitted subtype causes non-exhaustive switches to fail compilation, surfacing every site that must handle it.' }
       ]
-    }
+    },
+
+
   ]
 },
 
@@ -20749,332 +21824,910 @@ public class ApplicationContextPatterns {
     },
     {
       id: '3.2',
-      title: 'Spring Boot Auto-Configuration',
+      title: 'Spring Boot Auto-Configuration & Actuator',
       hours: 3,
-      notes: `
-# Spring Boot Auto-Configuration — From Zero to Senior Level
+      sections: [
+        {
+          title: 'Auto-Configuration Internals — How Spring Boot Wires Itself',
+          notes: `## Auto-Configuration Internals
 
-## The Problem Boot Solves
+Spring Boot's auto-configuration is the mechanism that configures beans automatically based on what's on the classpath, existing beans, and properties. It's why adding \`spring-boot-starter-data-jpa\` is enough — no XML or manual bean declarations needed.
 
-Before Spring Boot, setting up a Spring web application required:
-- \`web.xml\` for the servlet container
-- \`applicationContext.xml\` or Java config for Spring beans
-- Manually declaring a \`DispatcherServlet\`, \`ViewResolver\`, \`DataSource\`, \`TransactionManager\`...
-- Manually managing compatible library versions (Jackson 2.x vs 1.x, Hibernate 5 vs 6...)
+### The Chain of Events
 
-A simple CRUD app needed 200+ lines of configuration before writing business logic.
+\`\`\`mermaid
+graph TD
+    A[@SpringBootApplication] --> B[@EnableAutoConfiguration]
+    B --> C[AutoConfigurationImportSelector]
+    C --> D[Read META-INF/spring/\nauto-configuration\nimports]
+    D --> E[Evaluate @Conditional\nannotations per class]
+    E --> F{Condition\npasses?}
+    F -->|Yes| G[Register bean\ndefinitions]
+    F -->|No| H[Skip class]
+    style A fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style G fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+\`\`\`
 
-Spring Boot's answer: **auto-configuration** — sensible defaults based on what's on the classpath, with easy override when you need something different.
-
----
-
-## How Auto-Configuration Works (Deep Dive)
-
-### Step 1: @SpringBootApplication
+### @Conditional Annotations
 
 \`\`\`java
-@SpringBootApplication
-public class MyApp {
-    public static void main(String[] args) { SpringApplication.run(MyApp.class, args); }
-}
-\`\`\`
+// The core mechanism: each auto-config class is loaded only when conditions are met
 
-\`@SpringBootApplication\` is a composite of three annotations:
-\`\`\`java
-@SpringBootConfiguration   // = @Configuration: this class defines beans
-@EnableAutoConfiguration   // ← the magic
-@ComponentScan             // scan this package and sub-packages for @Component etc.
-\`\`\`
-
-### Step 2: @EnableAutoConfiguration loads candidates
-
-\`@EnableAutoConfiguration\` triggers \`AutoConfigurationImportSelector\`, which reads:
-\`\`\`
-META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports
-\`\`\`
-(before Boot 2.7: \`META-INF/spring.factories\`)
-
-This file lists ~150 auto-configuration classes like:
-\`\`\`
-org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration
-org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
-org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration
-org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-\`\`\`
-
-### Step 3: @Conditional gates each auto-config
-
-Each auto-configuration class is annotated with conditions. Spring evaluates them and only applies the config if ALL conditions pass:
-
-\`\`\`java
-// Simplified DataSourceAutoConfiguration:
-@AutoConfiguration
-@ConditionalOnClass({ DataSource.class, EmbeddedDatabaseType.class })  // jdbc on classpath?
-@ConditionalOnMissingBean(DataSource.class)                             // user didn't define one?
-@EnableConfigurationProperties(DataSourceProperties.class)
-public class DataSourceAutoConfiguration {
-
-    @Bean
-    @ConditionalOnProperty(name="spring.datasource.url")
-    public DataSource dataSource(DataSourceProperties props) {
-        return props.initializeDataSourceBuilder().build();
-    }
-}
-\`\`\`
-
-**The key conditions to memorise:**
-
-| Condition | Meaning |
-|-----------|---------|
-| \`@ConditionalOnClass(Foo.class)\` | \`Foo\` must be on the classpath |
-| \`@ConditionalOnMissingClass\` | class must NOT be present |
-| \`@ConditionalOnBean(Foo.class)\` | a \`Foo\` bean must already exist |
-| \`@ConditionalOnMissingBean\` | no bean of this type defined → Boot creates one |
-| \`@ConditionalOnProperty("x.y")\` | property must be set (and optionally = value) |
-| \`@ConditionalOnWebApplication\` | running as a web app |
-| \`@ConditionalOnExpression("...")\` | SpEL expression evaluates to true |
-
-### The Golden Rule: Define Your Own Bean → Boot Backs Off
-
-\`@ConditionalOnMissingBean\` is what makes Boot's defaults easy to override:
-
-\`\`\`java
-// Boot's default ObjectMapper (simplified):
-@Bean
-@ConditionalOnMissingBean(ObjectMapper.class)  // ← only if YOU haven't defined one
-public ObjectMapper jacksonObjectMapper() {
-    return new ObjectMapper();
-}
-
-// YOU override it by defining your own:
+// @ConditionalOnClass — only if class is on classpath
 @Configuration
-public class JacksonConfig {
+@ConditionalOnClass(DataSource.class)  // only if JDBC driver is present
+public class DataSourceAutoConfiguration { ... }
+
+// @ConditionalOnMissingBean — don't replace user's own bean
+@Bean
+@ConditionalOnMissingBean(DataSource.class)  // only if user hasn't defined one
+public DataSource dataSource() {
+    return DataSourceBuilder.create().build();
+}
+
+// @ConditionalOnProperty — require config property
+@Bean
+@ConditionalOnProperty(name = "app.cache.enabled", havingValue = "true", matchIfMissing = false)
+public CacheManager cacheManager() { ... }
+
+// @ConditionalOnBean — requires another bean to exist
+@Bean
+@ConditionalOnBean(EntityManagerFactory.class)  // only if JPA is configured
+public TransactionManager transactionManager(EntityManagerFactory emf) { ... }
+
+// @ConditionalOnWebApplication — only in web context
+@Configuration
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+public class WebMvcAutoConfiguration { ... }
+\`\`\`
+
+### Reading Auto-Config Source
+
+\`\`\`java
+// Spring Boot 2.7+: META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports
+// Spring Boot <2.7: META-INF/spring.factories under EnableAutoConfiguration key
+
+// Example entry in imports file (Spring Boot 3.x):
+// org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+// org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+// org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration
+// ... 150+ entries
+
+// Inspect at runtime
+@SpringBootApplication
+public class App {
+    public static void main(String[] args) {
+        var ctx = SpringApplication.run(App.class, args);
+        // See all auto-configs considered
+        // Run with --debug flag: spring.boot.autoconfigure.report
+    }
+}
+\`\`\`
+
+### Auto-Config Order
+
+\`\`\`java
+// Auto-configurations run AFTER user-defined beans — user always wins
+// @AutoConfigureAfter / @AutoConfigureBefore for ordering between auto-configs
+@AutoConfiguration
+@AutoConfigureAfter(DataSourceAutoConfiguration.class)
+@ConditionalOnSingleCandidate(DataSource.class)
+public class JdbcTemplateAutoConfiguration {
     @Bean
-    public ObjectMapper objectMapper() {      // your bean exists → Boot's backs off
-        return new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-            .setSerializationInclusion(NON_NULL);
+    @ConditionalOnMissingBean(JdbcOperations.class)
+    public JdbcTemplate jdbcTemplate(DataSource ds) {
+        return new JdbcTemplate(ds);
     }
 }
-\`\`\`
 
----
+// User can exclude auto-configs:
+@SpringBootApplication(exclude = DataSourceAutoConfiguration.class)
+// Or via property:
+// spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+\`\`\``,
+          code: [
+            `import org.springframework.boot.autoconfigure.condition.*;
+import org.springframework.context.annotation.*;
+import org.springframework.boot.*;
 
-## Diagnosing Auto-Configuration
+// Writing a custom auto-configuration
+// This is how library authors make Spring Boot starters
 
-### The Condition Evaluation Report
-Run with \`--debug\` flag or set \`logging.level.org.springframework.boot.autoconfigure=DEBUG\`:
+// 1. The auto-config class
+@AutoConfiguration
+@ConditionalOnClass(name = "com.example.FeatureClient")
+@ConditionalOnProperty(prefix = "mylib", name = "enabled", havingValue = "true", matchIfMissing = true)
+public class MyLibraryAutoConfiguration {
 
-\`\`\`
-CONDITIONS EVALUATION REPORT
-============================
+    @Bean
+    @ConditionalOnMissingBean   // user can override by declaring their own
+    public FeatureClient featureClient(MyLibProperties props) {
+        return new FeatureClient(props.getUrl(), props.getApiKey());
+    }
 
-Positive matches:
------------------
-   DataSourceAutoConfiguration matched:
-      - @ConditionalOnClass found required classes 'DataSource', 'EmbeddedDatabaseType' (OnClassCondition)
-      - @ConditionalOnMissingBean (types: javax.sql.DataSource) did not find any beans (OnBeanCondition)
-
-Negative matches:
------------------
-   MongoDataAutoConfiguration:
-      - @ConditionalOnClass did not find required class 'com.mongodb.client.MongoClient' (OnClassCondition)
-\`\`\`
-
-This is invaluable for "why isn't my bean created?" or "why is this bean created when I don't want it?"
-
-### Actuator: /actuator/conditions endpoint
-In a running app, \`GET /actuator/conditions\` shows the same report live.
-
----
-
-## Configuration Properties: Type-Safe Config
-
-Instead of \`@Value("\${app.timeout}")\`, bind entire config sections to POJOs:
-
-\`\`\`java
-@ConfigurationProperties(prefix = "app.payment")
-@Validated
-public record PaymentProperties(
-    @NotBlank String apiKey,
-    @NotNull @Min(1) Integer timeoutSeconds,
-    @NotBlank String baseUrl,
-    boolean sandboxMode
-) {}
-\`\`\`
-
-\`\`\`yaml
-# application.yml
-app:
-  payment:
-    api-key: sk_live_xxx        # kebab-case auto-maps to camelCase
-    timeout-seconds: 30
-    base-url: https://api.stripe.com
-    sandbox-mode: false
-\`\`\`
-
-\`\`\`java
-@Service
-@RequiredArgsConstructor
-public class PaymentService {
-    private final PaymentProperties config;
-
-    void charge() {
-        if (config.sandboxMode()) { /* use test endpoint */ }
-        // config.timeoutSeconds(), config.baseUrl(), etc.
+    @Bean
+    @ConditionalOnBean(FeatureClient.class)
+    @ConditionalOnMissingBean
+    public FeatureService featureService(FeatureClient client) {
+        return new FeatureService(client);
     }
 }
+
+// 2. Properties class
+@ConfigurationProperties(prefix = "mylib")
+public class MyLibProperties {
+    private String url = "https://api.default.com";
+    private String apiKey;
+    private boolean enabled = true;
+    // getters/setters
+}
+
+// 3. Register in META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports:
+// com.example.MyLibraryAutoConfiguration
+
+// 4. User just adds the dependency — zero config needed
+// OR overrides specific beans/properties:
+// mylib.url=https://my-custom-endpoint.com
+// mylib.api-key=secret-123`,
+            `import org.springframework.boot.diagnostics.*;
+
+// Debugging auto-configuration decisions
+// Run with: java -jar app.jar --debug
+// Or: logging.level.org.springframework.boot.autoconfigure=DEBUG
+
+// ConditionEvaluationReport programmatically
+@Component
+public class AutoConfigReport implements ApplicationRunner {
+    @Autowired
+    private ConditionEvaluationReport report;
+
+    @Override
+    public void run(ApplicationArguments args) {
+        report.getConditionAndOutcomesBySource().forEach((source, outcomes) -> {
+            boolean matched = outcomes.isFullMatch();
+            if (!matched) {
+                System.out.println("SKIPPED: " + source.getClass().getSimpleName());
+                outcomes.forEach(co ->
+                    System.out.println("  Reason: " + co.getOutcome().getMessage()));
+            }
+        });
+    }
+}
+
+// @SpringBootTest loads full auto-config — use @TestConfiguration to add test beans
+// Use @MockBean to replace auto-configured beans with mocks in tests
+// @DataJpaTest / @WebMvcTest are "slice tests" that load only relevant auto-configs`
+          ],
+          flashcards: [
+            { q: 'How does Spring Boot auto-configuration work at a high level?', a: '@SpringBootApplication includes @EnableAutoConfiguration, which loads AutoConfigurationImportSelector. This reads all auto-configuration class names from META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports. Each listed class is then evaluated — its @Conditional annotations are checked, and only classes whose conditions pass are imported as @Configuration classes. User-defined beans always take precedence because @ConditionalOnMissingBean is used by auto-configs.' },
+            { q: 'What does @ConditionalOnMissingBean do and why is it important in auto-configs?', a: 'It means: "only register this bean if no bean of this type already exists in the context." Auto-config classes wrap their @Bean methods in @ConditionalOnMissingBean so that user-defined beans always win. If a user declares their own DataSource @Bean, the auto-configured one is skipped. This is the "user always wins" principle that makes Spring Boot auto-config safe to use alongside manual configuration.' },
+            { q: 'How do you exclude an auto-configuration class?', a: 'Two ways: (1) @SpringBootApplication(exclude = DataSourceAutoConfiguration.class) — compile-time, type-safe; (2) Property: spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration — runtime, useful in tests or profiles. Use exclusion when: you want to provide your own full configuration, or the auto-config is causing conflicts/startup failures that you can\'t resolve by just providing the missing beans.' },
+            { q: 'What is @ConfigurationProperties and how does it differ from @Value?', a: '@ConfigurationProperties binds a hierarchy of properties to a POJO: @ConfigurationProperties(prefix="mylib") class Props { String url; int timeout; }. Spring binds mylib.url and mylib.timeout automatically. @Value("${mylib.url}") injects a single property. Key differences: @ConfigurationProperties supports relaxed binding (url, my-url, MY_URL all map to url), works with validation (@Valid, @NotNull), and is type-safe for complex structures (lists, maps, nested objects). Prefer @ConfigurationProperties for anything more than 2-3 properties.' },
+            { q: 'How do you write a custom Spring Boot starter (auto-configuration)?', a: 'Steps: (1) Create a @AutoConfiguration class with @ConditionalOnXxx annotations and @Bean methods (each with @ConditionalOnMissingBean). (2) Add a @ConfigurationProperties class for user-configurable properties. (3) Register the auto-config class in META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports. (4) Add @AutoConfigureAfter/@AutoConfigureBefore for ordering if needed. (5) Package as a separate artifact that users add as a dependency. The naming convention is {name}-spring-boot-autoconfigure and {name}-spring-boot-starter.' }
+          ]
+        },
+        {
+          title: 'Spring Boot Actuator — Health, Metrics & Observability',
+          notes: `## Spring Boot Actuator — Health, Metrics & Observability
+
+Actuator exposes production-ready endpoints for monitoring, health checking, and managing your Spring Boot application.
+
+### Setup & Available Endpoints
+
+\`\`\`xml
+<!-- pom.xml -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
 \`\`\`
-
-Benefits over \`@Value\`:
-- Type conversion (String → Integer, Duration, List, Map)
-- Validation with Bean Validation annotations (\`@NotNull\`, \`@Min\`)
-- IDE autocompletion in \`application.yml\`
-- Grouped — all payment config in one place
-- Testable — just construct the record in tests
-
----
-
-## Profiles: Environment-Specific Configuration
 
 \`\`\`yaml
-# application.yml (base — all environments)
-spring:
-  datasource:
-    url: jdbc:h2:mem:testdb     # fallback for local dev
-
-app:
-  feature-x: false
-
----
-# application-local.yml (override for local dev)
-spring:
-  datasource:
-    url: jdbc:h2:mem:localdb
-logging:
-  level:
-    com.myapp: DEBUG
-
----
-# application-prod.yml (override for production)
-spring:
-  datasource:
-    url: jdbc:postgresql://prod-db:5432/myapp
-    username: \${DB_USER}          # from environment variable
-    password: \${DB_PASSWORD}      # from environment variable — NEVER hardcode
-app:
-  feature-x: true
-\`\`\`
-
-Activate a profile:
-\`\`\`bash
-SPRING_PROFILES_ACTIVE=prod java -jar app.jar
-# or
-java -jar app.jar --spring.profiles.active=prod
-\`\`\`
-
-Profile-specific beans:
-\`\`\`java
-@Service
-@Profile("prod")          // only created when 'prod' profile is active
-public class RealEmailService implements EmailService { ... }
-
-@Service
-@Profile("!prod")         // all profiles EXCEPT prod
-public class LoggingEmailService implements EmailService { ... }
-\`\`\`
-
----
-
-## Starters: Curated Dependency Bundles
-
-\`spring-boot-starter-web\` pulls in:
-- Spring MVC (DispatcherServlet, etc.)
-- Embedded Tomcat (no need to deploy a WAR)
-- Jackson (JSON serialization)
-- Spring Boot auto-configuration for all of the above
-
-Versions are managed by \`spring-boot-starter-parent\` BOM — no version conflicts.
-
-Common starters:
-
-| Starter | What it gives you |
-|---------|-------------------|
-| \`spring-boot-starter-web\` | Spring MVC + Tomcat + Jackson |
-| \`spring-boot-starter-data-jpa\` | Hibernate + Spring Data JPA + HikariCP |
-| \`spring-boot-starter-security\` | Spring Security filter chain |
-| \`spring-boot-starter-actuator\` | /health, /metrics, /info endpoints |
-| \`spring-boot-starter-test\` | JUnit 5, Mockito, AssertJ, MockMvc |
-| \`spring-boot-starter-validation\` | Bean Validation (Hibernate Validator) |
-
----
-
-## Actuator: Production Observability
-
-\`\`\`yaml
-# application.yml — expose only safe endpoints over web
+# application.yml — expose endpoints
 management:
   endpoints:
     web:
       exposure:
-        include: health, info, metrics  # NEVER expose env, heapdump, shutdown
+        include: health,info,metrics,env,loggers,threaddump,heapdump
+        # include: "*"   # expose all (careful in production)
   endpoint:
     health:
-      show-details: when-authorized     # hide internals from unauthenticated users
+      show-details: when-authorized  # always | never | when-authorized
+    shutdown:
+      enabled: false   # never enable in production without auth
+  server:
+    port: 8081   # separate port for actuator (firewall-friendly)
 \`\`\`
 
-Key endpoints:
-- \`/actuator/health\` — UP/DOWN + component health (DB, disk, external services)
-- \`/actuator/metrics\` — micrometer metrics (request counts, latencies, JVM stats)
-- \`/actuator/info\` — build info, git commit
-- \`/actuator/conditions\` — which auto-configs applied (dev only)
-- \`/actuator/beans\` — all beans in the context (dev only)
+### Key Endpoints
 
-> [!DANGER]
-> Never expose \`/actuator/env\` (leaks all config including passwords), \`/actuator/heapdump\` (entire heap = all data in memory), or \`/actuator/shutdown\` publicly. Secure actuator behind authentication and only expose \`health\` + \`info\` to the web. Everything else on internal management port only (\`management.server.port=8081\`).
+| Endpoint | URL | Purpose |
+|---|---|---|
+| /health | /actuator/health | Liveness + readiness probes |
+| /info | /actuator/info | App version, build info |
+| /metrics | /actuator/metrics | Micrometer metrics |
+| /env | /actuator/env | Properties (masked secrets) |
+| /loggers | /actuator/loggers | Runtime log level changes |
+| /threaddump | /actuator/threaddump | JVM thread dump |
+| /heapdump | /actuator/heapdump | Heap dump (download) |
 
-> [!EU]
-> Expect: *"Walk me through what happens when a Spring Boot app starts."* Strong answer: \`main()\` → \`SpringApplication.run()\` → creates ApplicationContext → component scan → \`@EnableAutoConfiguration\` loads candidates → conditionals evaluated → matching beans created → \`@PostConstruct\` runs → embedded Tomcat starts → app ready. Then: "How would you override Boot's default Jackson config?" → define your own \`ObjectMapper\` bean — \`@ConditionalOnMissingBean\` makes Boot back off.
-`,
-      code: [
-        {
-          lang: 'java',
-          title: 'Conditional bean registration (the auto-config idea)',
-          code: `import java.util.*;
+### Custom Health Indicators
 
-// Emulates @ConditionalOnMissingBean / @ConditionalOnProperty logic.
-public class AutoConfigDemo {
-    interface DataSource { String url(); }
-    static class H2DataSource   implements DataSource { public String url() { return "jdbc:h2:mem:default"; } }
-    static class UserDataSource implements DataSource { public String url() { return "jdbc:postgresql://prod/db"; } }
+\`\`\`java
+@Component
+public class ExternalApiHealthIndicator implements HealthIndicator {
+    private final ExternalApiClient client;
 
-    // 'Container' state: user-defined beans + properties
-    static DataSource autoConfigure(Map<String, DataSource> userBeans, Map<String, String> props) {
-        // @ConditionalOnMissingBean(DataSource): only create default if user didn't
-        if (userBeans.containsKey("dataSource")) {
-            System.out.println("User bean present -> auto-config BACKS OFF");
-            return userBeans.get("dataSource");
+    @Override
+    public Health health() {
+        try {
+            boolean up = client.ping();  // check if external dependency is reachable
+            return up
+                ? Health.up().withDetail("responseTime", "45ms").build()
+                : Health.down().withDetail("reason", "ping failed").build();
+        } catch (Exception e) {
+            return Health.down(e).withDetail("url", client.getBaseUrl()).build();
         }
-        // @ConditionalOnProperty
-        boolean embedded = !"false".equals(props.getOrDefault("app.db.embedded", "true"));
-        System.out.println("No user bean -> auto-config creates default (embedded=" + embedded + ")");
-        return embedded ? new H2DataSource() : new UserDataSource();
+    }
+}
+// Accessible at /actuator/health — shows composite health including this
+
+// Kubernetes liveness vs readiness
+// /actuator/health/liveness  — is the app alive? (restart if down)
+// /actuator/health/readiness — is the app ready to serve traffic? (remove from LB if down)
+management.endpoint.health.group.liveness.include=livenessState
+management.endpoint.health.group.readiness.include=readinessState,db,redis
+\`\`\`
+
+### Micrometer Metrics
+
+\`\`\`java
+// Micrometer is the metrics facade — like SLF4J but for metrics
+// Supports: Prometheus, Datadog, CloudWatch, InfluxDB, Graphite, etc.
+
+@Service
+public class OrderService {
+    private final MeterRegistry registry;
+    private final Counter ordersCreated;
+    private final Timer orderProcessingTime;
+
+    public OrderService(MeterRegistry registry) {
+        this.registry = registry;
+        this.ordersCreated = Counter.builder("orders.created")
+            .tag("env", "production")
+            .description("Total orders created")
+            .register(registry);
+        this.orderProcessingTime = Timer.builder("order.processing.time")
+            .publishPercentiles(0.5, 0.95, 0.99)  // P50, P95, P99 latency
+            .register(registry);
     }
 
-    public static void main(String[] args) {
-        System.out.println(autoConfigure(Map.of(), Map.of()).url());                 // default H2
-        System.out.println(autoConfigure(Map.of("dataSource", new UserDataSource()), // user override wins
-                                         Map.of()).url());
+    public Order createOrder(OrderRequest req) {
+        return orderProcessingTime.record(() -> {
+            Order order = processOrder(req);
+            ordersCreated.increment();
+            registry.gauge("orders.active", activeOrders.size());
+            return order;
+        });
+    }
+}
+
+// Query metrics: GET /actuator/metrics/orders.created
+// Prometheus: GET /actuator/prometheus (add micrometer-registry-prometheus)
+\`\`\`
+
+### Info Endpoint Customisation
+
+\`\`\`java
+// application.yml
+info:
+  app:
+    name: "@project.artifactId@"      # Maven property interpolation
+    version: "@project.version@"
+    description: "@project.description@"
+  java:
+    version: "@java.version@"
+
+// Programmatic info contributor
+@Component
+public class BuildInfoContributor implements InfoContributor {
+    @Override
+    public void contribute(Info.Builder builder) {
+        builder.withDetail("git", Map.of(
+            "commit", GitProperties.getShortCommitId(),
+            "branch", GitProperties.getBranch()
+        ));
+    }
+}
+\`\`\``,
+          code: [
+            `import org.springframework.boot.actuate.health.*;
+import org.springframework.boot.actuate.info.*;
+import io.micrometer.core.instrument.*;
+import org.springframework.stereotype.*;
+import java.util.*;
+import java.time.*;
+
+// Custom health indicator + Micrometer metrics
+@Service
+public class PaymentGatewayHealth implements HealthIndicator {
+    private volatile Instant lastSuccessfulPing = Instant.now();
+    private volatile boolean gatewayUp = true;
+
+    // Called on every /actuator/health request
+    @Override
+    public Health health() {
+        Duration timeSinceLastSuccess = Duration.between(lastSuccessfulPing, Instant.now());
+        if (!gatewayUp || timeSinceLastSuccess.toMinutes() > 5) {
+            return Health.down()
+                .withDetail("lastSuccess", lastSuccessfulPing)
+                .withDetail("minutesAgo", timeSinceLastSuccess.toMinutes())
+                .build();
+        }
+        return Health.up()
+            .withDetail("lastSuccess", lastSuccessfulPing)
+            .withDetail("gateway", "payment-provider")
+            .build();
+    }
+
+    void recordSuccess() { lastSuccessfulPing = Instant.now(); gatewayUp = true; }
+    void recordFailure() { gatewayUp = false; }
+}
+
+@Service
+class OrderMetrics {
+    private final Counter created, failed;
+    private final Timer processingTime;
+    private final AtomicInteger activeOrders;
+
+    OrderMetrics(MeterRegistry registry) {
+        created = Counter.builder("orders.created").register(registry);
+        failed  = Counter.builder("orders.failed").register(registry);
+        processingTime = Timer.builder("order.processing")
+            .publishPercentiles(0.5, 0.95, 0.99).register(registry);
+        activeOrders = registry.gauge("orders.active", new AtomicInteger(0));
+    }
+
+    void recordCreated() { created.increment(); activeOrders.incrementAndGet(); }
+    void recordCompleted() { activeOrders.decrementAndGet(); }
+    void recordFailed()  { failed.increment(); }
+    <T> T timeOrder(java.util.concurrent.Callable<T> task) throws Exception {
+        return processingTime.recordCallable(task);
+    }
+}
+
+// GET /actuator/metrics/orders.created → {"name":"orders.created","measurements":[{"statistic":"COUNT","value":42}]}
+// GET /actuator/metrics/order.processing?tag=... → percentile breakdowns`,
+            `import org.springframework.boot.*;
+import org.springframework.boot.actuate.endpoint.annotation.*;
+import org.springframework.boot.actuate.endpoint.web.annotation.*;
+import java.util.*;
+
+// Custom actuator endpoint
+@RestControllerEndpoint(id = "feature-flags")
+@Component
+public class FeatureFlagsEndpoint {
+    private final Map<String, Boolean> flags = new java.util.concurrent.ConcurrentHashMap<>(Map.of(
+        "new-checkout", true,
+        "beta-dashboard", false,
+        "dark-mode", true
+    ));
+
+    @GetMapping
+    public Map<String, Boolean> getAll() { return Collections.unmodifiableMap(flags); }
+
+    @GetMapping("/{flag}")
+    public Map<String, Object> getFlag(@org.springframework.web.bind.annotation.PathVariable String flag) {
+        return Map.of("flag", flag, "enabled", flags.getOrDefault(flag, false));
+    }
+
+    @PostMapping("/{flag}/{enabled}")
+    public Map<String, Object> setFlag(
+            @org.springframework.web.bind.annotation.PathVariable String flag,
+            @org.springframework.web.bind.annotation.PathVariable boolean enabled) {
+        flags.put(flag, enabled);
+        return Map.of("flag", flag, "enabled", enabled, "updated", true);
+    }
+}
+// Accessible at: GET/POST /actuator/feature-flags/{flag}/{enabled}
+// application.yml: management.endpoints.web.exposure.include=feature-flags`
+          ],
+          flashcards: [
+            { q: 'What is Spring Boot Actuator and what does it provide?', a: 'Actuator adds production-ready features to a Spring Boot app via HTTP endpoints: /health (liveness/readiness), /metrics (Micrometer), /info (build version), /env (properties), /loggers (change log levels at runtime), /threaddump and /heapdump. Add spring-boot-starter-actuator and configure management.endpoints.web.exposure.include. It is the foundation for Kubernetes health probes and Prometheus scraping.' },
+            { q: 'What is the difference between /health/liveness and /health/readiness in Kubernetes?', a: 'Liveness: "Is the process alive and not deadlocked?" — if DOWN, Kubernetes restarts the pod. Should only fail for fatal unrecoverable states. Readiness: "Can the pod serve requests?" — if DOWN, Kubernetes removes the pod from the load balancer but does NOT restart it. Should reflect temporary unavailability (warming up, DB connection lost). Configure: management.endpoint.health.group.liveness.include=livenessState and readiness.include=readinessState,db,redis.' },
+            { q: 'What is Micrometer and how does it relate to Actuator?', a: 'Micrometer is a metrics facade (like SLF4J for metrics) that Spring Boot Actuator integrates. It provides Counter, Timer, Gauge, DistributionSummary APIs that work regardless of the metrics backend. Add micrometer-registry-prometheus to export to Prometheus, micrometer-registry-datadog for Datadog, etc. without changing application code. Actuator exposes /actuator/metrics (JSON) and /actuator/prometheus (Prometheus text format).' },
+            { q: 'How do you create a custom health indicator?', a: 'Implement HealthIndicator and register as a @Component: @Component public class MyHealthIndicator implements HealthIndicator { @Override public Health health() { try { checkDependency(); return Health.up().withDetail("url", url).build(); } catch (Exception e) { return Health.down(e).withDetail("reason", e.getMessage()).build(); } } }. Spring Boot auto-discovers it and includes it in /actuator/health composite status. Name becomes "my" (class name minus "HealthIndicator", camelCase).' },
+            { q: 'How do you change a log level at runtime without restarting the application?', a: 'Use the /actuator/loggers endpoint. GET /actuator/loggers shows all loggers and current levels. POST /actuator/loggers/{logger-name} with body {"configuredLevel":"DEBUG"} changes that logger\'s level immediately. Requires management.endpoints.web.exposure.include=loggers. This is invaluable for diagnosing production issues without redeploying. Requires Spring Security or actuator is an open endpoint (secure it!).' }
+          ]
+        },
+        {
+          title: '@ConfigurationProperties, Profiles & Externalised Configuration',
+          notes: `## @ConfigurationProperties, Profiles & Externalised Configuration
+
+### @ConfigurationProperties In Depth
+
+\`\`\`java
+// Strongly-typed, validated configuration binding
+@ConfigurationProperties(prefix = "app.payment")
+@Validated  // enables Bean Validation on properties
+public class PaymentProperties {
+    @NotBlank
+    private String apiUrl;
+
+    @Positive
+    private int timeoutMs = 5000;        // default value
+
+    @Valid
+    private Retry retry = new Retry();   // nested object
+
+    private List<String> supportedCurrencies = List.of("USD", "EUR");
+
+    @Getter @Setter
+    public static class Retry {
+        @Min(1) @Max(10)
+        private int maxAttempts = 3;
+        private Duration backoff = Duration.ofSeconds(1);
+    }
+    // getters + setters (or use Lombok @Data / @ConfigurationProperties with records in Boot 3.x)
+}
+
+// app.payment.api-url=https://payments.example.com  ← relaxed binding: camelCase ↔ kebab-case
+// app.payment.timeout-ms=3000
+// app.payment.retry.max-attempts=5
+// app.payment.retry.backoff=2s
+// app.payment.supported-currencies=USD,EUR,GBP
+
+// Register:
+@SpringBootApplication
+@EnableConfigurationProperties(PaymentProperties.class)  // or just @Component on the class
+public class App {}
+\`\`\`
+
+### Property Source Priority (highest to lowest)
+
+\`\`\`
+1. Command-line args:     java -jar app.jar --server.port=9090
+2. Environment variables: SERVER_PORT=9090  (override: . → _, capitals)
+3. Application properties in JAR's /config subdir
+4. application.yml in JAR's classpath
+5. @PropertySource annotations
+6. Default values in code
+\`\`\`
+
+\`\`\`java
+// Relaxed binding: these all bind to server.port
+// server.port=8080       (properties format)
+// SERVER_PORT=8080       (env var)
+// --server.port=8080     (command line)
+// server_port=8080       (underscore)
+
+// Override single property at startup:
+SPRING_DATASOURCE_URL=jdbc:postgresql://prod-db:5432/mydb java -jar app.jar
+\`\`\`
+
+### Spring Profiles
+
+\`\`\`java
+// Profile-specific beans
+@Configuration
+@Profile("local")
+public class LocalConfig {
+    @Bean
+    public DataSource dataSource() {
+        return new EmbeddedDatabaseBuilder().setType(H2).build();
+    }
+}
+
+@Configuration
+@Profile("!local")  // all profiles EXCEPT local
+public class ProdConfig {
+    @Bean
+    public DataSource dataSource(DataSourceProperties props) {
+        return DataSourceBuilder.create().url(props.getUrl()).build();
+    }
+}
+
+// Activate profile:
+// SPRING_PROFILES_ACTIVE=prod
+// spring.profiles.active=prod in application.yml
+// java -jar app.jar --spring.profiles.active=prod
+\`\`\`
+
+### Profile-Specific Property Files
+
+\`\`\`yaml
+# application.yml — base config
+server:
+  port: 8080
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb   # default (local/test)
+
+---
+# application-prod.yml — production overrides
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: \${DATABASE_URL}      # from environment variable
+    username: \${DB_USER}
+    password: \${DB_PASS}
+  jpa:
+    hibernate:
+      ddl-auto: validate      # NEVER create/update in prod
+
+---
+# application-local.yml
+spring:
+  config:
+    activate:
+      on-profile: local
+  jpa:
+    show-sql: true
+logging:
+  level:
+    com.example: DEBUG
+\`\`\`
+
+### @TestPropertySource and Test Configuration
+
+\`\`\`java
+// Override properties in tests
+@SpringBootTest
+@TestPropertySource(properties = {
+    "app.payment.api-url=http://localhost:8089",
+    "app.payment.timeout-ms=1000"
+})
+class PaymentServiceTest { ... }
+
+// Or use application-test.yml automatically loaded with @ActiveProfiles("test")
+@SpringBootTest
+@ActiveProfiles("test")
+class ServiceTest { ... }
+\`\`\``,
+          code: [
+            `import org.springframework.boot.context.properties.*;
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.*;
+import java.time.*;
+import java.util.*;
+
+// Complete @ConfigurationProperties example
+@ConfigurationProperties(prefix = "app")
+@Validated
+public class AppProperties {
+
+    @Valid
+    private final Database database = new Database();
+
+    @Valid
+    private final Cache cache = new Cache();
+
+    private List<String> allowedOrigins = List.of("http://localhost:3000");
+
+    public record Database(
+        @NotBlank String url,
+        @NotBlank String username,
+        @Min(1) @Max(100) int poolSize,
+        Duration connectionTimeout
+    ) {
+        public Database() { this("jdbc:h2:mem:test", "sa", 10, Duration.ofSeconds(30)); }
+    }
+
+    public record Cache(
+        boolean enabled,
+        Duration ttl,
+        @Positive int maxEntries
+    ) {
+        public Cache() { this(true, Duration.ofMinutes(10), 1000); }
+    }
+
+    // Getters
+    public Database getDatabase() { return database; }
+    public Cache getCache() { return cache; }
+    public List<String> getAllowedOrigins() { return allowedOrigins; }
+    public void setAllowedOrigins(List<String> v) { allowedOrigins = v; }
+}
+
+// application.yml binding:
+// app:
+//   database:
+//     url: jdbc:postgresql://localhost/mydb
+//     username: postgres
+//     pool-size: 20
+//     connection-timeout: 10s
+//   cache:
+//     enabled: true
+//     ttl: 5m
+//     max-entries: 5000
+//   allowed-origins:
+//     - https://myapp.com
+//     - https://admin.myapp.com
+
+// Usage
+// @Service class MyService { @Autowired AppProperties props; }`,
+            `import org.springframework.context.annotation.*;
+import org.springframework.boot.test.context.*;
+import org.springframework.test.context.*;
+
+// Profile-based configuration + test overrides
+@Configuration
+class DatabaseConfig {
+
+    // Only in 'local' or 'test' profile
+    @Bean
+    @Profile({"local", "test"})
+    public javax.sql.DataSource h2DataSource() {
+        return org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder()
+            // H2 in-memory
+            .build();
+    }
+
+    // Only in 'prod' or 'staging'
+    @Bean
+    @Profile({"prod", "staging"})
+    public javax.sql.DataSource hikariDataSource(
+            @org.springframework.beans.factory.annotation.Value("\${DATABASE_URL}") String url) {
+        // HikariCP production pool
+        var config = new com.zaxxer.hikari.HikariConfig();
+        config.setJdbcUrl(url);
+        config.setMaximumPoolSize(20);
+        return new com.zaxxer.hikari.HikariDataSource(config);
+    }
+}
+
+// Test with specific properties
+@SpringBootTest(properties = {
+    "app.database.url=jdbc:h2:mem:testdb",
+    "app.database.pool-size=2",
+    "app.cache.enabled=false"
+})
+@ActiveProfiles("test")
+class IntegrationTest {
+    @Autowired AppProperties props;
+
+    @org.junit.jupiter.api.Test
+    void configBinds() {
+        assert props.getDatabase().poolSize() == 2;
+        assert !props.getCache().enabled();
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What is @ConfigurationProperties and when should you use it over @Value?', a: '@ConfigurationProperties binds a group of related properties to a POJO with prefix-based mapping. Benefits over @Value: (1) Relaxed binding — myapp.api-url, MYAPP_API_URL, myapp.apiUrl all map to apiUrl field; (2) JSR-303 validation with @Validated; (3) Works with complex types (lists, maps, nested objects, Duration, DataSize); (4) IDE autocomplete with spring-configuration-processor; (5) Testable POJO. Use @Value only for a single isolated property injection.' },
+            { q: 'What is the property source priority order in Spring Boot?', a: 'Highest to lowest: (1) Command-line args (--key=val); (2) OS environment variables (KEY_NAME with underscores); (3) application.yml in /config directory; (4) application.yml in classpath root; (5) @PropertySource; (6) Defaults in code. Profile-specific files (application-prod.yml) override the base file within the same precedence level. This allows secrets to come from env vars at runtime, overriding yaml defaults.' },
+            { q: 'How do Spring profiles work and how do you activate them?', a: 'Profiles group beans and configuration for different environments. Beans annotated @Profile("prod") are only registered when "prod" profile is active. @Profile("!local") means "all profiles except local". Profile-specific property files (application-prod.yml) are loaded on top of base application.yml. Activate via: SPRING_PROFILES_ACTIVE=prod env var, --spring.profiles.active=prod CLI arg, or spring.profiles.active in application.yml. Multiple profiles can be active simultaneously.' },
+            { q: 'How does relaxed binding work in Spring Boot property names?', a: 'Spring Boot accepts multiple naming conventions for the same property. app.myApiUrl in code binds to all of: app.my-api-url (kebab-case, recommended), app.myApiUrl (camelCase), app.my_api_url (snake_case), APP_MY_API_URL (SCREAMING_SNAKE, for env vars). This means you can use environment variables that don\'t support hyphens/dots (Kubernetes env vars, Docker env) to override yaml properties without any code change.' },
+            { q: 'How do you validate @ConfigurationProperties at startup?', a: 'Add @Validated to the @ConfigurationProperties class and use Jakarta Bean Validation annotations on fields: @NotBlank, @Positive, @Min/@Max, @Pattern, @Valid for nested objects. Add spring-boot-starter-validation to the classpath. If any constraint fails at startup, Spring Boot throws a BindException with all violations — the application refuses to start rather than silently running with bad config. This fail-fast behaviour prevents misconfigured deployments.' }
+          ]
+        },
+        {
+          title: 'Custom Auto-Configuration & Spring Boot Starters',
+          notes: `## Custom Auto-Configuration & Spring Boot Starters
+
+### Starter Structure
+
+A Spring Boot starter is two Maven modules:
+1. \`mylib-spring-boot-autoconfigure\` — the @AutoConfiguration classes
+2. \`mylib-spring-boot-starter\` — just a POM that pulls in autoconfigure + the library
+
+\`\`\`xml
+<!-- mylib-spring-boot-starter/pom.xml -->
+<dependencies>
+  <dependency>
+    <groupId>com.example</groupId>
+    <artifactId>mylib-spring-boot-autoconfigure</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>com.example</groupId>
+    <artifactId>mylib</artifactId>    <!-- the actual library -->
+  </dependency>
+</dependencies>
+\`\`\`
+
+### Full Auto-Configuration Example
+
+\`\`\`java
+// Step 1: Properties
+@ConfigurationProperties(prefix = "notification")
+public class NotificationProperties {
+    private String smtpHost = "smtp.gmail.com";
+    private int smtpPort = 587;
+    @NotBlank private String from;
+    private boolean enabled = true;
+}
+
+// Step 2: Auto-configuration
+@AutoConfiguration
+@EnableConfigurationProperties(NotificationProperties.class)
+@ConditionalOnClass(JavaMailSender.class)          // only if Spring Mail on classpath
+@ConditionalOnProperty(prefix = "notification", name = "enabled", havingValue = "true", matchIfMissing = true)
+public class NotificationAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean                      // user can override
+    public JavaMailSender mailSender(NotificationProperties props) {
+        var sender = new JavaMailSenderImpl();
+        sender.setHost(props.getSmtpHost());
+        sender.setPort(props.getSmtpPort());
+        return sender;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(JavaMailSender.class)
+    public NotificationService notificationService(
+            JavaMailSender sender, NotificationProperties props) {
+        return new NotificationService(sender, props.getFrom());
+    }
+}
+
+// Step 3: Registration
+// META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports:
+// com.example.notification.NotificationAutoConfiguration
+
+// Step 4: Additional metadata (optional, for IDE support)
+// META-INF/spring-configuration-metadata.json — generated by spring-configuration-processor
+\`\`\`
+
+### Configuration Processor for IDE Support
+
+\`\`\`xml
+<!-- Add to autoconfigure module — generates spring-configuration-metadata.json -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-configuration-processor</artifactId>
+    <optional>true</optional>
+</dependency>
+\`\`\`
+
+This generates a JSON file that tells IDEs (IntelliJ, VS Code) about your custom properties — providing autocomplete, documentation, and type information in application.yml.
+
+### Testing Auto-Configurations
+
+\`\`\`java
+// ApplicationContextRunner — lightweight, no @SpringBootTest overhead
+class NotificationAutoConfigurationTest {
+    private final ApplicationContextRunner runner = new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(NotificationAutoConfiguration.class));
+
+    @Test
+    void registersServiceWhenEnabled() {
+        runner.withPropertyValues("notification.enabled=true", "notification.from=test@example.com")
+            .run(ctx -> {
+                assertThat(ctx).hasSingleBean(NotificationService.class);
+                assertThat(ctx).hasSingleBean(JavaMailSender.class);
+            });
+    }
+
+    @Test
+    void backoffWhenUserProvidesMailSender() {
+        runner.withUserConfiguration(CustomMailSenderConfig.class)
+            .run(ctx -> {
+                assertThat(ctx).hasSingleBean(JavaMailSender.class); // only user's bean
+                assertThat(ctx.getBean(JavaMailSender.class))
+                    .isInstanceOf(CustomMailSender.class);
+            });
+    }
+
+    @Test
+    void doesNotRegisterWhenDisabled() {
+        runner.withPropertyValues("notification.enabled=false")
+            .run(ctx -> assertThat(ctx).doesNotHaveBean(NotificationService.class));
+    }
+}
+\`\`\``,
+          code: [
+            `import org.springframework.boot.autoconfigure.*;
+import org.springframework.boot.autoconfigure.condition.*;
+import org.springframework.boot.context.properties.*;
+import org.springframework.context.annotation.*;
+
+// Complete working starter auto-configuration: a simple rate limiter
+@ConfigurationProperties(prefix = "ratelimit")
+class RateLimitProperties {
+    private boolean enabled = true;
+    private int requestsPerSecond = 100;
+    private int burstCapacity = 200;
+    public boolean isEnabled() { return enabled; }
+    public void setEnabled(boolean e) { enabled = e; }
+    public int getRequestsPerSecond() { return requestsPerSecond; }
+    public void setRequestsPerSecond(int r) { requestsPerSecond = r; }
+    public int getBurstCapacity() { return burstCapacity; }
+    public void setBurstCapacity(int b) { burstCapacity = b; }
+}
+
+class RateLimiter {
+    private final int rps;
+    private final java.util.concurrent.atomic.AtomicLong requests = new java.util.concurrent.atomic.AtomicLong();
+    RateLimiter(int rps) { this.rps = rps; }
+    boolean tryAcquire() { return requests.incrementAndGet() <= rps * 60L; } // simplified
+    long getCount() { return requests.get(); }
+}
+
+@AutoConfiguration
+@EnableConfigurationProperties(RateLimitProperties.class)
+@ConditionalOnProperty(prefix = "ratelimit", name = "enabled", havingValue = "true", matchIfMissing = true)
+public class RateLimiterAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean(RateLimiter.class)
+    public RateLimiter rateLimiter(RateLimitProperties props) {
+        System.out.println("[AutoConfig] Creating RateLimiter: " + props.getRequestsPerSecond() + " RPS");
+        return new RateLimiter(props.getRequestsPerSecond());
+    }
+}
+
+// Simulate startup resolution
+class AutoConfigDemo {
+    public static void main(String[] args) {
+        var props = new RateLimitProperties();
+        props.setRequestsPerSecond(50);
+        var limiter = new RateLimiterAutoConfiguration().rateLimiter(props);
+        System.out.println("Rate limiter created: " + limiter.getCount() + " requests");
+        System.out.println("Can proceed: " + limiter.tryAcquire());
+    }
+}`,
+            `import org.springframework.boot.test.context.*;
+import org.springframework.boot.autoconfigure.*;
+
+// Testing auto-configuration with ApplicationContextRunner
+class AutoConfigTest {
+    // Lightweight — no full Spring context startup
+    private final ApplicationContextRunner runner = new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(RateLimiterAutoConfiguration.class));
+
+    @org.junit.jupiter.api.Test
+    void registersRateLimiterByDefault() {
+        runner.run(ctx -> {
+            org.assertj.core.api.Assertions.assertThat(ctx).hasSingleBean(RateLimiter.class);
+        });
+    }
+
+    @org.junit.jupiter.api.Test
+    void appliesCustomRps() {
+        runner.withPropertyValues("ratelimit.requests-per-second=200")
+              .run(ctx -> {
+                  var limiter = ctx.getBean(RateLimiter.class);
+                  org.assertj.core.api.Assertions.assertThat(limiter).isNotNull();
+              });
+    }
+
+    @org.junit.jupiter.api.Test
+    void disabledWhenPropertyFalse() {
+        runner.withPropertyValues("ratelimit.enabled=false")
+              .run(ctx -> {
+                  org.assertj.core.api.Assertions.assertThat(ctx)
+                      .doesNotHaveBean(RateLimiter.class);
+              });
+    }
+
+    @org.junit.jupiter.api.Test
+    void backoffWhenUserProvidesBeans() {
+        runner.withUserConfiguration(CustomRateLimiterConfig.class)
+              .run(ctx -> {
+                  // Only 1 bean — the user-provided one
+                  org.assertj.core.api.Assertions.assertThat(ctx)
+                      .hasSingleBean(RateLimiter.class);
+              });
+    }
+
+    @org.springframework.context.annotation.Configuration
+    static class CustomRateLimiterConfig {
+        @org.springframework.context.annotation.Bean
+        RateLimiter customLimiter() { return new RateLimiter(999); }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What are the two modules that make up a Spring Boot starter?', a: 'An autoconfigure module (e.g. mylib-spring-boot-autoconfigure) containing the @AutoConfiguration classes, @ConfigurationProperties, and META-INF/spring/AutoConfiguration.imports registration. A starter module (mylib-spring-boot-starter) which is just a POM that depends on autoconfigure + the underlying library. Users add only the starter. This separation allows using the library without auto-config (add autoconfigure directly) and keeps the autoconfigure module thin.' },
+            { q: 'How do you test a custom auto-configuration?', a: 'Use ApplicationContextRunner (lightweight, no web server): new ApplicationContextRunner().withConfiguration(AutoConfigurations.of(MyAutoConfiguration.class)).withPropertyValues("key=value").run(ctx -> { assertThat(ctx).hasSingleBean(MyService.class); }). This is much faster than @SpringBootTest. Test: normal conditions register beans, disabled property skips beans, user-provided bean triggers backoff (@ConditionalOnMissingBean). Use FilteredClassLoader to simulate missing classpath dependencies.' },
+            { q: 'What is spring-boot-configuration-processor and why should you add it to a starter?', a: 'A compile-time annotation processor that reads @ConfigurationProperties classes and generates META-INF/spring-configuration-metadata.json. This JSON file tells IDEs about your custom properties — IntelliJ and VS Code show autocomplete, type information, deprecation warnings, and documentation tooltips when users type your properties in application.yml. Add it as an optional compile-time dependency so it doesn\'t leak into users\' runtime classpaths.' },
+            { q: 'What is @AutoConfiguration vs @Configuration in a starter?', a: '@AutoConfiguration (Spring Boot 2.7+) is a specialised @Configuration for auto-configuration classes. It is loaded after all user @Configuration classes, which ensures user beans are registered first and @ConditionalOnMissingBean works correctly. It also excludes the class from component scanning (auto-configs must be listed in AutoConfiguration.imports, not discovered via @ComponentScan). Use @Configuration for your own app code; use @AutoConfiguration for library auto-config classes.' },
+            { q: 'How do you make a bean conditional on a property value?', a: '@ConditionalOnProperty(name="feature.enabled", havingValue="true", matchIfMissing=false). matchIfMissing=false means the bean is NOT created if the property is absent (default). matchIfMissing=true means the bean IS created when the property is absent (opt-out pattern). Can also use prefix: @ConditionalOnProperty(prefix="app.cache", name="enabled"). Can check value equality: havingValue="redis" to match app.cache.type=redis.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What three annotations does @SpringBootApplication combine?', a: '@Configuration, @ComponentScan, and @EnableAutoConfiguration.' },
-        { q: 'How does Boot decide whether to apply an auto-configuration?', a: 'Via @Conditional annotations — @ConditionalOnClass (type on classpath), @ConditionalOnMissingBean (you didn\'t define your own), @ConditionalOnProperty (toggle), etc. Auto-config classes are listed in AutoConfiguration.imports.' },
-        { q: 'How do you override a Boot default bean?', a: 'Define your own bean of that type; @ConditionalOnMissingBean makes the auto-configuration back off. Verify with the --debug Condition Evaluation Report.' },
-        { q: 'How do you supply environment-specific configuration?', a: 'Spring profiles (application-{profile}.yml) plus externalised config and @ConfigurationProperties for type-safe binding; secrets come from env vars/Vault, never committed.' }
       ]
     },
 
