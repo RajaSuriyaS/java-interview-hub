@@ -3421,7 +3421,1338 @@ public class StaticDemo {
       id: '0.4',
       title: 'OOP II — Inheritance, Polymorphism, Interfaces',
       hours: 4,
-      notes: `*[Module 0.4 — under construction. Will cover: extends, super, method overriding, interfaces, abstract classes, polymorphism. Roadmap: build after 0.3.]*`
+      sections: [
+
+        /* ── SECTION 1 ─────────────────────────────────────────────── */
+        {
+          title: 'Inheritance — extends, super & Method Overriding',
+          notes: `
+# Inheritance — extends, super & Method Overriding
+
+## What Is Inheritance?
+
+Inheritance lets one class **reuse** the fields and methods of another. The **subclass** (child) extends the **superclass** (parent), automatically gaining everything the parent defined — and can add or change behaviour.
+
+\`\`\`mermaid
+graph TD
+    Animal["Animal\n+ name: String\n+ sound(): String\n+ describe(): void"]
+    Dog["Dog extends Animal\n+ breed: String\n+ fetch(): void\n+ sound() — overrides"]
+    Cat["Cat extends Animal\n+ indoor: boolean\n+ purr(): void\n+ sound() — overrides"]
+    Animal --> Dog
+    Animal --> Cat
+    style Animal fill:#312e81,stroke:#818cf8,color:#c4b5fd
+    style Dog fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+    style Cat fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+\`\`\`
+
+\`\`\`java
+public class Animal {
+    protected String name;          // protected: visible to subclasses
+
+    public Animal(String name) {
+        this.name = name;
+    }
+
+    public String sound() {
+        return "...";
+    }
+
+    public void describe() {
+        System.out.println(name + " says: " + sound());
+    }
+}
+
+public class Dog extends Animal {
+    private String breed;
+
+    public Dog(String name, String breed) {
+        super(name);             // call the parent constructor — MUST be first
+        this.breed = breed;
+    }
+
+    @Override
+    public String sound() {      // override the parent's method
+        return "Woof!";
+    }
+
+    public void fetch() {
+        System.out.println(name + " fetches the ball!");
+    }
+}
+\`\`\`
+
+## The \`super\` Keyword
+
+\`super\` refers to the **parent class**. Two uses:
+
+**1. Call the parent constructor:**
+\`\`\`java
+public Dog(String name, String breed) {
+    super(name);   // must be the FIRST statement in the constructor
+    this.breed = breed;
+}
+\`\`\`
+If you don't call \`super(...)\` explicitly, Java inserts a no-args \`super()\` automatically. If the parent has no no-args constructor, you get a compile error.
+
+**2. Call the parent's version of an overridden method:**
+\`\`\`java
+@Override
+public String sound() {
+    return super.sound() + " (actually: Woof!)"; // parent + extra
+}
+\`\`\`
+
+## Method Overriding
+
+**Overriding** replaces a parent method with a more specific version in the subclass. Rules:
+- Same method name, same parameter types, same (or covariant) return type
+- Same or wider access (can't make \`public\` into \`private\`)
+- Use \`@Override\` — the compiler checks you're actually overriding something
+
+\`\`\`java
+public class Cat extends Animal {
+    public Cat(String name) { super(name); }
+
+    @Override                    // @Override tells the compiler to verify this
+    public String sound() {
+        return "Meow!";
+    }
+}
+\`\`\`
+
+**Overriding vs Overloading — critical distinction:**
+
+| | Overriding | Overloading |
+|---|---|---|
+| Where | Subclass changes parent method | Same class, same name, different params |
+| Dispatch | Runtime (dynamic) | Compile time (static) |
+| Return type | Must match (or covariant) | Can differ |
+| \`@Override\` | Yes | No |
+
+## What Is Inherited — and What Is Not
+
+A subclass **inherits**:
+- All \`public\` and \`protected\` fields and methods
+- Package-private members (if in the same package)
+
+A subclass does **NOT** inherit:
+- \`private\` fields and methods (they exist but are hidden)
+- Constructors (you must define your own or call \`super(...)\`)
+
+## The Inheritance Chain
+
+Java traces up the chain when looking for a method:
+
+\`\`\`
+GuideDog → Dog → Animal → Object
+\`\`\`
+
+If \`GuideDog\` doesn't override \`sound()\`, Java looks in \`Dog\`. If \`Dog\` does override it, that version is used. This chain always ends at \`Object\`.
+
+Java supports only **single inheritance** of classes (a class can extend only one parent). Multiple inheritance of behaviour comes from **interfaces** (covered next section).
+
+## final — Preventing Inheritance or Overriding
+
+\`\`\`java
+public final class ImmutableToken { ... }  // cannot be subclassed
+
+public class Animal {
+    public final void breathe() { ... }    // cannot be overridden
+}
+\`\`\`
+
+> [!WARNING]
+> Never override methods in a constructor. The subclass's fields haven't been initialised yet when the parent constructor runs, so the overridden method may see null or zero values. This is a classic source of confusing bugs.
+
+> [!TIP]
+> Use \`@Override\` on every method you intend to override. Without it, a typo in the method name silently adds a new method instead of overriding — the parent method keeps running with no error. \`@Override\` catches this at compile time.
+
+> [!EU]
+> Interviewers at ING, ABN AMRO, or Adyen often ask: "When would you use inheritance vs composition?" The answer: inheritance for true IS-A relationships (Dog IS-A Animal), composition for HAS-A (Car HAS-A Engine). Favour composition over inheritance when in doubt — it produces more flexible, testable code.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Inheritance hierarchy with super, @Override and method chaining',
+              code: `public class InheritanceDemo {
+
+    static class Shape {
+        protected String colour;
+
+        public Shape(String colour) {
+            this.colour = colour;
+        }
+
+        public double area() {
+            return 0.0;  // default — subclasses override
+        }
+
+        public String describe() {
+            return colour + " " + getClass().getSimpleName()
+                   + " with area " + String.format("%.2f", area());
+        }
+    }
+
+    static class Circle extends Shape {
+        private double radius;
+
+        public Circle(String colour, double radius) {
+            super(colour);            // call Shape(colour)
+            this.radius = radius;
+        }
+
+        @Override
+        public double area() {
+            return Math.PI * radius * radius;
+        }
+    }
+
+    static class Rectangle extends Shape {
+        private double width, height;
+
+        public Rectangle(String colour, double width, double height) {
+            super(colour);
+            this.width = width;
+            this.height = height;
+        }
+
+        @Override
+        public double area() {
+            return width * height;
+        }
+    }
+
+    // Further subclass — inherits from Rectangle
+    static class Square extends Rectangle {
+        public Square(String colour, double side) {
+            super(colour, side, side); // a square IS-A rectangle with equal sides
+        }
+
+        // Inherits area() from Rectangle — no need to override
+    }
+
+    public static void main(String[] args) {
+        Shape[] shapes = {
+            new Circle("red", 5.0),
+            new Rectangle("blue", 4.0, 6.0),
+            new Square("green", 3.0)
+        };
+
+        for (Shape s : shapes) {
+            System.out.println(s.describe()); // polymorphic — each calls its own area()
+        }
+
+        // super: calling parent's version explicitly
+        System.out.println("\\nParent area for Square: " + shapes[2].area()); // uses Rectangle.area()
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Override vs overload, and the constructor super() rule',
+              code: `public class OverrideVsOverload {
+
+    static class Vehicle {
+        protected int speed;
+
+        public Vehicle(int speed) { this.speed = speed; }
+
+        // This method will be overridden
+        public String move() {
+            return "Vehicle moving at " + speed + "km/h";
+        }
+
+        // This method will be overloaded (same class)
+        public String move(String destination) {
+            return "Vehicle moving to " + destination;
+        }
+    }
+
+    static class Car extends Vehicle {
+        private String model;
+
+        public Car(String model, int speed) {
+            super(speed);              // must call parent constructor first
+            this.model = model;
+        }
+
+        @Override                     // overrides parent — same signature, subclass
+        public String move() {
+            return model + " driving at " + speed + "km/h";
+        }
+
+        // This is an OVERLOAD (same name, different params) — NOT an override
+        public String move(int newSpeed) {
+            this.speed = newSpeed;
+            return model + " accelerating to " + speed + "km/h";
+        }
+    }
+
+    public static void main(String[] args) {
+        Vehicle v = new Vehicle(60);
+        Car c = new Car("Tesla", 100);
+
+        System.out.println(v.move());              // Vehicle.move()
+        System.out.println(c.move());              // Car.move() — overrides parent
+        System.out.println(c.move("London"));      // Vehicle.move(String) — inherited
+        System.out.println(c.move(120));           // Car.move(int) — overloaded in Car
+
+        // Dangerous: overriding a method called from constructor
+        // The subclass field isn't set yet when the parent constructor runs
+        System.out.println("\\nPolymorphic call in constructor (dangerous):");
+        new SafeChild();
+    }
+
+    static class SafeParent {
+        public SafeParent() {
+            // BAD practice: calling overridable method in constructor
+            System.out.println("  initValue() = " + initValue());
+        }
+        public String initValue() { return "parent-default"; }
+    }
+
+    static class SafeChild extends SafeParent {
+        private String value = "child-value";
+        @Override
+        public String initValue() { return value; } // value is null when parent ctor runs!
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is the difference between method overriding and method overloading?', a: 'Overriding: subclass redefines a parent method with the same signature — resolved at RUNTIME (dynamic dispatch). Overloading: same class has multiple methods with the same name but different parameters — resolved at COMPILE TIME. @Override only applies to overriding.' },
+            { q: 'What does super do and what are its two uses?', a: 'super refers to the parent class. Use 1: super(...) calls the parent constructor — must be the first statement. Use 2: super.method() calls the parent\'s version of an overridden method from inside the overriding method.' },
+            { q: 'What does @Override do and why should you always use it?', a: '@Override tells the compiler to verify you are actually overriding a parent method. Without it, a typo silently creates a new method instead of overriding — the parent method keeps running. @Override catches this at compile time.' },
+            { q: 'What does a subclass inherit and what does it not inherit?', a: 'Inherits: public and protected fields, methods, nested classes. Does NOT inherit: private members (hidden), constructors (must call super() explicitly or define new ones). Constructors are never inherited.' },
+            { q: 'Why does Java only support single inheritance for classes?', a: 'To avoid the "diamond problem" — if class C extends both A and B, and both define method foo(), which version does C get? Java avoids this by allowing only one parent class. Multiple inheritance of behaviour is handled by interfaces (which support multiple implements).' }
+          ]
+        },
+
+        /* ── SECTION 2 ─────────────────────────────────────────────── */
+        {
+          title: 'Abstract Classes — Partial Blueprints',
+          notes: `
+# Abstract Classes — Partial Blueprints
+
+## What Is an Abstract Class?
+
+An **abstract class** is a class that is **incomplete by design** — it defines some behaviour, leaves some to subclasses, and **cannot be instantiated directly**.
+
+\`\`\`java
+public abstract class Shape {
+    protected String colour;
+
+    public Shape(String colour) { this.colour = colour; }
+
+    // Abstract method — no body, subclass MUST implement
+    public abstract double area();
+    public abstract double perimeter();
+
+    // Concrete method — fully implemented, shared by all subclasses
+    public void describe() {
+        System.out.printf("%s %s: area=%.2f, perimeter=%.2f%n",
+            colour, getClass().getSimpleName(), area(), perimeter());
+    }
+}
+\`\`\`
+
+\`\`\`java
+// Cannot create — Shape is abstract
+Shape s = new Shape("red"); // COMPILE ERROR
+
+// Must use a concrete subclass
+Shape circle = new Circle("red", 5.0); // OK
+\`\`\`
+
+## Abstract Methods — Forcing Subclasses to Implement
+
+An **abstract method** has no body. Any non-abstract subclass **must** provide an implementation, or the compiler throws an error:
+
+\`\`\`java
+public class Circle extends Shape {
+    private double radius;
+
+    public Circle(String colour, double radius) {
+        super(colour);
+        this.radius = radius;
+    }
+
+    @Override
+    public double area() { return Math.PI * radius * radius; }  // must implement
+
+    @Override
+    public double perimeter() { return 2 * Math.PI * radius; } // must implement
+}
+\`\`\`
+
+\`\`\`mermaid
+graph TD
+    ABS["abstract Shape\n+ area(): abstract\n+ perimeter(): abstract\n+ describe(): concrete"]
+    C["Circle\n✓ area() — PI*r²\n✓ perimeter() — 2*PI*r"]
+    R["Rectangle\n✓ area() — w*h\n✓ perimeter() — 2*(w+h)"]
+    TR["Triangle\n✓ area() — 0.5*b*h\n✓ perimeter() — a+b+c"]
+    ABS --> C
+    ABS --> R
+    ABS --> TR
+    style ABS fill:#312e81,stroke:#818cf8,color:#c4b5fd
+    style C fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+    style R fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+    style TR fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+\`\`\`
+
+## What Abstract Classes Can Contain
+
+Unlike interfaces (next section), abstract classes can have **everything a normal class has**, plus abstract methods:
+
+\`\`\`java
+public abstract class Animal {
+    // Fields (including state)
+    protected String name;
+    private int age;
+
+    // Constructor
+    public Animal(String name, int age) {
+        this.name = name;
+        this.age = age;
+    }
+
+    // Abstract method — subclass responsibility
+    public abstract String sound();
+
+    // Concrete methods — shared logic
+    public void eat() { System.out.println(name + " is eating"); }
+    public int getAge() { return age; }
+
+    // Template method — fixed skeleton, steps are abstract
+    public final void dailyRoutine() {
+        eat();
+        System.out.println(name + " says: " + sound()); // calls overridden version
+        sleep();
+    }
+
+    private void sleep() { System.out.println(name + " is sleeping"); }
+}
+\`\`\`
+
+## The Template Method Pattern
+
+A powerful abstract class pattern: define the **algorithm skeleton** in a concrete method, leave specific steps as abstract:
+
+\`\`\`java
+public abstract class ReportGenerator {
+    // Template method — final so subclasses can't reorder steps
+    public final String generate(String data) {
+        String parsed   = parseData(data);   // abstract — each report type parses differently
+        String formatted = format(parsed);   // abstract — HTML vs CSV vs PDF
+        String header   = buildHeader();     // concrete — same for all reports
+        return header + formatted;
+    }
+
+    protected abstract String parseData(String raw);
+    protected abstract String format(String data);
+
+    private String buildHeader() {
+        return "=== Report Generated at " + java.time.Instant.now() + " ===\\n";
+    }
+}
+
+public class CsvReport extends ReportGenerator {
+    @Override
+    protected String parseData(String raw) { return raw.trim(); }
+
+    @Override
+    protected String format(String data) {
+        return data.replace("|", ",") + "\\n";
+    }
+}
+\`\`\`
+
+## Abstract Class vs Interface — When to Use Each
+
+| | Abstract Class | Interface |
+|---|---|---|
+| State (fields) | ✅ Yes | ❌ No (only constants) |
+| Constructor | ✅ Yes | ❌ No |
+| Multiple inheritance | ❌ No (single extends) | ✅ Yes (multiple implements) |
+| Method implementations | ✅ Some concrete | ✅ Default methods (Java 8+) |
+| Access modifiers | Any | Public only |
+| When to use | Shared state + partial impl | Contract/capability |
+
+**Rule of thumb:**
+- Use **abstract class** when subclasses share common state and partial implementation
+- Use **interface** when defining a capability contract that unrelated classes can fulfil
+
+> [!TIP]
+> Abstract classes are ideal when several related classes share code but differ in a few key behaviours. The Template Method pattern (define the skeleton, leave steps abstract) is one of the cleanest uses of abstract classes.
+
+> [!WARNING]
+> If you extend an abstract class but don't implement all abstract methods, your class must also be declared abstract — otherwise the compiler rejects it. Only fully concrete subclasses can be instantiated.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Abstract class with template method pattern',
+              code: `import java.util.List;
+
+public class AbstractClassDemo {
+
+    // Abstract base — cannot be instantiated directly
+    abstract static class PaymentProcessor {
+        protected String currency;
+
+        public PaymentProcessor(String currency) {
+            this.currency = currency;
+        }
+
+        // Abstract — each processor implements differently
+        protected abstract boolean validatePayment(double amount);
+        protected abstract String processTransaction(String accountId, double amount);
+        protected abstract void logResult(String transactionId, boolean success);
+
+        // Template method — the SKELETON is here, steps are abstract
+        public final String pay(String accountId, double amount) {
+            System.out.println("\\n[" + getClass().getSimpleName() + "] Processing " + currency + amount);
+
+            if (!validatePayment(amount)) {
+                System.out.println("Validation failed.");
+                return null;
+            }
+
+            String txId = processTransaction(accountId, amount);
+            boolean success = txId != null;
+            logResult(txId, success);
+            return txId;
+        }
+
+        // Concrete utility — shared by all
+        protected String generateTxId() {
+            return getClass().getSimpleName().substring(0, 3).toUpperCase()
+                   + "-" + System.currentTimeMillis() % 100_000;
+        }
+    }
+
+    // Concrete subclass 1
+    static class CreditCardProcessor extends PaymentProcessor {
+        private double limit;
+
+        public CreditCardProcessor(double limit) {
+            super("£");
+            this.limit = limit;
+        }
+
+        @Override
+        protected boolean validatePayment(double amount) {
+            return amount > 0 && amount <= limit;
+        }
+
+        @Override
+        protected String processTransaction(String accountId, double amount) {
+            System.out.println("  Charging card ending in 4242...");
+            return generateTxId();
+        }
+
+        @Override
+        protected void logResult(String txId, boolean success) {
+            System.out.println("  Card TX: " + txId + " — " + (success ? "APPROVED" : "DECLINED"));
+        }
+    }
+
+    // Concrete subclass 2
+    static class BankTransferProcessor extends PaymentProcessor {
+        public BankTransferProcessor() { super("€"); }
+
+        @Override
+        protected boolean validatePayment(double amount) {
+            return amount >= 1.0; // minimum transfer
+        }
+
+        @Override
+        protected String processTransaction(String accountId, double amount) {
+            System.out.println("  Initiating SEPA transfer to " + accountId + "...");
+            return generateTxId();
+        }
+
+        @Override
+        protected void logResult(String txId, boolean success) {
+            System.out.println("  SEPA TX: " + txId + " — " + (success ? "SENT" : "FAILED"));
+        }
+    }
+
+    public static void main(String[] args) {
+        List<PaymentProcessor> processors = List.of(
+            new CreditCardProcessor(500.0),
+            new BankTransferProcessor()
+        );
+
+        // Template method ensures same steps for all processors
+        processors.get(0).pay("CARD-4242", 150.0);  // valid
+        processors.get(0).pay("CARD-4242", 999.0);  // over limit
+        processors.get(1).pay("NL91ABNA0417164300", 250.0);
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Abstract class with state, concrete methods and partial implementation',
+              code: `public class AbstractStateDemo {
+
+    // Abstract class with shared STATE
+    abstract static class Employee {
+        private final String id;
+        private final String name;
+        protected double baseSalary;
+
+        public Employee(String id, String name, double baseSalary) {
+            this.id = id;
+            this.name = name;
+            this.baseSalary = baseSalary;
+        }
+
+        // Subclasses define their own bonus logic
+        public abstract double calculateBonus();
+
+        // Concrete — same for all employees
+        public double totalCompensation() {
+            return baseSalary + calculateBonus(); // polymorphic call
+        }
+
+        public void printPayslip() {
+            System.out.printf("%-10s %-15s Base: £%,8.2f  Bonus: £%,8.2f  Total: £%,8.2f%n",
+                id, name, baseSalary, calculateBonus(), totalCompensation());
+        }
+
+        public String getId() { return id; }
+        public String getName() { return name; }
+    }
+
+    static class SalesEmployee extends Employee {
+        private double salesRevenue;
+
+        public SalesEmployee(String id, String name, double base, double revenue) {
+            super(id, name, base);
+            this.salesRevenue = revenue;
+        }
+
+        @Override
+        public double calculateBonus() {
+            return salesRevenue * 0.05; // 5% commission
+        }
+    }
+
+    static class EngineeringEmployee extends Employee {
+        private int performanceRating; // 1-5
+
+        public EngineeringEmployee(String id, String name, double base, int rating) {
+            super(id, name, base);
+            this.performanceRating = rating;
+        }
+
+        @Override
+        public double calculateBonus() {
+            return baseSalary * (performanceRating * 0.02); // 2% per rating point
+        }
+    }
+
+    static class Manager extends Employee {
+        private int teamSize;
+
+        public Manager(String id, String name, double base, int teamSize) {
+            super(id, name, base);
+            this.teamSize = teamSize;
+        }
+
+        @Override
+        public double calculateBonus() {
+            return baseSalary * 0.15 + teamSize * 500; // flat + team bonus
+        }
+    }
+
+    public static void main(String[] args) {
+        Employee[] staff = {
+            new SalesEmployee("E001", "Alice (Sales)", 45_000, 200_000),
+            new EngineeringEmployee("E002", "Bob (Eng)", 65_000, 4),
+            new Manager("M001", "Carol (Mgr)", 80_000, 8)
+        };
+
+        System.out.println("=== Payslips ===");
+        for (Employee e : staff) {
+            e.printPayslip();
+        }
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is an abstract class and what can it contain?', a: 'An abstract class is a class that cannot be instantiated directly. It can contain: fields (including instance state), constructors, concrete methods (with implementation), and abstract methods (no body — subclasses must implement). Declared with the abstract keyword.' },
+            { q: 'What is an abstract method?', a: 'A method declared with abstract and no body. Any concrete (non-abstract) subclass must provide an implementation, or the compiler throws an error. Abstract methods define a contract: "all subclasses must be able to do this, each in their own way."' },
+            { q: 'What is the Template Method pattern?', a: 'An abstract class defines an algorithm\'s skeleton in a concrete method (often final), calling abstract methods for specific steps. Subclasses fill in the steps without changing the overall structure. Example: pay() calls validatePayment() + processTransaction() + logResult() — steps are abstract.' },
+            { q: 'What is the key difference between abstract class and interface?', a: 'Abstract class: can have instance state (fields), constructors, any access modifier, but single inheritance only. Interface: no instance state, no constructors, public only, but a class can implement many interfaces. Use abstract class for shared state/partial impl; interface for contracts.' },
+            { q: 'Can an abstract class have a constructor?', a: 'Yes. Even though abstract classes cannot be instantiated directly, their constructors are called via super() when a subclass is created. This is how abstract classes initialise their own fields.' }
+          ]
+        },
+
+        /* ── SECTION 3 ─────────────────────────────────────────────── */
+        {
+          title: 'Interfaces — Contracts & Multiple Implementation',
+          notes: `
+# Interfaces — Contracts & Multiple Implementation
+
+## What Is an Interface?
+
+An **interface** is a pure contract — it defines **what** a class can do, not **how**. Any class that \`implements\` an interface promises to provide all the methods the interface declares.
+
+\`\`\`java
+public interface Printable {
+    void print();           // abstract by default (no body, no abstract keyword needed)
+    void printToPdf();
+}
+
+public interface Saveable {
+    boolean save(String path);
+    boolean load(String path);
+}
+\`\`\`
+
+\`\`\`mermaid
+graph LR
+    subgraph INTERFACES["Interfaces (contracts)"]
+        P["Printable\n+ print()\n+ printToPdf()"]
+        S["Saveable\n+ save()\n+ load()"]
+    end
+    DOC["Document\nimplements Printable, Saveable\n— provides all 4 methods"]
+    P --> DOC
+    S --> DOC
+    style P fill:#312e81,stroke:#818cf8,color:#c4b5fd
+    style S fill:#1e1a2e,stroke:#a78bfa,color:#ddd6fe
+    style DOC fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+\`\`\`
+
+\`\`\`java
+public class Document implements Printable, Saveable {
+    private String content;
+    private String title;
+
+    public Document(String title, String content) {
+        this.title = title;
+        this.content = content;
+    }
+
+    @Override
+    public void print() { System.out.println("Printing: " + title); }
+
+    @Override
+    public void printToPdf() { System.out.println("PDF: " + title + ".pdf"); }
+
+    @Override
+    public boolean save(String path) {
+        System.out.println("Saved to " + path);
+        return true;
+    }
+
+    @Override
+    public boolean load(String path) {
+        System.out.println("Loaded from " + path);
+        return true;
+    }
+}
+\`\`\`
+
+A class can implement **multiple interfaces** — this is Java's answer to multiple inheritance.
+
+## What Interfaces Can Contain
+
+\`\`\`java
+public interface PaymentGateway {
+    // 1. Abstract methods (the core contract)
+    boolean processPayment(double amount, String currency);
+    void refund(String transactionId);
+
+    // 2. Constants — implicitly public static final
+    String DEFAULT_CURRENCY = "GBP";  // same as: public static final String DEFAULT_CURRENCY = "GBP"
+    int TIMEOUT_SECONDS = 30;
+
+    // 3. Default methods (Java 8+) — optional override
+    default String formatAmount(double amount, String currency) {
+        return String.format("%s %.2f", currency, amount);
+    }
+
+    // 4. Static methods (Java 8+) — utility, called on the interface
+    static PaymentGateway mock() {
+        return (amount, currency) -> { System.out.println("Mock: " + amount + " " + currency); return true; };
+    }
+
+    // 5. Private methods (Java 9+) — shared logic for default methods
+    private void logAttempt(String msg) {
+        System.out.println("[Gateway] " + msg);
+    }
+}
+\`\`\`
+
+## Default Methods (Java 8+)
+
+Default methods let you **add new methods to an interface without breaking existing implementations**. Any class that already implements the interface inherits the default behaviour automatically:
+
+\`\`\`java
+public interface Collection<E> {
+    boolean add(E element);
+    boolean remove(Object o);
+    int size();
+
+    // Added in Java 8 without breaking existing code:
+    default boolean isEmpty() { return size() == 0; }
+    default void forEach(java.util.function.Consumer<E> action) {
+        for (E e : this) { action.accept(e); }
+    }
+}
+\`\`\`
+
+## Functional Interfaces (Java 8+)
+
+An interface with **exactly one abstract method** is a **functional interface** — it can be implemented with a lambda expression:
+
+\`\`\`java
+@FunctionalInterface
+public interface Validator<T> {
+    boolean isValid(T value);  // single abstract method
+}
+
+// Implement with a lambda instead of a full class:
+Validator<String> notEmpty = s -> s != null && !s.isEmpty();
+Validator<Integer> positive = n -> n > 0;
+
+System.out.println(notEmpty.isValid("hello")); // true
+System.out.println(positive.isValid(-5));      // false
+\`\`\`
+
+Built-in functional interfaces: \`Runnable\`, \`Callable\`, \`Comparator\`, \`Predicate\`, \`Function\`, \`Supplier\`, \`Consumer\`.
+
+## Interface vs Abstract Class — Recap
+
+\`\`\`java
+// Use interface when: capability contract, unrelated classes
+public interface Flyable {
+    void fly();
+}
+
+class Bird extends Animal implements Flyable { ... }   // IS-A Animal, CAN fly
+class Airplane extends Vehicle implements Flyable { ... } // IS-A Vehicle, CAN fly
+
+// An Airplane and a Bird are unrelated — but both CAN fly.
+// Interface captures the capability without forcing a common parent.
+\`\`\`
+
+**When to use interface:** the capability could apply to unrelated classes; you need multiple inheritance of type; you're defining a plugin/extension point.
+
+**When to use abstract class:** the subclasses are genuinely related; they share real state and partial implementation; you need a constructor.
+
+## Implementing Multiple Interfaces — the Power
+
+\`\`\`java
+public class Robot implements Movable, Speakable, Chargeable {
+    @Override public void move(int x, int y) { ... }
+    @Override public void speak(String text) { ... }
+    @Override public void charge() { ... }
+}
+
+// Treat as any of its interface types:
+Movable m = new Robot();
+Speakable s = new Robot();
+\`\`\`
+
+> [!TIP]
+> Name interfaces as capabilities or adjectives: \`Serializable\`, \`Comparable\`, \`Runnable\`, \`Closeable\`. This is a Java convention that makes code read naturally: "a class that IS Runnable", "a class that IS Comparable".
+
+> [!EU]
+> Spring's entire dependency injection system is built on interfaces. \`@Autowired UserService userService\` — the field type is the interface; Spring injects whichever implementation is active. This is why interfaces are everywhere in real Spring codebases. Explaining this connection impresses interviewers at Booking.com or Adyen.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Multiple interface implementation and default methods',
+              code: `import java.util.List;
+
+public class InterfaceDemo {
+
+    // === Three separate capability contracts ===
+    interface Printable {
+        void print();
+        default void printUpperCase() { // default — optional override
+            System.out.println(toString().toUpperCase());
+        }
+    }
+
+    interface Exportable {
+        String exportAs(String format); // CSV, JSON, XML
+    }
+
+    interface Auditable {
+        String getAuditLog(); // who created, when changed
+    }
+
+    // === One class fulfils multiple contracts ===
+    static class Report implements Printable, Exportable, Auditable {
+        private final String title;
+        private final String author;
+        private final List<String> rows;
+
+        public Report(String title, String author, List<String> rows) {
+            this.title = title;
+            this.author = author;
+            this.rows = rows;
+        }
+
+        @Override
+        public void print() {
+            System.out.println("=== " + title + " ===");
+            rows.forEach(r -> System.out.println("  " + r));
+        }
+
+        @Override
+        public String exportAs(String format) {
+            return switch (format.toUpperCase()) {
+                case "CSV"  -> title + "\\n" + String.join("\\n", rows);
+                case "JSON" -> "{\"title\":\"" + title + "\",\"rows\":" + rows + "}";
+                default     -> throw new IllegalArgumentException("Unknown format: " + format);
+            };
+        }
+
+        @Override
+        public String getAuditLog() {
+            return "Report '" + title + "' by " + author + " (" + rows.size() + " rows)";
+        }
+
+        @Override
+        public String toString() { return title; }
+    }
+
+    // === Functional interface with lambda ===
+    @FunctionalInterface
+    interface ReportFilter {
+        boolean test(Report r); // single abstract method → lambda-compatible
+    }
+
+    public static void main(String[] args) {
+        var report1 = new Report("Q4 Sales", "Alice", List.of("UK: £120k", "EU: £95k", "US: £180k"));
+        var report2 = new Report("HR Summary", "Bob", List.of("Headcount: 45", "Open roles: 3"));
+
+        // Use as each of its interface types
+        report1.print();
+        System.out.println(report1.exportAs("JSON"));
+        System.out.println(report1.getAuditLog());
+        report1.printUpperCase(); // default method — no override needed
+
+        // Lambda implements the functional interface
+        ReportFilter largeReport = r -> r.exportAs("CSV").length() > 50;
+        System.out.println("\\nReport1 large? " + largeReport.test(report1));
+        System.out.println("Report2 large? " + largeReport.test(report2));
+
+        // Treat by interface type
+        List<Auditable> auditables = List.of(report1, report2);
+        System.out.println("\\nAudit log:");
+        auditables.forEach(a -> System.out.println("  " + a.getAuditLog()));
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Interface vs abstract class — choosing the right tool',
+              code: `import java.util.*;
+
+public class InterfaceVsAbstract {
+
+    // === INTERFACE: capability — unrelated classes can fly ===
+    interface Flyable {
+        void takeOff();
+        void land();
+        default String status() { return getClass().getSimpleName() + " airborne"; }
+    }
+
+    // === ABSTRACT CLASS: related classes sharing state ===
+    abstract static class Aircraft {
+        protected String registration;  // shared state — justifies abstract class
+        protected int altitude;
+
+        public Aircraft(String registration) { this.registration = registration; }
+
+        public abstract int maxAltitude();     // each aircraft type differs
+
+        public void climb(int metres) {
+            altitude = Math.min(altitude + metres, maxAltitude());
+            System.out.println(registration + " climbs to " + altitude + "m");
+        }
+    }
+
+    // === Plane IS-A Aircraft AND CAN fly ===
+    static class Plane extends Aircraft implements Flyable {
+        public Plane(String reg) { super(reg); }
+
+        @Override public int maxAltitude() { return 12_000; }
+        @Override public void takeOff() { System.out.println(registration + " takes off (runway)"); }
+        @Override public void land()    { System.out.println(registration + " lands (runway)"); }
+    }
+
+    // === Drone IS NOT an Aircraft, but CAN fly ===
+    static class Drone implements Flyable {
+        private String id;
+        public Drone(String id) { this.id = id; }
+
+        @Override public void takeOff() { System.out.println("Drone " + id + " lifts off (vertical)"); }
+        @Override public void land()    { System.out.println("Drone " + id + " descends (vertical)"); }
+    }
+
+    // === Process anything Flyable — polymorphism via interface ===
+    static void controlTower(Flyable f) {
+        System.out.println("Tower: cleared for takeoff");
+        f.takeOff();
+        System.out.println("Status: " + f.status());
+    }
+
+    public static void main(String[] args) {
+        Plane ba123 = new Plane("BA-123");
+        Drone delivery = new Drone("DRN-007");
+
+        controlTower(ba123);    // works — Plane implements Flyable
+        System.out.println();
+        controlTower(delivery); // works — Drone implements Flyable
+
+        // Only aircraft have altitude
+        ba123.climb(5000);      // Aircraft method
+        // delivery.climb(...)  // compile error — Drone has no climb()
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is an interface and what can it contain?', a: 'An interface is a pure contract — it defines capabilities a class promises to provide. It can contain: abstract methods (implicit), constants (implicit public static final), default methods (Java 8+, have a body), static methods (Java 8+), private methods (Java 9+). No instance fields, no constructors.' },
+            { q: 'Can a class implement multiple interfaces?', a: 'Yes — a class can implement any number of interfaces. This is Java\'s multiple inheritance of type. Example: class Robot implements Movable, Speakable, Chargeable. It must implement all abstract methods from all interfaces.' },
+            { q: 'What is a default method and why was it added?', a: 'A default method in an interface has a body and is optional to override. Added in Java 8 to allow adding new methods to existing interfaces without breaking all existing implementations. Any class that already implements the interface inherits the default behaviour.' },
+            { q: 'What is a functional interface?', a: 'An interface with exactly one abstract method. It can be annotated @FunctionalInterface (optional but recommended for documentation and compiler checking). Functional interfaces can be implemented inline with a lambda expression instead of a full class.' },
+            { q: 'When should you use an interface vs an abstract class?', a: 'Interface: for capabilities that unrelated classes share (Flyable, Serializable), multiple inheritance of type, Spring/plugin extension points. Abstract class: for closely related classes that share instance state and partial implementation, when you need constructors or non-public methods.' }
+          ]
+        },
+
+        /* ── SECTION 4 ─────────────────────────────────────────────── */
+        {
+          title: 'Polymorphism — Runtime Dispatch & instanceof',
+          notes: `
+# Polymorphism — Runtime Dispatch & instanceof
+
+## What Is Polymorphism?
+
+**Polymorphism** means "many forms" — the same code works correctly for different types. In Java, a variable of a parent type (or interface type) can hold a reference to any subtype, and method calls are **dispatched to the correct implementation at runtime**.
+
+\`\`\`java
+Animal a = new Dog("Rex");   // Animal variable holds a Dog object
+a.sound();                   // calls Dog.sound() — "Woof!", not Animal.sound()
+\`\`\`
+
+The type of the **variable** (\`Animal\`) determines what methods are visible at compile time. The type of the **object** (\`Dog\`) determines which implementation runs at runtime. This is called **dynamic dispatch** or **late binding**.
+
+## Why Polymorphism Matters
+
+Without polymorphism, you'd need separate code for every subtype:
+
+\`\`\`java
+// WITHOUT polymorphism — brittle, doesn't scale
+void describeAnimal(Object animal) {
+    if (animal instanceof Dog dog) {
+        System.out.println(dog.name + " says Woof");
+    } else if (animal instanceof Cat cat) {
+        System.out.println(cat.name + " says Meow");
+    }
+    // Adding Snake requires changing this method!
+}
+
+// WITH polymorphism — clean, extensible
+void describeAnimal(Animal animal) {
+    animal.describe();  // calls the right version for EVERY subtype automatically
+    // Adding Snake just requires a new Snake class — this method stays unchanged
+}
+\`\`\`
+
+This is the **Open/Closed Principle** — open for extension (add new subclasses), closed for modification (don't change existing code).
+
+## Upcasting & Downcasting
+
+**Upcasting** — assigning a subtype to a parent-type variable (always safe, implicit):
+
+\`\`\`java
+Dog dog = new Dog("Rex", "Labrador");
+Animal animal = dog;     // upcast — Dog reference stored as Animal
+                         // safe: Dog IS-A Animal
+\`\`\`
+
+**Downcasting** — assigning a parent-type variable back to a subtype (explicit, can fail):
+
+\`\`\`java
+Animal animal = new Dog("Rex", "Labrador");
+Dog dog = (Dog) animal;   // downcast — must be explicit
+dog.fetch();              // now have access to Dog-specific method
+
+// DANGER: downcasting the wrong type
+Animal animal2 = new Cat("Whiskers");
+Dog dog2 = (Dog) animal2; // compiles, but throws ClassCastException at runtime!
+\`\`\`
+
+\`\`\`mermaid
+flowchart LR
+    DOG["Dog object\non heap"] -->|"upcast (safe, implicit)"| AREF["Animal variable"]
+    AREF -->|"downcast (explicit)\nmust check type first"| DREF["Dog variable"]
+    WRONG["Cat object"] -->|"(Dog) cast"| CRASH["💥 ClassCastException"]
+    style DOG fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+    style CRASH fill:#2d1515,stroke:#ef4444,color:#fca5a5
+    style AREF fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+\`\`\`
+
+## instanceof — Safe Type Check
+
+Always check the runtime type before downcasting:
+
+\`\`\`java
+Animal animal = getAnimalFromSomewhere();
+
+// Old style: check then cast
+if (animal instanceof Dog) {
+    Dog dog = (Dog) animal;   // safe — we just verified
+    dog.fetch();
+}
+
+// Modern: pattern matching instanceof (Java 16+) — check and cast in one
+if (animal instanceof Dog dog) {   // binds the cast result to 'dog'
+    dog.fetch();
+}
+
+if (animal instanceof Cat cat && cat.isIndoor()) {
+    System.out.println("Indoor cat: " + cat.getName());
+}
+\`\`\`
+
+## Polymorphism with Interfaces
+
+The same mechanism works with interfaces — even more powerful because unrelated classes can be treated uniformly:
+
+\`\`\`java
+List<Flyable> airTraffic = List.of(
+    new Plane("BA-123"),
+    new Drone("DRN-007"),
+    new Helicopter("G-HELI")
+);
+
+// All three are different classes, but all implement Flyable
+for (Flyable f : airTraffic) {
+    f.takeOff();   // dispatches to correct implementation at runtime
+}
+\`\`\`
+
+## Method Hiding vs Overriding (static methods)
+
+Static methods are **hidden**, not overridden — the variable type decides which runs:
+
+\`\`\`java
+class Parent {
+    public static void staticMethod() { System.out.println("Parent static"); }
+    public void instanceMethod()      { System.out.println("Parent instance"); }
+}
+
+class Child extends Parent {
+    public static void staticMethod() { System.out.println("Child static"); }  // HIDES
+    @Override
+    public void instanceMethod()      { System.out.println("Child instance"); } // OVERRIDES
+}
+
+Parent ref = new Child();
+ref.staticMethod();   // "Parent static" — static uses variable type (hidden)
+ref.instanceMethod(); // "Child instance" — instance uses object type (overridden)
+\`\`\`
+
+This is a frequent interview question — static methods are NOT polymorphic.
+
+## Covariant Return Types
+
+A subclass can override a method and return a more specific type:
+
+\`\`\`java
+class Animal { public Animal create() { return new Animal(); } }
+class Dog extends Animal {
+    @Override
+    public Dog create() { return new Dog(); } // covariant — more specific return type
+}
+\`\`\`
+
+> [!WARNING]
+> Avoid excessive downcasting — it's a sign your design may be off. If you constantly cast Animal to Dog, you probably need a different method in the Animal interface. Good polymorphism means you rarely need instanceof or explicit casts.
+
+> [!TIP]
+> Pattern-matching instanceof (Java 16+) is cleaner than the old check-then-cast pattern. Always prefer: \`if (obj instanceof Dog d) { d.fetch(); }\` over \`if (obj instanceof Dog) { Dog d = (Dog) obj; d.fetch(); }\`.
+
+> [!EU]
+> "Explain polymorphism with a real example from your work" is one of the most common OOP questions at EU fintech interviews. A great answer: "We had different payment providers (Stripe, Adyen, PayPal) all implementing a PaymentGateway interface. Our checkout service takes a PaymentGateway reference — it doesn't know which provider it is at compile time. At runtime, the right processPayment() runs. Adding a new provider required zero changes to checkout."
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Runtime polymorphism, upcasting, downcasting and instanceof',
+              code: `import java.util.*;
+
+public class PolymorphismDemo {
+
+    abstract static class Notification {
+        protected String recipient;
+        protected String message;
+
+        public Notification(String recipient, String message) {
+            this.recipient = recipient;
+            this.message = message;
+        }
+
+        // Polymorphic method — each subclass sends differently
+        public abstract void send();
+
+        // Shared concrete method
+        public String summary() {
+            return getClass().getSimpleName() + " → " + recipient;
+        }
+    }
+
+    static class EmailNotification extends Notification {
+        private String subject;
+
+        public EmailNotification(String to, String subject, String body) {
+            super(to, body);
+            this.subject = subject;
+        }
+
+        @Override
+        public void send() {
+            System.out.printf("EMAIL  to=%-20s subject='%s'%n", recipient, subject);
+        }
+
+        public String getSubject() { return subject; }
+    }
+
+    static class SmsNotification extends Notification {
+        public SmsNotification(String phone, String text) { super(phone, text); }
+
+        @Override
+        public void send() {
+            System.out.printf("SMS    to=%-20s text='%s'%n", recipient,
+                message.length() > 30 ? message.substring(0, 30) + "..." : message);
+        }
+    }
+
+    static class PushNotification extends Notification {
+        private String deviceToken;
+
+        public PushNotification(String deviceToken, String title, String body) {
+            super(title, body);
+            this.deviceToken = deviceToken;
+        }
+
+        @Override
+        public void send() {
+            System.out.printf("PUSH   token=%-15s title='%s'%n", deviceToken.substring(0, 8) + "…", recipient);
+        }
+    }
+
+    public static void main(String[] args) {
+        // Polymorphism: different types, uniform treatment
+        List<Notification> queue = List.of(
+            new EmailNotification("alice@example.com", "Invoice ready", "Your invoice is attached."),
+            new SmsNotification("+44-7911-123456", "Your OTP is 847291"),
+            new PushNotification("tok_abc123xyz", "Order shipped", "Your package is on the way!")
+        );
+
+        System.out.println("=== Sending notifications ===");
+        for (Notification n : queue) {
+            n.send();           // dynamic dispatch — correct subclass method runs
+            System.out.println("  Summary: " + n.summary());
+        }
+
+        // instanceof + pattern matching (Java 16+)
+        System.out.println("\\n=== Pattern matching instanceof ===");
+        for (Notification n : queue) {
+            if (n instanceof EmailNotification email) {
+                System.out.println("Email subject: " + email.getSubject());
+            } else if (n instanceof SmsNotification sms) {
+                System.out.println("SMS to: " + sms.recipient);
+            }
+        }
+
+        // Downcasting safety
+        System.out.println("\\n=== Safe vs unsafe downcast ===");
+        Notification n = queue.get(0); // EmailNotification stored as Notification
+        if (n instanceof EmailNotification e) {
+            System.out.println("Safe cast: subject = " + e.getSubject());
+        }
+
+        try {
+            SmsNotification wrongCast = (SmsNotification) n; // email cast to SMS!
+        } catch (ClassCastException ex) {
+            System.out.println("Caught ClassCastException: " + ex.getMessage());
+        }
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Static method hiding vs instance method overriding',
+              code: `public class StaticVsInstanceDispatch {
+
+    static class Vehicle {
+        // Instance method — OVERRIDABLE (polymorphic)
+        public String describe() { return "Vehicle"; }
+
+        // Static method — HIDDEN (not polymorphic)
+        public static String type() { return "Vehicle (static)"; }
+    }
+
+    static class Car extends Vehicle {
+        @Override
+        public String describe() { return "Car"; }    // overrides — polymorphic
+
+        public static String type() { return "Car (static)"; } // hides — NOT polymorphic
+    }
+
+    static class Truck extends Vehicle {
+        @Override
+        public String describe() { return "Truck"; }
+
+        // Doesn't re-define type() — inherits Vehicle.type() visible on Truck reference
+    }
+
+    public static void main(String[] args) {
+        Vehicle car   = new Car();    // upcast
+        Vehicle truck = new Truck();  // upcast
+
+        System.out.println("=== Instance methods (polymorphic) ===");
+        System.out.println(car.describe());   // "Car"   — runtime dispatch to Car
+        System.out.println(truck.describe()); // "Truck" — runtime dispatch to Truck
+
+        System.out.println("\\n=== Static methods (NOT polymorphic — uses variable type) ===");
+        System.out.println(car.type());       // "Vehicle (static)" — variable is Vehicle!
+        System.out.println(Car.type());       // "Car (static)"     — call on class directly
+        System.out.println(Vehicle.type());   // "Vehicle (static)"
+
+        System.out.println("\\n=== Covariant return ===");
+        Vehicle creator = new Car();
+        Vehicle created = creator.describe(); // would work if describe() returned Vehicle
+        // In a real covariant example:
+        // Car car2 = new Car(); Car copy = car2.deepCopy(); // deepCopy() returns Car not Vehicle
+        System.out.println("Described via Vehicle ref: " + creator.describe()); // still "Car"
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is polymorphism and how does it work in Java?', a: 'Polymorphism means one variable type can hold objects of many subtypes, and method calls are dispatched to the correct implementation at runtime (dynamic dispatch). The variable type (compile time) controls which methods are accessible; the object type (runtime) controls which body runs.' },
+            { q: 'What is the difference between upcasting and downcasting?', a: 'Upcasting: assigning a subtype to a parent-type variable (always safe, implicit). Downcasting: casting a parent-type variable back to a subtype (explicit, can throw ClassCastException if the object is not actually of that type). Always use instanceof before downcasting.' },
+            { q: 'What does pattern-matching instanceof do (Java 16+)?', a: 'It combines the type check and cast in one statement: if (obj instanceof Dog d) { d.fetch(); }. The variable d is only in scope inside the if block and is automatically the correct type — no separate cast needed.' },
+            { q: 'Are static methods polymorphic?', a: 'No. Static methods are hidden, not overridden. The version that runs depends on the type of the VARIABLE (compile-time type), not the object. Instance methods are polymorphic — the version that runs depends on the OBJECT\'s runtime type.' },
+            { q: 'What is the Open/Closed Principle and how does polymorphism enable it?', a: 'Open for extension (you can add new subtypes), closed for modification (you don\'t change existing code). Polymorphism enables this: code that takes an Animal/PaymentGateway reference works with any future subtype without modification.' }
+          ]
+        }
+
+      ]
     },
 
     {
