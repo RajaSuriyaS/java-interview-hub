@@ -23099,73 +23099,374 @@ FROM users WHERE data @> '{"active": true}';  -- contains`
     {
       id: '4.2',
       title: 'Indexing & Query Performance',
-      hours: 4,
-      notes: `
-# Indexing & Query Performance
-
-An index is a sorted data structure (usually a **B-tree**) that lets the DB find rows without scanning the whole table — the single biggest lever on query speed.
-
-## B-tree indexes
-
-Balanced tree, O(log n) lookups, supports equality **and** range (\`>\`, \`BETWEEN\`, \`ORDER BY\`, prefix \`LIKE 'abc%'\`). The default for most columns.
-
-## Composite indexes & the leftmost-prefix rule
-
-An index on \`(a, b, c)\` serves queries filtering on \`a\`, \`a,b\`, or \`a,b,c\` — **left to right**. It does **not** help a query filtering only on \`b\` or \`c\`. Order columns by selectivity and query pattern.
-
-## Covering indexes
-
-If an index contains **all** columns a query needs, the DB answers from the index alone (**index-only scan**) — no table lookup.
-
-## EXPLAIN / EXPLAIN ANALYZE
-
-The interview centrepiece. \`EXPLAIN\` shows the planner's chosen plan; \`EXPLAIN ANALYZE\` runs it and shows real timings. Look for **Seq Scan** on big tables (bad for selective queries), and confirm **Index Scan/Index Only Scan**.
-
-> [!WARNING]
-> Indexes **cost** writes (every INSERT/UPDATE/DELETE maintains them) and storage. Don't over-index. A function on the column (\`WHERE UPPER(email)=...\`) or a leading wildcard (\`LIKE '%x'\`) **disables** a normal index — use a functional/expression index or full-text search.
-
-## Other index types
-
-- **Hash** — equality only, no ranges.
-- **GIN/GiST** (Postgres) — full-text, arrays, JSONB, geospatial.
-- **Partial** — \`WHERE active = true\`, smaller & faster for filtered queries.
-
-> [!EU]
-> Expect: *"A query is slow — how do you debug it?"* → run EXPLAIN ANALYZE, spot the seq scan/expensive node, add/adjust an index (mind leftmost-prefix), verify the plan changed, re-measure. *"Trade-offs of indexes?"* → faster reads vs slower writes + storage.
-`,
-      code: [
+      hours: 3,
+      sections: [
         {
-          lang: 'sql',
-          title: 'EXPLAIN-driven index tuning',
-          code: `-- Before: full table scan on a 10M-row table
-EXPLAIN ANALYZE
-SELECT * FROM orders WHERE customer_id = 42 AND status = 'SHIPPED';
---  Seq Scan on orders  (cost=0..210000 rows=...) actual time=850ms   <-- slow!
+          title: 'B-Tree Indexes — How Indexes Work',
+          notes: `## B-Tree Indexes — How Indexes Work
 
--- Composite index matching the filter (most selective column considerations apply)
-CREATE INDEX idx_orders_customer_status ON orders (customer_id, status);
+### What is an Index?
 
-EXPLAIN ANALYZE
-SELECT * FROM orders WHERE customer_id = 42 AND status = 'SHIPPED';
---  Index Scan using idx_orders_customer_status  actual time=0.4ms     <-- fast!
+An index is a separate data structure that allows the database to find rows without scanning the entire table. The most common type is the **B-Tree index** (balanced tree).
 
--- Leftmost-prefix rule: this index ALSO serves customer_id-only queries...
-SELECT * FROM orders WHERE customer_id = 42;            -- uses index
--- ...but NOT status-only queries:
-SELECT * FROM orders WHERE status = 'SHIPPED';          -- cannot use it -> seq scan
+\`\`\`
+Without index (full table scan): O(N) — reads every row
+With B-Tree index:               O(log N) — traverses tree height (~3-4 levels for millions of rows)
+\`\`\`
 
--- Index-disabling anti-patterns:
-SELECT * FROM users WHERE UPPER(email) = 'A@B.COM';     -- function kills index
--- Fix with an expression index:
-CREATE INDEX idx_users_email_upper ON users (UPPER(email));`
+### B-Tree Structure
+
+\`\`\`
+Table: orders (10 million rows)
+Index on: customer_id
+
+B-Tree levels (typically 3-4 for 10M rows):
+Root:    [500K | 2M | 5M | 8M]                    (1 page)
+Leaves:  [1..50K][50K..100K]...[9.95M..10M]        (N leaf pages)
+         Each leaf page: sorted (key, row_pointer) pairs
+
+Query: WHERE customer_id = 123456
+→ Read root (1 I/O), traverse to leaf (1-2 I/Os), follow row pointer (1 I/O)
+= ~3-4 I/Os vs 10M I/Os for a full scan
+\`\`\`
+
+### Creating Indexes
+
+\`\`\`sql
+-- Single column index
+CREATE INDEX idx_orders_customer ON orders(customer_id);
+
+-- Unique index (also enforces uniqueness constraint)
+CREATE UNIQUE INDEX idx_users_email ON users(email);
+
+-- Composite index — column order matters!
+CREATE INDEX idx_orders_customer_status ON orders(customer_id, status);
+
+-- Partial index — index only a subset of rows (PostgreSQL)
+CREATE INDEX idx_orders_pending ON orders(customer_id) WHERE status = 'PENDING';
+
+-- Index with included columns (covering index, PostgreSQL)
+CREATE INDEX idx_orders_cust_covering ON orders(customer_id) INCLUDE (total, status);
+
+-- Expression index
+CREATE INDEX idx_lower_email ON users(LOWER(email));  -- for ILIKE/lower() queries
+\`\`\`
+
+### How the Query Planner Uses Indexes
+
+\`\`\`sql
+-- USE an index
+SELECT * FROM orders WHERE customer_id = 123;     -- equality → index seek
+SELECT * FROM orders WHERE customer_id IN (1,2,3); -- range → index scan
+SELECT * FROM orders WHERE customer_id > 100;       -- range → index range scan
+SELECT COUNT(*) FROM orders WHERE customer_id = 1;  -- covered by index → index-only scan
+
+-- Does NOT use the index (common pitfalls)
+SELECT * FROM orders WHERE YEAR(created_at) = 2024; -- function on column → full scan
+-- Fix: WHERE created_at >= '2024-01-01' AND created_at < '2025-01-01'
+
+SELECT * FROM orders WHERE customer_id + 0 = 123;  -- arithmetic on column → full scan
+-- Fix: WHERE customer_id = 123
+
+SELECT * FROM orders WHERE status LIKE '%END';      -- leading wildcard → full scan
+-- Fix: LIKE 'PEND%' uses index; '%END' does not
+
+SELECT * FROM orders WHERE status != 'ACTIVE';      -- NOT equal → often full scan
+-- Exception: if very selective (few != matches), some planners may use index
+
+-- Implicit type conversion can prevent index use
+SELECT * FROM orders WHERE customer_id = '123';  -- customer_id is INT — conversion forces scan
+\`\`\`
+
+### Composite Index — Column Order Rules
+
+\`\`\`sql
+-- Index: (customer_id, status, created_at)
+
+-- These USE the index (left-prefix rule)
+WHERE customer_id = 1                              -- uses 1st column
+WHERE customer_id = 1 AND status = 'COMPLETE'      -- uses 1st + 2nd
+WHERE customer_id = 1 AND status = 'COMPLETE' AND created_at > '2024-01-01'  -- all 3
+
+-- These may NOT use the index (skip left columns)
+WHERE status = 'COMPLETE'                          -- skips customer_id → likely full scan
+WHERE status = 'COMPLETE' AND created_at > '...'  -- skips 1st column → likely full scan
+
+-- Can use index with range on middle column (partial use)
+WHERE customer_id = 1 AND status > 'C'             -- uses 1st col fully, 2nd partially
+WHERE customer_id = 1 AND created_at > '2024'      -- uses only 1st col (skips status)
+\`\`\``,
+          code: [
+            `-- EXPLAIN ANALYZE: reading the query plan
+
+-- Step 1: Run EXPLAIN (PostgreSQL syntax)
+EXPLAIN SELECT * FROM orders WHERE customer_id = 123;
+-- Output might show:
+-- Index Scan using idx_orders_customer on orders  (cost=0.43..8.45 rows=1 width=100)
+--   Index Cond: (customer_id = 123)
+
+EXPLAIN ANALYZE SELECT * FROM orders WHERE customer_id = 123;
+-- Adds actual timing:
+-- Index Scan (actual time=0.047..0.052 rows=5 loops=1)
+
+-- Key nodes to look for:
+-- "Seq Scan" → full table scan (bad for large tables)
+-- "Index Scan" → using index to find rows, then fetching from heap
+-- "Index Only Scan" → all needed data in index (fastest)
+-- "Bitmap Heap Scan" → fetch multiple pages (for range/IN queries)
+-- "Hash Join" / "Nested Loop" / "Merge Join" → join strategies
+
+-- Checking if index is used
+EXPLAIN SELECT count(*) FROM orders WHERE customer_id = 1 AND status = 'PENDING';
+-- With index (customer_id, status): Index Only Scan
+-- Without index: Seq Scan
+
+-- Finding unused indexes (PostgreSQL)
+SELECT schemaname, tablename, indexname, idx_scan, idx_tup_read
+FROM pg_stat_user_indexes
+WHERE idx_scan = 0
+ORDER BY schemaname, tablename;
+
+-- Finding missing indexes (slow queries)
+SELECT query, calls, total_time, mean_time, rows
+FROM pg_stat_statements
+WHERE mean_time > 100   -- queries averaging >100ms
+ORDER BY mean_time DESC
+LIMIT 20;`,
+            `-- Index design patterns
+
+-- 1. Covering index: avoid heap fetches by including all needed columns
+-- Without covering index:
+--   Index lookup for customer_id → get row pointers
+--   Heap fetch for each pointer (expensive random I/O)
+-- With INCLUDE columns (PostgreSQL 11+):
+CREATE INDEX idx_orders_customer_cover
+ON orders(customer_id)
+INCLUDE (total, status, created_at);
+-- Query: SELECT total, status FROM orders WHERE customer_id = 123
+-- → Index Only Scan (never touches the heap table)
+
+-- 2. Partial index: only index rows that are queried
+-- If 99% of orders are 'COMPLETED' and only 1% are 'PENDING':
+CREATE INDEX idx_orders_pending_only
+ON orders(customer_id, created_at)
+WHERE status = 'PENDING';   -- smaller index, faster, only for pending queries
+
+-- 3. Expression index for case-insensitive search
+CREATE INDEX idx_users_email_lower ON users(LOWER(email));
+-- Query must match: WHERE LOWER(email) = LOWER('User@Example.com')
+
+-- 4. Multi-column vs multiple single-column indexes
+-- Single: idx(customer_id), idx(status)
+-- Multi: idx(customer_id, status)
+-- For: WHERE customer_id=X AND status='Y' → composite is much better
+-- For: WHERE customer_id=X OR status='Y' → two separate indexes (bitmap OR)
+-- For: WHERE customer_id=X (only) → single idx(customer_id) is fine
+
+-- 5. Index on foreign keys (critical for JOIN performance)
+-- Without: JOINing orders to customers does a full scan of orders for each customer
+CREATE INDEX idx_orders_customer_id ON orders(customer_id);
+-- Every FK column that appears in WHERE or JOIN should have an index`
+          ],
+          flashcards: [
+            { q: 'How does a B-Tree index work and what is its time complexity?', a: 'A B-Tree index is a balanced tree where internal nodes hold key ranges and leaf nodes hold (key, row_pointer) pairs in sorted order. The tree is kept balanced — all leaves are at the same depth. Finding a row: traverse from root to leaf using key comparisons (O(log N)). For a 10-million-row table with ~1000 entries per page, depth is ~3-4 levels = 3-4 I/Os vs 10 million I/Os for a full scan. Leaf nodes are linked for efficient range scans.' },
+            { q: 'What is the "left-prefix rule" for composite indexes?', a: 'A composite index (a, b, c) can be used for queries that filter on a prefix of the indexed columns — starting from the leftmost. Usable prefixes: (a), (a,b), (a,b,c). Unusable: (b), (c), (b,c) — skipping the first column means the index can\'t be used for those columns. Range on the middle column stops further index use: WHERE a=1 AND b>5 can use both columns but won\'t use c even if present. Design composite indexes with the most selective equality columns first, range columns last.' },
+            { q: 'What are the common causes of an index NOT being used?', a: '(1) Function on indexed column: WHERE YEAR(created_at)=2024 — fix: range condition on raw column. (2) Leading wildcard: LIKE \'%end\' — fix: use LIKE \'start%\' or full-text search. (3) Implicit type conversion: WHERE int_col = \'123\' (string vs int) — match types. (4) NOT/!=/NOT IN: planner may prefer full scan for low selectivity. (5) OR with non-indexed columns. (6) Very low selectivity: if column has only 2 distinct values, planner may choose full scan as faster.' },
+            { q: 'What is a covering index and what is an index-only scan?', a: 'A covering index contains all columns needed by a query — the database never needs to visit the actual table (heap). This is the fastest type of index access: Index Only Scan. Example: query SELECT total, status FROM orders WHERE customer_id=X. Create: CREATE INDEX idx ON orders(customer_id) INCLUDE (total, status). PostgreSQL\'s INCLUDE allows adding non-key columns that aren\'t part of the B-Tree sort order but are stored in leaf pages. Result: one fast index lookup, zero heap reads.' },
+            { q: 'What is the trade-off of adding too many indexes?', a: 'Read performance improves with indexes but write performance degrades. Every INSERT, UPDATE, DELETE must update ALL relevant indexes — more indexes = more I/O per write. Indexes also consume disk space and buffer pool memory (reducing space for actual data pages). In OLTP (many writes): keep indexes minimal and focused. In OLAP/reporting (few writes, many reads): denormalize and index aggressively. Identify unused indexes with pg_stat_user_indexes (idx_scan = 0) and drop them.' }
+          ]
+        },
+        {
+          title: 'EXPLAIN, Query Optimization & Common Pitfalls',
+          notes: `## EXPLAIN, Query Optimization & Common Pitfalls
+
+### Reading EXPLAIN Output
+
+\`\`\`
+PostgreSQL EXPLAIN ANALYZE example:
+-------------------------------------------------------------
+Gather  (cost=1000.00..18561.50 rows=25 width=72) (actual time=29.5..1124.7 rows=42 loops=1)
+  ->  Parallel Seq Scan on orders  (cost=0.00..17559.00 rows=10 width=72)
+        Filter: (customer_id = 42 AND status = 'PENDING')
+        Rows Removed by Filter: 1789958
+
+cost=startup..total  — estimated cost (1=sequential page read)
+rows                 — estimated/actual row count
+loops                — how many times this node was executed
+"Seq Scan"           — ⚠ full table scan
+"Rows Removed by Filter: 1.7M" — ⚠ reading millions of rows to return 42
+
+After adding index:
+-------------------------------------------------------------
+Index Scan using idx_orders_cust_status on orders  (cost=0.56..8.58 rows=42 width=72)
+  Index Cond: ((customer_id = 42) AND (status = 'PENDING'))
+Total runtime: 0.15ms → was 1124ms → 7000x faster
+\`\`\`
+
+### Join Strategies
+
+\`\`\`sql
+-- The query planner chooses: Nested Loop, Hash Join, or Merge Join
+
+-- Nested Loop: good when outer result is small
+-- For each outer row, find matching inner rows via index
+-- Cost: O(outer × log(inner))  — fast when outer is small
+
+-- Hash Join: good for large tables without useful indexes on join column
+-- Build a hash table from smaller table, probe with larger table
+-- Cost: O(M + N) — linear, good for big datasets
+-- Memory: needs to fit the smaller table in work_mem
+
+-- Merge Join: both inputs must be sorted by join key
+-- Merge two sorted streams — efficient for sorted data or with sort indexes
+-- Cost: O(M log M + N log N) for sorting + O(M+N) for merge
+
+-- Force join strategy (for testing, not production):
+SET enable_hashjoin = off;
+SET enable_nestloop = off;
+\`\`\`
+
+### Key Optimization Techniques
+
+\`\`\`sql
+-- 1. Use LIMIT early to avoid processing unnecessary rows
+-- BAD: sort all then limit
+SELECT * FROM orders ORDER BY total DESC LIMIT 10;
+-- With index on total, planner does "Index Scan Backward" — efficient
+
+-- 2. Avoid SELECT * — fetch only needed columns
+-- BAD: loads all columns including large TEXT/BLOB
+SELECT * FROM products WHERE category = 'Electronics';
+-- GOOD: specify columns (enables index-only scan if index covers them)
+SELECT id, name, price FROM products WHERE category = 'Electronics';
+
+-- 3. EXISTS vs COUNT for existence check
+-- BAD: counts all matching rows
+SELECT CASE WHEN COUNT(*) > 0 THEN TRUE ELSE FALSE END
+FROM orders WHERE customer_id = 123;
+-- GOOD: stops at first match
+SELECT EXISTS(SELECT 1 FROM orders WHERE customer_id = 123);
+
+-- 4. Avoid OR across columns — use UNION ALL instead
+-- BAD: may not use indexes
+SELECT * FROM users WHERE email = 'a@b.com' OR username = 'alice';
+-- GOOD: each branch uses its own index
+SELECT * FROM users WHERE email = 'a@b.com'
+UNION ALL
+SELECT * FROM users WHERE username = 'alice' AND email != 'a@b.com';
+
+-- 5. Use bind parameters to enable plan caching
+-- BAD: each query is parsed/planned separately
+SELECT * FROM orders WHERE customer_id = 123;
+SELECT * FROM orders WHERE customer_id = 456;
+-- GOOD (JDBC PreparedStatement): plan is cached and reused
+-- SELECT * FROM orders WHERE customer_id = ?
+\`\`\`
+
+### Statistics & Vacuuming (PostgreSQL)
+
+\`\`\`sql
+-- Query planner relies on statistics to estimate row counts
+ANALYZE orders;         -- update statistics for table
+VACUUM ANALYZE orders;  -- reclaim dead rows + update statistics
+
+-- If statistics are stale, planner makes bad estimates → wrong query plans
+-- Auto-analyze runs automatically but may lag on high-write tables
+
+-- Check statistics
+SELECT attname, n_distinct, correlation
+FROM pg_stats
+WHERE tablename = 'orders';
+
+-- Correlation: 1.0 = rows stored in index order (great for range scans)
+-- Correlation: 0.0 = random (random heap access — expensive)
+-- For low-correlation columns: CLUSTER table by index to improve physical ordering
+\`\`\``,
+          code: [
+            `-- Optimization exercises: before/after
+
+-- SLOW: function on indexed column
+-- BEFORE (no index use):
+SELECT * FROM users WHERE DATE(created_at) = '2024-01-15';
+-- AFTER (range on raw column):
+SELECT * FROM users
+WHERE created_at >= '2024-01-15' AND created_at < '2024-01-16';
+
+-- SLOW: OR with different columns
+-- BEFORE:
+SELECT * FROM products WHERE sku = 'ABC-123' OR barcode = '5901234123457';
+-- AFTER (union with two indexes):
+SELECT * FROM products WHERE sku = 'ABC-123'
+UNION
+SELECT * FROM products WHERE barcode = '5901234123457';
+
+-- SLOW: correlated subquery
+-- BEFORE (runs once per outer row):
+SELECT c.name,
+       (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) AS order_count
+FROM customers c;
+-- AFTER (single join + group):
+SELECT c.name, COALESCE(t.cnt, 0) AS order_count
+FROM customers c
+LEFT JOIN (
+    SELECT customer_id, COUNT(*) AS cnt FROM orders GROUP BY customer_id
+) t ON c.id = t.customer_id;
+
+-- SLOW: NOT IN with subquery (NULL problem)
+-- BEFORE (fails if subquery returns any NULL):
+SELECT * FROM customers WHERE id NOT IN (SELECT customer_id FROM orders);
+-- AFTER (safe with NULLs):
+SELECT c.* FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+WHERE o.customer_id IS NULL;
+-- Or: NOT EXISTS (also safe):
+SELECT * FROM customers c
+WHERE NOT EXISTS (SELECT 1 FROM orders WHERE customer_id = c.id);`,
+            `-- Connection pooling and JDBC performance
+
+-- Query performance checklist (application side):
+
+-- 1. Use PreparedStatement (plan caching, SQL injection prevention)
+-- BAD: "SELECT * FROM orders WHERE id = " + id  → SQL injection + no caching
+-- GOOD:
+-- PreparedStatement ps = conn.prepareStatement("SELECT * FROM orders WHERE id = ?");
+-- ps.setLong(1, orderId);
+-- ResultSet rs = ps.executeQuery();
+
+-- 2. Batch inserts (100-1000x faster than individual inserts)
+-- BAD: execute 10000 individual INSERTs
+-- GOOD:
+-- PreparedStatement ps = conn.prepareStatement("INSERT INTO orders VALUES (?,?,?)");
+-- for (Order o : orders) {
+--     ps.setLong(1, o.id()); ps.setString(2, o.status()); ps.setBigDecimal(3, o.total());
+--     ps.addBatch();
+--     if (count++ % 500 == 0) ps.executeBatch();
+-- }
+-- ps.executeBatch();
+
+-- 3. Fetch size (streaming large results)
+-- BAD: fetchSize=0 (default) → ResultSet buffers entire result in memory
+-- GOOD:
+-- ps.setFetchSize(1000);  -- fetch 1000 rows at a time
+
+-- 4. Read-only transactions for SELECT queries
+-- conn.setReadOnly(true);  -- hint to driver/DB for read replicas
+
+-- 5. Connection pool settings (HikariCP)
+-- minimumIdle: 5
+-- maximumPoolSize: 20
+-- connectionTimeout: 30000   (30s to get a connection from pool)
+-- idleTimeout: 600000        (10min before removing idle connection)
+-- maxLifetime: 1800000       (30min max connection age)`
+          ],
+          flashcards: [
+            { q: 'How do you read EXPLAIN ANALYZE output and what are the key warning signs?', a: 'Key fields: cost=startup..total (planner estimate in page units), rows (estimated vs actual), loops. Warning signs: "Seq Scan" on a large table — needs an index. "Rows Removed by Filter: N" where N is huge — means scanning millions of rows to return few. Large discrepancy between estimated rows and actual rows — stale statistics (run ANALYZE). "Hash Batches > 1" — hash join spilled to disk (increase work_mem). "Sort Method: external merge" — sort spilled to disk.' },
+            { q: 'What are the three join strategies and when does the planner choose each?', a: 'Nested Loop: for each outer row, look up matching inner rows via index. Best when outer result is small and inner has an index. Hash Join: build a hash table of the smaller table, probe with larger. Best for large tables without join-column indexes. Needs work_mem to hold the hash table. Merge Join: both inputs must be sorted by join key; merges two sorted streams. Best when inputs are already sorted (e.g. from an index) or when output needs to be sorted. Planner chooses based on cost estimates — force with enable_nestloop/enable_hashjoin for testing.' },
+            { q: 'Why is NOT IN with a subquery dangerous when the subquery can return NULLs?', a: 'NOT IN uses the logic: "value is not equal to ANY of these." In SQL, NULL = anything evaluates to NULL (unknown), not false. So if the subquery returns any NULL, NOT IN evaluates to NULL for every row — returning NO results. Example: WHERE id NOT IN (SELECT customer_id FROM orders) — if any order has NULL customer_id, the whole query returns 0 rows. Fix: use NOT EXISTS (handles NULLs correctly) or LEFT JOIN … WHERE IS NULL, or ensure the subquery column is NOT NULL.' },
+            { q: 'How do batch inserts work and why are they faster?', a: 'Individual inserts: each INSERT requires a round-trip to the DB server (network latency), statement parse, plan, execute, and potentially a fsync. For 10,000 rows: 10,000 round-trips. Batch insert: groups multiple rows into one statement (JDBC addBatch() / executeBatch(), or multi-row INSERT VALUES (a),(b),(c)). Reduces: round-trips, parsing/planning overhead, transaction overhead. In Hibernate: configure spring.jpa.properties.hibernate.jdbc.batch_size=50. Typically 10-100x faster for bulk operations.' },
+            { q: 'What is database connection pooling and what happens without it?', a: 'Establishing a DB connection involves: TCP handshake, authentication, session initialization — takes 20-100ms per connection. Without pooling: each request opens/closes a connection → unacceptable latency, exhausted DB connection limits. With pooling (HikariCP): a pool of pre-established connections is reused. App borrows a connection, runs query, returns it. Key settings: maximumPoolSize (max concurrent connections to DB), connectionTimeout (how long to wait for a connection from pool), maxLifetime (recycle connections to avoid stale state).' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What data structure backs a typical SQL index and why?', a: 'A balanced B-tree: O(log n) lookups that support both equality and range scans, ordered traversal (ORDER BY), and prefix matches — versatile for most query shapes.' },
-        { q: 'Explain the leftmost-prefix rule for composite indexes.', a: 'An index on (a,b,c) can be used for predicates on a, a+b, or a+b+c (left to right), but not for queries filtering only on b or c.' },
-        { q: 'What is a covering index?', a: 'An index that includes every column a query needs, letting the DB satisfy it with an index-only scan without touching the table heap.' },
-        { q: 'Name patterns that prevent index usage.', a: 'Wrapping the column in a function (UPPER(col)=...), leading wildcard LIKE \'%x\', implicit type casts, or OR across different columns. Use expression/functional indexes or rewrite the query.' },
-        { q: 'What is the cost of adding indexes?', a: 'Slower writes (each INSERT/UPDATE/DELETE must maintain every index) and extra storage — so index to match real query patterns, not speculatively.' }
       ]
     },
 
