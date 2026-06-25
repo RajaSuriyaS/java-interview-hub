@@ -4759,10 +4759,785 @@ public class PolymorphismDemo {
       id: '0.5',
       title: 'OOP III — Encapsulation, Abstraction, Enums',
       hours: 3,
-      notes: `*[Module 0.5 — under construction. Will cover: public/private/protected/package, getters/setters, abstract classes, enums, sealed classes. Roadmap: build after 0.4.]*`
+      sections: [
+        {
+          title: 'Access Modifiers & Encapsulation',
+          notes: `## Access Modifiers & Encapsulation
+
+Encapsulation is the practice of **hiding internal state** and requiring all interaction to go through well-defined methods. It is the "E" in OOP's four pillars and the foundation of maintainable code.
+
+### The Four Access Modifiers
+
+Java gives you four levels of visibility. Memorise this table — it appears in almost every senior Java interview:
+
+| Modifier | Same class | Same package | Subclass | Anywhere |
+|---|---|---|---|---|
+| \`private\` | ✓ | ✗ | ✗ | ✗ |
+| *(none — package-private)* | ✓ | ✓ | ✗ | ✗ |
+| \`protected\` | ✓ | ✓ | ✓ | ✗ |
+| \`public\` | ✓ | ✓ | ✓ | ✓ |
+
+> **Interview trap:** "Can a subclass in a different package access \`protected\` members?" **Yes** — but only through inheritance (via \`super\` or overriding), not through an object reference of the parent type.
+
+### Fields Should Be Private
+
+The rule: **fields \`private\`, methods \`public\`**. This gives you three superpowers:
+
+1. **Validation at the gate** — the setter checks before assignment
+2. **Computed properties** — the getter can calculate on the fly
+3. **Future-proofing** — you can change the internal representation without breaking callers
+
+\`\`\`java
+public class BankAccount {
+    private String owner;
+    private double balance;   // private — nobody writes directly
+
+    public BankAccount(String owner, double initialDeposit) {
+        if (initialDeposit < 0) throw new IllegalArgumentException("Negative deposit");
+        this.owner = owner;
+        this.balance = initialDeposit;
+    }
+
+    // Getter — read-only exposure
+    public double getBalance() { return balance; }
+    public String getOwner()   { return owner; }
+
+    // Controlled mutation — enforces business rule
+    public void deposit(double amount) {
+        if (amount <= 0) throw new IllegalArgumentException("Amount must be positive");
+        balance += amount;
+    }
+
+    public void withdraw(double amount) {
+        if (amount > balance) throw new IllegalStateException("Insufficient funds");
+        balance -= amount;
+    }
+}
+\`\`\`
+
+If \`balance\` were \`public\`, any caller could do \`account.balance = -99999\`. With \`private\` + \`withdraw()\`, that is impossible.
+
+### Getters and Setters — When Not to Add Them Blindly
+
+JavaBeans convention (\`getX()\`/\`setX()\`) is useful but overused. **Adding a setter for every field defeats encapsulation** — you might as well make the field public.
+
+Guidelines:
+- Add a **getter** when the field is part of the public contract
+- Add a **setter** only when mutation through it is valid
+- For immutable objects (see records below), add getters only — no setters ever
+
+\`\`\`java
+// Bad: exposing mutable internal list directly
+public List<String> getTags() { return tags; }  // caller can tags.add("hack")
+
+// Good: defensive copy
+public List<String> getTags() { return Collections.unmodifiableList(tags); }
+\`\`\`
+
+### Visualising Encapsulation
+
+\`\`\`mermaid
+graph LR
+    subgraph "BankAccount (private interior)"
+        F1[balance: double]
+        F2[owner: String]
+    end
+    subgraph "Public Interface"
+        M1["deposit(amount)"]
+        M2["withdraw(amount)"]
+        M3["getBalance()"]
+    end
+    External([Caller]) --> M1
+    External --> M2
+    External --> M3
+    M1 -->|validates| F1
+    M2 -->|validates| F1
+    M3 -->|reads| F1
+    External -. "BLOCKED" .-> F1
+    External -. "BLOCKED" .-> F2
+    style F1 fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+    style F2 fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+    style External fill:#0f172a,stroke:#334155,color:#94a3b8
+\`\`\`
+
+### Records — Immutable Value Objects (Java 16+)
+
+When a class just holds data with no mutation needed, \`record\` generates \`private final\` fields, a canonical constructor, getters (no \`get\` prefix), \`equals\`, \`hashCode\`, and \`toString\` automatically:
+
+\`\`\`java
+public record Point(double x, double y) {
+    // Compact constructor — for validation
+    public Point {
+        if (Double.isNaN(x) || Double.isNaN(y))
+            throw new IllegalArgumentException("NaN not allowed");
+    }
+    // Custom method allowed
+    public double distanceTo(Point other) {
+        double dx = x - other.x, dy = y - other.y;
+        return Math.sqrt(dx*dx + dy*dy);
+    }
+}
+
+Point p1 = new Point(0, 0);
+Point p2 = new Point(3, 4);
+System.out.println(p1.x());                   // 0.0  (accessor, not getX)
+System.out.println(p1.distanceTo(p2));        // 5.0
+System.out.println(p1.equals(new Point(0,0))); // true (value equality built in)
+// p1.x = 5;  // compile error — fields are final
+\`\`\`
+
+Records are perfect for DTOs, response payloads, value types, and Map keys.`,
+          code: [
+            `public class BankAccount {
+    private String owner;
+    private double balance;
+
+    public BankAccount(String owner, double initialDeposit) {
+        if (initialDeposit < 0) throw new IllegalArgumentException("Negative deposit");
+        this.owner = owner;
+        this.balance = initialDeposit;
+    }
+
+    public double getBalance() { return balance; }
+    public String getOwner()   { return owner; }
+
+    public void deposit(double amount) {
+        if (amount <= 0) throw new IllegalArgumentException("Amount must be positive");
+        balance += amount;
+    }
+
+    public void withdraw(double amount) {
+        if (amount > balance) throw new IllegalStateException("Insufficient funds");
+        balance -= amount;
+    }
+
+    @Override
+    public String toString() {
+        return "BankAccount[owner=" + owner + ", balance=" + balance + "]";
+    }
+
+    public static void main(String[] args) {
+        BankAccount acc = new BankAccount("Alice", 500);
+        acc.deposit(200);
+        acc.withdraw(100);
+        System.out.println(acc);              // BankAccount[owner=Alice, balance=600.0]
+        System.out.println(acc.getBalance()); // 600.0
+    }
+}`,
+            `// Java 16+ record — auto-generates constructor, getters, equals, hashCode, toString
+public record Point(double x, double y) {
+    // Compact constructor for validation
+    public Point {
+        if (Double.isNaN(x) || Double.isNaN(y))
+            throw new IllegalArgumentException("NaN not allowed");
+    }
+
+    public double distanceTo(Point other) {
+        double dx = x - other.x, dy = y - other.y;
+        return Math.sqrt(dx*dx + dy*dy);
+    }
+}
+
+class RecordDemo {
+    public static void main(String[] args) {
+        Point p1 = new Point(0, 0);
+        Point p2 = new Point(3, 4);
+        System.out.println(p1.x());                     // 0.0
+        System.out.println(p1.distanceTo(p2));          // 5.0
+        System.out.println(p1.equals(new Point(0, 0))); // true
+        System.out.println(p1);                         // Point[x=0.0, y=0.0]
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'Which access modifier makes a member visible only within the same package?', a: 'Package-private (no modifier). Just declare the member without any access keyword — it\'s visible to all classes in the same package but invisible outside.' },
+            { q: 'Can a subclass in a DIFFERENT package access a protected member?', a: 'Yes, but only through inheritance — overriding the method or accessing it via super. It cannot access the protected member through an object reference of the parent type from outside the package.' },
+            { q: 'Why should fields be private?', a: 'Three reasons: (1) Validation — setters can enforce constraints before assignment. (2) Computed properties — getters can calculate on the fly. (3) Future-proofing — internal representation can change without breaking callers.' },
+            { q: 'What does a Java record auto-generate?', a: 'A canonical constructor (all fields), accessors (x(), y() — no "get" prefix), equals(), hashCode(), and toString(). All fields are implicitly private final — the record is immutable.' },
+            { q: 'What is the risk of returning a mutable internal List from a getter?', a: 'The caller can mutate the internal list directly (add, remove, clear), breaking encapsulation. Fix: return Collections.unmodifiableList(list) or a defensive copy new ArrayList<>(list).' }
+          ]
+        },
+        {
+          title: 'Abstract Classes vs Interfaces — The Real Distinction',
+          notes: `## Abstract Classes vs Interfaces — The Real Distinction
+
+You saw abstract classes and interfaces individually in Module 0.4. Here we go deeper on **when to choose which** — a favourite senior interview question.
+
+### Quick Recall
+
+**Abstract class** — a partially implemented class you extend. Can have:
+- Fields (state), instance methods (fully implemented or abstract), constructors
+- One per class (single inheritance)
+
+**Interface** — a contract. Can have (since Java 8/9):
+- Abstract methods (implicit), \`default\` methods, \`static\` methods, \`private\` methods (Java 9)
+- No instance state, no constructors
+- Many per class (multiple implementation)
+
+### The Decision Framework
+
+\`\`\`mermaid
+flowchart TD
+    Q1{"Do classes share common STATE (fields/constructors)?"}
+    Q1 -->|Yes| Q2{"Is there a true IS-A relationship?"}
+    Q1 -->|No - just behaviour| I[Use Interface]
+    Q2 -->|Yes| AC[Use Abstract Class]
+    Q2 -->|No - just code sharing| D["Interface + default methods (Java 8+)"]
+    style I fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style AC fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style D fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+\`\`\`
+
+### Side-by-Side Comparison
+
+| Feature | Abstract Class | Interface |
+|---|---|---|
+| Fields | ✓ (any type) | ✗ (only constants) |
+| Constructors | ✓ | ✗ |
+| Implementation | Partial (abstract + concrete) | default / static methods only |
+| Extends / Implements | \`extends\` (one) | \`implements\` (many) |
+| Access modifiers | Any | Abstract methods implicitly public |
+| Use case | IS-A + shared state | CAN-DO / capability |
+
+### Concrete Example — Template vs Contract
+
+\`\`\`java
+// Abstract class: IS-A + shared state + template
+abstract class Report {
+    private final String title;
+    private final LocalDate generated;
+
+    protected Report(String title) {        // constructors allowed
+        this.title = title;
+        this.generated = LocalDate.now();
+    }
+
+    // Template Method pattern
+    public final String render() {
+        return header() + "\\n" + body() + "\\n" + footer();
+    }
+
+    protected abstract String body();       // subclasses fill this in
+
+    private String header() { return "=== " + title + " (" + generated + ") ==="; }
+    private String footer() { return "--- end ---"; }
+}
+
+// Interface: CAN-DO capability — unrelated classes can share it
+interface Exportable {
+    byte[] toBytes();                       // abstract
+
+    default void saveToFile(Path path) throws IOException {  // default
+        Files.write(path, toBytes());
+    }
+
+    static String detectFormat(byte[] data) {   // static
+        return data.length > 4 && data[0] == 0x50 ? "ZIP" : "RAW";
+    }
+}
+
+class SalesReport extends Report implements Exportable {
+    private final List<String> rows;
+
+    public SalesReport(List<String> rows) {
+        super("Sales Report");
+        this.rows = rows;
+    }
+
+    @Override protected String body() { return String.join("\\n", rows); }
+    @Override public byte[] toBytes()  { return render().getBytes(StandardCharsets.UTF_8); }
+}
+\`\`\`
+
+### Marker Interfaces and Annotations
+
+A **marker interface** has no methods — it just marks a class for runtime inspection:
+- \`Serializable\` — marks a class as safe to serialize
+- \`Cloneable\` — marks a class as safe to clone
+
+In modern Java, \`@Annotation\` handles this role better (carries metadata without polluting the type hierarchy).
+
+### Default Method Diamond Problem
+
+When two interfaces provide conflicting default methods, the compiler forces you to override and disambiguate:
+
+\`\`\`java
+interface A { default String greet() { return "Hello from A"; } }
+interface B { default String greet() { return "Hello from B"; } }
+
+class C implements A, B {
+    @Override
+    public String greet() {
+        return A.super.greet();  // explicitly choose A's version
+    }
+}
+\`\`\``,
+          code: [
+            `// Abstract class with Template Method Pattern
+abstract class Report {
+    private final String title;
+
+    protected Report(String title) { this.title = title; }
+
+    // Template method — final so subclasses can't break the skeleton
+    public final String render() {
+        return "=== " + title + " ===\\n" + body() + "\\n--- end ---";
+    }
+
+    protected abstract String body();
+}
+
+// Interface for capability
+interface Exportable {
+    byte[] toBytes();
+
+    default void print() {
+        System.out.println("Bytes: " + toBytes().length);
+    }
+}
+
+class SalesReport extends Report implements Exportable {
+    private String data;
+
+    public SalesReport(String data) {
+        super("Sales Report");
+        this.data = data;
+    }
+
+    @Override protected String body()   { return data; }
+    @Override public byte[] toBytes()   { return render().getBytes(); }
+
+    public static void main(String[] args) {
+        SalesReport r = new SalesReport("Q1: 1000 units");
+        System.out.println(r.render());
+        r.print();
+    }
+}`,
+            `// Default method diamond conflict resolution
+interface Flyable  { default String describe() { return "I can fly"; } }
+interface Swimmable { default String describe() { return "I can swim"; } }
+
+// Duck implements both — compiler forces explicit resolution
+class Duck implements Flyable, Swimmable {
+    @Override
+    public String describe() {
+        return Flyable.super.describe() + " and " + Swimmable.super.describe();
+    }
+}
+
+class DiamondDemo {
+    public static void main(String[] args) {
+        Duck duck = new Duck();
+        System.out.println(duck.describe()); // I can fly and I can swim
+
+        // Polymorphism still works through either interface
+        Flyable f = duck;
+        System.out.println(f.describe()); // I can fly and I can swim
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the key distinction between abstract class and interface in terms of STATE?', a: 'Abstract classes can have instance fields (state) and constructors. Interfaces cannot — they have only constants (implicitly public static final). This is the primary reason to choose abstract class over interface.' },
+            { q: 'When two interfaces both provide a default method with the same signature, what happens?', a: 'Compile error: the implementing class must override the method and explicitly resolve which version to use with InterfaceName.super.method() syntax.' },
+            { q: 'What is a marker interface? Give an example.', a: 'An interface with no methods, used to "tag" a class for runtime inspection. Examples: Serializable (safe to serialize), Cloneable (safe to clone). Modern Java prefers annotations for this purpose.' },
+            { q: 'When should you choose abstract class over interface?', a: 'When (1) the IS-A relationship is genuine (Dog IS-A Animal, not just CAN-DO tricks), (2) subclasses need shared instance state (fields), (3) you want a template method with a fixed skeleton and abstract steps.' },
+            { q: 'Can a class implement multiple interfaces AND extend an abstract class?', a: 'Yes. Java allows: class X extends AbstractBase implements Interface1, Interface2, Interface3. Single inheritance for classes, multiple for interfaces.' }
+          ]
+        },
+        {
+          title: 'Enums — Type-Safe Constants with Superpowers',
+          notes: `## Enums — Type-Safe Constants with Superpowers
+
+Before \`enum\` (pre-Java 5), constants were static \`int\` fields (\`public static final int RED = 0\`). The problems: no type safety, no namespace, no methods, no iteration. Enums solve all of this.
+
+### Basic Enum
+
+\`\`\`java
+public enum Day {
+    MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY;
+
+    public boolean isWeekend() {
+        return this == SATURDAY || this == SUNDAY;
+    }
+}
+
+Day today = Day.WEDNESDAY;
+System.out.println(today.isWeekend());    // false
+System.out.println(today.name());         // "WEDNESDAY"
+System.out.println(today.ordinal());      // 2  (0-based)
+System.out.println(Day.valueOf("FRIDAY")); // Day.FRIDAY
+
+for (Day d : Day.values()) {
+    if (d.isWeekend()) System.out.print(d + " ");  // SATURDAY SUNDAY
+}
+\`\`\`
+
+### Enum with Fields and Constructor
+
+Every enum constant can carry data. The constructor is **always private** (implicitly):
+
+\`\`\`java
+public enum Planet {
+    MERCURY(3.303e+23, 2.4397e6),
+    VENUS  (4.869e+24, 6.0518e6),
+    EARTH  (5.976e+24, 6.37814e6),
+    MARS   (6.421e+23, 3.3972e6);
+
+    private final double mass;    // kg
+    private final double radius;  // metres
+    static final double G = 6.67300E-11;
+
+    Planet(double mass, double radius) {   // implicitly private
+        this.mass = mass;
+        this.radius = radius;
+    }
+
+    public double surfaceGravity() { return G * mass / (radius * radius); }
+    public double surfaceWeight(double otherMass) { return otherMass * surfaceGravity(); }
+}
+
+double earthWeight = 75.0;
+double mass = earthWeight / Planet.EARTH.surfaceGravity();
+for (Planet p : Planet.values())
+    System.out.printf("Weight on %s is %6.2f%n", p, p.surfaceWeight(mass));
+\`\`\`
+
+### Abstract Methods in Enums
+
+Each constant can override an abstract method with its own implementation:
+
+\`\`\`java
+public enum Operation {
+    PLUS("+")  { @Override public double apply(double x, double y) { return x + y; } },
+    MINUS("-") { @Override public double apply(double x, double y) { return x - y; } },
+    TIMES("*") { @Override public double apply(double x, double y) { return x * y; } },
+    DIVIDE("/") {
+        @Override public double apply(double x, double y) {
+            if (y == 0) throw new ArithmeticException("Division by zero");
+            return x / y;
+        }
+    };
+
+    private final String symbol;
+    Operation(String symbol) { this.symbol = symbol; }
+
+    public abstract double apply(double x, double y);
+
+    @Override public String toString() { return symbol; }
+}
+\`\`\`
+
+### EnumSet and EnumMap
+
+For collections of enums, use specialised types — they are far more efficient than \`HashSet\`/\`HashMap\` (implemented as bit-vectors internally):
+
+\`\`\`java
+EnumSet<Day> weekdays   = EnumSet.range(Day.MONDAY, Day.FRIDAY);
+EnumSet<Day> weekend    = EnumSet.complementOf(weekdays);
+EnumMap<Day, String> schedule = new EnumMap<>(Day.class);
+schedule.put(Day.MONDAY, "Stand-up at 10am");
+schedule.put(Day.FRIDAY, "Retrospective at 4pm");
+\`\`\`
+
+### Enums in Switch (Classic + Modern)
+
+\`\`\`java
+// Classic
+switch (today) {
+    case MONDAY: case TUESDAY: case WEDNESDAY:
+    case THURSDAY: case FRIDAY:
+        System.out.println("Work day"); break;
+    case SATURDAY: case SUNDAY:
+        System.out.println("Weekend"); break;
+}
+
+// Modern switch expression (Java 14+)
+String type = switch (today) {
+    case MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY -> "Work day";
+    case SATURDAY, SUNDAY -> "Weekend";
+};
+\`\`\`
+
+### Key Enum Facts
+
+- Every enum implicitly \`extends java.lang.Enum\` — cannot extend another class
+- Can implement interfaces
+- \`values()\` returns a new array each call — cache it if iterating in a hot path
+- \`ordinal()\` is fragile (insertion-order dependent) — never persist it to a database; use \`name()\` or a dedicated field
+- Enum constants are singletons — safe to compare with \`==\``,
+          code: [
+            `public enum Planet {
+    MERCURY(3.303e+23, 2.4397e6),
+    EARTH  (5.976e+24, 6.37814e6),
+    MARS   (6.421e+23, 3.3972e6);
+
+    private final double mass;    // kg
+    private final double radius;  // metres
+    private static final double G = 6.67300E-11;
+
+    Planet(double mass, double radius) {
+        this.mass = mass;
+        this.radius = radius;
+    }
+
+    public double surfaceGravity() {
+        return G * mass / (radius * radius);
+    }
+    public double surfaceWeight(double bodyMass) {
+        return bodyMass * surfaceGravity();
+    }
+
+    public static void main(String[] args) {
+        double earthWeight = 75.0;  // kg on Earth
+        double mass = earthWeight / EARTH.surfaceGravity();
+        for (Planet p : Planet.values()) {
+            System.out.printf("Weight on %-8s = %6.2f N%n", p, p.surfaceWeight(mass));
+        }
+    }
+}`,
+            `import java.util.*;
+
+public enum Operation {
+    PLUS("+")  { @Override public double apply(double x, double y) { return x + y; } },
+    MINUS("-") { @Override public double apply(double x, double y) { return x - y; } },
+    TIMES("*") { @Override public double apply(double x, double y) { return x * y; } },
+    DIVIDE("/") {
+        @Override
+        public double apply(double x, double y) {
+            if (y == 0) throw new ArithmeticException("Division by zero");
+            return x / y;
+        }
+    };
+
+    private final String symbol;
+    Operation(String symbol) { this.symbol = symbol; }
+    public abstract double apply(double x, double y);
+
+    @Override public String toString() { return symbol; }
+
+    public static void main(String[] args) {
+        double x = 10, y = 3;
+        for (Operation op : Operation.values()) {
+            System.out.printf("%.1f %s %.1f = %.2f%n", x, op, y, op.apply(x, y));
+        }
+        // EnumSet example
+        EnumSet<Operation> basic = EnumSet.of(PLUS, MINUS);
+        System.out.println("Basic ops: " + basic);
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'Why should you NEVER persist an enum\'s ordinal() to a database?', a: 'ordinal() is the 0-based insertion order in the source file. If you add a new constant in the middle, all ordinals shift, corrupting stored data. Always persist name() or a dedicated stable field.' },
+            { q: 'Can an enum extend another class?', a: 'No. All enums implicitly extend java.lang.Enum, and Java has single inheritance, so no further extension is possible. However, enums CAN implement one or more interfaces.' },
+            { q: 'Why are EnumSet and EnumMap preferred over HashSet/HashMap for enum collections?', a: 'EnumSet is implemented as a bit-vector (one long per 64 constants) — O(1) operations with zero boxing. EnumMap uses a plain array indexed by ordinal. Both are faster and more memory-efficient than general-purpose hash collections.' },
+            { q: 'Are enum constants singletons? Can you compare them with ==?', a: 'Yes. Each enum constant is a single JVM instance. == comparison is always safe (and preferred over equals()) for enums. The JVM guarantees no two references to the same constant are different objects.' },
+            { q: 'What is an enum with abstract methods useful for?', a: 'The Strategy pattern built into the type — each constant carries its own implementation of the algorithm. No if-else or switch needed. Example: Operation enum where each constant (PLUS, MINUS, TIMES) implements apply(x, y) differently.' }
+          ]
+        },
+        {
+          title: 'Sealed Classes & the instanceof Pattern',
+          notes: `## Sealed Classes & the instanceof Pattern
+
+Java 17 introduced **sealed classes** — a way to declare an exhaustive, closed class hierarchy. Combined with Java 16's \`instanceof\` pattern matching and Java 21's pattern \`switch\`, this transforms how you model algebraic data types.
+
+### The Problem Sealed Classes Solve
+
+Without sealing, any class can be subclassed anywhere. You can never write code that handles "every possible subtype" with confidence:
+
+\`\`\`java
+// Pre-sealed: anyone can subclass Shape
+abstract class Shape { abstract double area(); }
+class Circle extends Shape { ... }
+class Rectangle extends Shape { ... }
+// A month later, a colleague adds: class Hexagon extends Shape { ... }
+// Your switch breaks silently
+\`\`\`
+
+### Declaring Sealed Classes
+
+\`\`\`java
+public sealed class Shape permits Circle, Rectangle, Triangle {
+    public abstract double area();
+}
+
+// Each permitted subclass must be: final, sealed, or non-sealed
+public final class Circle extends Shape {
+    private final double radius;
+    public Circle(double radius) { this.radius = radius; }
+    @Override public double area() { return Math.PI * radius * radius; }
+}
+
+public final class Rectangle extends Shape {
+    private final double width, height;
+    public Rectangle(double width, double height) {
+        this.width = width; this.height = height;
+    }
+    @Override public double area() { return width * height; }
+}
+
+public non-sealed class Triangle extends Shape {  // reopened for extension
+    private final double base, height;
+    public Triangle(double base, double height) {
+        this.base = base; this.height = height;
+    }
+    @Override public double area() { return 0.5 * base * height; }
+}
+\`\`\`
+
+### Pattern Matching — instanceof (Java 16+)
+
+Old style was verbose and error-prone:
+
+\`\`\`java
+// Old — cast after check
+if (shape instanceof Circle) {
+    Circle c = (Circle) shape;  // redundant cast
+    System.out.println("Radius: " + c.radius);
+}
+\`\`\`
+
+Pattern matching binds the variable in one step:
+
+\`\`\`java
+// New — binding variable c is scoped to the true branch
+if (shape instanceof Circle c) {
+    System.out.println("Radius: " + c.radius());
+} else if (shape instanceof Rectangle r) {
+    System.out.println("Width: " + r.width() + ", Height: " + r.height());
+}
+\`\`\`
+
+### Pattern Switch (Java 21 — fully standardised)
+
+With sealed classes, the compiler can verify exhaustiveness — every subtype must be covered, or there is a compile error:
+
+\`\`\`java
+static String describe(Shape s) {
+    return switch (s) {
+        case Circle    c -> String.format("Circle r=%.1f area=%.2f", c.radius(), c.area());
+        case Rectangle r -> String.format("Rect %.1fx%.1f area=%.2f", r.width(), r.height(), r.area());
+        case Triangle  t -> String.format("Triangle area=%.2f", t.area());
+        // No default needed — sealed class guarantees exhaustiveness
+    };
+}
+\`\`\`
+
+If you add a new type to \`permits\` without updating this switch, the **compiler tells you immediately**.
+
+### Sealed Interfaces — Modelling Sum Types
+
+Sealed classes/interfaces are Java's answer to algebraic data types (ADTs) from functional languages. A classic use case is a result type:
+
+\`\`\`java
+public sealed interface Result<T> permits Result.Ok, Result.Err {
+    record Ok<T>(T value)         implements Result<T> {}
+    record Err<T>(String message)  implements Result<T> {}
+
+    static <T> Result<T> ok(T value)         { return new Ok<>(value); }
+    static <T> Result<T> err(String message) { return new Err<>(message); }
+}
+
+Result<Integer> result = parse("42");
+String output = switch (result) {
+    case Result.Ok<Integer>  ok  -> "Parsed: " + ok.value();
+    case Result.Err<Integer> err -> "Error: "  + err.message();
+};
+\`\`\`
+
+### When to Use Sealed Classes
+
+| Situation | Recommendation |
+|---|---|
+| Fixed, known set of subtypes (AST nodes, HTTP responses, states) | Sealed class/interface |
+| Open for extension by third parties | Regular class/interface |
+| Simple tagged data, no methods | Sealed interface + records |
+| Complex shared logic with state | Sealed abstract class |
+
+> **Interview insight:** Sealed classes + pattern switch replaces the Visitor pattern. Visitor was needed because you could not do exhaustive dispatch without it. Now you can.`,
+          code: [
+            `// Sealed class hierarchy — compiler-enforced exhaustiveness
+public sealed class Shape permits Circle, Rectangle, Triangle {}
+
+final class Circle    extends Shape {
+    final double radius;
+    Circle(double radius) { this.radius = radius; }
+    double area() { return Math.PI * radius * radius; }
+}
+final class Rectangle extends Shape {
+    final double width, height;
+    Rectangle(double w, double h) { width = w; height = h; }
+    double area() { return width * height; }
+}
+final class Triangle  extends Shape {
+    final double base, height;
+    Triangle(double b, double h) { base = b; height = h; }
+    double area() { return 0.5 * base * height; }
+}
+
+class SealedDemo {
+    static String describe(Shape s) {
+        return switch (s) {
+            case Circle    c -> String.format("Circle    r=%.1f  area=%.2f", c.radius, c.area());
+            case Rectangle r -> String.format("Rectangle %.1fx%.1f area=%.2f", r.width, r.height, r.area());
+            case Triangle  t -> String.format("Triangle  base=%.1f h=%.1f area=%.2f", t.base, t.height, t.area());
+            // No default — sealed hierarchy is exhaustive
+        };
+    }
+
+    public static void main(String[] args) {
+        Shape[] shapes = { new Circle(5), new Rectangle(4, 6), new Triangle(3, 8) };
+        for (Shape shape : shapes) System.out.println(describe(shape));
+    }
+}`,
+            `// Sealed interface as Result type (Railway-Oriented Programming)
+sealed interface Result<T> permits Result.Ok, Result.Err {
+    record Ok<T>(T value)         implements Result<T> {}
+    record Err<T>(String message) implements Result<T> {}
+
+    static <T> Result<T> ok(T v)       { return new Ok<>(v); }
+    static <T> Result<T> err(String m) { return new Err<>(m); }
+}
+
+class ResultDemo {
+    static Result<Integer> divide(int a, int b) {
+        if (b == 0) return Result.err("Division by zero");
+        return Result.ok(a / b);
+    }
+
+    static Result<Integer> parse(String s) {
+        try { return Result.ok(Integer.parseInt(s)); }
+        catch (NumberFormatException e) { return Result.err("Not a number: " + s); }
+    }
+
+    public static void main(String[] args) {
+        for (var expr : new String[]{"10/2", "7/0", "abc/3", "15/3"}) {
+            String[] parts = expr.split("/");
+            Result<Integer> lhs = parse(parts[0]);
+            Result<Integer> rhs = parse(parts[1]);
+            String out = switch (lhs) {
+                case Result.Ok<Integer>  lok -> switch (rhs) {
+                    case Result.Ok<Integer>  rok -> String.valueOf(divide(lok.value(), rok.value()));
+                    case Result.Err<Integer> rer -> "RHS error: " + rer.message();
+                };
+                case Result.Err<Integer> ler -> "LHS error: " + ler.message();
+            };
+            System.out.println(expr + " = " + out);
+        }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What three modifiers can a permitted subclass of a sealed class use?', a: 'final (no further subclassing), sealed (further restricted hierarchy), or non-sealed (reopened for unlimited extension by anyone). Every permitted class must choose one.' },
+            { q: 'Why does a pattern switch over a sealed class not need a default branch?', a: 'The compiler knows every possible subtype from the permits clause. If all permitted subtypes are covered, exhaustiveness is guaranteed at compile time — no default needed and the compiler will warn you if a subtype is missing.' },
+            { q: 'What is the Java 16+ instanceof pattern matching syntax?', a: 'if (obj instanceof Type varName) { /* varName is typed as Type here */ }. The binding variable is scoped to the true branch. Eliminates the manual cast after the instanceof check.' },
+            { q: 'How do sealed classes replace the Visitor pattern?', a: 'Visitor was invented to add exhaustive dispatch over a class hierarchy without modifying the classes. Pattern switch over sealed types does this natively with compiler-enforced exhaustiveness — no visitor interface, no accept() methods, no double dispatch boilerplate.' },
+            { q: 'What is a sealed interface + records combination good for?', a: 'Modelling algebraic data types (sum types) — e.g. Result<T> with Ok(value) and Err(message), or AST nodes, HTTP response states, event types. Records provide the immutable data; sealed ensures no unexpected subtypes; pattern switch handles them exhaustively.' }
+          ]
+        }
+      ]
     },
 
-    {
+        {
       id: '0.6',
       title: 'Strings, StringBuilder & String Pool',
       hours: 3,
