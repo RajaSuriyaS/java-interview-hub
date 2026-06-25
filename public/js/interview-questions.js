@@ -2,7 +2,7 @@
    Java Interview Hub — curated interview questions
    Keyed by module id. Rendered click-to-reveal at the bottom of
    each module Study Guide ("Likely interview questions").
-   46 modules · 283 questions. Edit freely.
+   51 modules · 318 questions. Edit freely.
    ============================================================ */
 const INTERVIEW_QUESTIONS = {
   "0.1": [
@@ -735,6 +735,66 @@ const INTERVIEW_QUESTIONS = {
       "a": "Setting the isolation level configures the visibility/locking rules the engine applies for that transaction, but the SQL standard defines levels by which anomalies they must prevent, not by implementation, so engines satisfy them differently. For instance, Oracle and Postgres implement REPEATABLE READ via snapshots and don't take read locks, while older MySQL/InnoDB uses next-key locking; some engines silently provide stronger guarantees than requested. The practical implication is to test concurrency behavior on your actual database, never assume SERIALIZABLE is free, and remember a lower-than-needed level can introduce subtle anomalies like write skew that only appear under load."
     }
   ],
+  "4.4": [
+    {
+      "q": "How do you actually size a HikariCP pool, and why does a bigger pool usually make latency worse?",
+      "a": "Start from the database's capacity, not the app's request rate: total connections across all app instances must stay well under the DB's max_connections, and the throughput-optimal size is small — roughly cores*2 plus effective spindles — because the DB can only truly run that many queries in parallel. A pool of 100 just means 90 queries queue inside Postgres fighting for cores, locks, and cache, adding context-switching and tail latency while throughput flatlines or drops. The senior move is to treat the pool as a concurrency limiter that protects the DB, size minIdle == maxPoolSize to avoid churn, and scale read load with replicas rather than a fatter pool."
+    },
+    {
+      "q": "Requests are timing out waiting for a connection from the pool. How do you tell pool exhaustion from a slow database, and find the cause?",
+      "a": "Pool exhaustion shows as connectionTimeout exceptions and a pending-threads metric climbing while active connections sit at max; a slow DB shows as long query times with the pool not necessarily maxed. The most common root cause is a connection held across a slow external call — a thread borrows a connection, then makes an HTTP/RPC call, pinning the connection for the whole round trip and starving everyone else. Other causes are leaks (use leakDetectionThreshold to log stacks of connections held too long), missing transaction boundaries, and N+1 query storms; the fix is to never hold a connection across non-DB I/O and to keep transactions short."
+    },
+    {
+      "q": "Async read replicas introduce replication lag. How do you handle read-your-writes so a user doesn't see stale data after their own update?",
+      "a": "The hazard is routing a read to a lagging replica right after a write to the primary, so the user's own change appears to have vanished. Standard fixes: route reads from the same request/session that just wrote to the primary for a short window (sticky-to-primary after write), or pass a write LSN/version forward and only read from a replica that has caught up to it. Coarser options are reading critical paths always from the primary and only offloading clearly tolerant reads (analytics, search, lists) to replicas — the real skill is classifying each read by its staleness tolerance rather than blindly sending everything to replicas."
+    },
+    {
+      "q": "Sync vs async replication — what's the trade-off, and what's the availability trap with naive synchronous replication?",
+      "a": "Async replication acks the write as soon as the primary commits, giving low write latency but a non-zero RPO (committed data can be lost on primary failure before it ships). Synchronous replication waits for a replica to confirm, giving zero data loss but higher write latency and a dangerous failure mode: if the one synchronous replica goes down, naive configs block all writes, so you've coupled your write availability to the weakest replica. The production answer is quorum/semi-sync with multiple candidates (e.g. wait for any one of N), so a single replica outage degrades rather than halts writes."
+    },
+    {
+      "q": "You're sharding a table. How do you choose the shard key, and why is getting it wrong so painful?",
+      "a": "A good shard key spreads load evenly (high cardinality, no hotspots), matches your dominant access pattern so most queries hit a single shard, and is stable so a row doesn't have to migrate. Choosing a low-cardinality or monotonically increasing key (like a timestamp or sequential id) creates hot shards and write hotspots; choosing one that doesn't align with queries forces scatter-gather across all shards. It's painful because the key is baked into routing and physical placement — changing it later means a full data migration and re-routing, so this is a one-way door you must model carefully before committing."
+    },
+    {
+      "q": "Why is hash(key) % N routing fragile, and how does consistent hashing fix it?",
+      "a": "With modulo-N routing, changing the shard count N remaps almost every key to a different shard, forcing a massive data reshuffle and cache invalidation just to add one node. Consistent hashing places shards and keys on a ring so adding/removing a node only moves the keys in that node's arc — roughly 1/N of the data — instead of nearly all of it. Virtual nodes (multiple ring positions per physical shard) smooth out uneven distribution and make rebalancing finer-grained, which is why production sharding and distributed caches use it."
+    },
+    {
+      "q": "What should you exhaust before sharding, and what do you genuinely lose once you shard?",
+      "a": "Sharding is the last resort: first exhaust vertical scaling, indexing and query tuning, read replicas for read load, caching, and table partitioning, which buys most of the operational benefits (pruning, retention, maintenance) without the distributed-systems tax. Once you shard you lose cross-shard JOINs and single-node transactions — queries spanning shards become scatter-gather with application-side aggregation, and atomicity across shards now needs sagas or 2PC. You also lose easy global uniqueness and foreign keys, so sharding is justified only when a single primary genuinely can't absorb the write throughput or data volume, not merely for read scaling."
+    }
+  ],
+  "4.5": [
+    {
+      "q": "Explain the persistence context and dirty checking. How does Hibernate issue an UPDATE without you calling save()?",
+      "a": "The persistence context (the EntityManager's first-level cache, transaction-scoped in Spring) tracks every managed entity and a snapshot of its loaded state. On flush — typically at transaction commit or before a query — Hibernate compares each managed entity to its snapshot and auto-generates UPDATEs for any that changed; that's dirty checking, and it's why mutating a managed entity inside a transaction persists with no explicit save call. The pitfalls are that a large persistence context makes flush slow (it snapshots and diffs everything) and that detached entities aren't tracked, so changes to them are silently lost until you merge."
+    },
+    {
+      "q": "What causes LazyInitializationException, and why is fixing it with EAGER fetch or Open-Session-In-View the wrong answer?",
+      "a": "It happens when you touch a lazy association after the persistence context that loaded the entity has closed — typically rendering a DTO/view outside the transaction — so there's no session left to run the SELECT. Switching the association to EAGER pollutes every query with joins you don't need (and can trigger cartesian explosions), while Open-Session-In-View keeps the session open through the web layer, hiding the problem but holding DB connections during view rendering and spraying lazy N+1 queries from the controller. The correct fix is to fetch exactly what the use case needs inside the transaction via JOIN FETCH, an @EntityGraph, or better a DTO projection, so the data is materialized before the session closes."
+    },
+    {
+      "q": "Walk me through diagnosing and fixing an N+1 query problem in a real service.",
+      "a": "N+1 is one query for a list of parents followed by one lazy query per parent for an association — easy to miss in code but obvious in the SQL log or as a latency spike that scales with row count. Detect it by enabling SQL logging (or asserting query counts in a test with something like datasource-proxy), then fix per situation: JOIN FETCH or @EntityGraph when you need the full entities, @BatchSize or subselect fetching to collapse the N selects into a few IN-list queries, and a DTO projection when you only need a few fields. The trade-offs: JOIN FETCH on multiple collections causes MultipleBagFetchException or a cartesian blowup, and JOIN FETCH with pagination silently paginates in memory — so DTO projections are usually the cleanest answer."
+    },
+    {
+      "q": "Why does GenerationType.IDENTITY defeat JDBC batch inserts, and what do you use instead?",
+      "a": "IDENTITY relies on a DB auto-increment column whose value is only known after the row is inserted, so Hibernate must execute each INSERT immediately to retrieve the generated id — it cannot defer and batch them, killing throughput on bulk inserts. SEQUENCE (with a pooled/hi-lo allocator) lets Hibernate fetch a block of ids up front, so it can queue many INSERTs and flush them as a JDBC batch. To actually get batching you must set hibernate.jdbc.batch_size, enable order_inserts/order_updates, use SEQUENCE, and on Postgres enable reWriteBatchedInserts at the JDBC layer to pipeline them — and for very large loads flush()+clear() periodically to bound the persistence context."
+    },
+    {
+      "q": "When does the Hibernate second-level cache actually help, when does it hurt, and what breaks it?",
+      "a": "The L2 cache stores entity state across sessions keyed by id, so it shines for read-mostly reference data accessed by primary key and lets you skip the DB on cache hits. It hurts for write-heavy or rarely-reread entities (cache maintenance and invalidation overhead with low hit rates) and in clustered apps where you need a distributed/invalidating provider or stale data appears across nodes. The big correctness trap is bulk HQL UPDATE/DELETE: those run as direct SQL and bypass the L2 cache, leaving stale entries, so you must evict the affected regions — and choosing the wrong concurrency strategy (e.g. NONSTRICT_READ_WRITE for data needing strong consistency) opens stale-read windows."
+    },
+    {
+      "q": "What's the owning side of an association, what does mappedBy do, and what goes wrong without it?",
+      "a": "The owning side is the one whose foreign key column actually drives the persisted relationship; Hibernate only looks at the owning side when deciding what FK to write. mappedBy names the field on the owning side and marks the other side as the inverse (read-only mapping), so the two sides describe one relationship instead of two. Omitting mappedBy on a bidirectional @OneToMany makes Hibernate treat each side independently and manage the relationship through a redundant join table plus extra UPDATE statements — so you always set the owning side (typically the @ManyToOne) for the change to persist, and keep both in-memory sides in sync with helper methods."
+    },
+    {
+      "q": "How do you implement equals/hashCode and @Version correctly for an entity, and why do the naive versions bite you?",
+      "a": "Don't base hashCode on a database-generated id, because a transient entity has a null id before persist and a different one after, so it changes hash buckets mid-Set and breaks collection membership; either use a business/natural key or a UUID assigned at construction, and make equals consistent with it. @Version adds optimistic locking: Hibernate stamps a version column and increments it on update, throwing OptimisticLockException if two transactions race on the same row, which you handle by retrying or surfacing a conflict to the user. The trade-off is that optimistic locking detects conflicts late (at commit) rather than preventing them, so it suits low-contention writes; high-contention rows may need a pessimistic lock instead."
+    }
+  ],
   "5.1": [
     {
       "q": "When would you scale vertically instead of horizontally, and what makes horizontal scaling harder?",
@@ -759,6 +819,36 @@ const INTERVIEW_QUESTIONS = {
     {
       "q": "What makes a bad shard key, and why is resharding so painful?",
       "a": "A bad shard key is low-cardinality or monotonically increasing (auto-increment IDs, timestamps): all new writes funnel to one shard, creating a hot spot, while other shards sit idle. It also breaks down if common queries don't include the key, forcing scatter-gather across every shard. Resharding hurts because moving a key's data invalidates routing for in-flight reads/writes and breaks consistent-hash assumptions; the production mitigation is to over-provision logical shards up front (e.g., 1024 virtual shards mapped onto fewer physical nodes) so rebalancing moves whole virtual shards without rehashing keys."
+    }
+  ],
+  "5.2": [
+    {
+      "q": "Compare cache-aside, read-through, write-through, and write-behind. Which is the safe default and why?",
+      "a": "Cache-aside puts the app in control — read cache, on miss load from DB and populate — and is the safe, common default because the cache failing just degrades to DB hits rather than breaking writes. Read/write-through delegate DB access to the cache layer (simpler call sites but the cache becomes a hard dependency), and write-behind acks the write to cache then flushes to the DB asynchronously, which absorbs write bursts but risks data loss if the cache dies before the flush. On writes the senior rule is to delete the key rather than update it, because updating races with concurrent reads and can leave a stale value cached longer than the DB truth."
+    },
+    {
+      "q": "Define cache stampede, penetration, and avalanche, and give the mitigation for each — they're different problems.",
+      "a": "Stampede (a.k.a. breakdown / dogpile): a hot key expires and thousands of concurrent requests all miss and hammer the DB at once — mitigate with a mutex/single-flight so one request rebuilds while others wait, plus probabilistic early recomputation. Penetration: requests for keys that don't exist in cache or DB bypass the cache entirely on every call — mitigate by caching the negative result (a short-TTL null marker) and/or a Bloom filter to reject known-absent keys. Avalanche: a huge number of keys expire simultaneously (e.g. all set to the same TTL, or the whole cache restarts), flooding the DB — mitigate by jittering TTLs and warming/protecting the origin with request coalescing."
+    },
+    {
+      "q": "What's the dual-write problem between a cache and the database, and what's the correct write ordering?",
+      "a": "Writing to both the DB and the cache is two non-atomic operations, so a crash or race between them leaves them inconsistent — the textbook failure is updating the cache then having the DB write fail, leaving a value cached that was never persisted. The safer pattern is write the DB first, then delete (not update) the cache key, so a failure after the DB write just yields a cache miss that reloads truth. Even this has a race window, so for strong needs use a versioned/generation key or event-driven invalidation via CDC/outbox, where the cache is invalidated off the committed DB change log rather than by the application doing a best-effort second write."
+    },
+    {
+      "q": "A user updates their profile and must see the change immediately, but you use cache-aside with TTL. What's the risk and the fix?",
+      "a": "With cache-aside the user can re-read before invalidation propagates and see their old profile — a read-after-write inconsistency, made worse if a stale read repopulates the cache right after you deleted the key. Fix it by invalidating (deleting) the key on write so the next read reloads from DB, and for the immediate-consistency requirement, read the writer's own session from the source of truth for a short window or write-through their own cache entry. The subtle trap is a near/in-process cache layer: deleting the Redis key doesn't evict copies sitting in each app instance's local cache, so those need their own TTL or a pub/sub invalidation broadcast."
+    },
+    {
+      "q": "What is a hot key, what damage does it do, and how do you mitigate it in Redis Cluster?",
+      "a": "A hot key is a single key getting a disproportionate share of traffic (a celebrity user, a flash-sale item), which pins all that load onto the one shard owning it and saturates a single node while the rest of the cluster idles. Mitigations: replicate the value across multiple keys/shards (key suffixing) and pick one at read time to spread load, add a short-TTL local/near cache in front of Redis so most reads never reach it, and use read replicas for the hot shard. The point is that a hot key breaks the horizontal-scaling assumption, so you fan the traffic out across nodes or absorb it locally rather than scaling the cluster."
+    },
+    {
+      "q": "Walk me through Redlock and its criticisms. When would you actually use it?",
+      "a": "Redlock acquires a lock on a majority of independent Redis masters with a TTL, intended to give distributed mutual exclusion without a single point of failure. The well-known critique (Kleppmann) is that it relies on bounded clocks and assumes a process won't pause: a GC pause or network delay can let the lock expire and be granted to another holder while the first still believes it holds it, so two clients act at once — and Redis isn't a consistency-grounded system for this. The pragmatic stance: Redlock is fine for efficiency (avoiding duplicated work) where occasional double-execution is merely wasteful, but for correctness-critical mutual exclusion you need a fencing token validated by the protected resource, or a consensus store like ZooKeeper/etcd."
+    },
+    {
+      "q": "How do CDN cache headers work end to end — max-age vs s-maxage, stale-while-revalidate — and why are content-hashed filenames the best invalidation strategy?",
+      "a": "Cache-Control max-age governs browser caching while s-maxage overrides it for shared/CDN caches, letting you cache aggressively at the edge but conservatively in the browser; stale-while-revalidate serves a slightly stale response instantly while refreshing in the background, and stale-if-error serves stale content when the origin is down, both protecting tail latency and availability. The cleanest invalidation is content-hashed filenames (app.a1b2c3.js): the URL changes when the bytes change, so you can cache immutably forever and never purge — a new deploy simply references new URLs. This sidesteps the slow, eventually-consistent nature of CDN purges; the classic security incident is caching an authenticated/personalized response at a shared edge (e.g. via Vary: Cookie misuse) and serving one user's data to another."
     }
   ],
   "5.3": [
@@ -865,6 +955,36 @@ const INTERVIEW_QUESTIONS = {
       "a": "Compensation failure is the genuinely hard case — you can't just give up, because the system is left half-completed and inconsistent. The standard approach is to make compensations retryable with backoff and idempotency so transient failures self-heal, persist the saga's progress so a recovering orchestrator knows what still needs undoing, and escalate to a dead-letter/manual-intervention queue with alerting when retries are exhausted. You also minimize the blast radius by ordering steps so the hardest-to-compensate actions run last and the easily-reversible ones run first (semantic lock / pivot-step design)."
     }
   ],
+  "6.4": [
+    {
+      "q": "When would you choose RabbitMQ over Kafka, and when is that the wrong call?",
+      "a": "Reach for RabbitMQ when you need rich per-message routing, competing-consumer work distribution, low-latency RPC, or per-message acks and priorities — classic task-queue and command workloads. Choose Kafka when you need a durable replayable log, high-throughput event streaming, ordered partitioned retention, or multiple independent consumer groups re-reading history. The wrong call is treating RabbitMQ as an event store: by default a message is gone once acked, there's no offset to rewind to, and reprocessing means you must have persisted it yourself."
+    },
+    {
+      "q": "Walk me through publisher confirms and consumer acks. What actually guarantees a message isn't lost end to end?",
+      "a": "On the producer side you need publisher confirms (channel in confirm mode) plus durable exchanges/queues and persistent messages, so the broker only acks once the message is safely written; without confirms a publish that the broker never received looks successful. On the consumer side use manual acks and ack only after the work commits, so a crash mid-processing redelivers rather than loses. The pitfall is autoack (ack-on-deliver), which drops in-flight messages on consumer crash, and forgetting that persistent-but-unconfirmed publishes can still be lost in a broker fsync window."
+    },
+    {
+      "q": "How do dead-letter exchanges work, and how do you build retry-with-backoff without a poison-message loop?",
+      "a": "A queue with x-dead-letter-exchange routes messages there when they're rejected/nacked with requeue=false, TTL-expire, or hit a length limit. The classic retry pattern is a delay queue with a per-message or per-queue TTL and no consumer, whose DLX points back at the work queue, so expiry re-delivers after the backoff. The trap is infinite redelivery: if you requeue=true on a permanently bad message it loops forever, so you must track an x-death/attempt count in headers and route to a parking/DLQ after N tries for human inspection."
+    },
+    {
+      "q": "What does prefetch (QoS) control, and how does it interact with throughput and fairness?",
+      "a": "basic.qos prefetch caps the number of unacked messages the broker pushes to a consumer before it must ack. Too low (e.g. 1) starves throughput on fast networks because the consumer waits round-trips between messages; too high lets one greedy consumer hoard the queue and defeats fair dispatch, and inflates memory/redelivery on crash. The senior answer is to size prefetch to roughly the in-flight work a consumer can handle within the round-trip — small for slow, heavy tasks; larger for fast, cheap ones — and measure rather than guess."
+    },
+    {
+      "q": "How do you reason about message ordering in RabbitMQ, and where does it break?",
+      "a": "A single queue with a single consumer preserves publish order, but the moment you add competing consumers, prefetch, or requeue-on-failure, ordering is lost because a redelivered message can land behind newer ones. There's no partition-key concept like Kafka, so if you need per-entity ordering you must route all messages for that key to one queue and consume single-threaded, which sacrifices parallelism. Most teams design for idempotent, order-independent handlers instead of fighting the broker for global ordering."
+    },
+    {
+      "q": "Quorum queues vs classic mirrored queues — what changed and why does it matter for production?",
+      "a": "Classic mirrored queues replicated via a leader/mirror scheme that was prone to split-brain, slow sync, and message loss during partitions, and they're now deprecated. Quorum queues use a Raft consensus log for replication, giving predictable failover, no message loss on a confirmed write with a majority, and clearer behavior under network partitions. The trade-off is higher per-message overhead and memory, and they don't support some classic features (e.g. message priorities historically), so you pick quorum for durability-critical queues and accept the cost."
+    },
+    {
+      "q": "Your queue depth is climbing and the broker's memory alarm fires, blocking publishers. Walk me through diagnosis and mitigation.",
+      "a": "Rising depth means consumption can't keep up with production: check consumer count, prefetch, and per-message processing time, and whether consumers are crashing/redelivering or blocked on a slow downstream. RabbitMQ's memory/disk high-watermark applies flow control and pauses publishers to protect itself, so the immediate lever is to scale out competing consumers, raise prefetch if it's starving them, and offload large payloads to object storage (publish a pointer). Long term, add lazy queues to page to disk, set queue length limits with a DLX so backlog can't grow unbounded, and alarm on queue depth and consumer-utilisation before the watermark triggers."
+    }
+  ],
   "7.1": [
     {
       "q": "Why does ordering of Dockerfile instructions matter, and how do you exploit layer caching for a Java build?",
@@ -967,6 +1087,36 @@ const INTERVIEW_QUESTIONS = {
     {
       "q": "Beyond a basic build, what makes a CI pipeline fast and trustworthy, and how do you keep deploys safe?",
       "a": "Speed comes from caching the dependency layer (Maven/Gradle cache, Docker layer cache like type=gha) and parallelizing/sharding tests so feedback stays under a few minutes. Trust comes from running the full suite — unit, integration against ephemeral service containers, and contract tests — plus image vulnerability scanning, and failing fast. Safety at deploy time means progressive delivery: deploy to staging with smoke tests, roll out with readiness gates and --wait, and use canary or blue-green with automated rollback (and feature flags) so a bad release affects a slice of traffic before being promoted or reverted."
+    }
+  ],
+  "7.5": [
+    {
+      "q": "A pod is stuck in CrashLoopBackOff. Walk me through your debugging in order.",
+      "a": "Start with kubectl describe pod to read events and the last restart reason, then kubectl logs --previous to see the crash output from the prior container instance (current logs are often empty because it just restarted). CrashLoopBackOff means the container starts then exits non-zero repeatedly, so it's usually a bad config/secret, a failing dependency at startup, a too-aggressive liveness probe killing a slow boot, or an OOMKill — check describe for the exit code and reason (137 = OOMKilled). The fix depends on the cause: correct the env/secret, give startupProbe headroom so liveness doesn't kill a slow JVM, or raise the memory limit."
+    },
+    {
+      "q": "A pod is in ImagePullBackOff. What are the likely causes and how do you confirm each?",
+      "a": "ImagePullBackOff means the kubelet can't pull the image; kubectl describe pod shows the exact pull error in events. The usual causes are a wrong image name/tag (typo or a tag that was never pushed), a private registry without a valid imagePullSecret, registry auth/rate limits, or the node architecture not matching the image. Confirm by checking the tag exists in the registry, that the imagePullSecret is referenced and valid, and that you used an immutable sha- tag rather than a mutable one that drifted — this is also why latest is dangerous in production."
+    },
+    {
+      "q": "order-service can't reach inventory-service: connections time out. How do you debug service-to-service DNS and connectivity?",
+      "a": "Resolve the name from inside a pod (kubectl exec then nslookup inventory-service.namespace.svc.cluster.local) to separate DNS failure from connection failure. DNS failures point at CoreDNS being down, a wrong namespace in the FQDN, or a misnamed Service; connection failures with good DNS point at the Service selector not matching pod labels (so Endpoints is empty — check kubectl get endpoints), the wrong targetPort, or a NetworkPolicy denying east-west traffic. The senior tell is checking Endpoints first: an empty endpoint list means the Service exists but matches no ready pods, which also implicates failing readiness probes."
+    },
+    {
+      "q": "How does a rolling update actually work, and how do you do a safe rollback when a release is bad?",
+      "a": "A Deployment rollout creates a new ReplicaSet and shifts pods over governed by maxSurge and maxUnavailable, only routing traffic to pods that pass readiness probes, so a broken new version that never goes Ready won't take down capacity — the rollout just stalls. To recover, kubectl rollout undo reverts to the previous ReplicaSet (Kubernetes keeps revision history), which is fast because the old pod spec and image are retained. The pitfalls are missing readiness probes (Kubernetes sends traffic to not-yet-ready pods), non-backward-compatible DB migrations that break the old version during overlap, and in GitOps you rollback by reverting the Git commit, not by imperatively editing the cluster."
+    },
+    {
+      "q": "Liveness vs readiness vs startup probes — how do you configure them for a Spring Boot service, and what's the classic mistake?",
+      "a": "Readiness gates traffic (fail it and the pod is pulled from the Service but not restarted), liveness restarts a wedged container, and startup protects a slow boot so liveness doesn't fire prematurely. The classic mistake is making liveness a deep health check that pings the database or downstream services: when that dependency blips, every pod fails liveness and Kubernetes restarts them all at once, turning a transient dependency issue into a full self-inflicted outage. Keep liveness shallow (process is alive), put dependency checks in readiness, and use a startupProbe with generous failureThreshold for JVM warm-up."
+    },
+    {
+      "q": "What are requests vs limits, and how do CPU and memory limits behave differently under pressure?",
+      "a": "Requests drive scheduling and guarantee a floor; limits cap usage. CPU is compressible, so exceeding the CPU limit throttles the container (slower, not killed) — over-tight CPU limits cause mysterious latency, and on the JVM they also distort the auto-detected processor count. Memory is incompressible, so exceeding the memory limit gets the container OOMKilled (exit 137); for the JVM you set heap relative to the limit with MaxRAMPercentage and leave ~25% headroom for non-heap, otherwise the container is killed even though the Java heap looks healthy. Set requests from observed usage and keep limits realistic, since requests also determine the pod's QoS class and eviction order under node pressure."
+    },
+    {
+      "q": "HPA isn't scaling your request-serving tier even though latency is bad. What's going on and what should you scale on?",
+      "a": "CPU-based HPA is a poor proxy for a latency-bound, I/O-waiting service — pods can be slow while CPU sits at 40%, so the HPA never triggers. Better signals are request-rate or concurrency / queue depth via custom or external metrics (e.g. Prometheus adapter), which track the actual saturation. Also check that the metrics-server/adapter is healthy (HPA can't scale on metrics it can't read), that requests are set so utilisation math is meaningful, and that you're not hitting maxReplicas or a cluster-autoscaler delay where there's simply no node to schedule new pods onto — the cold-start lag is itself a design concern."
     }
   ],
   "8.1": [
