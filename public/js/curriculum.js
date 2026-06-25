@@ -4576,7 +4576,7 @@ public class InterfaceDemo {
         public String exportAs(String format) {
             return switch (format.toUpperCase()) {
                 case "CSV"  -> title + "\\n" + String.join("\\n", rows);
-                case "JSON" -> "{"title":"" + title + "","rows":" + rows + "}";
+                case "JSON" -> "{\\"title\\":\\"" + title + "\\",\\"rows\\":" + rows + "}";
                 default     -> throw new IllegalArgumentException("Unknown format: " + format);
             };
         }
@@ -5015,7 +5015,6 @@ public class PolymorphismDemo {
 
         System.out.println("\\n=== Covariant return ===");
         Vehicle creator = new Car();
-        Vehicle created = creator.describe(); // would work if describe() returned Vehicle
         // In a real covariant example:
         // Car car2 = new Car(); Car copy = car2.deepCopy(); // deepCopy() returns Car not Vehicle
         System.out.println("Described via Vehicle ref: " + creator.describe()); // still "Car"
