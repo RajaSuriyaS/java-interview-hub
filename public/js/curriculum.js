@@ -5537,14 +5537,731 @@ class ResultDemo {
       ]
     },
 
-        {
+    {
       id: '0.6',
       title: 'Strings, StringBuilder & String Pool',
       hours: 3,
-      notes: `*[Module 0.6 — under construction. Will cover: String immutability, pool, StringBuilder, StringBuffer, string methods. Roadmap: build after 0.5.]*`
+      sections: [
+        {
+          title: 'String Immutability & the String Pool',
+          notes: `## String Immutability & the String Pool
+
+\`String\` is the most-used class in Java and also the most misunderstood in interviews. Two facts underpin everything else:
+
+1. **Strings are immutable** — once created, the character array inside a \`String\` object can never change
+2. **String literals are pooled** — the JVM maintains a shared pool of string literals to save memory
+
+### Why Immutability?
+
+\`\`\`java
+String s = "hello";
+s.toUpperCase();       // does NOT modify s
+System.out.println(s); // still "hello"
+\`\`\`
+
+Every method that "modifies" a String actually **returns a new String**. The original object is unchanged. This design enables:
+- **Thread safety** — multiple threads can share the same \`String\` object with no synchronisation
+- **Hashcode caching** — \`String\` caches its hash (computed once), making it a perfect \`HashMap\` key
+- **Security** — class names, file paths, and network addresses passed to the JVM cannot be mutated after validation
+
+### The String Pool
+
+String literals (written in source code as \`"text"\`) are automatically added to the **string pool** (a section of the JVM heap). Two literals with the same content share the same object:
+
+\`\`\`java
+String a = "java";    // goes to pool
+String b = "java";    // same pool object
+String c = new String("java");  // forces a NEW heap object, outside pool
+
+System.out.println(a == b);          // true  — same pool object
+System.out.println(a == c);          // false — c is a different heap object
+System.out.println(a.equals(c));     // true  — same content
+
+String d = c.intern();               // puts c into pool (or returns existing)
+System.out.println(a == d);          // true  — d now points to pool object
+\`\`\`
+
+> **The golden rule:** always use \`equals()\` to compare String content. \`==\` compares object identity (memory address). This is the #1 Java beginner bug.
+
+### Visualising Pool vs Heap
+
+\`\`\`mermaid
+graph TD
+    subgraph "String Pool (heap section)"
+        P1["&quot;java&quot;"]
+        P2["&quot;hello&quot;"]
+    end
+    subgraph "Regular Heap"
+        H1["new String(&quot;java&quot;)"]
+    end
+    Va[a = ] --> P1
+    Vb[b = ] --> P1
+    Vc[c = ] --> H1
+    H1 -. "intern()" .-> P1
+    style P1 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style P2 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style H1 fill:#1e293b,stroke:#334155,color:#94a3b8
+\`\`\`
+
+### String Concatenation with +
+
+At compile time, \`"Hello " + name\` where \`name\` is a constant gets folded by the compiler. At runtime, \`+\` on \`String\` creates a \`StringBuilder\` behind the scenes (Java 9+ uses \`StringConcatFactory\` via invokedynamic — even more efficient). Still:
+
+\`\`\`java
+// BAD — in a loop: O(n²) object creation
+String result = "";
+for (String item : list) {
+    result += item + ", ";  // new String object every iteration
+}
+
+// GOOD — use StringBuilder
+StringBuilder sb = new StringBuilder();
+for (String item : list) {
+    sb.append(item).append(", ");
+}
+String result = sb.toString();
+\`\`\`
+
+### String Interning in Practice
+
+\`intern()\` is rarely called manually in modern code. The JVM automatically interns all string literals. Use cases:
+- Reducing memory when you have millions of repeated strings (e.g. city names from a CSV)
+- Enabling \`==\` comparison for performance-critical code (almost never worth it)`,
+          code: [
+            `public class StringPoolDemo {
+    public static void main(String[] args) {
+        // Literals — pooled
+        String a = "java";
+        String b = "java";
+        System.out.println("a == b: "      + (a == b));          // true
+        System.out.println("a.equals(b): " + a.equals(b));       // true
+
+        // new String — outside pool
+        String c = new String("java");
+        System.out.println("a == c: "      + (a == c));          // false!
+        System.out.println("a.equals(c): " + a.equals(c));       // true
+
+        // intern — back to pool
+        String d = c.intern();
+        System.out.println("a == d: "      + (a == d));          // true
+
+        // Immutability demo
+        String s = "hello";
+        s.toUpperCase();                    // returns new string, ignored
+        System.out.println("s after toUpperCase call: " + s);  // still "hello"
+        s = s.toUpperCase();               // must reassign
+        System.out.println("s after reassign: " + s);          // "HELLO"
+
+        // Compile-time constant folding
+        String x = "hel" + "lo";          // folded to "hello" by compiler
+        System.out.println("x == a: " + (x == "hello")); // true (pool)
+    }
+}`,
+            `import java.util.*;
+
+public class StringConcatPerf {
+    public static void main(String[] args) {
+        List<String> words = Arrays.asList("apple","banana","cherry","date","elderberry");
+
+        // BAD: O(n^2) — new String object every += in loop
+        long t1 = System.nanoTime();
+        String bad = "";
+        for (String w : words) bad += w + ", ";
+        long t2 = System.nanoTime();
+
+        // GOOD: StringBuilder — single buffer
+        long t3 = System.nanoTime();
+        StringBuilder sb = new StringBuilder();
+        for (String w : words) sb.append(w).append(", ");
+        String good = sb.toString();
+        long t4 = System.nanoTime();
+
+        System.out.println(bad.trim());
+        System.out.println(good.trim());
+        System.out.println("+ loop: " + (t2-t1) + "ns");
+        System.out.println("StringBuilder: " + (t4-t3) + "ns");
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'Why is String immutable in Java?', a: 'Three reasons: (1) Thread safety — multiple threads share strings without synchronisation. (2) Hashcode caching — String caches its hash, making it a safe HashMap key. (3) Security — class names, file paths, and network addresses cannot be changed after validation.' },
+            { q: 'What does == compare for Strings? What should you use instead?', a: '== compares object identity (memory address). Two String variables with identical content but created separately will return false with ==. Always use equals() to compare content.' },
+            { q: 'What is the String pool?', a: 'A section of the JVM heap where string literals are cached. When you write "hello" in source code, the JVM checks the pool first — if that string already exists, it returns the same object. This saves memory for repeated literals.' },
+            { q: 'What does String.intern() do?', a: 'Places the string into the pool (or returns the existing pool object with the same content). After interning, == comparison is safe. Rarely needed manually — useful only when you have millions of repeated string values and want to deduplicate memory.' },
+            { q: 'Why is + concatenation inside a loop bad?', a: 'Each + creates a new String object (strings are immutable). In a loop of n iterations, this creates O(n) objects and copies O(n²) characters total. Use StringBuilder.append() instead — it maintains a resizable buffer and calls toString() once at the end.' }
+          ]
+        },
+        {
+          title: 'StringBuilder, StringBuffer & Common String Methods',
+          notes: `## StringBuilder, StringBuffer & Common String Methods
+
+### StringBuilder — Your Go-To for Dynamic Strings
+
+\`StringBuilder\` is a **mutable sequence of characters**. It maintains an internal \`char[]\` that grows as needed (like \`ArrayList\` for chars):
+
+\`\`\`java
+StringBuilder sb = new StringBuilder();          // default capacity 16
+StringBuilder sb2 = new StringBuilder(64);       // pre-sized
+StringBuilder sb3 = new StringBuilder("start");  // initialised
+
+sb.append("Hello");
+sb.append(", ").append("World");   // chaining — each method returns this
+sb.insert(5, "!");                 // Hello!, World
+sb.delete(5, 6);                   // Hello, World
+sb.replace(7, 12, "Java");         // Hello, Java
+sb.reverse();                      // avaJ ,olleH
+sb.deleteCharAt(0);
+System.out.println(sb.length());   // current length
+System.out.println(sb.charAt(0));  // first character
+String result = sb.toString();     // convert to immutable String
+\`\`\`
+
+### StringBuilder vs StringBuffer
+
+| | \`StringBuilder\` | \`StringBuffer\` |
+|---|---|---|
+| Thread-safe | ✗ | ✓ (all methods synchronised) |
+| Performance | Faster | ~20% slower (lock overhead) |
+| Use when | Single thread (99% of cases) | Shared across threads |
+
+> **Interview answer:** "Use \`StringBuilder\` by default. Only use \`StringBuffer\` if multiple threads will mutate the same buffer — which is rare because you usually synchronise at a higher level."
+
+### Essential String Methods
+
+\`\`\`java
+String s = "  Hello, Java World!  ";
+
+// Case
+s.toLowerCase()            // "  hello, java world!  "
+s.toUpperCase()            // "  HELLO, JAVA WORLD!  "
+
+// Trim / strip
+s.trim()                   // "Hello, Java World!"  (removes ASCII whitespace)
+s.strip()                  // same but Unicode-aware (Java 11+)
+s.stripLeading()           // "Hello, Java World!  "
+s.stripTrailing()          // "  Hello, Java World!"
+
+// Search
+s.contains("Java")         // true
+s.indexOf("Java")          // 9
+s.lastIndexOf("l")         // 15
+s.startsWith("  Hello")    // true
+s.endsWith("!  ")          // true
+
+// Extraction
+s.substring(8)             // "Java World!  "
+s.substring(8, 12)         // "Java"
+s.charAt(8)                // 'J'
+
+// Split / join
+"a,b,c".split(",")         // ["a","b","c"]
+"a,b,c".split(",", 2)      // ["a","b,c"]  (limit)
+String.join("-", "a","b","c")  // "a-b-c"
+String.join(", ", list)        // join a List<String>
+
+// Replace
+s.replace("Java", "Python")
+s.replaceAll("\\\\s+", "_")   // regex replace
+s.replaceFirst("[A-Z]", "x")  // first match
+
+// Null/empty checks (Java 11+)
+"".isEmpty()               // true
+"  ".isBlank()             // true (whitespace only)
+"".isBlank()               // true
+
+// Repeat (Java 11+)
+"-".repeat(20)             // "--------------------"
+
+// chars as stream (Java 9+)
+"hello".chars()            // IntStream of char values
+\`\`\`
+
+### String.format and printf
+
+\`\`\`java
+String msg = String.format("User %s has %d items (%.2f%%)", "Alice", 5, 83.333);
+// "User Alice has 5 items (83.33%)"
+
+// Common format specifiers
+// %s  — String      %d  — int/long     %f  — float/double
+// %n  — newline     %b  — boolean      %c  — char
+// %05d  — pad with zeros   %-10s  — left-align
+
+System.out.printf("%-15s %5d%n", "Alice", 42);  // Alice              42
+\`\`\`
+
+### Comparing Strings Correctly
+
+\`\`\`java
+String a = "Hello";
+String b = "hello";
+
+a.equals(b)                // false — case-sensitive
+a.equalsIgnoreCase(b)      // true
+a.compareTo(b)             // negative (H < h in Unicode)
+a.compareToIgnoreCase(b)   // 0 (equal ignoring case)
+
+// Null-safe comparison
+Objects.equals(a, null)    // false (no NPE)
+Objects.equals(null, null) // true
+\`\`\``,
+          code: [
+            `public class StringBuilderDemo {
+    public static void main(String[] args) {
+        // Core StringBuilder operations
+        StringBuilder sb = new StringBuilder("Hello");
+        sb.append(", ").append("World");      // Hello, World
+        sb.insert(7, "Beautiful ");           // Hello, Beautiful World
+        sb.replace(7, 16, "Java");            // Hello, Java World
+        sb.delete(5, 6);                      // Hello Java World  (removes comma+space → oops)
+        sb.insert(5, ",");                    // Hello, Java World
+        System.out.println(sb);
+
+        // charAt, length, indexOf
+        System.out.println("Length: " + sb.length());
+        System.out.println("charAt(7): " + sb.charAt(7));
+        System.out.println("indexOf Java: " + sb.indexOf("Java"));
+
+        // Reverse
+        StringBuilder rev = new StringBuilder("abcde");
+        rev.reverse();
+        System.out.println("Reversed: " + rev);  // edcba
+
+        // Convert to String
+        String result = sb.toString();
+        System.out.println("Result class: " + result.getClass().getSimpleName());
+    }
+}`,
+            `import java.util.*;
+
+public class StringMethodsDemo {
+    public static void main(String[] args) {
+        String csv = "Alice,30,Engineer";
+        String[] parts = csv.split(",");
+        System.out.println("Name: " + parts[0]);        // Alice
+        System.out.println("Age:  " + parts[1]);        // 30
+        System.out.println("Role: " + parts[2]);        // Engineer
+
+        // Join
+        String joined = String.join(" | ", parts);
+        System.out.println(joined);                      // Alice | 30 | Engineer
+
+        // Search and extract
+        String text = "The quick brown fox";
+        System.out.println(text.contains("quick"));     // true
+        System.out.println(text.indexOf("brown"));      // 10
+        System.out.println(text.substring(4, 9));       // quick
+
+        // Format
+        String report = String.format("%-10s %3d %6.1f%%", "Alice", 42, 87.5);
+        System.out.println(report);                      // Alice       42   87.5%
+
+        // Java 11+ methods
+        System.out.println("  hi  ".strip());           // "hi"
+        System.out.println("  ".isBlank());             // true
+        System.out.println("ha".repeat(3));             // hahaha
+
+        // Null-safe equals
+        String nullStr = null;
+        System.out.println(Objects.equals(nullStr, "hi")); // false, no NPE
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the difference between StringBuilder and StringBuffer?', a: 'StringBuffer is thread-safe (all methods are synchronised); StringBuilder is not. StringBuilder is ~20% faster. Use StringBuilder by default in single-threaded code (which is almost always). Only use StringBuffer when multiple threads mutate the same instance.' },
+            { q: 'What does StringBuilder.append() return?', a: 'It returns this — the same StringBuilder instance. This enables method chaining: sb.append("a").append("b").append("c"). Each call appends to the same internal buffer.' },
+            { q: 'What is the difference between trim() and strip() in Java 11+?', a: 'trim() removes only ASCII whitespace (\\u0000–\\u0020). strip() removes Unicode whitespace as defined by Character.isWhitespace(), which includes non-breaking spaces and other Unicode space characters. strip() is the modern replacement.' },
+            { q: 'How do you safely compare a String that might be null?', a: 'Use Objects.equals(a, b) — it handles null on either side without NullPointerException. Or put the known non-null string first: "literal".equals(variable). Never call variable.equals("literal") when variable might be null.' },
+            { q: 'What does String.format("%-10s %5d", "Alice", 42) produce?', a: '"Alice      42" — %-10s left-aligns "Alice" in a 10-char field (padded right with spaces), %5d right-aligns 42 in a 5-char field.' }
+          ]
+        },
+        {
+          title: 'Text Blocks, Regex & String Internals',
+          notes: `## Text Blocks, Regex & String Internals
+
+### Text Blocks (Java 13 preview → Java 15 standard)
+
+Text blocks eliminate the backslash hell of multi-line strings:
+
+\`\`\`java
+// Old way
+String json = "{\\n" +
+              "  \\"name\\": \\"Alice\\",\\n" +
+              "  \\"age\\": 30\\n" +
+              "}";
+
+// Text block — opening \`"""\` must be followed by a newline
+String json = """
+        {
+          "name": "Alice",
+          "age": 30
+        }
+        """;
+\`\`\`
+
+**Indentation stripping:** the compiler removes the common leading whitespace (determined by the closing \`"""\` position). In the example above, 8 spaces of indentation are stripped from every line, so the string starts with \`{\`, not \`        {\`.
+
+**Escape sequences in text blocks:**
+\`\`\`java
+String noNewline = """
+        first line \
+        second line
+        """;
+// "first line second line\n"  — \\ at end of line suppresses the newline
+
+String escaped = """
+        tab\there
+        """;
+// literal tab character
+
+// \s at end of a line preserves trailing space (otherwise stripped)
+String aligned = """
+        left   \s
+        right
+        """;
+\`\`\`
+
+### Regex with String
+
+Java's \`String\` methods accept regular expressions directly:
+
+\`\`\`java
+String data = "Order #12345 placed on 2024-06-15";
+
+// matches — full string must match
+"hello123".matches("[a-z]+\\\\d+")    // true
+
+// replaceAll — regex replace
+data.replaceAll("\\\\d+", "X")       // "Order #X placed on X-X-X"
+data.replaceFirst("\\\\d+", "X")     // "Order #X placed on 2024-06-15"
+
+// split with regex
+"one  two   three".split("\\\\s+")   // ["one","two","three"]  (any whitespace run)
+
+// Pattern + Matcher for repeated matching or groups
+Pattern p = Pattern.compile("(\\\\d{4})-(\\\\d{2})-(\\\\d{2})");
+Matcher m = p.matcher(data);
+if (m.find()) {
+    System.out.println("Year: "  + m.group(1));  // 2024
+    System.out.println("Month: " + m.group(2));  // 06
+    System.out.println("Day: "   + m.group(3));  // 15
+}
+\`\`\`
+
+### String Internals — char[] vs byte[] (Java 9 Compact Strings)
+
+Before Java 9, \`String\` stored characters as \`char[]\` (2 bytes per character). Java 9 introduced **Compact Strings**:
+
+- If all characters fit in Latin-1 (ISO-8859-1, 1 byte each), the string is stored as \`byte[]\` with encoding \`LATIN1\`
+- Otherwise stored as \`byte[]\` with encoding \`UTF16\` (2 bytes per character)
+
+This halves memory for ASCII-only strings (the majority in most applications). The change is **invisible to Java code** — no API changed.
+
+\`\`\`mermaid
+graph LR
+    S[String object]
+    S --> E{Encoding?}
+    E -->|All Latin-1| L["byte[] LATIN1 (1 byte/char)"]
+    E -->|Has non-Latin1| U["byte[] UTF16 (2 bytes/char)"]
+    style L fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style U fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+\`\`\`
+
+### hashCode Caching
+
+\`String\` stores its hash code in a private \`int hash\` field (default 0 = uncomputed). On first \`hashCode()\` call it computes and caches the result. Subsequent calls return the cached value in O(1). This is safe only because strings are immutable — the content can never change after construction.
+
+\`\`\`java
+// Algorithm: s[0]*31^(n-1) + s[1]*31^(n-2) + ... + s[n-1]
+// The constant 31 is chosen because: good distribution, and 31*x = (x<<5) - x (fast on hardware)
+\`\`\`
+
+### String Deduplication (G1 GC)
+
+When using the G1 garbage collector, you can enable \`-XX:+UseStringDeduplication\`. The GC identifies \`String\` objects with the same content and makes them share the same underlying \`byte[]\` array. This operates outside the string pool — it deduplicates \`new String(...)\` objects too.`,
+          code: [
+            `public class TextBlockDemo {
+    public static void main(String[] args) {
+        // Text block — indentation stripped to match closing """
+        String html = """
+                <html>
+                  <body>
+                    <p>Hello, World!</p>
+                  </body>
+                </html>
+                """;
+        System.out.println(html);
+
+        // Text block with formatting
+        String query = """
+                SELECT u.name, u.email
+                FROM   users u
+                WHERE  u.age > %d
+                  AND  u.active = true
+                ORDER  BY u.name
+                """.formatted(18);
+        System.out.println(query);
+
+        // Line continuation with backslash
+        String sentence = """
+                The quick brown fox \
+                jumps over the lazy dog.
+                """;
+        System.out.println(sentence); // single line, no break
+    }
+}`,
+            `import java.util.regex.*;
+
+public class RegexDemo {
+    public static void main(String[] args) {
+        String text = "Emails: alice@example.com, bob@work.org, charlie@test.net";
+
+        // Extract all emails with Pattern + Matcher
+        Pattern emailPattern = Pattern.compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
+        Matcher matcher = emailPattern.matcher(text);
+
+        System.out.println("Found emails:");
+        while (matcher.find()) {
+            System.out.println("  " + matcher.group() + " at index " + matcher.start());
+        }
+
+        // Replace with regex
+        String masked = text.replaceAll("[a-zA-Z0-9._%+\\-]+@", "***@");
+        System.out.println("Masked: " + masked);
+
+        // Split on multiple delimiters
+        String csv = "one, two  ,  three,four";
+        String[] parts = csv.split("\\s*,\\s*");
+        for (String p : parts) System.out.println("[" + p + "]");
+
+        // Named groups (Java 7+)
+        Pattern date = Pattern.compile("(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})");
+        Matcher dm = date.matcher("Date: 2024-06-15");
+        if (dm.find()) {
+            System.out.println("Year: " + dm.group("year"));
+            System.out.println("Month: " + dm.group("month"));
+        }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'How does indentation stripping work in text blocks?', a: 'The compiler determines the common leading whitespace by looking at the position of the closing """. All lines have that many characters of leading whitespace removed. Moving the closing """ to the left increases what remains; moving it right to column 0 removes all leading whitespace.' },
+            { q: 'What is the Compact Strings optimisation introduced in Java 9?', a: 'If all characters in a String fit in Latin-1 (single byte), Java stores the string as byte[] with 1 byte per character instead of char[] (2 bytes per character). Halves memory for ASCII strings. Completely transparent to Java code.' },
+            { q: 'Why does String.hashCode() use the multiplier 31?', a: 'Two reasons: (1) 31 is an odd prime, which gives good hash distribution. (2) 31 * x == (x << 5) - x, which the JIT can optimise to a shift + subtract instead of a multiply — historically faster on many CPUs.' },
+            { q: 'What is the difference between String.matches() and Pattern.matcher().find()?', a: 'matches() requires the entire string to match the pattern (anchored). find() searches for the pattern anywhere within the string. Also, Pattern.compile() + Matcher is reusable and much faster for repeated matching — compile once, use many times.' },
+            { q: 'What does -XX:+UseStringDeduplication do?', a: 'Enables the G1 GC to detect String objects with identical content and make them share the same underlying byte[] array. This reduces heap memory without changing code. Different from the String pool — it works on all String objects, including those created with new String(...).' }
+          ]
+        },
+        {
+          title: 'String Performance Patterns & Interview Traps',
+          notes: `## String Performance Patterns & Interview Traps
+
+### The Classic Interview Trap: How Many Objects?
+
+\`\`\`java
+String s1 = "Hello";         // 1 object in pool
+String s2 = "Hello";         // 0 new objects — reuses pool
+String s3 = new String("Hello"); // 1 new heap object (pool already has "Hello")
+String s4 = new String("World"); // 2 new objects: "World" in pool + heap copy
+\`\`\`
+
+For the last line — "World" must first be created as a literal to be passed to the constructor, then the \`new\` creates a second heap copy. This question comes up in almost every Java fresher interview.
+
+### String + in Loops — the O(n²) Trap
+
+\`\`\`java
+// What's wrong with this?
+public String buildCsv(List<String> items) {
+    String result = "";
+    for (String item : items) {
+        result += item + ",";
+    }
+    return result;
+}
+\`\`\`
+
+Each \`+=\` creates a new String copying all previous content plus the new item. For n items: 0 + 1 + 2 + ... + (n-1) = **O(n²) characters copied**. For 10,000 items that's 50 million character copies.
+
+**Fix:** use \`StringBuilder\` or, for joining, \`String.join()\` / \`Collectors.joining()\`:
+
+\`\`\`java
+// Option 1: StringBuilder
+public String buildCsv(List<String> items) {
+    StringBuilder sb = new StringBuilder();
+    for (String item : items) sb.append(item).append(',');
+    if (sb.length() > 0) sb.deleteCharAt(sb.length() - 1);  // remove trailing comma
+    return sb.toString();
+}
+
+// Option 2: String.join (cleanest)
+return String.join(",", items);
+
+// Option 3: Collectors.joining (stream)
+return items.stream().collect(Collectors.joining(","));
+
+// Option 4: with prefix/suffix
+return items.stream().collect(Collectors.joining(", ", "[", "]"));
+\`\`\`
+
+### Sorting Strings: Natural vs Locale-Aware
+
+\`\`\`java
+List<String> names = Arrays.asList("banana", "Apple", "cherry", "apricot");
+
+// Natural order — uppercase before lowercase (ASCII: A=65, a=97)
+Collections.sort(names);
+// [Apple, apricot, banana, cherry]
+
+// Case-insensitive
+names.sort(String.CASE_INSENSITIVE_ORDER);
+// [Apple, apricot, banana, cherry]  (Apple ~ apple)
+
+// Locale-aware (for non-English text)
+names.sort(Collator.getInstance(Locale.ENGLISH));
+\`\`\`
+
+### Checking Empty vs Null vs Blank
+
+\`\`\`java
+String s = getUserInput();   // might be null, "", or "   "
+
+// Version 1 (before Java 11)
+if (s == null || s.trim().isEmpty()) { ... }
+
+// Version 2 (Java 11+) — handles null separately
+if (s == null || s.isBlank()) { ... }
+
+// Apache Commons / Guava pattern (common in enterprise code)
+Strings.isNullOrEmpty(s)     // Guava
+StringUtils.isBlank(s)       // Apache Commons — handles null
+\`\`\`
+
+### charSequence, charAt, and String as Char Array
+
+\`\`\`java
+String s = "hello";
+
+// Iteration
+for (int i = 0; i < s.length(); i++) {
+    char c = s.charAt(i);        // O(1)
+}
+
+// toCharArray — copy, not a view
+char[] chars = s.toCharArray();
+chars[0] = 'H';                  // doesn't affect s
+String modified = new String(chars);
+
+// Stream of chars (Java 9+)
+s.chars()                         // IntStream
+ .mapToObj(c -> String.valueOf((char)c))
+ .forEach(System.out::println);
+
+// Convert String → char[] → sort → back
+char[] arr = s.toCharArray();
+Arrays.sort(arr);
+String sorted = new String(arr);  // "ehllo"
+\`\`\`
+
+### Interview Quick-Fire Answers
+
+| Question | Answer |
+|---|---|
+| Is String thread-safe? | Yes — immutability makes it inherently thread-safe |
+| Can String be subclassed? | No — it is \`final\` |
+| What package is String in? | \`java.lang\` — auto-imported |
+| What is the max String length? | Theoretically \`Integer.MAX_VALUE\` (2GB), limited by heap |
+| Does \`s.equals(null)\` throw? | No — returns \`false\` |
+| Does \`null.equals(s)\` throw? | Yes — NullPointerException |
+| When was text blocks added? | Java 15 (preview in 13 and 14) |`,
+          code: [
+            `import java.util.*;
+import java.util.stream.*;
+
+public class StringPatterns {
+    // O(n) join — three ways
+    static String joinWithSb(List<String> items) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < items.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(items.get(i));
+        }
+        return sb.toString();
+    }
+
+    static String joinWithJoin(List<String> items) {
+        return String.join(", ", items);
+    }
+
+    static String joinWithStream(List<String> items) {
+        return items.stream().collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    public static void main(String[] args) {
+        List<String> names = Arrays.asList("Alice", "Bob", "Charlie");
+        System.out.println(joinWithSb(names));      // Alice, Bob, Charlie
+        System.out.println(joinWithJoin(names));    // Alice, Bob, Charlie
+        System.out.println(joinWithStream(names));  // [Alice, Bob, Charlie]
+
+        // Sort variations
+        List<String> words = new ArrayList<>(Arrays.asList("banana","Apple","cherry","apricot"));
+        Collections.sort(words);
+        System.out.println("Natural: " + words);
+        words.sort(String.CASE_INSENSITIVE_ORDER);
+        System.out.println("Case-insensitive: " + words);
+    }
+}`,
+            `public class CharOperations {
+    // Reverse a string using StringBuilder
+    static String reverse(String s) {
+        return new StringBuilder(s).reverse().toString();
+    }
+
+    // Check if palindrome (case-insensitive, ignore spaces)
+    static boolean isPalindrome(String s) {
+        String cleaned = s.toLowerCase().replaceAll("[^a-z0-9]", "");
+        int lo = 0, hi = cleaned.length() - 1;
+        while (lo < hi) {
+            if (cleaned.charAt(lo++) != cleaned.charAt(hi--)) return false;
+        }
+        return true;
+    }
+
+    // Count character frequencies
+    static Map<Character, Long> charFreq(String s) {
+        Map<Character, Long> freq = new LinkedHashMap<>();
+        for (char c : s.toCharArray()) {
+            freq.merge(c, 1L, Long::sum);
+        }
+        return freq;
+    }
+
+    // Sort string characters
+    static String sortChars(String s) {
+        char[] arr = s.toCharArray();
+        java.util.Arrays.sort(arr);
+        return new String(arr);
+    }
+
+    public static void main(String[] args) {
+        System.out.println(reverse("hello"));         // olleh
+        System.out.println(isPalindrome("A man a plan a canal Panama")); // true
+        System.out.println(charFreq("hello"));        // {h=1, e=1, l=2, o=1}
+        System.out.println(sortChars("hello"));       // ehllo
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'How many String objects does `new String("World")` create if "World" is not yet in the pool?', a: 'Two: one String literal "World" placed in the pool, and one heap object created by new String(). If "World" was already in the pool, only the heap copy is new.' },
+            { q: 'What is the most concise way to join a List<String> with a comma separator?', a: 'String.join(",", list) — introduced in Java 8. Or list.stream().collect(Collectors.joining(",")) for stream pipelines. Both are O(n) and far better than += in a loop.' },
+            { q: 'Can String be subclassed?', a: 'No — String is declared final, preventing subclassing. This is part of what guarantees immutability: no subclass can override methods and sneak in mutable behaviour.' },
+            { q: 'What is the difference between s.equals(null) and null.equals(s)?', a: 's.equals(null) returns false safely (String.equals() checks for null first). null.equals(s) throws NullPointerException because you are calling a method on a null reference. Always put the non-null side first.' },
+            { q: 'How do you sort an array of characters in a String?', a: 'char[] arr = s.toCharArray(); Arrays.sort(arr); String sorted = new String(arr); — toCharArray() gives a copy (not a view), sort it in place, then construct a new String from the sorted array.' }
+          ]
+        }
+      ]
     },
 
-    {
+        {
       id: '0.7',
       title: 'Exception Handling & Custom Exceptions',
       hours: 3,
