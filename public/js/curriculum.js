@@ -9669,2098 +9669,425 @@ public class DateTimePatterns {
     },
     {
       id: '0.11',
-      title: 'File I/O — java.io, NIO2, Files API',
-      hours: 3,
-      notes: `*[Module 0.11 — under construction. Will cover: File, FileInputStream/OutputStream, NIO2 Paths, Files API, try-with-resources. Roadmap: build after 0.10.]*`
-    },
-
-    {
-      id: '0.12',
-      title: 'JDBC — Connections, PreparedStatement, Transactions',
-      hours: 3,
+      title: 'File I/O — java.io, NIO2 & Files API',
+      hours: 2,
       sections: [
         {
-          title: 'JDBC Fundamentals — Connections, Statements, ResultSet',
-          notes: `## JDBC Fundamentals — Connections, Statements, ResultSet
+          title: 'Streams, Readers & Writers — Classic java.io',
+          notes: `## Classic java.io — Streams, Readers & Writers
 
-JDBC (Java Database Connectivity) is the standard Java API for relational database access. It provides a vendor-neutral abstraction: you write to the JDBC API; the driver vendor (MySQL, PostgreSQL, H2, etc.) provides the implementation.
+Java's original I/O API uses **byte streams** (InputStream/OutputStream) for binary data and **character streams** (Reader/Writer) for text.
 
-### The JDBC Stack
-
-\`\`\`mermaid
-graph TD
-    APP[Your Java Code\nJDBC API calls]
-    APP --> DM[DriverManager\nor DataSource]
-    DM --> DR[JDBC Driver\nPostgreSQL / MySQL / H2]
-    DR --> DB[(Database)]
-    style APP fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
-    style DR fill:#0f1e12,stroke:#10b981,color:#e2e8f0
-    style DB fill:#1e0a0a,stroke:#ef4444,color:#fecaca
-\`\`\`
-
-### Getting a Connection
+### Byte Streams
 
 \`\`\`java
-// DriverManager — fine for scripts, tests; NOT for production (no pooling)
-String url  = "jdbc:postgresql://localhost:5432/mydb";
-String user = "appuser";
-String pass = "secret";
-
-try (Connection conn = DriverManager.getConnection(url, user, pass)) {
-    System.out.println("Connected: " + conn.getMetaData().getDatabaseProductName());
-} // connection auto-closed (try-with-resources)
-\`\`\`
-
-> In production always use a **DataSource** (connection pool) — HikariCP, c3p0, or Spring's DataSource. Direct DriverManager connections have no pooling, no health checks, and create a new physical TCP connection on every call.
-
-### Statement — Simple Queries (No Parameters)
-
-\`\`\`java
-try (Connection conn = DriverManager.getConnection(url, user, pass);
-     Statement stmt = conn.createStatement()) {
-
-    // DDL
-    stmt.execute("CREATE TABLE IF NOT EXISTS orders (id INT PRIMARY KEY, item VARCHAR(100), qty INT)");
-
-    // DML — returns rows affected
-    int rows = stmt.executeUpdate("INSERT INTO orders VALUES (1, 'Widget', 5)");
-
-    // Query — returns ResultSet
-    ResultSet rs = stmt.executeQuery("SELECT id, item, qty FROM orders");
-    while (rs.next()) {
-        int  id  = rs.getInt("id");
-        String item = rs.getString("item");
-        int  qty = rs.getInt("qty");
-        System.out.printf("  %d | %-10s | %d%n", id, item, qty);
+// InputStream / OutputStream — raw bytes
+// ALWAYS close in try-with-resources
+try (InputStream in   = new FileInputStream("input.bin");
+     OutputStream out = new FileOutputStream("output.bin")) {
+    byte[] buffer = new byte[8192];
+    int bytesRead;
+    while ((bytesRead = in.read(buffer)) != -1) {
+        out.write(buffer, 0, bytesRead);
     }
 }
-\`\`\`
+// Stream is closed automatically — even if exception is thrown
 
-**Never use Statement with user-supplied values** — it is vulnerable to SQL injection. Always use PreparedStatement for parameterised queries.
-
-### ResultSet Navigation
-
-\`\`\`java
-ResultSet rs = stmt.executeQuery("SELECT id, name, created_at FROM users");
-while (rs.next()) {  // cursor starts BEFORE first row
-    int    id   = rs.getInt(1);          // by column index (1-based)
-    String name = rs.getString("name");  // by column name (preferred — resistant to query changes)
-    Timestamp ts = rs.getTimestamp("created_at");
-    LocalDateTime ldt = ts.toLocalDateTime(); // convert to java.time
-
-    // Null check — rs.getInt returns 0 for SQL NULL (misleading!)
-    int nullable = rs.getInt("optional_col");
-    boolean wasNull = rs.wasNull(); // must check AFTER getXxx()
+// BufferedInputStream/BufferedOutputStream for performance
+// Raw FileInputStream reads 1 byte at a time from disk — very slow
+try (InputStream in = new BufferedInputStream(new FileInputStream("large.bin"), 65536)) {
+    // Now reads 64KB chunks internally — much faster
 }
 \`\`\`
 
-**Column index vs column name:** use column names — they survive column reordering and make the code self-documenting.
-
-### Key JDBC Interfaces
-
-| Interface | Purpose |
-|---|---|
-| \`Connection\` | Represents one DB connection; manages transactions |
-| \`Statement\` | Executes static SQL (no parameters) |
-| \`PreparedStatement\` | Executes pre-compiled SQL with parameters (preferred) |
-| \`CallableStatement\` | Calls stored procedures |
-| \`ResultSet\` | Cursor into a query result |
-| \`DataSource\` | Factory for connections, typically pooled |
-
-### Resource Management — try-with-resources
-
-JDBC resources (\`Connection\`, \`Statement\`, \`ResultSet\`) implement \`AutoCloseable\`. Always use try-with-resources to guarantee they are closed even when exceptions occur:
+### Character Streams
 
 \`\`\`java
-// Correct — all three auto-closed in reverse order (rs, stmt, conn)
-try (Connection conn = ds.getConnection();
-     PreparedStatement ps = conn.prepareStatement("SELECT * FROM users WHERE id = ?");
-     ResultSet rs = (ps.setInt(1, userId), ps.executeQuery())) {
-    if (rs.next()) { /* process */ }
+// Reader / Writer — text, with charset encoding
+try (Writer writer = new BufferedWriter(new FileWriter("out.txt", StandardCharsets.UTF_8))) {
+    writer.write("Hello, World!\\n");
+    writer.write("Second line\\n");
 }
-// After the block: rs closed, then ps closed, then conn returned to pool
+
+try (Reader reader = new BufferedReader(new FileReader("out.txt", StandardCharsets.UTF_8))) {
+    // Cast to BufferedReader to use readLine()
+    BufferedReader br = (BufferedReader) reader;
+    String line;
+    while ((line = br.readLine()) != null) {
+        System.out.println(line);
+    }
+}
+
+// PrintWriter — convenient for formatted output
+try (PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter("out.txt")))) {
+    pw.printf("%-20s %d%n", "Alice", 95000);
+    pw.println("Done");
+}
+\`\`\`
+
+### ObjectInputStream / ObjectOutputStream (Serialization)
+
+\`\`\`java
+// Serialize (requires Serializable)
+record Point(int x, int y) implements java.io.Serializable {}
+
+try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream("point.bin"))) {
+    oos.writeObject(new Point(3, 4));
+}
+try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream("point.bin"))) {
+    Point p = (Point) ois.readObject();
+    System.out.println(p); // Point[x=3, y=4]
+}
+// Prefer JSON/Protobuf over Java serialization for cross-system compatibility
+\`\`\`
+
+### Stream Decorators — the Decorator Pattern
+
+\`\`\`java
+// java.io uses the Decorator pattern — wrap streams to add capabilities
+// FileInputStream → BufferedInputStream → GZIPInputStream → ObjectInputStream
+try (ObjectInputStream ois = new ObjectInputStream(
+        new BufferedInputStream(
+        new java.util.zip.GZIPInputStream(
+        new FileInputStream("data.gz"))))) {
+    Object obj = ois.readObject();
+}
+// Each layer adds one responsibility — Buffering, Compression, Deserialization
 \`\`\``,
           code: [
-            `import java.sql.*;
+            `import java.io.*;
+import java.nio.charset.StandardCharsets;
 
-// H2 in-memory database — runnable without a real DB
-public class JdbcBasicsDemo {
-    static final String URL  = "jdbc:h2:mem:demo;DB_CLOSE_DELAY=-1";
-    static final String USER = "sa";
-    static final String PASS = "";
-
-    public static void main(String[] args) throws SQLException {
-        // Setup schema and data
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             Statement stmt = conn.createStatement()) {
-
-            stmt.execute("""
-                CREATE TABLE products (
-                  id   INT PRIMARY KEY,
-                  name VARCHAR(100) NOT NULL,
-                  price DECIMAL(10,2),
-                  stock INT DEFAULT 0
-                )""");
-
-            stmt.execute("INSERT INTO products VALUES (1,'Widget',9.99,50)");
-            stmt.execute("INSERT INTO products VALUES (2,'Gadget',29.99,5)");
-            stmt.execute("INSERT INTO products VALUES (3,'Doohickey',4.99,200)");
-            System.out.println("Schema created, 3 products inserted.");
-        }
-
-        // Query with ResultSet
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             Statement stmt = conn.createStatement();
-             ResultSet rs   = stmt.executeQuery(
-                 "SELECT id, name, price, stock FROM products ORDER BY price")) {
-
-            System.out.printf("%n%-5s %-15s %8s %6s%n", "ID", "Name", "Price", "Stock");
-            System.out.println("-".repeat(40));
-            while (rs.next()) {
-                System.out.printf("%-5d %-15s %8.2f %6d%n",
-                    rs.getInt("id"),
-                    rs.getString("name"),
-                    rs.getDouble("price"),
-                    rs.getInt("stock"));
-            }
-        }
-
-        // ResultSet metadata
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             Statement stmt = conn.createStatement();
-             ResultSet rs   = stmt.executeQuery("SELECT * FROM products LIMIT 1")) {
-            ResultSetMetaData md = rs.getMetaData();
-            System.out.println("\nColumn metadata:");
-            for (int i = 1; i <= md.getColumnCount(); i++) {
-                System.out.printf("  %s (%s)%n", md.getColumnName(i), md.getColumnTypeName(i));
-            }
+public class ClassicIODemo {
+    // Copy binary file with buffering
+    static long copyFile(String src, String dst) throws IOException {
+        try (var in  = new BufferedInputStream(new FileInputStream(src), 65536);
+             var out = new BufferedOutputStream(new FileOutputStream(dst), 65536)) {
+            byte[] buf = new byte[8192];
+            long total = 0;
+            int n;
+            while ((n = in.read(buf)) != -1) { out.write(buf, 0, n); total += n; }
+            return total;
         }
     }
-}`,
-            `import java.sql.*;
-import java.util.*;
 
-// Batch inserts + ResultSet navigation
-public class JdbcBatchDemo {
-    static final String URL = "jdbc:h2:mem:batchdemo;DB_CLOSE_DELAY=-1";
-
-    record Order(int id, String item, int qty, double price) {}
-
-    public static void main(String[] args) throws SQLException {
-        try (Connection conn = DriverManager.getConnection(URL, "sa", "")) {
-            conn.createStatement().execute(
-                "CREATE TABLE orders (id INT PRIMARY KEY, item VARCHAR(100), qty INT, price DECIMAL(10,2))");
-
-            // Batch insert — single round-trip for many rows
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO orders VALUES (?,?,?,?)")) {
-                for (int i = 1; i <= 5; i++) {
-                    ps.setInt(1, i);
-                    ps.setString(2, "Item-" + i);
-                    ps.setInt(3, i * 10);
-                    ps.setDouble(4, i * 5.99);
-                    ps.addBatch();
-                }
-                int[] counts = ps.executeBatch();
-                System.out.println("Batch inserted: " + counts.length + " rows");
-            }
-
-            // Query and map to records
-            List<Order> orders = new ArrayList<>();
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery(
-                     "SELECT * FROM orders WHERE qty > 20 ORDER BY price DESC")) {
-                while (rs.next()) {
-                    orders.add(new Order(
-                        rs.getInt("id"), rs.getString("item"),
-                        rs.getInt("qty"), rs.getDouble("price")));
-                }
-            }
-            System.out.println("\nOrders with qty > 20:");
-            orders.forEach(o -> System.out.printf(
-                "  #%d %-10s qty=%-3d $%.2f%n", o.id(), o.item(), o.qty(), o.price()));
+    // Read text file line by line
+    static java.util.List<String> readLines(String path) throws IOException {
+        var lines = new java.util.ArrayList<String>();
+        try (var br = new BufferedReader(new FileReader(path, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) lines.add(line);
         }
+        return lines;
+    }
+
+    // Write CSV
+    static void writeCsv(String path, java.util.List<String[]> rows) throws IOException {
+        try (var pw = new PrintWriter(new BufferedWriter(
+                new FileWriter(path, StandardCharsets.UTF_8)))) {
+            for (var row : rows)
+                pw.println(String.join(",", row));
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        // Write a temp file
+        var tmp = File.createTempFile("demo", ".txt");
+        tmp.deleteOnExit();
+        writeCsv(tmp.getPath(), java.util.List.of(
+            new String[]{"Alice","30","Engineer"},
+            new String[]{"Bob","25","Designer"}
+        ));
+
+        var lines = readLines(tmp.getPath());
+        lines.forEach(System.out::println);
+        System.out.println("Lines: " + lines.size());
+
+        // Check file info
+        System.out.println("Exists: " + tmp.exists());
+        System.out.println("Size: " + tmp.length() + " bytes");
+        System.out.println("Readable: " + tmp.canRead());
     }
 }`
           ],
           flashcards: [
-            { q: 'What is the JDBC URL format and what does each part mean?', a: 'jdbc:<subprotocol>://<host>:<port>/<database>. Example: jdbc:postgresql://localhost:5432/mydb. The subprotocol identifies the driver (postgresql, mysql, h2, oracle:thin). The driver must be on the classpath — modern JDBC 4.0+ drivers auto-register via ServiceLoader, so Class.forName() is no longer needed.' },
-            { q: 'Why is DriverManager.getConnection() not suitable for production?', a: 'DriverManager creates a new physical TCP connection on every call — expensive (100ms+). Production apps need a DataSource connection pool (HikariCP is standard). Pools maintain a warm set of connections, validate them, handle reconnection, and return connections to the pool on close rather than actually closing them.' },
-            { q: 'How do you check for SQL NULL in a ResultSet?', a: 'rs.getInt("col") returns 0 for NULL — indistinguishable from an actual 0. After any getXxx() call, check rs.wasNull() to know if the last column read was NULL. Alternatively use rs.getObject("col") which returns null for SQL NULL. For nullable columns, map to Integer/Double (boxed types) to use null directly.' },
-            { q: 'What does rs.next() return and where does the cursor start?', a: 'The ResultSet cursor starts before the first row. rs.next() advances the cursor one row and returns true if there is a row, false when past the last row. For a single expected row: if (rs.next()) { /* process */ } else { /* not found */ }. Never call get methods before the first rs.next().' },
-            { q: 'What is the difference between Statement.execute(), executeUpdate(), and executeQuery()?', a: 'executeQuery(sql) — for SELECT; returns ResultSet; throws if SQL produces no ResultSet. executeUpdate(sql) — for INSERT/UPDATE/DELETE/DDL; returns int (rows affected for DML, 0 for DDL). execute(sql) — generic; returns boolean (true = ResultSet, false = update count); use for dynamic SQL where you don\'t know the type.' }
+            { q: 'What is the difference between byte streams and character streams in java.io?', a: 'Byte streams (InputStream/OutputStream) transfer raw bytes — used for binary data: images, audio, serialized objects, encrypted data. Character streams (Reader/Writer) handle text with charset encoding — they translate between char (Unicode) and bytes using a specified charset (StandardCharsets.UTF_8). Always specify the charset explicitly (new FileReader(path, UTF_8)) — never rely on platform default which differs by OS.' },
+            { q: 'Why is BufferedInputStream/BufferedOutputStream important and what does it do?', a: 'FileInputStream.read() makes a system call to the OS for EVERY byte — extremely slow. BufferedInputStream reads a large chunk (default 8192 bytes) into an internal buffer with one system call, then serves subsequent read() calls from memory. This can improve performance by 100-1000x. Always wrap FileInputStream in BufferedInputStream (or use the Files API which buffers automatically). Same principle for BufferedOutputStream — flushes to disk in batches rather than per write.' },
+            { q: 'What is try-with-resources and why must you always use it for I/O?', a: 'try (Resource r = new Resource()) { ... } automatically calls r.close() when the block exits — whether normally or via exception. Without it, if an exception occurs before your explicit close() call, the stream leaks (file descriptor is not released, the OS limits open file descriptors per process). The resource must implement AutoCloseable. Multiple resources can be declared (comma-separated) and are closed in reverse order.' }
           ]
         },
         {
-          title: 'PreparedStatement & SQL Injection Prevention',
-          notes: `## PreparedStatement & SQL Injection Prevention
+          title: 'NIO2 & the Files API — Modern Java File Operations',
+          notes: `## NIO2 & the Files API — Modern Java File Operations (Java 7+)
 
-\`PreparedStatement\` is the cornerstone of safe JDBC. It pre-compiles the SQL on the database, uses bind parameters (\`?\` placeholders), and separates code from data — making SQL injection structurally impossible.
+NIO2 (\`java.nio.file\`) is the modern way to work with files. \`Files\` and \`Path\` replace \`File\` for most use cases.
 
-### How SQL Injection Works
+### Path — Replacing java.io.File
 
 \`\`\`java
-// NEVER DO THIS
-String username = request.getParameter("username"); // attacker inputs: ' OR '1'='1
-String sql = "SELECT * FROM users WHERE name = '" + username + "'";
-// Resulting SQL: SELECT * FROM users WHERE name = '' OR '1'='1'
-// Returns ALL rows — complete bypass of authentication
+import java.nio.file.*;
+
+// Creating paths
+Path p1 = Path.of("/home/user/docs/report.pdf");      // Java 11+
+Path p2 = Paths.get("/home/user", "docs", "report.pdf"); // Java 7+
+Path relative = Path.of("src/main/java");
+Path absolute  = relative.toAbsolutePath();
+
+// Path operations
+Path dir = p1.getParent();           // /home/user/docs
+Path name = p1.getFileName();        // report.pdf
+String ext = p1.toString().endsWith(".pdf") ? "pdf" : "";
+Path sibling = p1.resolveSibling("summary.txt"); // /home/user/docs/summary.txt
+Path resolved = dir.resolve("new.txt");           // /home/user/docs/new.txt
+Path relative2 = Path.of("/home").relativize(p1); // user/docs/report.pdf
+
+// Normalise and check
+p1.normalize();   // removes . and ..
+p1.toRealPath();  // resolves symlinks, throws NoSuchFileException if missing
+p1.toFile();      // bridge back to java.io.File when needed
 \`\`\`
 
-### PreparedStatement — The Safe Way
+### Files — Static Utility Methods
 
 \`\`\`java
-String sql = "SELECT * FROM users WHERE name = ? AND active = ?";
-try (PreparedStatement ps = conn.prepareStatement(sql)) {
-    ps.setString(1, username);   // parameter 1 (1-based)
-    ps.setBoolean(2, true);      // parameter 2
-    try (ResultSet rs = ps.executeQuery()) {
-        while (rs.next()) { /* process safely */ }
-    }
-}
-// Even if username = "' OR '1'='1", it is treated as a literal string value
-// The DB sees: WHERE name = ''' OR ''1''=''1' — no injection possible
-\`\`\`
+// Read / Write — entire file at once (small files only)
+String content = Files.readString(Path.of("config.yml"), StandardCharsets.UTF_8); // Java 11
+byte[] bytes   = Files.readAllBytes(Path.of("data.bin"));
+List<String> lines = Files.readAllLines(Path.of("data.csv"), StandardCharsets.UTF_8);
 
-### Setting Parameters — Type Methods
+Files.writeString(Path.of("out.txt"), "Hello\\n", StandardCharsets.UTF_8);
+Files.write(Path.of("out.txt"), bytes);
+Files.write(Path.of("log.txt"), List.of("line1", "line2"), StandardOpenOption.APPEND);
 
-\`\`\`java
-ps.setInt(1, 42);
-ps.setLong(1, 1234567890L);
-ps.setDouble(1, 9.99);
-ps.setString(1, "text");
-ps.setBoolean(1, true);
-ps.setDate(1, java.sql.Date.valueOf(LocalDate.now()));
-ps.setTimestamp(1, Timestamp.valueOf(LocalDateTime.now()));
-ps.setNull(1, Types.VARCHAR);       // explicit NULL
-ps.setObject(1, someValue);         // let JDBC infer type
-\`\`\`
-
-### INSERT, UPDATE, DELETE with PreparedStatement
-
-\`\`\`java
-// INSERT — with generated key retrieval
-String insert = "INSERT INTO orders (item, qty, price) VALUES (?,?,?)";
-try (PreparedStatement ps = conn.prepareStatement(insert, Statement.RETURN_GENERATED_KEYS)) {
-    ps.setString(1, "Widget");
-    ps.setInt(2, 5);
-    ps.setDouble(3, 49.95);
-    ps.executeUpdate();
-    try (ResultSet keys = ps.getGeneratedKeys()) {
-        if (keys.next()) System.out.println("Generated ID: " + keys.getLong(1));
-    }
+// Streaming lines — memory-efficient for large files
+try (Stream<String> lines = Files.lines(Path.of("big.log"))) {
+    long errors = lines.filter(l -> l.contains("ERROR")).count();
 }
 
-// UPDATE
-try (PreparedStatement ps = conn.prepareStatement(
-        "UPDATE products SET price = ? WHERE id = ?")) {
-    ps.setDouble(1, 12.99);
-    ps.setInt(2, orderId);
-    int rowsAffected = ps.executeUpdate();
-    System.out.println("Updated: " + rowsAffected + " rows");
-}
+// Copy / Move
+Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+
+// Create / Delete
+Files.createDirectories(Path.of("a/b/c"));   // like mkdir -p
+Files.createTempFile("prefix", ".tmp");
+Files.delete(path);                           // throws if not found
+Files.deleteIfExists(path);                   // safe delete
+
+// Metadata
+boolean exists    = Files.exists(path);
+boolean isDir     = Files.isDirectory(path);
+long size         = Files.size(path);
+FileTime modified = Files.getLastModifiedTime(path);
 \`\`\`
 
-### Batch Execution
+### Walking the File Tree
 
 \`\`\`java
-// Batching — execute many DML statements in a single round-trip
-conn.setAutoCommit(false);
-try (PreparedStatement ps = conn.prepareStatement("INSERT INTO log (msg, ts) VALUES (?,?)")) {
-    for (LogEntry entry : entries) {
-        ps.setString(1, entry.message());
-        ps.setTimestamp(2, Timestamp.valueOf(entry.timestamp()));
-        ps.addBatch();
-        if (entries.indexOf(entry) % 1000 == 999) {
-            ps.executeBatch(); // flush every 1000 rows to avoid OOM
+// Walk — depth-first traversal
+try (Stream<Path> walk = Files.walk(Path.of("src"), 5)) {
+    List<Path> javaFiles = walk
+        .filter(p -> p.toString().endsWith(".java"))
+        .sorted()
+        .toList();
+}
+
+// List immediate children only
+try (Stream<Path> list = Files.list(Path.of("."))) {
+    list.filter(Files::isRegularFile).forEach(System.out::println);
+}
+
+// Find — like walk with built-in matcher
+try (Stream<Path> found = Files.find(Path.of("logs"), 3,
+        (path, attrs) -> attrs.isRegularFile() && attrs.size() > 1_000_000)) {
+    found.forEach(p -> System.out.println("Large file: " + p));
+}
+
+// FileVisitor — for complex traversals
+Files.walkFileTree(startDir, new SimpleFileVisitor<Path>() {
+    @Override
+    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+        if (file.getFileName().toString().endsWith(".tmp")) {
+            Files.delete(file);
         }
+        return FileVisitResult.CONTINUE;
     }
-    ps.executeBatch(); // flush remainder
-    conn.commit();
-}
-\`\`\`
-
-### Why PreparedStatement Is Also Faster
-
-Pre-compiled SQL is parsed and planned once by the database engine, then executed many times with different parameters. For queries run many times with different values (e.g. \`SELECT * FROM users WHERE id = ?\`) this gives a significant performance advantage over Statement — the query plan is cached by the DB.
-
-### Parameterising IN Clauses
-
-\`PreparedStatement\` cannot take a list as a single parameter. For \`IN (?,?,?)\`:
-
-\`\`\`java
-List<Integer> ids = List.of(1, 2, 3, 4);
-String placeholders = "?,".repeat(ids.size()).replaceAll(",$", ""); // "?,?,?,?"
-String sql = "SELECT * FROM products WHERE id IN (" + placeholders + ")";
-try (PreparedStatement ps = conn.prepareStatement(sql)) {
-    for (int i = 0; i < ids.size(); i++) ps.setInt(i + 1, ids.get(i));
-    try (ResultSet rs = ps.executeQuery()) { /* process */ }
-}
-\`\`\``,
-          code: [
-            `import java.sql.*;
-import java.util.*;
-
-// PreparedStatement patterns — safe CRUD operations
-public class PreparedStmtDemo {
-    static final String URL = "jdbc:h2:mem:pstest;DB_CLOSE_DELAY=-1";
-
-    record Product(int id, String name, double price, int stock) {}
-
-    static Connection conn() throws SQLException {
-        return DriverManager.getConnection(URL, "sa", "");
+    @Override
+    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+        System.err.println("Failed: " + file + " — " + exc.getMessage());
+        return FileVisitResult.CONTINUE;  // skip, don't abort
     }
-
-    static void setup(Connection c) throws SQLException {
-        c.createStatement().execute("""
-            CREATE TABLE IF NOT EXISTS products (
-              id    INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-              name  VARCHAR(100) NOT NULL,
-              price DECIMAL(10,2),
-              stock INT DEFAULT 0
-            )""");
-    }
-
-    static int insert(Connection c, String name, double price, int stock) throws SQLException {
-        String sql = "INSERT INTO products (name, price, stock) VALUES (?,?,?)";
-        try (PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setString(1, name);
-            ps.setDouble(2, price);
-            ps.setInt(3, stock);
-            ps.executeUpdate();
-            try (ResultSet k = ps.getGeneratedKeys()) {
-                return k.next() ? k.getInt(1) : -1;
-            }
-        }
-    }
-
-    static List<Product> findByPriceRange(Connection c, double min, double max) throws SQLException {
-        List<Product> list = new ArrayList<>();
-        String sql = "SELECT * FROM products WHERE price BETWEEN ? AND ? ORDER BY price";
-        try (PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setDouble(1, min);
-            ps.setDouble(2, max);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) list.add(new Product(
-                    rs.getInt("id"), rs.getString("name"),
-                    rs.getDouble("price"), rs.getInt("stock")));
-            }
-        }
-        return list;
-    }
-
-    public static void main(String[] args) throws SQLException {
-        try (Connection c = conn()) {
-            setup(c);
-            int id1 = insert(c, "Widget",     9.99, 50);
-            int id2 = insert(c, "Gadget",    29.99,  5);
-            int id3 = insert(c, "Doohickey",  4.99, 200);
-            System.out.println("Inserted IDs: " + id1 + ", " + id2 + ", " + id3);
-
-            List<Product> affordable = findByPriceRange(c, 5.00, 25.00);
-            System.out.println("\nProducts $5-$25:");
-            affordable.forEach(p -> System.out.printf("  [%d] %-15s $%.2f (stock:%d)%n",
-                p.id(), p.name(), p.price(), p.stock()));
-
-            // Update with PreparedStatement
-            try (PreparedStatement ps = c.prepareStatement(
-                    "UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?")) {
-                ps.setInt(1, 3);   // qty to deduct
-                ps.setInt(2, id1); // product id
-                ps.setInt(3, 3);   // guard: only if stock sufficient
-                int rows = ps.executeUpdate();
-                System.out.println("\nStock deducted: " + rows + " row(s) updated");
-            }
-        }
-    }
-}`,
-            `import java.sql.*;
-import java.util.*;
-
-// Batch insert + IN clause parameterisation
-public class BatchAndInClause {
-    static final String URL = "jdbc:h2:mem:batchin;DB_CLOSE_DELAY=-1";
-
-    public static void main(String[] args) throws SQLException {
-        try (Connection conn = DriverManager.getConnection(URL, "sa", "")) {
-            conn.createStatement().execute(
-                "CREATE TABLE events (id INT, name VARCHAR(100), score INT)");
-
-            // Batch insert — single round-trip for 20 rows
-            conn.setAutoCommit(false);
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO events VALUES (?,?,?)")) {
-                Random rnd = new Random(42);
-                for (int i = 1; i <= 20; i++) {
-                    ps.setInt(1, i);
-                    ps.setString(2, "Event-" + i);
-                    ps.setInt(3, rnd.nextInt(100));
-                    ps.addBatch();
-                }
-                int[] results = ps.executeBatch();
-                conn.commit();
-                System.out.println("Batch inserted " + results.length + " events");
-            }
-
-            // IN clause with dynamic list
-            List<Integer> wanted = List.of(2, 5, 8, 11, 17);
-            String placeholders = String.join(",", Collections.nCopies(wanted.size(), "?"));
-            String sql = "SELECT id, name, score FROM events WHERE id IN (" + placeholders
-                       + ") ORDER BY score DESC";
-
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                for (int i = 0; i < wanted.size(); i++) ps.setInt(i + 1, wanted.get(i));
-                try (ResultSet rs = ps.executeQuery()) {
-                    System.out.println("\nSelected events (sorted by score desc):");
-                    while (rs.next())
-                        System.out.printf("  id=%-3d %-12s score=%d%n",
-                            rs.getInt("id"), rs.getString("name"), rs.getInt("score"));
-                }
-            }
-        }
-    }
-}`
-          ],
-          flashcards: [
-            { q: 'How does PreparedStatement prevent SQL injection?', a: 'Bind parameters (?) are never interpreted as SQL syntax — they are sent to the DB as data values after the query has been parsed and planned. The DB sees the parameter value only after the SQL structure is fixed. Even if a user inputs "; DROP TABLE users --", it is stored as a literal string, not executed as SQL.' },
-            { q: 'How do you retrieve auto-generated keys after an INSERT?', a: 'Pass Statement.RETURN_GENERATED_KEYS as the second argument to prepareStatement(). After executeUpdate(), call ps.getGeneratedKeys() to get a ResultSet containing the generated keys. Call rs.next() then rs.getLong(1) (or getInt/getString based on key type).' },
-            { q: 'What is ps.addBatch() / executeBatch() and why use it?', a: 'addBatch() queues a set of bound parameters without sending them to the DB. executeBatch() sends all queued statements in a single network round-trip. For bulk inserts, this is orders of magnitude faster than executing each INSERT individually (100 round-trips vs 1). Returns int[] — rows affected per statement.' },
-            { q: 'Why can\'t you use a single ? placeholder for an IN clause list?', a: 'JDBC ? binds exactly one scalar value. IN (?) means IN (singleValue), not IN (list). You must generate N placeholders dynamically: "?,?,?".repeat(n) or String.join(",", nCopies(n,"?")). Then loop to bind each value. This is one of the most common JDBC pain points — solved by NamedParameterJdbcTemplate in Spring.' },
-            { q: 'What is RETURN_GENERATED_KEYS and which method retrieves them?', a: 'Statement.RETURN_GENERATED_KEYS is a flag passed to prepareStatement() or createStatement() telling the driver to capture auto-generated values (e.g. SERIAL/IDENTITY primary keys) after INSERT. Retrieve with getGeneratedKeys() — returns a ResultSet; use it like a regular result set. Not all drivers support all column types as generated keys.' }
-          ]
-        },
-        {
-          title: 'Transactions, ACID & Connection Pools',
-          notes: `## Transactions, ACID & Connection Pools
-
-A transaction groups multiple SQL operations into one atomic unit — either all succeed or all are rolled back. JDBC's transaction API is simple but understanding the ACID guarantees and connection pool behaviour is essential for production code.
-
-### ACID Properties
-
-| Property | Meaning | JDBC mechanism |
-|---|---|---|
-| **Atomicity** | All operations succeed or none do | \`commit()\` / \`rollback()\` |
-| **Consistency** | DB moves from one valid state to another | Constraints enforced by DB |
-| **Isolation** | Concurrent transactions don't corrupt each other | Isolation level setting |
-| **Durability** | Committed data survives crashes | DB write-ahead log |
-
-### JDBC Transaction API
-
-\`\`\`java
-conn.setAutoCommit(false);  // begin transaction (default: auto-commit = true)
-try {
-    // Multiple operations in one transaction
-    updateInventory(conn, productId, -qty);
-    insertOrderLine(conn, orderId, productId, qty, price);
-    updateOrderTotal(conn, orderId);
-
-    conn.commit();   // all or nothing
-} catch (Exception e) {
-    conn.rollback(); // undo everything on any failure
-    throw e;
-}
-\`\`\`
-
-### Isolation Levels
-
-\`\`\`java
-conn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED); // most common
-\`\`\`
-
-| Level | Constant | Prevents | Allows |
-|---|---|---|---|
-| READ_UNCOMMITTED | 1 | — | Dirty reads, phantom reads |
-| READ_COMMITTED | 2 | Dirty reads | Non-repeatable reads, phantoms |
-| REPEATABLE_READ | 4 | Dirty + non-repeatable reads | Phantom reads |
-| SERIALIZABLE | 8 | All anomalies | Nothing (slowest) |
-
-**Most databases default to READ_COMMITTED.** PostgreSQL default is READ_COMMITTED; MySQL InnoDB default is REPEATABLE_READ.
-
-**Anomaly definitions:**
-- **Dirty read** — reading a row modified by another uncommitted transaction
-- **Non-repeatable read** — reading a row twice and getting different values (other tx committed between reads)
-- **Phantom read** — a query returns different rows on second execution (another tx inserted/deleted rows)
-
-### Savepoints — Partial Rollback
-
-\`\`\`java
-conn.setAutoCommit(false);
-Savepoint sp1 = conn.setSavepoint("after_inventory");
-updateInventory(conn, productId, -qty);
-
-try {
-    riskyOperation(conn);
-} catch (Exception e) {
-    conn.rollback(sp1); // undo only riskyOperation, keep inventory update
-}
-
-conn.commit(); // commit everything up to sp1
-\`\`\`
-
-### Connection Pools — HikariCP
-
-In production, you never call \`DriverManager.getConnection()\` directly. A connection pool maintains a set of warm connections and recycles them:
-
-\`\`\`java
-// HikariCP — fastest JDBC connection pool (used by Spring Boot by default)
-HikariConfig cfg = new HikariConfig();
-cfg.setJdbcUrl("jdbc:postgresql://localhost:5432/mydb");
-cfg.setUsername("appuser");
-cfg.setPassword("secret");
-cfg.setMaximumPoolSize(10);          // max concurrent connections
-cfg.setMinimumIdle(2);               // always keep 2 warm connections
-cfg.setConnectionTimeout(30_000);    // throw if no connection available in 30s
-cfg.setIdleTimeout(600_000);         // close idle connections after 10 min
-cfg.setMaxLifetime(1_800_000);       // recycle connections after 30 min (avoid DB timeout)
-
-DataSource ds = new HikariDataSource(cfg);
-
-// Usage — conn is returned to the pool on close(), NOT physically closed
-try (Connection conn = ds.getConnection()) {
-    // ... queries ...
-} // conn released back to pool here
-\`\`\`
-
-**Key insight:** \`conn.close()\` on a pooled connection returns it to the pool, it does NOT close the physical TCP connection. This is transparent — your code is the same; the pool intercepts the close call.
-
-### The Transaction Template Pattern
-
-\`\`\`java
-// Reusable transaction wrapper (what Spring @Transactional does internally)
-@FunctionalInterface
-interface TxWork<T> { T run(Connection conn) throws SQLException; }
-
-static <T> T inTransaction(DataSource ds, TxWork<T> work) throws SQLException {
-    try (Connection conn = ds.getConnection()) {
-        conn.setAutoCommit(false);
-        try {
-            T result = work.run(conn);
-            conn.commit();
-            return result;
-        } catch (Exception e) {
-            conn.rollback();
-            throw e;
-        }
-    }
-}
-
-// Usage
-Order order = inTransaction(ds, conn -> {
-    deductStock(conn, productId, qty);
-    return createOrder(conn, customerId, productId, qty, price);
 });
+\`\`\`
+
+### Channels & ByteBuffer (NIO)
+
+\`\`\`java
+// For high-performance I/O: FileChannel + ByteBuffer
+try (FileChannel fc = FileChannel.open(Path.of("data.bin"), StandardOpenOption.READ)) {
+    ByteBuffer buf = ByteBuffer.allocateDirect(65536); // off-heap — no GC pressure
+    while (fc.read(buf) > 0) {
+        buf.flip();           // switch from write to read mode
+        while (buf.hasRemaining()) {
+            byte b = buf.get();
+            // process byte
+        }
+        buf.clear();          // reset for next read
+    }
+}
+
+// Memory-mapped files — map file into virtual memory
+try (FileChannel fc = FileChannel.open(Path.of("large.bin"))) {
+    MappedByteBuffer mbb = fc.map(FileChannel.MapMode.READ_ONLY, 0, fc.size());
+    // Access like an array — OS handles paging; fastest for random access
+    byte first = mbb.get(0);
+}
 \`\`\``,
           code: [
-            `import java.sql.*;
+            `import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.util.*;
+import java.util.stream.*;
 
-// Transaction rollback demo — transfer funds atomically
-public class TransactionDemo {
-    static final String URL = "jdbc:h2:mem:txdemo;DB_CLOSE_DELAY=-1";
+public class NIO2Demo {
+    // Modern file operations with Files API
+    static void modernFileOps() throws IOException {
+        var tmp = Files.createTempDirectory("demo");
 
-    static Connection conn() throws SQLException {
-        return DriverManager.getConnection(URL, "sa", "");
-    }
+        // Write files
+        Files.writeString(tmp.resolve("readme.txt"), "Hello NIO2!", StandardCharsets.UTF_8);
+        Files.write(tmp.resolve("data.csv"),
+            List.of("name,age", "Alice,30", "Bob,25"),
+            StandardCharsets.UTF_8);
 
-    static void setup(Connection c) throws SQLException {
-        c.createStatement().execute("""
-            CREATE TABLE accounts (
-              id      INT PRIMARY KEY,
-              owner   VARCHAR(50),
-              balance DECIMAL(12,2) NOT NULL CHECK (balance >= 0)
-            )""");
-        c.createStatement().execute("INSERT INTO accounts VALUES (1,'Alice',1000.00)");
-        c.createStatement().execute("INSERT INTO accounts VALUES (2,'Bob',  500.00)");
-    }
+        // Read back
+        String content = Files.readString(tmp.resolve("readme.txt"), StandardCharsets.UTF_8);
+        System.out.println("Content: " + content);
 
-    static void transfer(Connection conn, int fromId, int toId, double amount) throws SQLException {
-        conn.setAutoCommit(false);
-        try {
-            // Deduct from sender
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE accounts SET balance = balance - ? WHERE id = ?")) {
-                ps.setDouble(1, amount);
-                ps.setInt(2, fromId);
-                ps.executeUpdate();
-            }
-            // Add to receiver
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE accounts SET balance = balance + ? WHERE id = ?")) {
-                ps.setDouble(1, amount);
-                ps.setInt(2, toId);
-                ps.executeUpdate();
-            }
-            conn.commit();
-            System.out.println("Transferred $" + amount + " from " + fromId + " to " + toId);
-        } catch (SQLException e) {
-            System.out.println("ROLLBACK: " + e.getMessage());
-            conn.rollback();
-            throw e;
+        List<String> lines = Files.readAllLines(tmp.resolve("data.csv"), StandardCharsets.UTF_8);
+        System.out.println("CSV rows: " + lines.size());
+
+        // Count lines without loading all into memory
+        try (Stream<String> stream = Files.lines(tmp.resolve("data.csv"))) {
+            long count = stream.filter(l -> !l.startsWith("name")).count();
+            System.out.println("Data rows: " + count);
         }
+
+        // Create subdir, copy, move
+        var subDir = tmp.resolve("output");
+        Files.createDirectories(subDir);
+        Files.copy(tmp.resolve("data.csv"), subDir.resolve("data.csv"));
+        System.out.println("Files in output: " + Files.list(subDir).count());
+
+        // Walk tree and find .txt files
+        try (Stream<Path> walk = Files.walk(tmp)) {
+            walk.filter(p -> p.toString().endsWith(".txt"))
+                .forEach(p -> System.out.println("  txt: " + p.getFileName()));
+        }
+
+        // Metadata
+        System.out.println("Size: " + Files.size(tmp.resolve("readme.txt")) + " bytes");
+        System.out.println("Modified: " + Files.getLastModifiedTime(tmp.resolve("readme.txt")));
+
+        // Cleanup
+        Files.walk(tmp).sorted(Comparator.reverseOrder()).forEach(p -> {
+            try { Files.deleteIfExists(p); } catch (IOException e) { e.printStackTrace(); }
+        });
     }
 
-    static void printBalances(Connection c) throws SQLException {
-        try (ResultSet rs = c.createStatement().executeQuery(
-                "SELECT owner, balance FROM accounts ORDER BY id")) {
-            while (rs.next())
-                System.out.printf("  %-10s $%.2f%n", rs.getString("owner"), rs.getDouble("balance"));
-        }
+    // Path operations
+    static void pathOps() {
+        var path = Path.of("/home/user/documents/report.pdf");
+        System.out.println("Parent:    " + path.getParent());
+        System.out.println("Name:      " + path.getFileName());
+        System.out.println("Root:      " + path.getRoot());
+        System.out.println("Parts:     " + path.getNameCount());
+        System.out.println("Sibling:   " + path.resolveSibling("summary.pdf"));
+        System.out.println("Relative:  " + Path.of("/home/user").relativize(path));
     }
 
-    public static void main(String[] args) throws SQLException {
-        try (Connection c = conn()) {
-            setup(c);
-            System.out.println("Initial balances:");
-            printBalances(c);
-
-            transfer(c, 1, 2, 200.00);   // Alice → Bob: success
-
-            System.out.println("After transfer:");
-            printBalances(c);
-
-            try {
-                transfer(c, 2, 1, 10_000.00); // Bob → Alice: violates CHECK constraint
-            } catch (SQLException e) {
-                System.out.println("Transfer failed (expected)");
-            }
-
-            System.out.println("After failed transfer (unchanged):");
-            printBalances(c);
-        }
+    public static void main(String[] args) throws IOException {
+        pathOps();
+        modernFileOps();
     }
 }`,
-            `import java.sql.*;
+            `import java.nio.file.*;
+import java.nio.file.attribute.*;
+import java.io.IOException;
+import java.util.stream.*;
 
-// Isolation levels + savepoints
-public class IsolationSavepointDemo {
-    static final String URL = "jdbc:h2:mem:isodemo;DB_CLOSE_DELAY=-1";
-
-    public static void main(String[] args) throws SQLException {
-        try (Connection conn = DriverManager.getConnection(URL, "sa", "")) {
-            conn.createStatement().execute(
-                "CREATE TABLE inventory (product VARCHAR(50), qty INT)");
-            conn.createStatement().execute("INSERT INTO inventory VALUES ('Widget',100)");
-            conn.createStatement().execute("INSERT INTO inventory VALUES ('Gadget',50)");
-
-            // Savepoint demo — partial rollback
-            conn.setAutoCommit(false);
-            System.out.println("Starting transaction...");
-
-            // Operation 1 — deduct Widget stock
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE inventory SET qty = qty - ? WHERE product = ?")) {
-                ps.setInt(1, 10); ps.setString(2, "Widget"); ps.executeUpdate();
-            }
-            System.out.println("Widget stock deducted");
-
-            Savepoint sp = conn.setSavepoint("after_widget");
-
-            // Operation 2 — risky: deduct too many Gadgets (will fail CHECK or business rule)
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE inventory SET qty = qty - ? WHERE product = ?")) {
-                ps.setInt(1, 200); ps.setString(2, "Gadget"); // 200 > 50 stock
-                ps.executeUpdate();
-                // Simulate business rule check
-                try (ResultSet rs = conn.createStatement().executeQuery(
-                        "SELECT qty FROM inventory WHERE product = 'Gadget'")) {
-                    if (rs.next() && rs.getInt(1) < 0) throw new SQLException("Insufficient stock");
-                }
-            } catch (SQLException e) {
-                System.out.println("Gadget operation failed — rolling back to savepoint");
-                conn.rollback(sp); // undo Gadget update only
-            }
-
-            conn.commit();
-
-            // Verify: Widget deducted, Gadget unchanged
-            try (ResultSet rs = conn.createStatement().executeQuery(
-                    "SELECT product, qty FROM inventory ORDER BY product")) {
-                System.out.println("Final inventory:");
-                while (rs.next())
-                    System.out.printf("  %-10s qty=%d%n", rs.getString(1), rs.getInt(2));
-            }
-            // Isolation level
-            System.out.println("Isolation level: " + conn.getTransactionIsolation()
-                + " (2=READ_COMMITTED)");
+// Walking file trees and WatchService
+public class FileTreeDemo {
+    // Delete directory tree recursively
+    static void deleteTree(Path dir) throws IOException {
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder())  // children before parents
+                .forEach(p -> {
+                    try { Files.delete(p); }
+                    catch (IOException e) { System.err.println("Cannot delete: " + p); }
+                });
         }
+    }
+
+    // Find large files using Files.find
+    static List<Path> findLargeFiles(Path root, long minSizeBytes) throws IOException {
+        try (Stream<Path> found = Files.find(root, Integer.MAX_VALUE,
+                (path, attrs) -> attrs.isRegularFile() && attrs.size() >= minSizeBytes)) {
+            return found.sorted(Comparator.comparingLong(p -> {
+                try { return Files.size(p); } catch (IOException e) { return 0L; }
+            }).reversed()).toList();
+        }
+    }
+
+    // FileVisitor for custom traversal with error handling
+    static long countFilesByExtension(Path root, String ext) throws IOException {
+        class CountVisitor extends SimpleFileVisitor<Path> {
+            long count = 0;
+            @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) {
+                if (f.toString().endsWith(ext)) count++;
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFileFailed(Path f, IOException e) {
+                System.err.println("Skipping " + f + ": " + e.getMessage());
+                return FileVisitResult.CONTINUE; // don't abort on permission errors
+            }
+        }
+        var visitor = new CountVisitor();
+        Files.walkFileTree(root, visitor);
+        return visitor.count;
+    }
+
+    public static void main(String[] args) throws IOException {
+        var tmp = Files.createTempDirectory("tree-demo");
+        // Build a small tree
+        Files.createDirectories(tmp.resolve("a/b/c"));
+        for (int i = 0; i < 5; i++) Files.writeString(tmp.resolve("a/b/file" + i + ".txt"), "content");
+        Files.writeString(tmp.resolve("a/b/c/deep.java"), "class X{}");
+
+        // Walk count
+        try (Stream<Path> walk = Files.walk(tmp)) {
+            System.out.println("Total entries: " + walk.count());
+        }
+
+        long javaFiles = countFilesByExtension(tmp, ".java");
+        System.out.println(".java files: " + javaFiles);
+
+        deleteTree(tmp);
+        System.out.println("Exists after delete: " + Files.exists(tmp));
     }
 }`
           ],
           flashcards: [
-            { q: 'What does conn.setAutoCommit(false) do and when must you call commit/rollback?', a: 'By default, every JDBC statement is auto-committed (each is its own transaction). setAutoCommit(false) disables this and begins a transaction that spans all subsequent statements. You must explicitly call conn.commit() to persist changes, or conn.rollback() to undo them. If the connection closes without commit, the transaction is rolled back automatically.' },
-            { q: 'What are the four SQL transaction isolation levels and what anomaly does each prevent?', a: 'READ_UNCOMMITTED — prevents nothing (allows dirty reads). READ_COMMITTED — prevents dirty reads. REPEATABLE_READ — prevents dirty and non-repeatable reads. SERIALIZABLE — prevents all anomalies including phantom reads. Each level adds performance cost. READ_COMMITTED is the most common production default (PostgreSQL default).' },
-            { q: 'What is a connection pool and why does conn.close() not disconnect the socket?', a: 'A pool pre-creates N physical DB connections and lends them to application threads. conn.close() on a pooled connection returns it to the pool (physical connection stays alive), ready for the next request. Without pooling, every getConnection() opens a TCP socket and authenticates — 100ms+ per call, a bottleneck for web apps handling many concurrent requests.' },
-            { q: 'What is a Savepoint and when would you use one?', a: 'A savepoint marks a point within a transaction. conn.rollback(savepoint) undoes only the work done after the savepoint, leaving earlier operations intact. Use when a transaction has optional steps that may fail: complete the mandatory steps, set a savepoint, attempt the optional step, roll back to the savepoint on failure, then commit the mandatory work.' },
-            { q: 'What is a dirty read and at which isolation level is it possible?', a: 'A dirty read occurs when transaction A reads a row that transaction B has modified but not yet committed. If B then rolls back, A has read data that never existed. Dirty reads are possible only at READ_UNCOMMITTED level — the lowest isolation level. READ_COMMITTED and above prevent dirty reads by only showing committed data.' }
-          ]
-        },
-        {
-          title: 'JDBC Patterns & DAO Layer Design',
-          notes: `## JDBC Patterns & DAO Layer Design
-
-Raw JDBC code tends to be verbose and error-prone. The DAO (Data Access Object) pattern and a few reusable abstractions make JDBC code maintainable at scale — and understanding these patterns helps you understand what Spring Data JPA does for you automatically.
-
-### The DAO Pattern
-
-\`\`\`mermaid
-graph LR
-    SVC[Service Layer]
-    SVC --> DAO[UserDao interface]
-    DAO --> JI[JdbcUserDao\nimpl]
-    JI --> DS[(DataSource\n/ Connection Pool)]
-    style SVC fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
-    style DAO fill:#0f1e12,stroke:#10b981,color:#e2e8f0
-    style JI  fill:#1e293b,stroke:#f59e0b,color:#fde68a
-\`\`\`
-
-\`\`\`java
-// Repository interface — no JDBC details leak to callers
-interface UserRepository {
-    Optional<User> findById(long id);
-    List<User> findByEmail(String email);
-    User save(User user);  // INSERT or UPDATE
-    void delete(long id);
-    List<User> findAll(int limit, int offset);
-}
-
-// JDBC implementation
-class JdbcUserRepository implements UserRepository {
-    private final DataSource ds;
-    JdbcUserRepository(DataSource ds) { this.ds = ds; }
-
-    @Override
-    public Optional<User> findById(long id) {
-        String sql = "SELECT id, name, email, created_at FROM users WHERE id = ?";
-        try (Connection c = ds.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, id);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
-            }
-        } catch (SQLException e) {
-            throw new DataAccessException("findById failed", e);  // translate to unchecked
-        }
-    }
-
-    private User mapRow(ResultSet rs) throws SQLException {
-        return new User(
-            rs.getLong("id"),
-            rs.getString("name"),
-            rs.getString("email"),
-            rs.getTimestamp("created_at").toLocalDateTime()
-        );
-    }
-}
-\`\`\`
-
-### Exception Translation — Don't Let SQLException Leak
-
-\`SQLException\` is a checked exception that contains little useful information (error codes are DB-specific). Wrap it in your own unchecked exception hierarchy at the DAO boundary:
-
-\`\`\`java
-class DataAccessException extends RuntimeException {
-    DataAccessException(String msg, Throwable cause) { super(msg, cause); }
-}
-
-class DuplicateKeyException extends DataAccessException {
-    DuplicateKeyException(String msg, Throwable cause) { super(msg, cause); }
-}
-
-// Translate vendor error codes
-static DataAccessException translate(String operation, SQLException e) {
-    if (e.getSQLState() != null && e.getSQLState().startsWith("23")) {
-        return new DuplicateKeyException(operation + ": duplicate key", e);
-    }
-    return new DataAccessException(operation + " failed: " + e.getMessage(), e);
-}
-\`\`\`
-
-SQLState codes starting with \`23\` are integrity constraint violations across all databases (ANSI SQL). Spring DataAccessException hierarchy does exactly this translation.
-
-### ResultSet → Object Mapping
-
-For complex mappings, extract a \`RowMapper\`:
-
-\`\`\`java
-@FunctionalInterface
-interface RowMapper<T> {
-    T map(ResultSet rs, int rowNum) throws SQLException;
-}
-
-static <T> List<T> query(DataSource ds, String sql, RowMapper<T> mapper, Object... params)
-        throws SQLException {
-    List<T> results = new ArrayList<>();
-    try (Connection c = ds.getConnection();
-         PreparedStatement ps = c.prepareStatement(sql)) {
-        for (int i = 0; i < params.length; i++) ps.setObject(i + 1, params[i]);
-        try (ResultSet rs = ps.executeQuery()) {
-            int row = 0;
-            while (rs.next()) results.add(mapper.map(rs, row++));
-        }
-    }
-    return results;
-}
-
-// Usage
-List<User> users = query(ds,
-    "SELECT * FROM users WHERE active = ? LIMIT ?",
-    (rs, i) -> new User(rs.getLong("id"), rs.getString("name"), rs.getString("email"), null),
-    true, 50);
-\`\`\`
-
-This is exactly what Spring's \`JdbcTemplate.query(sql, rowMapper, args...)\` does.
-
-### What Spring JdbcTemplate Replaces
-
-| Raw JDBC boilerplate | Spring JdbcTemplate |
-|---|---|
-| \`ds.getConnection()\` + \`conn.close()\` | Managed automatically |
-| try-catch-rethrow \`SQLException\` | Translated to \`DataAccessException\` hierarchy |
-| \`ps.setObject(i+1, param)\` for each arg | Varargs: \`.query(sql, mapper, args...)\` |
-| \`while(rs.next())\` loop | Handled by \`RowMapper\` |
-| Manual \`rollback\` on error | \`@Transactional\` |
-
-> **Interview key point:** If you understand raw JDBC thoroughly, you understand what JPA/Hibernate is doing underneath. Every JPA \`findById()\` eventually becomes a \`PreparedStatement\`, a \`ResultSet\`, and a \`commit()\`.`,
-          code: [
-            `import java.sql.*;
-import java.time.*;
-import java.util.*;
-
-// Full DAO pattern with exception translation
-public class DaoPatternDemo {
-    static final String URL = "jdbc:h2:mem:dao;DB_CLOSE_DELAY=-1";
-
-    record User(long id, String name, String email, LocalDateTime createdAt) {}
-
-    static class DataAccessException extends RuntimeException {
-        DataAccessException(String msg, Throwable cause) { super(msg, cause); }
-    }
-
-    interface UserRepository {
-        Optional<User> findById(long id);
-        List<User> findAll();
-        long save(String name, String email);
-    }
-
-    static class JdbcUserRepository implements UserRepository {
-        private final Connection conn;
-        JdbcUserRepository(Connection conn) { this.conn = conn; }
-
-        @Override public Optional<User> findById(long id) {
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT * FROM users WHERE id = ?")) {
-                ps.setLong(1, id);
-                try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? Optional.of(map(rs)) : Optional.empty();
-                }
-            } catch (SQLException e) { throw new DataAccessException("findById", e); }
-        }
-
-        @Override public List<User> findAll() {
-            try (ResultSet rs = conn.createStatement().executeQuery(
-                    "SELECT * FROM users ORDER BY created_at")) {
-                List<User> list = new ArrayList<>();
-                while (rs.next()) list.add(map(rs));
-                return list;
-            } catch (SQLException e) { throw new DataAccessException("findAll", e); }
-        }
-
-        @Override public long save(String name, String email) {
-            String sql = "INSERT INTO users (name, email, created_at) VALUES (?,?,?)";
-            try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-                ps.setString(1, name);
-                ps.setString(2, email);
-                ps.setTimestamp(3, Timestamp.valueOf(LocalDateTime.now()));
-                ps.executeUpdate();
-                try (ResultSet k = ps.getGeneratedKeys()) {
-                    return k.next() ? k.getLong(1) : -1;
-                }
-            } catch (SQLException e) { throw new DataAccessException("save", e); }
-        }
-
-        private User map(ResultSet rs) throws SQLException {
-            return new User(rs.getLong("id"), rs.getString("name"), rs.getString("email"),
-                rs.getTimestamp("created_at").toLocalDateTime());
-        }
-    }
-
-    public static void main(String[] args) throws SQLException {
-        try (Connection conn = DriverManager.getConnection(URL, "sa", "")) {
-            conn.createStatement().execute("""
-                CREATE TABLE users (
-                  id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                  name VARCHAR(100), email VARCHAR(200), created_at TIMESTAMP)""");
-
-            UserRepository repo = new JdbcUserRepository(conn);
-            long id1 = repo.save("Alice", "alice@example.com");
-            long id2 = repo.save("Bob",   "bob@example.com");
-            System.out.println("Saved IDs: " + id1 + ", " + id2);
-
-            repo.findById(id1).ifPresent(u ->
-                System.out.println("Found: " + u.name() + " (" + u.email() + ")"));
-
-            System.out.println("All users:");
-            repo.findAll().forEach(u -> System.out.println("  " + u.id() + ". " + u.name()));
-        }
-    }
-}`,
-            `import java.sql.*;
-import java.util.*;
-import java.util.function.*;
-
-// RowMapper abstraction — what JdbcTemplate uses
-public class RowMapperDemo {
-    static final String URL = "jdbc:h2:mem:rm;DB_CLOSE_DELAY=-1";
-
-    @FunctionalInterface
-    interface RowMapper<T> {
-        T map(ResultSet rs) throws SQLException;
-    }
-
-    static <T> List<T> query(Connection conn, String sql, RowMapper<T> mapper, Object... params)
-            throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            for (int i = 0; i < params.length; i++) ps.setObject(i + 1, params[i]);
-            try (ResultSet rs = ps.executeQuery()) {
-                List<T> list = new ArrayList<>();
-                while (rs.next()) list.add(mapper.map(rs));
-                return list;
-            }
-        }
-    }
-
-    static <T> Optional<T> queryOne(Connection conn, String sql, RowMapper<T> mapper, Object... params)
-            throws SQLException {
-        List<T> results = query(conn, sql, mapper, params);
-        if (results.size() > 1) throw new SQLException("Expected 1 row, got " + results.size());
-        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
-    }
-
-    record Product(int id, String name, double price) {}
-
-    public static void main(String[] args) throws SQLException {
-        try (Connection conn = DriverManager.getConnection(URL, "sa", "")) {
-            conn.createStatement().execute(
-                "CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(50), price DECIMAL(8,2))");
-            for (int i = 1; i <= 5; i++)
-                conn.createStatement().execute(
-                    "INSERT INTO products VALUES (" + i + ",'Product-" + i + "'," + (i * 7.5) + ")");
-
-            // RowMapper as lambda — no boilerplate
-            RowMapper<Product> pm = rs -> new Product(
-                rs.getInt("id"), rs.getString("name"), rs.getDouble("price"));
-
-            // Query with filter param
-            List<Product> expensive = query(conn,
-                "SELECT * FROM products WHERE price > ? ORDER BY price DESC", pm, 20.0);
-            System.out.println("Expensive products:");
-            expensive.forEach(p -> System.out.printf("  [%d] %-12s $%.2f%n", p.id(), p.name(), p.price()));
-
-            // Query for one
-            Optional<Product> one = queryOne(conn,
-                "SELECT * FROM products WHERE id = ?", pm, 3);
-            one.ifPresent(p -> System.out.println("\nFound single: " + p.name()));
-        }
-    }
-}`
-          ],
-          flashcards: [
-            { q: 'What is the DAO (Data Access Object) pattern and why use it?', a: 'DAO separates database access code from business logic by placing all SQL/JDBC behind an interface. Benefits: (1) business logic is not polluted with SQL strings, (2) the implementation can be swapped (JDBC → JPA → mock for tests) without changing callers, (3) exception translation happens at the boundary (SQLException → DataAccessException), (4) SQL queries are colocated, not scattered.' },
-            { q: 'Why should SQLException be wrapped at the DAO boundary?', a: 'SQLException is a checked exception that leaks DB implementation details (vendor-specific error codes, SQL states). Service and controller layers should not handle or declare DB exceptions. Wrapping in an unchecked DataAccessException hierarchy at the DAO boundary: (1) removes checked exception burden from callers, (2) allows error classification (DuplicateKeyException etc.) using portable SQLState codes.' },
-            { q: 'What is an SQLState code and which prefix indicates a constraint violation?', a: 'SQLState is a 5-character string that standardises error categories across databases (ANSI SQL). Prefix "23" means integrity constraint violation — duplicate key, foreign key, not-null, check constraint. This is reliable across PostgreSQL, MySQL, H2, Oracle. Spring uses SQLState codes to translate SQLExceptions into its DataAccessException hierarchy.' },
-            { q: 'What is a RowMapper and how does it relate to Spring\'s JdbcTemplate?', a: 'RowMapper is a functional interface mapping one ResultSet row to one domain object. It separates "how to execute SQL" from "how to read one row". Spring\'s JdbcTemplate.query(sql, rowMapper, args) does exactly this: manages connection lifecycle, PreparedStatement creation, parameter binding, ResultSet iteration, and exception translation. Your only job is mapping one row.' },
-            { q: 'How does Spring\'s JdbcTemplate relate to raw JDBC?', a: 'JdbcTemplate is a thin wrapper around JDBC that eliminates boilerplate: auto-manages Connection (get from pool, return on done), auto-translates SQLException to DataAccessException hierarchy, handles PreparedStatement creation and parameter binding, and iterates ResultSet calling your RowMapper. No try-catch-rethrow, no conn.close(), no rs.next() loop. Same SQL, no boilerplate.' }
+            { q: 'What is the difference between Path/Files (NIO2) and File (java.io)?', a: 'java.io.File was Java\'s original file API — its methods return boolean on failure (no exception, no error message), it lacks symbolic link support, no file attribute support, and poor performance. java.nio.file.Path (Java 7+) uses a fluent API, throws IOException with meaningful messages on failure, supports symlinks/hard links, file attributes (creation time, permissions), and works with the Files utility class and stream-based directory walking. Prefer Path/Files for all new code.' },
+            { q: 'What are the Files methods for small vs large files?', a: 'Small files (fit in memory): Files.readString(path) → String, Files.readAllBytes(path) → byte[], Files.readAllLines(path) → List<String>, Files.writeString(path, content). Large files (streaming): Files.lines(path) returns Stream<String> — process line-by-line without loading all into memory; always close the stream (try-with-resources). Files.walk(dir) streams directory entries lazily. For binary large files, use FileChannel with ByteBuffer for maximum throughput.' },
+            { q: 'How do you walk a directory tree and what is the difference between Files.walk, Files.list, and Files.find?', a: 'Files.list(dir) returns immediate children only (non-recursive). Files.walk(dir) returns all descendants recursively (depth-first); takes optional maxDepth. Files.find(dir, depth, BiPredicate<Path,BasicFileAttributes>) combines walk with a filter predicate that also has access to file attributes without a second stat() call — efficient for size/date filtering. All three return Stream<Path> and must be closed. To delete a tree: Files.walk(dir).sorted(Comparator.reverseOrder()).forEach(Files::delete).' },
+            { q: 'What are FileChannel and ByteBuffer used for?', a: 'FileChannel (java.nio.channels) provides higher-performance I/O for large binary files: it reads/writes ByteBuffers (allocated byte arrays), supports scatter/gather I/O, file locking, and memory-mapped files. ByteBuffer.allocateDirect() allocates off-heap memory (no GC pressure). Memory-mapped files (FileChannel.map()) map a file region to virtual memory — the OS handles paging; random access is as fast as array access. Use FileChannel when streams/Files API are too slow for the use case.' }
           ]
         }
       ]
     },
-    {
-      id: '0.13',
-      title: 'Design Patterns — Creational, Structural, Behavioral',
-      hours: 5,
-      sections: [
-        {
-          title: 'Creational Patterns — Singleton, Factory, Builder',
-          notes: `## Creational Patterns — Singleton, Factory, Builder
 
-Creational patterns deal with **object creation** — abstracting the instantiation process so the system is independent of how objects are created, composed, and represented.
-
-### Pattern Landscape
-
-\`\`\`mermaid
-graph TD
-    DP[Design Patterns]
-    DP --> CR[Creational]
-    DP --> ST[Structural]
-    DP --> BH[Behavioral]
-    CR --> SG[Singleton]
-    CR --> FM[Factory Method]
-    CR --> AF[Abstract Factory]
-    CR --> BL[Builder]
-    CR --> PR[Prototype]
-    ST --> AD[Adapter]
-    ST --> DC[Decorator]
-    ST --> PR2[Proxy]
-    ST --> FA[Facade]
-    BH --> STR[Strategy]
-    BH --> OB[Observer]
-    BH --> TM[Template Method]
-    BH --> CM[Command]
-    BH --> IT[Iterator]
-    style CR fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
-    style ST fill:#0f1e12,stroke:#10b981,color:#e2e8f0
-    style BH fill:#1e0a0a,stroke:#f59e0b,color:#fde68a
-\`\`\`
-
-### Singleton — One Instance, Global Access
-
-Ensures a class has exactly one instance and provides a global access point.
-
-\`\`\`java
-// Thread-safe lazy singleton — the correct modern approach
-public class AppConfig {
-    // Volatile ensures visibility across threads (Java 5+ memory model)
-    private static volatile AppConfig instance;
-    private final Map<String, String> props;
-
-    private AppConfig() {
-        props = new HashMap<>();
-        props.put("host", "localhost");
-        props.put("port", "8080");
-    }
-
-    // Double-checked locking — only synchronises on first creation
-    public static AppConfig getInstance() {
-        if (instance == null) {
-            synchronized (AppConfig.class) {
-                if (instance == null) {
-                    instance = new AppConfig();
-                }
-            }
-        }
-        return instance;
-    }
-
-    public String get(String key) { return props.getOrDefault(key, ""); }
-}
-\`\`\`
-
-**Better modern approach — Enum Singleton** (Bloch Item 3):
-\`\`\`java
-public enum AppConfig {
-    INSTANCE;
-    private final Map<String, String> props = new HashMap<>();
-
-    AppConfig() { props.put("host", "localhost"); }
-    public String get(String key) { return props.getOrDefault(key, ""); }
-}
-
-AppConfig.INSTANCE.get("host"); // thread-safe, serialisation-safe, reflection-safe
-\`\`\`
-
-**When NOT to use Singleton:** when you need testability (hard to mock), multiple environments (test vs prod need different instances), or when the "global state" it represents leads to hidden coupling.
-
-### Factory Method — Delegate Creation to Subclasses
-
-Defines an interface for creating an object, but lets subclasses decide which class to instantiate. The creator class works with the product through an interface:
-
-\`\`\`java
-// Product interface
-interface Notification {
-    void send(String message);
-}
-
-// Concrete products
-class EmailNotification implements Notification {
-    private final String email;
-    EmailNotification(String email) { this.email = email; }
-    public void send(String msg) { System.out.println("Email to " + email + ": " + msg); }
-}
-
-class SmsNotification implements Notification {
-    private final String phone;
-    SmsNotification(String phone) { this.phone = phone; }
-    public void send(String msg) { System.out.println("SMS to " + phone + ": " + msg); }
-}
-
-// Factory — centralises creation logic
-class NotificationFactory {
-    public static Notification create(String type, String target) {
-        return switch (type.toLowerCase()) {
-            case "email" -> new EmailNotification(target);
-            case "sms"   -> new SmsNotification(target);
-            default -> throw new IllegalArgumentException("Unknown type: " + type);
-        };
-    }
-}
-
-// Client — works through the interface, unaware of concrete class
-Notification n = NotificationFactory.create("email", "alice@example.com");
-n.send("Your order shipped!");
-\`\`\`
-
-### Builder — Construct Complex Objects Step by Step
-
-Useful when a constructor would need many parameters, several of which are optional:
-
-\`\`\`java
-public class HttpRequest {
-    private final String method;    // required
-    private final String url;       // required
-    private final Map<String, String> headers;  // optional
-    private final String body;      // optional
-    private final int timeoutMs;    // optional, default 5000
-
-    private HttpRequest(Builder b) {
-        this.method    = b.method;
-        this.url       = b.url;
-        this.headers   = Collections.unmodifiableMap(b.headers);
-        this.body      = b.body;
-        this.timeoutMs = b.timeoutMs;
-    }
-
-    public static class Builder {
-        private final String method;
-        private final String url;
-        private Map<String, String> headers = new HashMap<>();
-        private String body;
-        private int timeoutMs = 5000;
-
-        public Builder(String method, String url) {
-            this.method = Objects.requireNonNull(method);
-            this.url    = Objects.requireNonNull(url);
-        }
-        public Builder header(String key, String value) { headers.put(key, value); return this; }
-        public Builder body(String body)                { this.body = body; return this; }
-        public Builder timeout(int ms)                  { this.timeoutMs = ms; return this; }
-        public HttpRequest build()                      { return new HttpRequest(this); }
-    }
-
-    @Override public String toString() {
-        return method + " " + url + " (timeout=" + timeoutMs + "ms, headers=" + headers + ")";
-    }
-}
-
-HttpRequest req = new HttpRequest.Builder("POST", "https://api.example.com/orders")
-    .header("Content-Type", "application/json")
-    .header("Authorization", "Bearer token123")
-    .body("{\"item\":\"widget\",\"qty\":3}")
-    .timeout(10_000)
-    .build();
-\`\`\`
-
-**Builder benefits:** immutable result, readable construction, optional parameters without constructor overload explosion, validation in \`build()\`.`,
-          code: [
-            `import java.util.*;
-
-// Enum Singleton — safest Singleton in Java
-enum AppConfig {
-    INSTANCE;
-    private final Map<String, String> config = new LinkedHashMap<>();
-
-    AppConfig() {
-        config.put("db.host", "localhost");
-        config.put("db.port", "5432");
-        config.put("app.env", "production");
-    }
-
-    public String get(String key) { return config.getOrDefault(key, ""); }
-    public String get(String key, String def) { return config.getOrDefault(key, def); }
-}
-
-// Factory Method
-interface Parser { Object parse(String input); }
-
-class JsonParser implements Parser {
-    public Object parse(String input) { return "JSON: " + input.trim(); }
-}
-class CsvParser implements Parser {
-    public Object parse(String input) { return Arrays.asList(input.split(",")); }
-}
-
-class ParserFactory {
-    public static Parser of(String format) {
-        return switch (format.toLowerCase()) {
-            case "json" -> new JsonParser();
-            case "csv"  -> new CsvParser();
-            default -> throw new IllegalArgumentException("Unsupported: " + format);
-        };
-    }
-}
-
-public class CreationalDemo {
-    public static void main(String[] args) {
-        // Singleton
-        System.out.println(AppConfig.INSTANCE.get("db.host")); // localhost
-        System.out.println(AppConfig.INSTANCE == AppConfig.INSTANCE); // true
-
-        // Factory
-        Parser json = ParserFactory.of("json");
-        Parser csv  = ParserFactory.of("csv");
-        System.out.println(json.parse(" { } "));   // JSON: { }
-        System.out.println(csv.parse("a,b,c,d")); // [a, b, c, d]
-    }
-}`,
-            `import java.util.*;
-
-// Builder pattern — complex immutable object
-public class HttpRequest {
-    private final String method, url, body;
-    private final Map<String, String> headers;
-    private final int timeoutMs;
-
-    private HttpRequest(Builder b) {
-        this.method    = b.method;
-        this.url       = b.url;
-        this.body      = b.body;
-        this.headers   = Collections.unmodifiableMap(new LinkedHashMap<>(b.headers));
-        this.timeoutMs = b.timeoutMs;
-    }
-
-    @Override
-    public String toString() {
-        return method + " " + url + "\n  headers=" + headers
-             + "\n  body=" + body + "\n  timeout=" + timeoutMs + "ms";
-    }
-
-    public static class Builder {
-        private final String method, url;
-        private final Map<String, String> headers = new LinkedHashMap<>();
-        private String body = null;
-        private int timeoutMs = 5_000;
-
-        public Builder(String method, String url) {
-            this.method = Objects.requireNonNull(method, "method");
-            this.url    = Objects.requireNonNull(url, "url");
-        }
-        public Builder header(String k, String v) { headers.put(k, v); return this; }
-        public Builder body(String body)           { this.body = body;  return this; }
-        public Builder timeout(int ms)             { this.timeoutMs = ms; return this; }
-        public HttpRequest build() {
-            if (List.of("POST","PUT","PATCH").contains(method) && body == null)
-                throw new IllegalStateException(method + " requires a body");
-            return new HttpRequest(this);
-        }
-    }
-
-    public static void main(String[] args) {
-        HttpRequest req = new HttpRequest.Builder("POST", "https://api.example.com/v1/orders")
-            .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer abc123")
-            .body("{\"item\":\"widget\",\"qty\":2}")
-            .timeout(10_000)
-            .build();
-        System.out.println(req);
-    }
-}`
-          ],
-          flashcards: [
-            { q: 'Why is the Enum Singleton preferred over double-checked locking?', a: 'Enum Singleton (Bloch Item 3) is thread-safe by JVM class loading guarantee, immune to serialisation attacks (enum deserialization always returns the same instance), and immune to reflection attacks (enums cannot be instantiated via reflection). Double-checked locking requires volatile and is easy to get wrong.' },
-            { q: 'What problem does Factory Method solve that a constructor cannot?', a: 'A constructor must return an instance of exactly that class. A factory method can return any subtype, return a cached instance, perform complex initialisation, choose between implementations based on configuration, or return null/Optional. It decouples the caller from the concrete class.' },
-            { q: 'What is the main advantage of Builder over a constructor with many parameters?', a: 'Readability — Builder.method("POST").url("...").timeout(5000).build() is clear about what each value means. Constructors with many same-type parameters (String, String, String) are error-prone (swap two and no compile error). Builder also handles optional parameters without overload explosion and enables validation in build().' },
-            { q: 'What is double-checked locking and why does it need volatile?', a: 'DCL checks the instance is null twice — once without locking (fast path), then again inside synchronized (to handle the race between the two checks). volatile is required to prevent the JVM from reordering the write to instance before the constructor completes — without it, another thread could see a partially-constructed object.' },
-            { q: 'When should you NOT use Singleton?', a: 'When you need testability (hard to inject a mock), when different environments need different instances (test db vs prod db), or when the global state creates hidden coupling between components. Prefer dependency injection — pass the shared object as a constructor argument rather than using static access.' }
-          ]
-        },
-        {
-          title: 'Structural Patterns — Adapter, Decorator, Proxy, Facade',
-          notes: `## Structural Patterns — Adapter, Decorator, Proxy, Facade
-
-Structural patterns deal with how classes and objects are **composed** to form larger structures — making independent interfaces work together, adding responsibilities dynamically, or simplifying complex subsystems.
-
-### Adapter — Make Incompatible Interfaces Work Together
-
-Converts the interface of a class into another interface that clients expect. Like a power plug adapter — same power, different socket.
-
-\`\`\`java
-// Target interface — what the client expects
-interface TemperatureSource {
-    double getCelsius();
-}
-
-// Adaptee — existing class with a different interface
-class LegacyThermometer {
-    public double getFahrenheit() { return 98.6; }
-}
-
-// Adapter — wraps the adaptee, implements the target
-class ThermometerAdapter implements TemperatureSource {
-    private final LegacyThermometer thermometer;
-    ThermometerAdapter(LegacyThermometer t) { this.thermometer = t; }
-
-    @Override
-    public double getCelsius() {
-        return (thermometer.getFahrenheit() - 32) * 5.0 / 9.0;
-    }
-}
-
-// Client works with TemperatureSource, unaware of LegacyThermometer
-TemperatureSource source = new ThermometerAdapter(new LegacyThermometer());
-System.out.println(source.getCelsius() + "°C");  // 37.0°C
-\`\`\`
-
-**Real-world examples:** \`Arrays.asList()\` adapts an array to a \`List\`, \`InputStreamReader\` adapts \`InputStream\` to \`Reader\`, JDBC drivers adapt database protocols to the JDBC interface.
-
-### Decorator — Add Responsibilities Without Subclassing
-
-Wraps an object to add behaviour dynamically. A chain of decorators can compose multiple behaviours. Java I/O is the canonical example:
-
-\`\`\`java
-// Component interface
-interface TextProcessor {
-    String process(String text);
-}
-
-// Base implementation
-class PlainText implements TextProcessor {
-    public String process(String text) { return text; }
-}
-
-// Abstract decorator
-abstract class TextDecorator implements TextProcessor {
-    protected final TextProcessor wrapped;
-    TextDecorator(TextProcessor wrapped) { this.wrapped = wrapped; }
-}
-
-// Concrete decorators
-class TrimDecorator extends TextDecorator {
-    TrimDecorator(TextProcessor w) { super(w); }
-    public String process(String text) { return wrapped.process(text).strip(); }
-}
-
-class UpperCaseDecorator extends TextDecorator {
-    UpperCaseDecorator(TextProcessor w) { super(w); }
-    public String process(String text) { return wrapped.process(text).toUpperCase(); }
-}
-
-class PrefixDecorator extends TextDecorator {
-    private final String prefix;
-    PrefixDecorator(TextProcessor w, String prefix) { super(w); this.prefix = prefix; }
-    public String process(String text) { return prefix + wrapped.process(text); }
-}
-
-// Compose decorators
-TextProcessor pipeline = new PrefixDecorator(
-    new UpperCaseDecorator(
-        new TrimDecorator(new PlainText())
-    ), ">>> "
-);
-System.out.println(pipeline.process("  hello world  "));
-// >>> HELLO WORLD
-\`\`\`
-
-**Java I/O chain:** \`new BufferedReader(new InputStreamReader(new FileInputStream("file.txt")))\` — each wrapper adds buffering / charset decoding.
-
-### Proxy — Control Access to an Object
-
-Provides a surrogate or placeholder for another object. Three main flavours:
-
-\`\`\`java
-// Virtual Proxy — lazy initialisation of expensive object
-interface Image { void display(); }
-
-class RealImage implements Image {
-    private final String file;
-    RealImage(String file) {
-        this.file = file;
-        System.out.println("Loading from disk: " + file);  // expensive
-    }
-    public void display() { System.out.println("Displaying: " + file); }
-}
-
-class ImageProxy implements Image {
-    private final String file;
-    private RealImage real;  // null until first use
-
-    ImageProxy(String file) { this.file = file; }
-
-    public void display() {
-        if (real == null) real = new RealImage(file);  // lazy load
-        real.display();
-    }
-}
-
-Image img = new ImageProxy("photo.jpg");
-// File NOT loaded yet
-img.display(); // loads now: "Loading... Displaying..."
-img.display(); // cached:    "Displaying..." (no reload)
-\`\`\`
-
-**Other proxy types:**
-- **Remote proxy** — represents an object in another JVM (RMI, gRPC stubs)
-- **Protection proxy** — checks permissions before delegating (Spring Security)
-- **Caching proxy** — memoizes expensive results
-- **Dynamic proxy** — \`java.lang.reflect.Proxy\` creates proxies at runtime (Spring AOP, Mockito)
-
-### Facade — Simplify a Complex Subsystem
-
-Provides a simple interface to a complex subsystem. Clients use the facade; the subsystem classes remain available for direct use when needed.
-
-\`\`\`java
-// Complex subsystem classes
-class VideoEncoder   { String encode(String path)       { return "encoded:" + path; } }
-class AudioExtractor { String extract(String path)      { return "audio:" + path; } }
-class Thumbnail      { String generate(String encoded)  { return "thumb:" + encoded; } }
-class CloudUploader  { String upload(String file)       { return "url://" + file; } }
-
-// Facade — single simple interface
-class VideoProcessingFacade {
-    private final VideoEncoder   encoder   = new VideoEncoder();
-    private final AudioExtractor extractor = new AudioExtractor();
-    private final Thumbnail      thumbGen  = new Thumbnail();
-    private final CloudUploader  uploader  = new CloudUploader();
-
-    public String processVideo(String path) {
-        String encoded  = encoder.encode(path);
-        String audio    = extractor.extract(path);
-        String thumb    = thumbGen.generate(encoded);
-        String videoUrl = uploader.upload(encoded);
-        String audioUrl = uploader.upload(audio);
-        System.out.println("Thumbnail: " + thumb);
-        return videoUrl + " | audio=" + audioUrl;
-    }
-}
-
-// Client only interacts with the facade
-VideoProcessingFacade facade = new VideoProcessingFacade();
-System.out.println(facade.processVideo("interview.mp4"));
-\`\`\``,
-          code: [
-            `import java.util.*;
-
-// Adapter + Decorator combined example
-interface Logger {
-    void log(String level, String message);
-}
-
-// Legacy system with incompatible interface
-class LegacyAuditSystem {
-    public void audit(String msg) { System.out.println("[AUDIT] " + msg); }
-}
-
-// Adapter: makes LegacyAuditSystem work as a Logger
-class LegacyLoggerAdapter implements Logger {
-    private final LegacyAuditSystem legacy;
-    LegacyLoggerAdapter(LegacyAuditSystem legacy) { this.legacy = legacy; }
-    public void log(String level, String message) {
-        if ("ERROR".equals(level) || "WARN".equals(level)) {
-            legacy.audit(level + ": " + message);
-        }
-    }
-}
-
-// Decorator: adds timestamp to any Logger
-class TimestampLogger implements Logger {
-    private final Logger delegate;
-    TimestampLogger(Logger delegate) { this.delegate = delegate; }
-    public void log(String level, String message) {
-        delegate.log(level, "[" + java.time.Instant.now() + "] " + message);
-    }
-}
-
-// Decorator: adds caller class info
-class CallerLogger implements Logger {
-    private final Logger delegate;
-    CallerLogger(Logger delegate) { this.delegate = delegate; }
-    public void log(String level, String message) {
-        String caller = Thread.currentThread().getStackTrace()[2].getClassName();
-        delegate.log(level, "[" + caller.substring(caller.lastIndexOf('.')+1) + "] " + message);
-    }
-}
-
-public class StructuralDemo {
-    public static void main(String[] args) {
-        // Compose adapter + decorators
-        Logger logger = new TimestampLogger(
-            new CallerLogger(
-                new LegacyLoggerAdapter(new LegacyAuditSystem())
-            )
-        );
-        logger.log("ERROR", "Connection timeout");
-        logger.log("INFO", "Request processed");   // filtered by adapter (not ERROR/WARN)
-    }
-}`,
-            `import java.lang.reflect.*;
-import java.util.*;
-
-// Dynamic Proxy — the foundation of Spring AOP and Mockito
-interface OrderService {
-    String createOrder(String item, int qty);
-    String cancelOrder(String orderId);
-}
-
-class RealOrderService implements OrderService {
-    public String createOrder(String item, int qty) {
-        return "ORDER-" + item.toUpperCase() + "-" + qty;
-    }
-    public String cancelOrder(String orderId) {
-        return "CANCELLED-" + orderId;
-    }
-}
-
-// InvocationHandler — intercepts all method calls
-class LoggingProxy implements InvocationHandler {
-    private final Object target;
-    LoggingProxy(Object target) { this.target = target; }
-
-    @Override
-    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        System.out.printf(">> Calling %s(%s)%n",
-            method.getName(), args == null ? "" : Arrays.toString(args));
-        long start = System.nanoTime();
-        Object result = method.invoke(target, args);
-        long ms = (System.nanoTime() - start) / 1_000_000;
-        System.out.printf("<< %s returned: %s (%dms)%n", method.getName(), result, ms);
-        return result;
-    }
-}
-
-public class DynamicProxyDemo {
-    @SuppressWarnings("unchecked")
-    static <T> T proxy(T target, Class<T> iface) {
-        return (T) Proxy.newProxyInstance(
-            iface.getClassLoader(),
-            new Class[]{iface},
-            new LoggingProxy(target)
-        );
-    }
-
-    public static void main(String[] args) {
-        OrderService service = proxy(new RealOrderService(), OrderService.class);
-        service.createOrder("Widget", 5);
-        service.cancelOrder("ORDER-WIDGET-5");
-    }
-}`
-          ],
-          flashcards: [
-            { q: 'What is the difference between Adapter and Decorator?', a: 'Adapter changes the interface — it makes an incompatible interface work as a different one (LegacyThermometer → TemperatureSource). Decorator keeps the same interface but adds behaviour — it wraps an object implementing interface X and itself implements X, adding logic before/after delegation.' },
-            { q: 'How does java.io use the Decorator pattern?', a: 'InputStream is the component. FileInputStream is the concrete component. FilterInputStream is the abstract decorator. BufferedInputStream adds buffering; DataInputStream adds typed reads. You compose them: new BufferedInputStream(new FileInputStream("file")) — each layer adds behaviour without modifying the underlying class.' },
-            { q: 'What are the three common types of Proxy?', a: 'Virtual proxy (lazy loads an expensive object on first use), Remote proxy (represents an object in another process/JVM — gRPC stubs, RMI), Protection proxy (checks access rights before delegating — Spring Security). Dynamic proxy (java.lang.reflect.Proxy) can act as any of these at runtime.' },
-            { q: 'What is java.lang.reflect.Proxy and what is it used for?', a: 'A JDK class that creates a proxy object at runtime for one or more interfaces. You provide an InvocationHandler whose invoke() method intercepts every method call. Used by: Spring AOP (add transactions, logging, security to any bean), Mockito (mock any interface), JPA lazy loading.' },
-            { q: 'When would you use Facade vs Adapter?', a: 'Facade simplifies a complex subsystem — it wraps multiple classes behind one simple interface. Adapter makes one incompatible interface look like another. Facade is about simplification; Adapter is about compatibility. A payment gateway SDK wrapper is a Facade; an JDBC driver adapting a DB protocol to the JDBC API is an Adapter.' }
-          ]
-        },
-        {
-          title: 'Behavioral Patterns — Strategy, Observer, Template Method, Command',
-          notes: `## Behavioral Patterns — Strategy, Observer, Template Method, Command
-
-Behavioral patterns concern **communication and responsibility** between objects — how they interact, collaborate, and divide work.
-
-### Strategy — Encapsulate Algorithms
-
-Define a family of algorithms, encapsulate each one, and make them interchangeable. The client selects the algorithm at runtime without knowing its implementation.
-
-\`\`\`java
-// Strategy interface
-@FunctionalInterface
-interface SortStrategy<T> {
-    void sort(List<T> list);
-}
-
-// Context — uses a strategy
-class DataProcessor<T> {
-    private SortStrategy<T> sortStrategy;
-
-    public DataProcessor(SortStrategy<T> strategy) { this.sortStrategy = strategy; }
-    public void setStrategy(SortStrategy<T> s)     { this.sortStrategy = s; }
-
-    public void process(List<T> data) {
-        sortStrategy.sort(data);
-        System.out.println("Processed: " + data);
-    }
-}
-
-// Lambda strategies — no concrete class needed
-SortStrategy<Integer> ascending  = list -> Collections.sort(list);
-SortStrategy<Integer> descending = list -> list.sort(Comparator.reverseOrder());
-SortStrategy<Integer> shuffle    = list -> Collections.shuffle(list);
-
-DataProcessor<Integer> proc = new DataProcessor<>(ascending);
-proc.process(new ArrayList<>(Arrays.asList(3, 1, 4, 1, 5, 9)));
-proc.setStrategy(descending);
-proc.process(new ArrayList<>(Arrays.asList(3, 1, 4, 1, 5, 9)));
-\`\`\`
-
-> **Modern Java insight:** Since Strategy is a single-method interface, it's a functional interface — you can use lambdas instead of concrete strategy classes. \`Comparator\`, \`Predicate\`, \`Function\` are all Strategy patterns in the JDK.
-
-### Observer — Event Notification
-
-Defines a one-to-many dependency: when one object (subject/publisher) changes state, all its dependents (observers/subscribers) are notified automatically.
-
-\`\`\`java
-// Observer (subscriber)
-interface StockObserver {
-    void onPriceChange(String symbol, double price);
-}
-
-// Subject (publisher)
-class StockTicker {
-    private final Map<String, List<StockObserver>> subscribers = new HashMap<>();
-
-    public void subscribe(String symbol, StockObserver observer) {
-        subscribers.computeIfAbsent(symbol, k -> new ArrayList<>()).add(observer);
-    }
-
-    public void unsubscribe(String symbol, StockObserver observer) {
-        subscribers.getOrDefault(symbol, List.of()).remove(observer);
-    }
-
-    public void setPrice(String symbol, double price) {
-        subscribers.getOrDefault(symbol, List.of())
-                   .forEach(obs -> obs.onPriceChange(symbol, price));
-    }
-}
-
-StockTicker ticker = new StockTicker();
-
-// Lambda observers — concise functional style
-ticker.subscribe("NIFTY", (sym, price) -> System.out.println("Dashboard: " + sym + "=" + price));
-ticker.subscribe("NIFTY", (sym, price) -> { if (price > 24000) System.out.println("ALERT: NIFTY above 24k"); });
-
-ticker.setPrice("NIFTY", 23500); // Dashboard: NIFTY=23500.0
-ticker.setPrice("NIFTY", 24200); // Dashboard + ALERT
-\`\`\`
-
-**Real-world Observer:** Java's \`java.util.Observer\` (deprecated), Spring's \`ApplicationEvent\`/\`ApplicationListener\`, React's state management, RxJava Observables.
-
-### Template Method — Define a Skeleton, Vary the Steps
-
-Defines the skeleton of an algorithm in a base class, deferring some steps to subclasses. Subclasses can override specific steps without changing the overall structure.
-
-\`\`\`java
-abstract class ReportGenerator {
-    // Template method — the fixed skeleton
-    public final String generate(String data) {
-        String parsed   = parseData(data);      // step 1 — abstract
-        String filtered = filterData(parsed);   // step 2 — with default
-        String rendered = renderReport(filtered); // step 3 — abstract
-        return addHeader() + rendered + addFooter(); // step 4 — with default
-    }
-
-    protected abstract String parseData(String raw);
-    protected abstract String renderReport(String data);
-
-    // Hook methods — optional override
-    protected String filterData(String data) { return data; }
-    protected String addHeader()  { return "=== Report ===\n"; }
-    protected String addFooter()  { return "\n=== End ==="; }
-}
-
-class CsvReportGenerator extends ReportGenerator {
-    @Override protected String parseData(String raw) {
-        return Arrays.stream(raw.split(",")).map(String::trim).collect(Collectors.joining("|"));
-    }
-    @Override protected String renderReport(String data) {
-        return "CSV Output:\n" + data;
-    }
-}
-
-class JsonReportGenerator extends ReportGenerator {
-    @Override protected String parseData(String raw) { return raw.replaceAll(",", "\n"); }
-    @Override protected String renderReport(String data) { return "JSON Output:\n" + data; }
-    @Override protected String addHeader() { return "{\n"; }
-    @Override protected String addFooter() { return "\n}"; }
-}
-
-System.out.println(new CsvReportGenerator().generate("Alice, 30, Engineer"));
-\`\`\`
-
-### Command — Encapsulate Requests as Objects
-
-Encapsulates a request as an object, letting you parameterize clients with different requests, queue operations, log changes, or support undo/redo.
-
-\`\`\`java
-// Command interface
-interface Command {
-    void execute();
-    void undo();
-}
-
-// Receiver
-class TextEditor {
-    private final StringBuilder text = new StringBuilder();
-    public void append(String s)   { text.append(s); }
-    public void deleteLast(int n)  { text.delete(text.length()-n, text.length()); }
-    public String getText()        { return text.toString(); }
-}
-
-// Concrete command
-class AppendCommand implements Command {
-    private final TextEditor editor;
-    private final String text;
-
-    AppendCommand(TextEditor e, String text) { this.editor = e; this.text = text; }
-    public void execute() { editor.append(text); }
-    public void undo()    { editor.deleteLast(text.length()); }
-}
-
-// Invoker — maintains command history
-class CommandHistory {
-    private final Deque<Command> history = new ArrayDeque<>();
-
-    public void execute(Command cmd) { cmd.execute(); history.push(cmd); }
-    public void undo() { if (!history.isEmpty()) history.pop().undo(); }
-}
-
-TextEditor editor = new TextEditor();
-CommandHistory history = new CommandHistory();
-history.execute(new AppendCommand(editor, "Hello"));
-history.execute(new AppendCommand(editor, ", World"));
-System.out.println(editor.getText()); // Hello, World
-history.undo();
-System.out.println(editor.getText()); // Hello
-history.undo();
-System.out.println(editor.getText()); // (empty)
-\`\`\``,
-          code: [
-            `import java.util.*;
-import java.util.function.*;
-
-// Strategy via functional interface — no concrete strategy classes
-public class StrategyDemo {
-    record Product(String name, double price, int stock) {}
-
-    static List<Product> filter(List<Product> products, Predicate<Product> strategy) {
-        return products.stream().filter(strategy).toList();
-    }
-
-    static List<Product> sort(List<Product> products, Comparator<Product> strategy) {
-        return products.stream().sorted(strategy).toList();
-    }
-
-    public static void main(String[] args) {
-        List<Product> catalog = List.of(
-            new Product("Widget",  9.99, 50),
-            new Product("Gadget", 29.99,  5),
-            new Product("Doohickey", 4.99, 200),
-            new Product("Thingamajig", 49.99, 0)
-        );
-
-        // Filter strategies as lambdas
-        Predicate<Product> inStock     = p -> p.stock() > 0;
-        Predicate<Product> affordable  = p -> p.price() < 15.0;
-        Predicate<Product> highlighted = inStock.and(affordable);
-
-        System.out.println("In stock & affordable:");
-        filter(catalog, highlighted).forEach(p ->
-            System.out.printf("  %-15s $%.2f (qty: %d)%n", p.name(), p.price(), p.stock()));
-
-        // Sort strategies as method references / lambdas
-        System.out.println("By price ascending:");
-        sort(catalog, Comparator.comparingDouble(Product::price))
-            .forEach(p -> System.out.printf("  %-15s $%.2f%n", p.name(), p.price()));
-    }
-}`,
-            `import java.util.*;
-
-// Observer pattern — stock alert system
-interface PriceObserver {
-    void onPriceChange(String symbol, double newPrice, double oldPrice);
-}
-
-class StockTicker {
-    private final Map<String, Double> prices = new HashMap<>();
-    private final Map<String, List<PriceObserver>> observers = new HashMap<>();
-
-    public void subscribe(String symbol, PriceObserver obs) {
-        observers.computeIfAbsent(symbol, k -> new ArrayList<>()).add(obs);
-    }
-
-    public void updatePrice(String symbol, double price) {
-        double old = prices.getOrDefault(symbol, price);
-        prices.put(symbol, price);
-        observers.getOrDefault(symbol, List.of())
-                 .forEach(obs -> obs.onPriceChange(symbol, price, old));
-    }
-}
-
-// Command pattern — undo-able price updates
-interface PriceCommand { void execute(); void undo(); }
-
-class PriceUpdateCommand implements PriceCommand {
-    private final StockTicker ticker;
-    private final String symbol;
-    private final double newPrice, oldPrice;
-
-    PriceUpdateCommand(StockTicker t, String sym, double newP, double oldP) {
-        this.ticker = t; this.symbol = sym; this.newPrice = newP; this.oldPrice = oldP;
-    }
-    public void execute() { ticker.updatePrice(symbol, newPrice); }
-    public void undo()    { ticker.updatePrice(symbol, oldPrice); }
-}
-
-public class BehavioralDemo {
-    public static void main(String[] args) {
-        StockTicker ticker = new StockTicker();
-
-        // Observer — alert if price moves > 5%
-        ticker.subscribe("NIFTY", (sym, now, prev) -> {
-            System.out.printf("%s: %.0f → %.0f%n", sym, prev, now);
-            double pct = Math.abs(now - prev) / prev * 100;
-            if (pct > 5) System.out.printf("  ⚠ Alert: %.1f%% move!%n", pct);
-        });
-
-        // Command — undo-able updates
-        Deque<PriceCommand> history = new ArrayDeque<>();
-        for (double[] update : new double[][]{{23500,0},{24500,23500},{22000,24500}}) {
-            PriceCommand cmd = new PriceUpdateCommand(ticker, "NIFTY", update[0], update[1]);
-            cmd.execute();
-            history.push(cmd);
-        }
-
-        System.out.println("\nUndoing last 2 updates:");
-        history.pop().undo();
-        history.pop().undo();
-    }
-}`
-          ],
-          flashcards: [
-            { q: 'How does Java 8\'s functional interface support replace Strategy classes?', a: 'Strategy is a single-method interface (functional interface). In Java 8+, any lambda or method reference implements it directly — no concrete strategy class needed. Comparator, Predicate, Function, Consumer are all Strategy patterns. This eliminates boilerplate while preserving the pattern\'s benefits.' },
-            { q: 'What is the difference between Template Method and Strategy?', a: 'Template Method uses inheritance — the algorithm skeleton is in the base class and subclasses override specific steps. Strategy uses composition — the context holds a strategy reference and delegates to it. Template Method is compile-time (inheritance); Strategy is runtime (you can swap the strategy). Prefer Strategy for testability and flexibility.' },
-            { q: 'What problem does the Command pattern solve?', a: 'It encapsulates a request as an object, enabling: (1) undo/redo — store executed commands in a history stack; (2) queuing — commands can be scheduled, delayed, or serialised; (3) macro recording — record a sequence of commands and replay; (4) remote operations — send command objects over the network.' },
-            { q: 'What is the Observer pattern called in modern Java frameworks?', a: 'Event-driven architecture / publish-subscribe. Spring uses ApplicationEvent + ApplicationListener or @EventListener. Reactive frameworks use Observable/Publisher (RxJava, Project Reactor). In the JDK, Flow.Publisher/Flow.Subscriber (Java 9) is the reactive streams observer. java.util.Observer was deprecated in Java 9.' },
-            { q: 'What is a "hook method" in the Template Method pattern?', a: 'A method in the base class with a default (often empty) implementation that subclasses can optionally override to "hook" into the algorithm at specific points. Unlike abstract steps (which must be overridden), hooks are optional customisation points. Example: addHeader() and addFooter() in a report generator — subclasses can override only what they need.' }
-          ]
-        },
-        {
-          title: 'Pattern Selection Guide & Real-World Applications',
-          notes: `## Pattern Selection Guide & Real-World Applications
-
-### Quick-Reference — When to Use Which Pattern
-
-\`\`\`mermaid
-flowchart TD
-    Q1{What is the\\nproblem?}
-    Q1 --> C1[Object creation\\nis complex]
-    Q1 --> C2[Interface\\nmismatch]
-    Q1 --> C3[Add behaviour\\nwithout subclassing]
-    Q1 --> C4[Choose algorithm\\nat runtime]
-    Q1 --> C5[Notify many\\nobjects of change]
-    Q1 --> C6[Undo/redo\\nor queue requests]
-    C1 --> P1[Builder / Factory]
-    C2 --> P2[Adapter]
-    C3 --> P3[Decorator / Proxy]
-    C4 --> P4[Strategy]
-    C5 --> P5[Observer]
-    C6 --> P6[Command]
-    style P1 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
-    style P2 fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
-    style P3 fill:#0f1e12,stroke:#10b981,color:#e2e8f0
-    style P4 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
-    style P5 fill:#0f1e12,stroke:#10b981,color:#e2e8f0
-    style P6 fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
-\`\`\`
-
-### Patterns in the JDK — Recognise Them in the Wild
-
-| Pattern | JDK Examples |
-|---|---|
-| Singleton | \`Runtime.getRuntime()\`, \`System.console()\`, \`Collections.emptyList()\` |
-| Factory Method | \`Calendar.getInstance()\`, \`NumberFormat.getInstance()\`, \`Optional.of()\` |
-| Builder | \`StringBuilder\`, \`Stream.builder()\`, \`ProcessBuilder\`, \`HttpClient.newBuilder()\` |
-| Adapter | \`Arrays.asList()\`, \`InputStreamReader\`, \`Collections.enumeration()\` |
-| Decorator | \`BufferedInputStream\`, \`Collections.unmodifiableList()\`, \`Collections.synchronizedList()\` |
-| Proxy | \`java.lang.reflect.Proxy\`, Spring AOP proxies, Hibernate lazy-loading proxies |
-| Facade | \`javax.faces.context.FacesContext\`, \`java.net.URL\` |
-| Strategy | \`Comparator\`, \`Predicate\`, \`ExecutorService\` (strategy for task execution) |
-| Observer | \`java.util.EventListener\`, \`Flow.Subscriber\` (Java 9), Spring \`ApplicationListener\` |
-| Template Method | \`AbstractList\`, \`AbstractMap\`, \`HttpServlet.service()\` |
-| Command | \`Runnable\`, \`Callable\`, \`javax.swing.Action\` |
-| Iterator | \`java.util.Iterator\`, \`java.util.Spliterator\` |
-
-### Patterns in Spring Framework
-
-\`\`\`
-Singleton     — every Spring bean is singleton by default
-Factory       — BeanFactory / ApplicationContext
-Proxy         — @Transactional, @Cacheable, @Async, @Secured (Spring AOP)
-Template      — JdbcTemplate, RestTemplate, KafkaTemplate
-Observer      — ApplicationEvent + @EventListener
-Strategy      — HandlerMapping, ViewResolver (Spring MVC)
-Decorator     — BeanPostProcessor, HandlerInterceptor
-Command       — @Async methods return Future/CompletableFuture
-\`\`\`
-
-### Anti-Patterns to Avoid
-
-**1. Singleton overuse** — creates hidden global state, kills testability. Prefer Spring's IoC container to manage shared instances.
-
-**2. God Object** — one class that knows and does too much. Break it up using SRP (Single Responsibility Principle).
-
-**3. Lava Flow** — dead code left in the codebase "just in case" because nobody dares delete it. Delete confidently; version control has the history.
-
-**4. Magic Numbers / Strings** — \`if (status == 3)\` vs \`if (status == OrderStatus.SHIPPED)\`. Use enums and named constants.
-
-**5. Premature Pattern Injection** — adding an abstract factory + strategy + observer to a 50-line CRUD app. Patterns solve real complexity — don't introduce them speculatively.
-
-### The SOLID Principles Behind the Patterns
-
-Each GoF pattern embodies one or more SOLID principles:
-
-| Principle | Abbreviation | Patterns that embody it |
-|---|---|---|
-| Single Responsibility | S | Command, Factory, Facade |
-| Open/Closed | O | Strategy, Decorator, Observer |
-| Liskov Substitution | L | Template Method, Decorator, Adapter |
-| Interface Segregation | I | Facade, Strategy (small interfaces) |
-| Dependency Inversion | D | Factory, Abstract Factory, all dependency injection |
-
-> **Interview key insight:** Interviewers don't want you to recite pattern definitions — they want you to recognise when a pattern solves a real problem, name it correctly, and explain the trade-offs. "We used Strategy here because we needed to switch the pricing algorithm at runtime without if-else chains" is a perfect answer.
-
-### Pattern Composition — Real Scenario
-
-A real payment processing pipeline often composes several patterns:
-
-\`\`\`java
-// Factory creates the right payment strategy
-PaymentStrategy strategy = PaymentFactory.create(paymentMethod);
-
-// Decorator adds logging + retry
-PaymentStrategy withLogging = new LoggingPaymentDecorator(strategy);
-PaymentStrategy withRetry   = new RetryDecorator(withLogging, 3);
-
-// Command wraps the payment for undo/audit
-PaymentCommand cmd = new PaymentCommand(withRetry, order);
-
-// Observer notifies downstream on success/failure
-cmd.onSuccess(event -> emailService.sendReceipt(event));
-cmd.onSuccess(event -> inventoryService.reserve(event));
-cmd.onFailure(event -> alertService.notify(event));
-
-// Execute
-commandBus.execute(cmd);
-\`\`\``,
-          code: [
-            `import java.util.*;
-import java.util.function.*;
-
-// Pattern composition: Factory + Strategy + Decorator + Observer
-interface PaymentStrategy {
-    String pay(double amount, String currency);
-}
-
-// Concrete strategies
-class CreditCardPayment implements PaymentStrategy {
-    private final String card;
-    CreditCardPayment(String card) { this.card = card; }
-    public String pay(double amount, String currency) {
-        return String.format("CC[%s] charged %.2f %s", card.substring(card.length()-4), amount, currency);
-    }
-}
-
-class UpiPayment implements PaymentStrategy {
-    private final String upiId;
-    UpiPayment(String upiId) { this.upiId = upiId; }
-    public String pay(double amount, String currency) {
-        return String.format("UPI[%s] sent %.2f %s", upiId, amount, currency);
-    }
-}
-
-// Factory
-class PaymentFactory {
-    public static PaymentStrategy create(String method, String token) {
-        return switch (method) {
-            case "CC"  -> new CreditCardPayment(token);
-            case "UPI" -> new UpiPayment(token);
-            default -> throw new IllegalArgumentException("Unknown: " + method);
-        };
-    }
-}
-
-// Decorator: adds logging to any strategy
-class LoggingPayment implements PaymentStrategy {
-    private final PaymentStrategy delegate;
-    LoggingPayment(PaymentStrategy d) { this.delegate = d; }
-    public String pay(double amount, String currency) {
-        System.out.println("[LOG] Initiating payment: " + amount + " " + currency);
-        String result = delegate.pay(amount, currency);
-        System.out.println("[LOG] Result: " + result);
-        return result;
-    }
-}
-
-public class PatternComposition {
-    private final List<Consumer<String>> successListeners = new ArrayList<>();
-
-    public void onSuccess(Consumer<String> listener) { successListeners.add(listener); }
-
-    public void processPayment(String method, String token, double amount) {
-        PaymentStrategy strategy = new LoggingPayment(PaymentFactory.create(method, token));
-        String result = strategy.pay(amount, "INR");
-        successListeners.forEach(l -> l.accept(result));
-    }
-
-    public static void main(String[] args) {
-        PatternComposition processor = new PatternComposition();
-        processor.onSuccess(r -> System.out.println("[EMAIL] Receipt: " + r));
-        processor.onSuccess(r -> System.out.println("[AUDIT] Logged: " + r));
-
-        processor.processPayment("CC",  "4532...1234", 2999.00);
-        processor.processPayment("UPI", "user@okaxis",  499.00);
-    }
-}`,
-            `import java.util.*;
-
-// Template Method for data pipeline — extensible ETL
-abstract class DataPipeline<T, R> {
-    // Template method — fixed skeleton
-    public final List<R> run(List<T> input) {
-        List<T> validated = validate(input);
-        List<T> filtered  = filter(validated);
-        List<R> transformed = transform(filtered);
-        return postProcess(transformed);
-    }
-
-    // Abstract steps — must implement
-    protected abstract List<T> validate(List<T> data);
-    protected abstract List<R> transform(List<T> data);
-
-    // Hook steps — optional override
-    protected List<T> filter(List<T> data) { return data; }
-    protected List<R> postProcess(List<R> data) { return data; }
-}
-
-// Concrete pipeline: String → Integer (word length)
-class WordLengthPipeline extends DataPipeline<String, Integer> {
-    @Override
-    protected List<String> validate(List<String> data) {
-        Objects.requireNonNull(data, "data must not be null");
-        return data;
-    }
-    @Override
-    protected List<String> filter(List<String> data) {
-        return data.stream().filter(s -> s != null && !s.isBlank()).toList();
-    }
-    @Override
-    protected List<Integer> transform(List<String> data) {
-        return data.stream().map(String::length).toList();
-    }
-    @Override
-    protected List<Integer> postProcess(List<Integer> data) {
-        List<Integer> sorted = new ArrayList<>(data);
-        Collections.sort(sorted);
-        return sorted;
-    }
-}
-
-public class TemplateMethodDemo {
-    public static void main(String[] args) {
-        DataPipeline<String, Integer> pipeline = new WordLengthPipeline();
-        List<String> input = Arrays.asList("hello", "", "world", null, "java", "  ", "design");
-        List<Integer> result = pipeline.run(input);
-        System.out.println("Word lengths (sorted): " + result);  // [4, 5, 5, 6]
-    }
-}`
-          ],
-          flashcards: [
-            { q: 'Name three places the Template Method pattern appears in the JDK.', a: 'AbstractList (implements get-by-iterator from abstract get(i)), AbstractMap (implements entrySet-based operations from abstract entrySet()), HttpServlet.service() (dispatches to doGet/doPost). Any abstract class with a concrete method calling abstract methods is Template Method.' },
-            { q: 'Which SOLID principle does Strategy most directly embody?', a: 'Open/Closed Principle — the context class is open for extension (new strategies) without modification (the context code doesn\'t change). Also Dependency Inversion — the context depends on the Strategy abstraction, not concrete implementations.' },
-            { q: 'How is Runnable a Command pattern?', a: 'Runnable encapsulates an operation (execute = run()) as an object. It can be queued in an ExecutorService, scheduled via ScheduledExecutorService, passed around, stored, and executed later. This is exactly the Command pattern intent: decouple the request\'s creation from its execution.' },
-            { q: 'What is the Decorator pattern equivalent in the Collections framework?', a: 'Collections.unmodifiableList(), synchronizedList(), checkedList() — they all wrap an existing List and add behaviour (immutability, thread-safety, type checking) while implementing the same List interface. They are decorators that add cross-cutting behaviour without subclassing.' },
-            { q: 'What is the key difference between Proxy and Decorator?', a: 'Intent and transparency. Decorator adds behaviour and is typically composed by the client. Proxy controls access and is usually transparent — the client doesn\'t know it\'s talking to a proxy (e.g. Spring\'s @Transactional creates a proxy silently). Decorator is for enrichment; Proxy is for access control, lazy loading, or remoting.' }
-          ]
-        }
-      ]
-    }
 
   ]
 },
@@ -24143,214 +22470,629 @@ class InventoryBulkService {
     {
       id: '4.1',
       title: 'SQL Mastery & Joins',
-      hours: 4,
-      notes: `
-# SQL Mastery
-
-Backend seniors write SQL daily and are expected to reason about correctness and performance, not just call an ORM.
-
-## Join types
-
-- **INNER** — rows matching in both tables.
-- **LEFT/RIGHT OUTER** — all rows from one side, NULLs where no match.
-- **FULL OUTER** — union of left & right.
-- **CROSS** — cartesian product.
-- **SELF** — table joined to itself (hierarchies, pairs).
-
-## Aggregation & grouping
-
-\`GROUP BY\` + \`HAVING\` (filter *after* aggregation, vs \`WHERE\` *before*). \`COUNT\`, \`SUM\`, \`AVG\`, \`MIN\`, \`MAX\`.
-
-## Window functions (senior signal)
-
-\`ROW_NUMBER()\`, \`RANK()\`, \`DENSE_RANK()\`, \`LAG/LEAD\`, running totals via \`SUM() OVER (...)\`. They compute across a "window" of rows **without collapsing** them like \`GROUP BY\` does.
-
-> [!TIP]
-> "Top N per group" (e.g. top 2 highest-paid per department) is a classic test — solve it with \`ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC)\` then filter \`rn <= 2\`. Knowing window functions separates seniors from juniors.
-
-## Execution order (not text order!)
-
-\`FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT\`. This explains why you can't use a \`SELECT\` alias in \`WHERE\`.
-
-> [!EU]
-> Live SQL is common in EU loops: *"second-highest salary"*, *"top N per group"*, *"find duplicates"*. Practise window functions and correlated subqueries. Verbalise the execution order as you write.
-`,
-      code: [
+      hours: 3,
+      sections: [
         {
-          lang: 'sql',
-          title: 'Top-N-per-group & second highest (window functions)',
-          code: `-- Top 2 highest-paid employees per department
-SELECT dept, name, salary
-FROM (
-    SELECT dept, name, salary,
-           ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) AS rn
-    FROM   employee
-) ranked
-WHERE rn <= 2;
+          title: 'JOIN Types — INNER, OUTER, CROSS & Self',
+          notes: `## JOIN Types — INNER, OUTER, CROSS & Self
 
--- Second-highest salary overall (handles ties with DENSE_RANK)
-SELECT DISTINCT salary
-FROM (
-    SELECT salary, DENSE_RANK() OVER (ORDER BY salary DESC) AS r
-    FROM   employee
-) t
-WHERE r = 2;
+### Data Setup
 
--- Find duplicate emails
-SELECT email, COUNT(*) AS n
-FROM   users
-GROUP  BY email
-HAVING COUNT(*) > 1;
+\`\`\`sql
+CREATE TABLE customers (id INT, name VARCHAR(100), country VARCHAR(50));
+CREATE TABLE orders    (id INT, customer_id INT, total DECIMAL(10,2), status VARCHAR(20));
 
--- Running total of revenue by day
-SELECT day, amount,
-       SUM(amount) OVER (ORDER BY day ROWS UNBOUNDED PRECEDING) AS running_total
-FROM   daily_revenue;`
+INSERT INTO customers VALUES (1,'Alice','US'), (2,'Bob','UK'), (3,'Carol','DE'), (4,'Dave','US');
+INSERT INTO orders VALUES
+  (101, 1, 150.00, 'COMPLETED'),
+  (102, 1, 75.50,  'PENDING'),
+  (103, 2, 200.00, 'COMPLETED'),
+  (104, 99, 50.00, 'PENDING');  -- customer 99 doesn't exist
+\`\`\`
+
+### INNER JOIN — Matching Rows Only
+
+\`\`\`sql
+-- Returns only rows where the join condition matches in BOTH tables
+SELECT c.name, o.total, o.status
+FROM customers c
+INNER JOIN orders o ON c.id = o.customer_id;
+
+-- Result: Alice+150, Alice+75.50, Bob+200
+-- Dave (no orders) and order 104 (customer 99 missing) are excluded
+\`\`\`
+
+### LEFT (OUTER) JOIN — All Left + Matching Right
+
+\`\`\`sql
+-- All rows from the LEFT table; NULL for right side where no match
+SELECT c.name, o.total, o.status
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id;
+
+-- Result: Alice+150, Alice+75.50, Bob+200, Carol+NULL, Dave+NULL
+-- Carol and Dave have no orders → right columns are NULL
+
+-- Find customers with NO orders
+SELECT c.name
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+WHERE o.id IS NULL;  -- NULL means no match was found
+\`\`\`
+
+### RIGHT JOIN and FULL OUTER JOIN
+
+\`\`\`sql
+-- RIGHT JOIN: all rows from RIGHT table, NULL for left where no match
+SELECT c.name, o.id, o.total
+FROM customers c
+RIGHT JOIN orders o ON c.id = o.customer_id;
+-- Includes order 104 (customer 99 missing → name is NULL)
+
+-- FULL OUTER JOIN: all rows from both, NULL on either side where no match
+SELECT c.name, o.total
+FROM customers c
+FULL OUTER JOIN orders o ON c.id = o.customer_id;
+-- Includes Carol/Dave (no orders) AND order 104 (no customer)
+-- Not supported by MySQL — emulate with LEFT JOIN UNION RIGHT JOIN
+
+-- Find ALL unmatched: customers without orders OR orders without customers
+SELECT c.name, o.id
+FROM customers c
+FULL OUTER JOIN orders o ON c.id = o.customer_id
+WHERE c.id IS NULL OR o.id IS NULL;
+\`\`\`
+
+### CROSS JOIN and Self JOIN
+
+\`\`\`sql
+-- CROSS JOIN: cartesian product (every row × every row)
+SELECT c1.name, c2.name
+FROM customers c1 CROSS JOIN customers c2
+WHERE c1.id < c2.id;  -- pairs without duplicates
+-- 4 customers → 6 pairs (4×3/2 without self-pairs)
+
+-- SELF JOIN: table joined to itself
+-- Use case: find manager-employee relationships, adjacency in same table
+CREATE TABLE employees (id INT, name VARCHAR(100), manager_id INT);
+INSERT INTO employees VALUES (1,'CEO',NULL), (2,'CTO',1), (3,'Dev',2);
+
+SELECT e.name AS employee, m.name AS manager
+FROM employees e
+LEFT JOIN employees m ON e.manager_id = m.id;
+-- Dev→CTO, CTO→CEO, CEO→(NULL manager)
+\`\`\``,
+          code: [
+            `-- Practice queries: joins with real scenarios
+
+-- 1. Show each customer's total spend and order count
+SELECT
+    c.name,
+    COUNT(o.id)          AS order_count,
+    COALESCE(SUM(o.total), 0) AS total_spent
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+GROUP BY c.id, c.name
+ORDER BY total_spent DESC;
+
+-- 2. Find the most recent order for each customer (correlated subquery)
+SELECT c.name, o.total, o.status
+FROM customers c
+INNER JOIN orders o ON c.id = o.customer_id
+WHERE o.id = (
+    SELECT o2.id FROM orders o2
+    WHERE o2.customer_id = c.id
+    ORDER BY o2.id DESC LIMIT 1
+);
+
+-- 3. Three-table JOIN: orders + customers + products (if we had products)
+-- SELECT c.name, p.title, oi.quantity
+-- FROM orders o
+-- JOIN customers c ON c.id = o.customer_id
+-- JOIN order_items oi ON oi.order_id = o.id
+-- JOIN products p ON p.id = oi.product_id
+-- WHERE o.status = 'COMPLETED'
+
+-- 4. Self JOIN: employee hierarchy (flat to tree)
+WITH RECURSIVE org AS (
+    SELECT id, name, manager_id, 0 AS level, name AS path
+    FROM employees WHERE manager_id IS NULL  -- root
+    UNION ALL
+    SELECT e.id, e.name, e.manager_id, org.level+1,
+           org.path || ' > ' || e.name
+    FROM employees e JOIN org ON e.manager_id = org.id
+)
+SELECT path, level FROM org ORDER BY path;
+
+-- 5. CROSS JOIN use: generate all date-country combinations
+-- SELECT d.date, c.country FROM dates d CROSS JOIN countries c;`,
+            `-- Anti-join, semi-join patterns
+-- 5. Anti-join: customers who NEVER placed an order
+SELECT c.name
+FROM customers c
+WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id);
+-- Equivalent LEFT JOIN version:
+SELECT c.name
+FROM customers c LEFT JOIN orders o ON c.id = o.customer_id
+WHERE o.id IS NULL;
+
+-- 6. Semi-join: customers who placed AT LEAST ONE completed order
+SELECT DISTINCT c.name
+FROM customers c
+WHERE EXISTS (SELECT 1 FROM orders o
+              WHERE o.customer_id = c.id AND o.status = 'COMPLETED');
+
+-- 7. Multiple conditions in join (non-equi join)
+CREATE TABLE salary_grades (grade CHAR(1), min_sal INT, max_sal INT);
+INSERT INTO salary_grades VALUES ('A',80000,100000), ('B',60000,79999), ('C',40000,59999);
+
+SELECT e.name, e.salary, sg.grade
+FROM employees e
+JOIN salary_grades sg ON e.salary BETWEEN sg.min_sal AND sg.max_sal;
+
+-- 8. Lateral JOIN (PostgreSQL/MySQL 8+) — correlated subquery in FROM
+SELECT c.name, latest.total, latest.status
+FROM customers c
+JOIN LATERAL (
+    SELECT total, status FROM orders
+    WHERE customer_id = c.id
+    ORDER BY id DESC LIMIT 1
+) AS latest ON true;`
+          ],
+          flashcards: [
+            { q: 'What is the difference between INNER JOIN and LEFT JOIN?', a: 'INNER JOIN returns only rows where the join condition matches in BOTH tables — unmatched rows from either side are excluded. LEFT JOIN (LEFT OUTER JOIN) returns ALL rows from the left table, with matching right-table data if available, or NULL for the right columns if no match. Use LEFT JOIN to include all records from the primary entity (customers) even when the related table (orders) has no match. The classic "find records with no match" pattern: LEFT JOIN … WHERE right.id IS NULL.' },
+            { q: 'When would you use a CROSS JOIN?', a: 'CROSS JOIN produces the Cartesian product — every row in table A paired with every row in table B (M × N rows). Use cases: generating all combinations (e.g. all products × all dates for a report), generating test data, "seed" queries like SELECT date FROM calendar CROSS JOIN stores for filling sparse data. Always limit CROSS JOIN with WHERE clauses or the result set can be enormous. CROSS JOIN without a WHERE clause on a 1000-row × 1000-row table produces 1 million rows.' },
+            { q: 'What is a self JOIN and give a practical example?', a: 'A self JOIN joins a table to itself using two different aliases. Used for hierarchical/relationship data stored in one table. Example: employees table with manager_id column pointing to another row in the same table. SELECT e.name AS employee, m.name AS manager FROM employees e LEFT JOIN employees m ON e.manager_id = m.id. Other uses: finding duplicate rows (self JOIN on non-key columns), comparing rows within the same set (pairs, previous/next values).' },
+            { q: 'What is the difference between EXISTS (semi-join) and IN for subqueries?', a: 'EXISTS evaluates to true/false based on whether the subquery returns ANY row — SELECT 1 is conventional. IN retrieves the full set from the subquery and checks membership. For correlated subqueries (referencing outer query), EXISTS is typically faster because it short-circuits after finding the first match. Anti-join: NOT EXISTS (or LEFT JOIN … WHERE NULL) finds records with no related records — often more efficient than NOT IN (which fails on NULLs in the subquery result).' },
+            { q: 'What is a LATERAL JOIN (or APPLY in SQL Server)?', a: 'LATERAL (PostgreSQL, MySQL 8+) / APPLY (SQL Server) allows a subquery in the FROM clause to reference columns from preceding FROM items — like a correlated subquery but as a table. Use case: "get the N most recent orders per customer" without window functions: FROM customers JOIN LATERAL (SELECT * FROM orders WHERE customer_id = c.id ORDER BY created_at DESC LIMIT 3) latest ON true. Enables "top-N per group" patterns efficiently.' }
+          ]
         },
         {
-          lang: 'sql',
-          title: 'CTEs, recursive queries, and practical patterns',
-          code: `-- CTEs (Common Table Expressions) make complex queries readable and reusable.
--- They are NOT materialized by default in Postgres (optimizer can inline them).
+          title: 'Aggregations, GROUP BY & Window Functions',
+          notes: `## Aggregations, GROUP BY & Window Functions
 
--- 1. Simple CTE: name intermediate results for clarity
-WITH
-recent_orders AS (
-    SELECT customer_id, SUM(total) AS order_total
-    FROM   orders
-    WHERE  created_at > NOW() - INTERVAL '30 days'
-    GROUP  BY customer_id
-),
-customers_with_totals AS (
-    SELECT c.id, c.name, c.email, COALESCE(ro.order_total, 0) AS recent_total
-    FROM   customer c
-    LEFT   JOIN recent_orders ro ON c.id = ro.customer_id
+### GROUP BY & HAVING
+
+\`\`\`sql
+-- Aggregate functions work row groups
+SELECT
+    country,
+    COUNT(*) AS customers,
+    MIN(created_at) AS first_customer
+FROM customers
+GROUP BY country
+HAVING COUNT(*) > 1  -- HAVING filters AFTER grouping (WHERE filters BEFORE)
+ORDER BY customers DESC;
+
+-- Common mistake: SELECT column not in GROUP BY
+SELECT country, name  -- name is NOT in GROUP BY → error (except MySQL's ANY_VALUE)
+FROM customers
+GROUP BY country;     -- only country and aggregates are valid
+
+-- Aggregate functions: COUNT, SUM, AVG, MIN, MAX, STRING_AGG, ARRAY_AGG
+SELECT
+    status,
+    COUNT(*)                AS total_orders,
+    SUM(total)              AS revenue,
+    AVG(total)              AS avg_order,
+    MIN(total)              AS min_order,
+    MAX(total)              AS max_order,
+    STRING_AGG(id::TEXT, ',') AS order_ids
+FROM orders
+GROUP BY status;
+
+-- COUNT(*) counts rows including NULLs; COUNT(col) counts non-NULL values
+SELECT COUNT(*), COUNT(email), COUNT(DISTINCT email) FROM users;
+\`\`\`
+
+### Window Functions — Most Important SQL Feature for Interviews
+
+\`\`\`sql
+-- Window functions compute a value across a "window" of rows related to the current row
+-- Unlike GROUP BY, they don't collapse rows
+
+SELECT
+    name,
+    country,
+    salary,
+    AVG(salary) OVER (PARTITION BY country) AS avg_salary_in_country,
+    salary - AVG(salary) OVER (PARTITION BY country) AS diff_from_avg,
+    RANK() OVER (PARTITION BY country ORDER BY salary DESC) AS rank_in_country
+FROM employees;
+
+-- Multiple window functions in one query
+SELECT
+    order_date,
+    daily_total,
+    SUM(daily_total) OVER (ORDER BY order_date) AS running_total,
+    AVG(daily_total) OVER (ORDER BY order_date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS moving_7day_avg,
+    LAG(daily_total, 1, 0) OVER (ORDER BY order_date) AS prev_day_total,
+    daily_total - LAG(daily_total, 1, 0) OVER (ORDER BY order_date) AS day_over_day_change
+FROM daily_sales;
+\`\`\`
+
+### Ranking Functions
+
+\`\`\`sql
+-- ROW_NUMBER: unique 1,2,3,4... even for ties
+-- RANK: ties get same rank, then skip (1,2,2,4)
+-- DENSE_RANK: ties get same rank, no skip (1,2,2,3)
+SELECT
+    name, score,
+    ROW_NUMBER()  OVER (ORDER BY score DESC) AS row_num,
+    RANK()        OVER (ORDER BY score DESC) AS rank,
+    DENSE_RANK()  OVER (ORDER BY score DESC) AS dense_rank
+FROM test_results;
+-- Score: 95, 90, 90, 85
+-- ROW_NUMBER: 1,2,3,4  RANK: 1,2,2,4  DENSE_RANK: 1,2,2,3
+
+-- Classic: "top N per group" with ROW_NUMBER
+SELECT * FROM (
+    SELECT
+        customer_id, order_id, total,
+        ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY total DESC) AS rn
+    FROM orders
+) ranked
+WHERE rn <= 3;  -- top 3 orders per customer
+
+-- NTILE: divide into N equal buckets
+SELECT name, salary, NTILE(4) OVER (ORDER BY salary) AS quartile FROM employees;
+
+-- PERCENT_RANK / CUME_DIST: relative rank (0.0 to 1.0)
+SELECT name, salary, PERCENT_RANK() OVER (ORDER BY salary) AS pctile FROM employees;
+\`\`\`
+
+### LAG / LEAD / FIRST_VALUE / LAST_VALUE
+
+\`\`\`sql
+-- LAG: access previous row's value
+-- LEAD: access next row's value
+SELECT
+    month,
+    revenue,
+    LAG(revenue, 1)  OVER (ORDER BY month) AS prev_month,
+    LEAD(revenue, 1) OVER (ORDER BY month) AS next_month,
+    (revenue - LAG(revenue,1) OVER (ORDER BY month)) /
+        NULLIF(LAG(revenue,1) OVER (ORDER BY month), 0) * 100 AS pct_growth
+FROM monthly_revenue;
+
+-- FIRST_VALUE / LAST_VALUE within a partition
+SELECT
+    department,
+    name,
+    salary,
+    FIRST_VALUE(name) OVER (PARTITION BY department ORDER BY salary DESC) AS top_earner,
+    LAST_VALUE(name)  OVER (PARTITION BY department ORDER BY salary DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS lowest_earner
+FROM employees;
+-- Note: LAST_VALUE needs explicit frame or it only looks at current row
+\`\`\``,
+          code: [
+            `-- Window function mastery — classic interview patterns
+
+-- 1. Running total and moving average
+SELECT
+    order_date,
+    total,
+    SUM(total) OVER (ORDER BY order_date ROWS UNBOUNDED PRECEDING) AS running_total,
+    AVG(total) OVER (ORDER BY order_date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS ma_3day
+FROM orders
+ORDER BY order_date;
+
+-- 2. Top 3 orders per customer
+SELECT customer_id, order_id, total, row_rank
+FROM (
+    SELECT customer_id, id AS order_id, total,
+           ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY total DESC) AS row_rank
+    FROM orders
+) t WHERE row_rank <= 3;
+
+-- 3. Month-over-month growth
+WITH monthly AS (
+    SELECT
+        DATE_TRUNC('month', created_at) AS month,
+        SUM(total) AS revenue
+    FROM orders
+    GROUP BY DATE_TRUNC('month', created_at)
 )
-SELECT * FROM customers_with_totals WHERE recent_total > 1000 ORDER BY recent_total DESC;
+SELECT
+    month,
+    revenue,
+    LAG(revenue) OVER (ORDER BY month) AS prev_revenue,
+    ROUND(
+        (revenue - LAG(revenue) OVER (ORDER BY month))
+        / NULLIF(LAG(revenue) OVER (ORDER BY month), 0) * 100,
+    2) AS growth_pct
+FROM monthly
+ORDER BY month;
 
--- 2. Recursive CTE: employee hierarchy (org chart)
-WITH RECURSIVE org_tree AS (
-    -- Base case: top-level employees (no manager)
-    SELECT id, name, manager_id, 1 AS depth, name AS path
-    FROM   employee
-    WHERE  manager_id IS NULL
+-- 4. Percentile rank — classify employees by salary quartile
+SELECT
+    name, department, salary,
+    NTILE(4) OVER (PARTITION BY department ORDER BY salary) AS quartile,
+    PERCENT_RANK() OVER (PARTITION BY department ORDER BY salary) AS pct_rank
+FROM employees
+ORDER BY department, salary;
+
+-- 5. Gap detection: find orders not placed on consecutive days
+SELECT order_date,
+       LAG(order_date) OVER (PARTITION BY customer_id ORDER BY order_date) AS prev_date,
+       order_date - LAG(order_date) OVER (PARTITION BY customer_id ORDER BY order_date) AS gap_days
+FROM orders
+HAVING gap_days > 7;`,
+            `-- CTEs (Common Table Expressions) + complex queries
+
+-- 1. Recursive CTE: organizational hierarchy with depth
+WITH RECURSIVE org AS (
+    -- Anchor: top-level (no manager)
+    SELECT id, name, manager_id, 0 AS depth,
+           ARRAY[id] AS path
+    FROM employees WHERE manager_id IS NULL
 
     UNION ALL
 
-    -- Recursive case: employees reporting to someone already in the tree
-    SELECT e.id, e.name, e.manager_id, ot.depth + 1, ot.path || ' -> ' || e.name
-    FROM   employee e
-    JOIN   org_tree ot ON e.manager_id = ot.id
+    -- Recursive: employees whose manager is in the CTE
+    SELECT e.id, e.name, e.manager_id, org.depth + 1,
+           org.path || e.id
+    FROM employees e
+    JOIN org ON e.manager_id = org.id
+    WHERE NOT e.id = ANY(org.path)  -- prevent cycles
 )
-SELECT depth, path FROM org_tree ORDER BY path;
+SELECT REPEAT('  ', depth) || name AS tree, depth
+FROM org ORDER BY path;
 
--- 3. De-duplicate: keep one row per group (common data-cleaning task)
--- Strategy: number rows within each group, keep row_number = 1
-WITH numbered AS (
-    SELECT *, ROW_NUMBER() OVER (PARTITION BY email ORDER BY created_at DESC) AS rn
-    FROM   user_signups
-)
-DELETE FROM user_signups
-WHERE  id IN (SELECT id FROM numbered WHERE rn > 1);  -- remove all but the most recent
+-- 2. Multi-CTE pipeline
+WITH
+  completed_orders AS (
+    SELECT * FROM orders WHERE status = 'COMPLETED'
+  ),
+  customer_totals AS (
+    SELECT customer_id, SUM(total) AS total_spend, COUNT(*) AS order_count
+    FROM completed_orders GROUP BY customer_id
+  ),
+  top_customers AS (
+    SELECT customer_id, total_spend, order_count,
+           DENSE_RANK() OVER (ORDER BY total_spend DESC) AS rank
+    FROM customer_totals
+  )
+SELECT c.name, tc.total_spend, tc.order_count, tc.rank
+FROM top_customers tc
+JOIN customers c ON c.id = tc.customer_id
+WHERE tc.rank <= 10
+ORDER BY tc.rank;
 
--- 4. Gap-and-island problem: find consecutive date ranges
-WITH gaps AS (
-    SELECT date,
-           date - (ROW_NUMBER() OVER (ORDER BY date))::int AS island_id
-    FROM   active_days
-)
-SELECT MIN(date) AS start_date, MAX(date) AS end_date, COUNT(*) AS days
-FROM   gaps
-GROUP  BY island_id
-ORDER  BY start_date;`
+-- 3. PIVOT (cross-tab) simulation
+SELECT
+    customer_id,
+    SUM(CASE WHEN status='COMPLETED' THEN total ELSE 0 END) AS completed_revenue,
+    SUM(CASE WHEN status='PENDING'   THEN total ELSE 0 END) AS pending_revenue,
+    COUNT(CASE WHEN status='CANCELLED' THEN 1 END)          AS cancellations
+FROM orders GROUP BY customer_id;`
+          ],
+          flashcards: [
+            { q: 'What is the difference between WHERE and HAVING?', a: 'WHERE filters rows BEFORE grouping — it acts on individual rows and cannot reference aggregate functions. HAVING filters groups AFTER the GROUP BY — it can reference aggregate functions. Example: WHERE total > 100 filters individual orders before grouping; HAVING COUNT(*) > 5 filters groups (customers) that have more than 5 orders. Performance: WHERE filters reduce the rows that need to be aggregated; HAVING filters the result of aggregation.' },
+            { q: 'What is a window function and how does PARTITION BY differ from GROUP BY?', a: 'Window functions compute an aggregate over a "window" of rows related to the current row — but unlike GROUP BY, they do NOT collapse rows. Every row remains in the result. PARTITION BY in a window function defines the window (like GROUP BY defines groups) but keeps all rows. Example: AVG(salary) OVER (PARTITION BY department) adds the department average to EACH employee row. GROUP BY collapses to one row per department. Window functions appear in SELECT, not WHERE (window is evaluated after WHERE).' },
+            { q: 'What is the difference between RANK, DENSE_RANK, and ROW_NUMBER?', a: 'All three assign positions based on ORDER BY. For tied values (score 90, 90): ROW_NUMBER assigns unique sequential numbers (1,2,3,4) — arbitrary tie-breaking. RANK assigns the same rank to ties but skips the next ranks (1,2,2,4) — like sports rankings. DENSE_RANK assigns the same rank to ties without skipping (1,2,2,3). Use ROW_NUMBER for "top-N per group" patterns (WHERE rn <= 3) since it guarantees exactly N rows per partition.' },
+            { q: 'What is a CTE and when would you use it instead of a subquery?', a: 'A CTE (Common Table Expression) is a named temporary result set defined with WITH name AS (...) before the main query. Benefits over subqueries: readability (name makes intent clear), reuse within the same query (reference the CTE multiple times without repeating the logic), recursive queries (WITH RECURSIVE). Recursive CTEs process hierarchical data (org charts, bill of materials). Performance: in most databases CTEs are inlined (like subqueries), not materialized — check EXPLAIN if you need the CTE results cached.' },
+            { q: 'What are LAG and LEAD window functions used for?', a: 'LAG(column, n) accesses the value n rows BEFORE the current row in the window order. LEAD(column, n) accesses n rows AFTER. Both take an optional default for when the row doesn\'t exist (e.g. first row has no LAG). Use cases: calculate month-over-month difference (revenue - LAG(revenue) OVER (ORDER BY month)), detect gaps in sequences, compare current vs previous/next values, session analysis. Syntax: LAG(salary, 1, 0) OVER (PARTITION BY dept ORDER BY hire_date).' }
+          ]
         },
         {
-          lang: 'java',
-          title: 'SQL in Java: PreparedStatement, ResultSet, and N+1 detection',
-          code: `import java.sql.*;
-import java.util.*;
+          title: 'Subqueries, CTEs & Advanced Patterns',
+          notes: `## Subqueries, CTEs & Advanced Patterns
 
-// Core JDBC patterns every backend engineer must know — the foundation under all ORMs.
-public class JdbcPatternsDemo {
+### Types of Subqueries
 
-    // ✅ ALWAYS use PreparedStatement — never string concatenation (SQL injection!)
-    static List<Map<String, Object>> findOrders(Connection conn, long customerId, String status)
-            throws SQLException {
-        String sql = "SELECT id, total, status, created_at FROM orders " +
-                     "WHERE customer_id = ? AND status = ? ORDER BY created_at DESC LIMIT 50";
+\`\`\`sql
+-- 1. Scalar subquery — returns exactly one value
+SELECT name,
+       (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) AS order_count
+FROM customers c;
 
-        List<Map<String, Object>> results = new ArrayList<>();
-        // try-with-resources ensures stmt + rs are closed even on exception
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, customerId);   // position 1 corresponds to first ?
-            stmt.setString(2, status);     // position 2 = second ?
+-- 2. Row subquery — returns one row
+SELECT * FROM orders
+WHERE (customer_id, total) = (
+    SELECT customer_id, MAX(total) FROM orders GROUP BY customer_id LIMIT 1
+);
 
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("id",         rs.getLong("id"));
-                    row.put("total",      rs.getBigDecimal("total"));
-                    row.put("status",     rs.getString("status"));
-                    row.put("created_at", rs.getTimestamp("created_at").toLocalDateTime());
-                    results.add(row);
-                }
-            }
+-- 3. Table subquery (derived table) — in FROM clause
+SELECT avg_order.country, avg_order.avg_total
+FROM (
+    SELECT c.country, AVG(o.total) AS avg_total
+    FROM customers c JOIN orders o ON c.id = o.customer_id
+    GROUP BY c.country
+) avg_order
+WHERE avg_order.avg_total > 100;
+
+-- 4. Correlated subquery — references outer query
+SELECT c.name
+FROM customers c
+WHERE (SELECT AVG(o.total) FROM orders o WHERE o.customer_id = c.id) > 150;
+-- Executes once PER OUTER ROW — can be slow; often replaceable with window function
+
+-- Replace correlated subquery with window function (usually faster)
+SELECT DISTINCT c.name
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+WHERE AVG(o.total) OVER (PARTITION BY o.customer_id) > 150;
+\`\`\`
+
+### CASE Expressions
+
+\`\`\`sql
+-- Simple CASE
+SELECT name, CASE status
+    WHEN 'ACTIVE'    THEN 'A'
+    WHEN 'INACTIVE'  THEN 'I'
+    ELSE 'U'
+END AS status_code
+FROM customers;
+
+-- Searched CASE
+SELECT name, salary,
+    CASE
+        WHEN salary >= 100000 THEN 'Senior'
+        WHEN salary >= 70000  THEN 'Mid'
+        ELSE 'Junior'
+    END AS level
+FROM employees;
+
+-- CASE in aggregation — conditional counting
+SELECT
+    COUNT(*)                                                      AS total,
+    COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END)             AS completed,
+    SUM(CASE WHEN status = 'COMPLETED' THEN total ELSE 0 END)    AS completed_revenue
+FROM orders;
+\`\`\`
+
+### UNION, INTERSECT, EXCEPT
+
+\`\`\`sql
+-- UNION ALL: combine all rows (includes duplicates)
+-- UNION: combine and remove duplicates (slower — deduplication)
+SELECT customer_id FROM active_customers
+UNION ALL
+SELECT customer_id FROM archived_customers;
+
+-- INTERSECT: rows in BOTH sets
+SELECT customer_id FROM orders WHERE status = 'COMPLETED'
+INTERSECT
+SELECT customer_id FROM orders WHERE status = 'PENDING';
+-- Customers who have both completed and pending orders
+
+-- EXCEPT (MINUS in Oracle): rows in first set but NOT second
+SELECT id FROM customers
+EXCEPT
+SELECT customer_id FROM orders;
+-- Customers who never ordered
+\`\`\`
+
+### NULL Handling
+
+\`\`\`sql
+-- NULL is not a value — it means "unknown"
+NULL = NULL    -- evaluates to NULL (not TRUE)
+NULL <> NULL   -- evaluates to NULL (not TRUE)
+NULL = 0       -- NULL (not TRUE)
+
+-- Use IS NULL / IS NOT NULL
+SELECT * FROM users WHERE email IS NULL;
+SELECT * FROM users WHERE email IS NOT NULL;
+
+-- COALESCE: first non-NULL value
+SELECT COALESCE(phone, email, 'no-contact') AS contact FROM users;
+
+-- NULLIF: returns NULL if two values are equal (use to avoid div-by-zero)
+SELECT SUM(revenue) / NULLIF(SUM(costs), 0) AS roi FROM financials;
+-- If costs = 0, NULLIF returns NULL, division returns NULL instead of error
+
+-- NULL in aggregates: COUNT(*) counts all rows; COUNT(col) skips NULLs
+SELECT COUNT(*), COUNT(email), AVG(score) FROM users;
+-- AVG ignores NULLs — 3 rows with scores 10, NULL, 20 → AVG = 15 (not 10)
+\`\`\``,
+          code: [
+            `-- Advanced SQL patterns for interview problems
+
+-- 1. Median (without MEDIAN function)
+SELECT AVG(salary) AS median FROM (
+    SELECT salary,
+           COUNT(*) OVER () AS total,
+           ROW_NUMBER() OVER (ORDER BY salary) AS rn
+    FROM employees
+) t
+WHERE rn IN ((total + 1) / 2, (total + 2) / 2);
+
+-- 2. Delete duplicates keeping one row
+DELETE FROM users
+WHERE id NOT IN (
+    SELECT MIN(id) FROM users GROUP BY email
+);
+
+-- 3. Find gaps in a sequence
+SELECT seq + 1 AS gap_start
+FROM (SELECT id AS seq FROM orders) t
+WHERE seq + 1 NOT IN (SELECT id FROM orders)
+  AND seq + 1 < (SELECT MAX(id) FROM orders);
+
+-- 4. Pivot table: monthly revenue by status
+SELECT
+    DATE_TRUNC('month', created_at) AS month,
+    SUM(CASE WHEN status='COMPLETED' THEN total ELSE 0 END) AS completed,
+    SUM(CASE WHEN status='PENDING'   THEN total ELSE 0 END) AS pending,
+    SUM(CASE WHEN status='CANCELLED' THEN total ELSE 0 END) AS cancelled
+FROM orders
+GROUP BY DATE_TRUNC('month', created_at)
+ORDER BY month;
+
+-- 5. Cumulative percentage (ABC analysis)
+WITH totals AS (
+    SELECT product_id, SUM(quantity * price) AS revenue
+    FROM order_items GROUP BY product_id
+),
+ranked AS (
+    SELECT product_id, revenue,
+           SUM(revenue) OVER (ORDER BY revenue DESC) AS cum_revenue,
+           SUM(revenue) OVER () AS total_revenue
+    FROM totals
+)
+SELECT product_id, revenue,
+       ROUND(cum_revenue / total_revenue * 100, 1) AS cumulative_pct,
+       CASE
+           WHEN cum_revenue / total_revenue <= 0.8 THEN 'A'
+           WHEN cum_revenue / total_revenue <= 0.95 THEN 'B'
+           ELSE 'C'
+       END AS abc_class
+FROM ranked ORDER BY revenue DESC;`,
+            `-- String functions, date functions & type casting
+
+-- String functions
+SELECT
+    UPPER(name), LOWER(name),
+    LENGTH(name),
+    SUBSTR(name, 1, 3),            -- first 3 chars
+    TRIM(BOTH ' ' FROM name),      -- remove leading/trailing spaces
+    REPLACE(name, 'Inc', 'Corp'),
+    name LIKE '%tech%',            -- pattern match
+    name ILIKE '%TECH%',           -- case-insensitive (PostgreSQL)
+    CONCAT(first_name, ' ', last_name),
+    first_name || ' ' || last_name  -- PostgreSQL concatenation
+FROM companies;
+
+-- Date functions
+SELECT
+    NOW(),                              -- current timestamp
+    CURRENT_DATE,                       -- today's date
+    EXTRACT(YEAR FROM created_at),      -- year component
+    DATE_TRUNC('month', created_at),    -- truncate to first of month
+    created_at + INTERVAL '30 days',    -- add 30 days
+    AGE(NOW(), birth_date),             -- age interval
+    DATE_DIFF('day', start_date, end_date)  -- days between (MySQL)
+FROM users;
+
+-- Type casting
+SELECT
+    '42'::INT,                    -- PostgreSQL cast
+    CAST('2024-01-15' AS DATE),   -- standard SQL
+    TO_CHAR(salary, 'FM$999,999'), -- format number
+    TO_DATE('15-01-2024', 'DD-MM-YYYY'),  -- parse date string
+    ROUND(3.14159, 2)              -- round decimal
+FROM dual;
+
+-- JSON (PostgreSQL)
+SELECT
+    data->>'name'          AS name,      -- extract text
+    data->'address'->>'city' AS city,    -- nested path
+    jsonb_array_length(data->'tags')     -- array length
+FROM users WHERE data @> '{"active": true}';  -- contains`
+          ],
+          flashcards: [
+            { q: 'What is a correlated subquery and when should you replace it?', a: 'A correlated subquery references a column from the outer query and is re-executed for EACH row of the outer query. Example: WHERE (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) > 5 — runs a subquery per customer. This scales as O(N) subquery executions. Replace with: a JOIN + GROUP BY (usually most efficient), or a window function (AVG(o.total) OVER (PARTITION BY o.customer_id)), or a CTE. Keep correlated subqueries only when there\'s no cleaner alternative and the dataset is small.' },
+            { q: 'What does COALESCE do and what is NULLIF used for?', a: 'COALESCE(a, b, c) returns the first non-NULL argument. Used for default values and fallback chains: COALESCE(phone, email, \'no-contact\'). NULLIF(a, b) returns NULL if a equals b, otherwise returns a. Primary use: avoid division by zero: total / NULLIF(count, 0) — if count is 0, NULLIF returns NULL, and dividing by NULL gives NULL instead of a runtime error. Also: NULLIF can turn "empty" values into NULL: NULLIF(name, \'\').' },
+            { q: 'What is the difference between UNION and UNION ALL?', a: 'UNION ALL combines the result sets of two queries including all duplicate rows — fast (just concatenates). UNION deduplicates after combining — slower because it requires sorting or hashing to find duplicates. Use UNION ALL when you know there are no duplicates (or don\'t care) for better performance. Both require the same number of columns with compatible types. Column names come from the first query. INTERSECT and EXCEPT implicitly deduplicate (like UNION, not UNION ALL).' },
+            { q: 'How do you handle NULL in SQL comparisons and aggregations?', a: 'NULL represents unknown — any comparison with NULL (=, <>, <, >) evaluates to NULL (not true/false), so WHERE col = NULL never matches. Use IS NULL / IS NOT NULL. In aggregations: COUNT(*) counts all rows; COUNT(col) skips NULLs; SUM/AVG/MIN/MAX all ignore NULLs. AVG of (10, NULL, 20) = 15, not 10. In JOINs: NULL ≠ NULL, so NULL foreign keys never match. In ORDER BY: NULLs sort last by default (NULLS FIRST/LAST to control).' },
+            { q: 'How do you write a "top N per group" query?', a: 'Use ROW_NUMBER() window function: SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY total DESC) AS rn FROM orders) t WHERE rn <= 3. This gives exactly 3 rows per customer. Alternative: RANK() returns all rows with the same rank (could give >3 if there are ties). In PostgreSQL you can also use LATERAL JOIN: FROM customers JOIN LATERAL (SELECT * FROM orders WHERE customer_id=c.id ORDER BY total DESC LIMIT 3) o ON true.' }
+          ]
         }
-        return results;
-    }
-
-    // N+1 detection at the JDBC layer: count queries per request
-    static class QueryCountingDataSource {
-        private int queryCount = 0;
-        void beforeQuery(String sql) { queryCount++; }
-        int getCount() { return queryCount; }
-        void reset() { queryCount = 0; }
-    }
-
-    // Batch insert: much faster than individual INSERTs for bulk operations
-    static void batchInsert(Connection conn, List<String> emails) throws SQLException {
-        String sql = "INSERT INTO newsletter_subscriber (email, created_at) VALUES (?, NOW())";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            conn.setAutoCommit(false);          // wrap batch in one transaction
-            for (String email : emails) {
-                stmt.setString(1, email);
-                stmt.addBatch();                // queue up — no DB round-trip yet
-            }
-            int[] counts = stmt.executeBatch(); // ONE round-trip for all rows
-            conn.commit();
-            System.out.println("Inserted " + counts.length + " rows in one batch");
-        } catch (SQLException e) {
-            conn.rollback();
-            throw e;
-        }
-    }
-
-    public static void main(String[] args) {
-        System.out.println("JDBC golden rules:");
-        System.out.println("  1. Always use PreparedStatement (never string concat)");
-        System.out.println("  2. try-with-resources for Connection/Statement/ResultSet");
-        System.out.println("  3. Use connection pools (HikariCP) — never create new Connection per query");
-        System.out.println("  4. Batch inserts/updates for bulk operations (addBatch/executeBatch)");
-        System.out.println("  5. Set query timeout: stmt.setQueryTimeout(10) in seconds");
-        System.out.println("  6. Log slow queries: datasource-proxy or p6spy in dev");
-        System.out.println();
-        System.out.println("N+1 detection in production:");
-        System.out.println("  Enable: spring.jpa.show-sql=true OR use datasource-proxy");
-        System.out.println("  Count queries per HTTP request — if count grows with result size -> N+1");
-        System.out.println("  Fix: JOIN FETCH, @EntityGraph, or batch loading");
-    }
-}`
-        }
-      ],
-      flashcards: [
-        { q: 'Difference between WHERE and HAVING?', a: 'WHERE filters individual rows before aggregation; HAVING filters groups after GROUP BY aggregation. You can reference aggregate functions in HAVING but not in WHERE.' },
-        { q: 'How do window functions differ from GROUP BY?', a: 'Window functions compute a value across a set of related rows (a "window") while preserving each individual row, whereas GROUP BY collapses rows into one per group.' },
-        { q: 'How do you get the top N rows per group?', a: 'Use ROW_NUMBER() OVER (PARTITION BY group_col ORDER BY sort_col) in a subquery, then filter WHERE row_number <= N.' },
-        { q: 'What is the logical execution order of a SELECT?', a: 'FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT. This is why SELECT aliases aren\'t visible in WHERE/GROUP BY.' },
-        { q: 'What is a CTE and how does it differ from a subquery?', a: 'A CTE (WITH clause) names a result set and can be referenced multiple times in the same query, improving readability. It can also be recursive. In PostgreSQL, CTEs are generally not materialized (optimizer inlines them) unless WITH MATERIALIZED is specified.' },
-        { q: 'How do you write a recursive SQL query? Give a use case.', a: 'WITH RECURSIVE cte AS ( base_case UNION ALL recursive_case JOIN cte ... ) SELECT from cte. Use cases: org chart traversal, bill of materials, file system tree, consecutive date ranges (gap-and-island).' },
-        { q: 'Why must you always use PreparedStatement and never string concatenation?', a: 'String concatenation of user input creates SQL injection vulnerability — an attacker can inject arbitrary SQL (e.g. OR 1=1; DROP TABLE). PreparedStatement parameterizes the query; the driver escapes parameters, making injection structurally impossible.' },
-        { q: 'What is batch insert and when does it matter?', a: 'Batching groups multiple INSERT statements into a single database round-trip (addBatch()/executeBatch()). For bulk inserts of 100+ rows, batch inserts are 10-100x faster than individual INSERTs because they eliminate per-statement round-trip latency and can use optimized server-side bulk paths.' }
       ]
     },
 
