@@ -58321,6 +58321,2100 @@ public class FlyweightDemo {
             ]
           }
         ]
+      },
+      {
+        id: `12.3`,
+        title: `Behavioral Design Patterns`,
+        hours: 6,
+        sections: [
+          {
+            id: `12.3.1`,
+            title: `Strategy — encapsulating interchangeable algorithms (and how lambdas modernize it)`,
+            notes: `# Strategy
+
+**Intent:** Define a family of algorithms, encapsulate each one, and make them interchangeable. Strategy lets the algorithm vary independently from the clients that use it.
+
+**Problem it solves:** You have one operation that can be done many ways (sort order, pricing rule, compression scheme, retry policy). Hard-coding the choice with \`if/else\` or \`switch\` couples the caller to every variant and violates the **Open/Closed Principle** — adding a variant means editing the caller. Strategy turns each variant into an object behind a common interface and injects the choice.
+
+> [!TIP]
+> Strategy is the most important pattern for a senior interview because **lambdas are Strategy**. \`Comparator\`, \`Runnable\`, \`Function\` — every functional interface you pass is a strategy object. If you can articulate that, you show you understand patterns as *forces*, not GoF trivia.
+
+\`\`\`mermaid
+classDiagram
+  class Context {
+    -Strategy strategy
+    +execute()
+  }
+  class Strategy {
+    <<interface>>
+    +doWork(input)
+  }
+  class ConcreteA { +doWork(input) }
+  class ConcreteB { +doWork(input) }
+  Context o--> Strategy
+  Strategy <|.. ConcreteA
+  Strategy <|.. ConcreteB
+\`\`\`
+
+## Classic OO Strategy vs lambda Strategy
+
+The classic form needs one class per algorithm. With Java 8+, a strategy that is a **single-method interface** collapses to a lambda or method reference — no boilerplate classes, no anonymous inner classes.
+
+| | Classic OO | Lambda |
+|---|---|---|
+| One class per variant | yes | no |
+| Stateful strategy | natural | awkward (capture) |
+| Named, reusable, testable in isolation | strong | use method refs / static factory |
+| Strategy with several methods | required | not a functional interface — must stay a class |
+
+> [!SUCCESS]
+> Rule of thumb: **single-method strategy → lambda; multi-method or stateful strategy → keep a real class/interface.** A \`Comparator\` is a lambda; a \`PaymentGateway\` with \`charge()\`, \`refund()\`, \`status()\` stays an interface with implementations.
+
+## In the wild (JDK / Spring)
+- \`java.util.Comparator\` passed to \`Collections.sort\`/\`Stream.sorted\` — the canonical Strategy.
+- \`java.util.function.*\` (\`Function\`, \`Predicate\`, \`Supplier\`) — strategies you inject into stream pipelines.
+- \`ThreadPoolExecutor\`'s \`RejectedExecutionHandler\` and \`ThreadFactory\` — pluggable policies.
+- Spring: \`PlatformTransactionManager\`, \`PasswordEncoder\`, \`HttpMessageConverter\`, the whole "\`...Strategy\`" naming convention (\`SessionAuthenticationStrategy\`, \`ClientRegistrationStrategy\`).
+
+> [!WARNING]
+> **Avoid when** there is exactly one algorithm and no realistic second variant — you are adding an interface and an injection point to support flexibility nobody asked for (speculative generality). Also avoid if the "strategies" share most logic; that smells like **Template Method** instead.
+
+**Use when:** multiple interchangeable algorithms; you want to choose/replace behavior at runtime; you want to kill a growing \`switch\`; you want to inject behavior for testing.
+**Avoid when:** only one variant exists; variants differ only in a constant (use config/a map); the variants share a fixed skeleton (Template Method fits better).`,
+            code: [
+              {
+                lang: `java`,
+                title: `Strategy: classic OO form vs lambda form (runnable)`,
+                code: `import java.util.*;
+import java.util.function.*;
+
+public class StrategyDemo {
+
+    // ---- Classic OO Strategy: a family of pricing algorithms ----
+    interface DiscountStrategy { double apply(double price); }
+
+    static class NoDiscount implements DiscountStrategy {
+        public double apply(double p) { return p; }
+    }
+    static class PercentOff implements DiscountStrategy {
+        private final double pct;
+        PercentOff(double pct) { this.pct = pct; }
+        public double apply(double p) { return p * (1 - pct); }
+    }
+
+    // The Context delegates to whatever strategy it was given.
+    static class Checkout {
+        private DiscountStrategy strategy = new NoDiscount();
+        void setStrategy(DiscountStrategy s) { this.strategy = s; }
+        double total(double price) { return strategy.apply(price); }
+    }
+
+    public static void main(String[] args) {
+        Checkout cart = new Checkout();
+
+        cart.setStrategy(new NoDiscount());
+        System.out.println("no discount:   " + cart.total(100));
+
+        cart.setStrategy(new PercentOff(0.20));
+        System.out.println("20% off:       " + cart.total(100));
+
+        // ---- Lambda Strategy: the interface IS functional ----
+        DiscountStrategy blackFriday = p -> p > 50 ? p - 30 : p;   // strategy as a lambda
+        cart.setStrategy(blackFriday);
+        System.out.println("blackFriday:   " + cart.total(100));
+
+        // Strategy via the JDK toolkit: Comparator is just a Strategy.
+        List<String> words = new ArrayList<>(List.of("banana", "fig", "apple"));
+        Comparator<String> byLength = Comparator.comparingInt(String::length);   // strategy
+        words.sort(byLength);
+        System.out.println("by length:     " + words);
+        words.sort(byLength.reversed().thenComparing(Comparator.naturalOrder()));
+        System.out.println("composed:      " + words);
+
+        // A registry of strategies keyed by name — replaces a switch statement.
+        Map<String, UnaryOperator<String>> formatters = Map.of(
+            "upper", String::toUpperCase,
+            "lower", String::toLowerCase,
+            "trim",  String::trim);
+        System.out.println("strategy map:  " + formatters.get("upper").apply("hi"));
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `In one sentence, what is the Strategy pattern?`,
+                a: `It encapsulates each member of a family of interchangeable algorithms behind a common interface so the algorithm can vary independently of the client that uses it — typically injected at runtime.`
+              },
+              {
+                q: `Why is 'a lambda is a Strategy' a useful senior insight?`,
+                a: `A single-method functional interface (Comparator, Function, Runnable) is exactly a strategy object; passing a lambda is selecting a strategy. Java 8 made the pattern boilerplate-free, so most modern Strategy usage no longer needs explicit ConcreteStrategy classes.`
+              },
+              {
+                q: `When should a Strategy stay a real class/interface instead of a lambda?`,
+                a: `When the strategy has multiple methods (not a functional interface), holds non-trivial state, needs a meaningful name, must be unit-tested in isolation, or is constructed by DI with its own dependencies.`
+              },
+              {
+                q: `How does Strategy relate to the Open/Closed Principle?`,
+                a: `Adding a new algorithm means adding a new strategy implementation rather than editing the client's if/else or switch. The client is closed for modification but open for extension via the strategy interface.`
+              },
+              {
+                q: `Strategy vs Template Method — what is the core difference?`,
+                a: `Strategy uses composition/delegation (the whole algorithm is swapped via an object) and varies at runtime; Template Method uses inheritance (a fixed skeleton in the base class with subclasses overriding steps) and is fixed at compile time.`
+              },
+              {
+                q: `Give a concrete JDK example of Strategy beyond Comparator.`,
+                a: `ThreadPoolExecutor's RejectedExecutionHandler and ThreadFactory, or java.util.function interfaces in stream pipelines. In Spring: PasswordEncoder, PlatformTransactionManager, HttpMessageConverter.`
+              },
+              {
+                q: `How can Strategy eliminate a growing switch statement?`,
+                a: `Map each case to a strategy object/lambda and store them in a Map<Key, Strategy>; the client looks the strategy up by key and invokes it, so new cases are new map entries, not new switch branches.`
+              },
+              {
+                q: `What is the downside of overusing Strategy?`,
+                a: `Speculative generality: when there is only one real algorithm, you add an interface, an injection point, and indirection that obscures the single concrete behavior. It also fragments logic across many small classes.`
+              },
+              {
+                q: `How do you compose strategies in modern Java?`,
+                a: `Functional interfaces provide combinators: Comparator.thenComparing/reversed, Predicate.and/or/negate, Function.andThen/compose. You build a complex strategy from small ones without new classes.`
+              },
+              {
+                q: `Is dependency injection of a behavior a form of Strategy?`,
+                a: `Yes — injecting an interface implementation that the class delegates to (e.g., a Notifier, a RetryPolicy) is Strategy realized through the DI container; the container chooses the concrete strategy.`
+              }
+            ]
+          },
+          {
+            id: `12.3.2`,
+            title: `Observer — events, listeners, pub/sub, and Spring ApplicationEvent`,
+            notes: `# Observer
+
+**Intent:** Define a one-to-many dependency so that when one object (the *subject/observable*) changes state, all its dependents (*observers*) are notified automatically.
+
+**Problem it solves:** You need to react to state changes without the source knowing the concrete reactors. Polling is wasteful; hard-wiring callbacks couples the producer to every consumer. Observer inverts that: consumers register, the producer just broadcasts.
+
+\`\`\`mermaid
+sequenceDiagram
+  participant C as Client
+  participant S as Subject
+  participant O1 as Observer A
+  participant O2 as Observer B
+  O1->>S: subscribe()
+  O2->>S: subscribe()
+  C->>S: setState(x)
+  S-->>O1: update(x)
+  S-->>O2: update(x)
+\`\`\`
+
+## Three faces of the same pattern
+- **Listener** (single process, synchronous): \`ActionListener\`, \`PropertyChangeListener\`. Observers called inline on the producer's thread.
+- **Spring ApplicationEvent** (in-process, decoupled, optionally async/transactional): publish an event, \`@EventListener\` methods receive it. The \`ApplicationEventMulticaster\` is the subject.
+- **Pub/Sub** (distributed, asynchronous): Kafka, Redis pub/sub, JMS. Same shape, but a broker sits between producer and consumers, decoupling them in *time* and *space*.
+
+> [!WARNING]
+> **The #1 Observer bug is the memory leak / lapsed-listener.** If observers register but never unregister, and the subject holds strong references, observers can never be GC'd. Long-lived subjects (a static event bus, a singleton) + short-lived observers (a request-scoped object, a UI panel) = a classic leak. Fixes: explicit \`removeListener\`, weak references (\`WeakHashMap\`), or auto-deregistration on close.
+
+> [!DANGER]
+> Synchronous in-process Observer makes notification ordering and exceptions tricky: one slow or throwing observer blocks/breaks the rest, and re-entrant updates (an observer mutating the subject) can cause \`ConcurrentModificationException\` or infinite loops. Snapshot the listener list before iterating and decide on an error-isolation policy.
+
+## In the wild (JDK / Spring)
+- JDK: \`java.util.concurrent.Flow\` (Reactive Streams — Publisher/Subscriber, JDK 9+), \`PropertyChangeListener\`, Swing/AWT listeners. (\`java.util.Observer\`/\`Observable\` were **deprecated in Java 9** — don't cite them as a positive example.)
+- Spring: \`ApplicationEventPublisher\`, \`@EventListener\`, \`@TransactionalEventListener\` (fire after commit), \`@Async\` listeners. Spring's whole bean lifecycle (\`ContextRefreshedEvent\`, etc.) is Observer.
+- Reactor/RxJava \`Flux\`/\`Observable\` are Observer scaled up with backpressure.
+
+**Use when:** multiple parties must react to events; you want producer and consumers decoupled; reactions can be added/removed dynamically.
+**Avoid when:** there is exactly one consumer known at compile time (just call it); ordering/transactionality across observers must be strict and you cannot enforce it; the indirection makes the control flow impossible to follow ("who handled this event?").`,
+            code: [
+              {
+                lang: `java`,
+                title: `Observer from scratch: subject, observers, and the leak-safe unsubscribe (runnable)`,
+                code: `import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+public class ObserverDemo {
+
+    @FunctionalInterface
+    interface PriceListener { void onPrice(String symbol, double price); }
+
+    // The Subject: holds observers, broadcasts changes.
+    static class Ticker {
+        // CopyOnWriteArrayList: safe to iterate while observers (un)subscribe re-entrantly.
+        private final List<PriceListener> listeners = new CopyOnWriteArrayList<>();
+
+        // Returns an unsubscribe handle — the modern, leak-safe registration style.
+        AutoCloseable subscribe(PriceListener l) {
+            listeners.add(l);
+            return () -> listeners.remove(l);
+        }
+
+        void publish(String symbol, double price) {
+            for (PriceListener l : listeners) {
+                try {
+                    l.onPrice(symbol, price);          // error isolation: one bad observer
+                } catch (RuntimeException ex) {        // must not kill the others
+                    System.out.println("observer failed, isolated: " + ex.getMessage());
+                }
+            }
+        }
+        int listenerCount() { return listeners.size(); }
+    }
+
+    public static void main(String[] args) throws Exception {
+        Ticker ticker = new Ticker();
+
+        // Two observers as lambdas.
+        AutoCloseable h1 = ticker.subscribe((s, p) ->
+            System.out.println("[logger]  " + s + " = " + p));
+        ticker.subscribe((s, p) -> {
+            if (p > 100) System.out.println("[alert]   " + s + " crossed 100!");
+        });
+        // A deliberately buggy observer to prove error isolation.
+        ticker.subscribe((s, p) -> { throw new RuntimeException("boom"); });
+
+        ticker.publish("ACME", 99.5);
+        ticker.publish("ACME", 101.0);
+
+        // Unsubscribe the logger via its handle — prevents the lapsed-listener leak.
+        h1.close();
+        System.out.println("after unsubscribe, listeners = " + ticker.listenerCount());
+        ticker.publish("ACME", 102.0);   // logger no longer fires
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Spring ApplicationEvent (idiomatic in-process Observer)`,
+                code: `import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionalEventListener;
+
+// 1) The event (an immutable record is ideal).
+record OrderPlaced(String orderId, double amount) {}
+
+// 2) The publisher (subject) — just asks Spring to multicast.
+@Component
+class OrderService {
+    private final ApplicationEventPublisher events;
+    OrderService(ApplicationEventPublisher events) { this.events = events; }
+
+    void placeOrder(String id, double amount) {
+        // ... persist order ...
+        events.publishEvent(new OrderPlaced(id, amount));   // broadcast, no coupling to listeners
+    }
+}
+
+// 3) Observers — decoupled, discovered by annotation.
+@Component
+class EmailNotifier {
+    @Async                                  // runs off the publisher's thread
+    @EventListener
+    void on(OrderPlaced e) {
+        System.out.println("emailing receipt for " + e.orderId());
+    }
+}
+
+@Component
+class Analytics {
+    // Fires ONLY after the surrounding DB transaction commits — avoids acting on rolled-back data.
+    @TransactionalEventListener
+    void on(OrderPlaced e) {
+        System.out.println("recording sale " + e.amount());
+    }
+}`,
+                runnable: false,
+                note: `Requires Spring Context; @Async needs @EnableAsync and a TaskExecutor; @TransactionalEventListener needs an active transaction. Demonstrates synchronous, async, and after-commit Observer variants.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the Observer pattern's intent.`,
+                a: `Define a one-to-many dependency: when the subject changes state, all registered observers are notified automatically, without the subject knowing their concrete types.`
+              },
+              {
+                q: `What is the lapsed-listener / Observer memory leak and how do you prevent it?`,
+                a: `A long-lived subject keeps strong references to observers that never unregister, so they can't be GC'd. Prevent it by returning an unsubscribe handle, calling removeListener on close, or holding observers via weak references.`
+              },
+              {
+                q: `How do you isolate a failing observer from the rest?`,
+                a: `Catch exceptions inside the notification loop per-observer (or run each via an executor) so one throwing/slow observer doesn't block or break notifications to the others; decide whether to log, skip, or fail-fast.`
+              },
+              {
+                q: `Why CopyOnWriteArrayList for an observer list?`,
+                a: `It allows safe iteration during notification even if an observer subscribes or unsubscribes re-entrantly, avoiding ConcurrentModificationException without locking the read path; good when notifications vastly outnumber subscription changes.`
+              },
+              {
+                q: `Why were java.util.Observer/Observable deprecated in Java 9?`,
+                a: `They were untyped (Object payloads), not thread-safe, didn't support a clean change-event model, and predated generics/functional interfaces. Use listeners, java.util.concurrent.Flow, or a library instead.`
+              },
+              {
+                q: `Difference between @EventListener and @TransactionalEventListener in Spring?`,
+                a: `@EventListener fires when the event is published (synchronously by default). @TransactionalEventListener defers until a transaction phase (AFTER_COMMIT by default), so you don't act on data that may be rolled back.`
+              },
+              {
+                q: `How is distributed pub/sub (Kafka) the same pattern as in-process Observer?`,
+                a: `Same one-to-many notification shape; the difference is a broker decouples producer and consumers in time and space and adds durability/backpressure. The producer still just publishes; consumers subscribe.`
+              },
+              {
+                q: `What ordering pitfalls exist with synchronous Observer?`,
+                a: `Notification order is usually unspecified, observers run on the producer's thread (so a slow one blocks it), and re-entrant state changes can cause infinite loops or concurrent-modification issues.`
+              },
+              {
+                q: `When should you NOT use Observer?`,
+                a: `When there is exactly one known consumer (just call it directly), when you need strict cross-observer ordering/transactionality you can't guarantee, or when the indirection makes 'who handled this?' impossible to trace.`
+              },
+              {
+                q: `How does push vs pull differ in Observer?`,
+                a: `Push: the subject sends the changed data in update(...). Pull: update() only signals 'something changed' and observers query the subject for what they need. Pull decouples the event payload but adds round-trips and can race.`
+              }
+            ]
+          },
+          {
+            id: `12.3.3`,
+            title: `Template Method — fixing the skeleton, varying the steps`,
+            notes: `# Template Method
+
+**Intent:** Define the skeleton of an algorithm in a base method, deferring some steps to subclasses. Subclasses redefine certain steps without changing the algorithm's structure.
+
+**Problem it solves:** Several procedures share the same overall sequence but differ in a few steps (parse → validate → transform → write, with format-specific parse/write). You want the invariant order written **once** and the variant steps overridable, avoiding copy-paste of the skeleton.
+
+\`\`\`mermaid
+classDiagram
+  class AbstractProcessor {
+    +process() final
+    #read()* abstract
+    #transform(data)
+    #write(out)* abstract
+    #hook()
+  }
+  class CsvProcessor { #read() #write(out) }
+  class JsonProcessor { #read() #write(out) }
+  AbstractProcessor <|-- CsvProcessor
+  AbstractProcessor <|-- JsonProcessor
+\`\`\`
+
+The public template method is usually **\`final\`** (the structure must not be overridden); the variant steps are \`abstract\` (must override) or **hooks** (default no-op the subclass may override).
+
+> [!TIP]
+> "Don't call us, we'll call you" — the **Hollywood Principle**. The base class controls flow and calls down into subclass steps; subclasses never invent the sequence. This is *inversion of control via inheritance*.
+
+## Template Method vs Strategy (the staple comparison)
+| | Template Method | Strategy |
+|---|---|---|
+| Mechanism | inheritance (override steps) | composition (inject an object) |
+| Binding time | compile time | runtime |
+| Granularity | varies *some steps* of a fixed skeleton | varies the *whole* algorithm |
+| Reuse of common code | in the base class for free | must be shared explicitly |
+| Coupling | subclass tied to base class | context tied only to interface |
+
+> [!SUCCESS]
+> Modern twist: you can get the Template-Method *effect* with composition by passing the variant steps as lambdas (a "functional template"). This keeps the fixed skeleton but avoids an inheritance hierarchy — often preferable.
+
+## In the wild (JDK / Spring)
+- \`java.util.AbstractList\`/\`AbstractMap\`/\`AbstractSet\` — implement the skeleton, you fill \`get\`/\`size\`.
+- \`InputStream.read(byte[])\` calls the abstract \`read()\`; \`HttpServlet.service()\` dispatches to \`doGet\`/\`doPost\` (template + hooks).
+- Spring: \`JdbcTemplate\`, \`RestTemplate\`, \`AbstractApplicationContext.refresh()\` (a giant template method), \`@Scheduled\` lifecycle. Note: Spring's \`*Template\` classes combine Template Method **and** Strategy (you pass a \`RowMapper\` callback).
+
+> [!WARNING]
+> **Avoid when** the variation is better expressed as composition (favor composition over inheritance), when subclasses need to vary the *order* (Template Method forbids that — by design), or when you'd need multiple inheritance of templates (Java can't; you'd contort the hierarchy).
+
+**Use when:** a fixed algorithm sequence with a few pluggable steps; you want to centralize the invariant flow and prevent subclasses from reordering it.
+**Avoid when:** steps vary so much there is no real common skeleton; you need runtime swapping (use Strategy); deep inheritance would result (prefer functional template/composition).`,
+            code: [
+              {
+                lang: `java`,
+                title: `Template Method with abstract steps, a hook, and a functional alternative (runnable)`,
+                code: `import java.util.*;
+import java.util.function.*;
+
+public class TemplateMethodDemo {
+
+    // ---- Classic Template Method ----
+    static abstract class ReportGenerator {
+        // The TEMPLATE: fixed skeleton, final so subclasses can't reorder it.
+        public final String generate(List<String> rows) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(header());                 // abstract step
+            for (String r : rows) sb.append(formatRow(r));   // abstract step
+            if (includeFooter()) sb.append(footer());        // HOOK controls optional step
+            return sb.toString();
+        }
+        protected abstract String header();
+        protected abstract String formatRow(String row);
+        protected String footer() { return "-- end --\\n"; }   // overridable default
+        protected boolean includeFooter() { return true; }     // hook: default on
+    }
+
+    static class CsvReport extends ReportGenerator {
+        protected String header() { return "value\\n"; }
+        protected String formatRow(String r) { return r + "\\n"; }
+        protected boolean includeFooter() { return false; }     // hook overridden off
+    }
+
+    static class MarkdownReport extends ReportGenerator {
+        protected String header() { return "| value |\\n|---|\\n"; }
+        protected String formatRow(String r) { return "| " + r + " |\\n"; }
+    }
+
+    // ---- Functional "template": same fixed skeleton, steps injected as lambdas ----
+    static String generate(List<String> rows,
+                           Supplier<String> header,
+                           Function<String,String> row) {
+        StringBuilder sb = new StringBuilder(header.get());
+        rows.forEach(r -> sb.append(row.apply(r)));
+        return sb.toString();
+    }
+
+    public static void main(String[] args) {
+        List<String> data = List.of("a", "b");
+
+        System.out.print(new CsvReport().generate(data));
+        System.out.println("---");
+        System.out.print(new MarkdownReport().generate(data));
+        System.out.println("---");
+
+        // Functional template: no subclassing, skeleton still fixed.
+        System.out.print(generate(data,
+            () -> "JSON:\\n",
+            r -> "  \\"" + r + "\\"\\n"));
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Template Method.`,
+                a: `Define the skeleton of an algorithm in a base method while letting subclasses override specific steps, so the overall structure stays fixed but selected steps vary.`
+              },
+              {
+                q: `Why is the template method often declared final?`,
+                a: `To enforce the invariant: subclasses may redefine the variant steps but must not change or reorder the overall algorithm structure. final on the skeleton prevents that override.`
+              },
+              {
+                q: `What is a 'hook' in Template Method?`,
+                a: `An overridable method with a default (often empty/no-op or a boolean toggle) that subclasses may optionally override to influence the algorithm — e.g., includeFooter() returning true by default.`
+              },
+              {
+                q: `Explain the Hollywood Principle in this context.`,
+                a: `'Don't call us, we'll call you' — the base class controls the flow and calls down into the subclass's step implementations; subclasses never drive the sequence themselves. It's IoC via inheritance.`
+              },
+              {
+                q: `Template Method vs Strategy: mechanism and binding time?`,
+                a: `Template Method uses inheritance and is bound at compile time, varying some steps of a fixed skeleton. Strategy uses composition and varies the whole algorithm at runtime by injecting an object.`
+              },
+              {
+                q: `How can you get a Template Method effect without inheritance?`,
+                a: `Write the fixed skeleton as a method that takes the variant steps as lambdas/functional-interface parameters (a 'functional template'), keeping the invariant flow while avoiding a class hierarchy.`
+              },
+              {
+                q: `Give two JDK examples of Template Method.`,
+                a: `AbstractList (skeleton calls abstract get/size), HttpServlet.service() dispatching to doGet/doPost, or InputStream.read(byte[]) calling the abstract read(). All fix flow and defer steps.`
+              },
+              {
+                q: `How do Spring's *Template classes blend two patterns?`,
+                a: `JdbcTemplate/RestTemplate use Template Method for the fixed resource-management skeleton (open, execute, handle errors, close) and Strategy for the variant work via callbacks like RowMapper/RequestCallback.`
+              },
+              {
+                q: `When is Template Method the wrong choice?`,
+                a: `When variation is better via composition, when subclasses need to reorder steps (it forbids that), when it would force deep/awkward inheritance, or when you need runtime swapping (use Strategy).`
+              },
+              {
+                q: `What is the maintenance risk of Template Method?`,
+                a: `Tight subclass-to-base coupling (the fragile base class problem): changing a protected step's contract or call order in the base can silently break all subclasses, and behavior is split across the hierarchy.`
+              }
+            ]
+          },
+          {
+            id: `12.3.4`,
+            title: `Command — actions as objects (undo/redo, queueing, scheduling)`,
+            notes: `# Command
+
+**Intent:** Encapsulate a request as an object, thereby letting you parameterize clients with different requests, queue or log requests, and support undoable operations.
+
+**Problem it solves:** You want to decouple the *invoker* (button, scheduler, queue) from the *receiver* (the thing that does the work) and treat an action as a first-class value you can store, pass, queue, retry, log, or reverse. A direct method call can't be undone, queued, or logged generically; a Command can.
+
+\`\`\`mermaid
+classDiagram
+  class Command {
+    <<interface>>
+    +execute()
+    +undo()
+  }
+  class Invoker { -history : Deque~Command~ +run(c) +undo() }
+  class Receiver { +action() }
+  class ConcreteCommand { -receiver +execute() +undo() }
+  Invoker o--> Command
+  Command <|.. ConcreteCommand
+  ConcreteCommand --> Receiver
+\`\`\`
+
+## The four roles
+- **Command** — interface with \`execute()\` (and often \`undo()\`).
+- **ConcreteCommand** — binds a *receiver* + the parameters needed to act.
+- **Invoker** — holds/triggers commands; owns the history for undo, the queue for scheduling.
+- **Receiver** — the object that actually performs the work.
+
+## What Command buys you (why seniors reach for it)
+- **Undo/redo:** each command knows how to reverse itself; keep two stacks.
+- **Queueing & scheduling:** commands are objects → put them on a \`BlockingQueue\`, a \`ThreadPoolExecutor\` (a \`Runnable\` *is* a Command), or a durable message queue.
+- **Logging / replay / audit:** serialize the command stream; replay to rebuild state (this is the seed of **Event Sourcing**).
+- **Macro commands:** a composite command runs a list of commands as one unit (Composite + Command).
+
+> [!TIP]
+> \`java.lang.Runnable\` and \`java.util.concurrent.Callable\` are Commands. Every task you submit to an \`ExecutorService\` is the Command pattern: the executor is the invoker, your lambda is the concrete command. Saying this in an interview connects GoF to everyday concurrency.
+
+> [!WARNING]
+> Robust **undo** is hard. \`undo()\` must restore exactly the prior state, which means the command must capture enough *before*-state (a Memento) — not just the inverse operation, because the inverse may be lossy (deleting then "un-deleting" loses metadata). For non-trivial undo, store a snapshot, not just the reverse op.
+
+## In the wild (JDK / Spring)
+- JDK: \`Runnable\`, \`Callable\`, \`Action\`/\`AbstractAction\` in Swing, \`Future\` (the result of a queued command).
+- Spring: \`@Async\` methods and \`TaskExecutor\` submissions; Spring Batch \`Tasklet\`/\`Step\`; Spring Statemachine actions; the whole "send a message to a handler" of Spring Integration / CQRS command buses (\`CommandGateway\` in Axon).
+
+**Use when:** you need undo/redo, queueing, scheduling, retry, logging/replay, or to decouple invoker from receiver; you want to parameterize objects with operations.
+**Avoid when:** a simple method call or a lambda suffices and you'll never queue/undo/log it — wrapping every call in a Command class is ceremony. (A bare lambda already gives you the "action as value" benefit without the class.)`,
+            code: [
+              {
+                lang: `java`,
+                title: `Command with undo/redo history and a queueable invoker (runnable)`,
+                code: `import java.util.*;
+
+public class CommandDemo {
+
+    // Receiver: the document being edited.
+    static class Document {
+        final StringBuilder text = new StringBuilder();
+        public String toString() { return text.toString(); }
+    }
+
+    // Command with reversible semantics.
+    interface Command {
+        void execute();
+        void undo();
+    }
+
+    static class AppendText implements Command {
+        private final Document doc;
+        private final String toAppend;
+        private int appendedLen;            // captured state needed to undo precisely
+        AppendText(Document doc, String s) { this.doc = doc; this.toAppend = s; }
+        public void execute() {
+            doc.text.append(toAppend);
+            appendedLen = toAppend.length();
+        }
+        public void undo() {                // restore prior state exactly
+            doc.text.delete(doc.text.length() - appendedLen, doc.text.length());
+        }
+    }
+
+    // Invoker: runs commands, owns undo/redo stacks (and could queue them instead).
+    static class Editor {
+        private final Deque<Command> undo = new ArrayDeque<>();
+        private final Deque<Command> redo = new ArrayDeque<>();
+        void run(Command c) { c.execute(); undo.push(c); redo.clear(); }
+        void undo() { if (!undo.isEmpty()) { Command c = undo.pop(); c.undo(); redo.push(c); } }
+        void redo() { if (!redo.isEmpty()) { Command c = redo.pop(); c.execute(); undo.push(c); } }
+    }
+
+    public static void main(String[] args) {
+        Document doc = new Document();
+        Editor editor = new Editor();
+
+        editor.run(new AppendText(doc, "Hello"));
+        editor.run(new AppendText(doc, ", world"));
+        System.out.println("typed:  '" + doc + "'");
+
+        editor.undo();
+        System.out.println("undo:   '" + doc + "'");
+
+        editor.redo();
+        System.out.println("redo:   '" + doc + "'");
+
+        // Commands are objects -> queue them. A Runnable IS a Command; the queue is the invoker.
+        Queue<Runnable> jobQueue = new ArrayDeque<>();
+        jobQueue.add(() -> editor.run(new AppendText(doc, " (queued A)")));
+        jobQueue.add(() -> editor.run(new AppendText(doc, " (queued B)")));
+        while (!jobQueue.isEmpty()) jobQueue.poll().run();
+        System.out.println("queued: '" + doc + "'");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of the Command pattern.`,
+                a: `Encapsulate a request as an object so you can parameterize objects with actions, queue/log/schedule them, and support undoable operations — decoupling the invoker from the receiver.`
+              },
+              {
+                q: `Name the four roles in Command.`,
+                a: `Command (interface with execute/undo), ConcreteCommand (binds a receiver and parameters), Invoker (triggers commands, owns history/queue), and Receiver (performs the actual work).`
+              },
+              {
+                q: `How is Runnable/Callable an example of Command?`,
+                a: `A task submitted to an ExecutorService is a command object: the executor is the invoker, the Runnable/Callable lambda is the concrete command bound to its captured receiver/state, and Future is its result.`
+              },
+              {
+                q: `Why is robust undo harder than just doing the inverse operation?`,
+                a: `The inverse can be lossy (un-delete loses metadata, un-set loses the old value). Reliable undo requires capturing enough before-state (a Memento/snapshot) so execute's effect can be exactly reversed.`
+              },
+              {
+                q: `How does Command enable undo/redo with two stacks?`,
+                a: `Execute pushes the command onto the undo stack and clears redo; undo pops it, calls undo(), pushes to redo; redo pops from redo, re-executes, pushes back to undo.`
+              },
+              {
+                q: `How does Command relate to Event Sourcing?`,
+                a: `If you log every executed command, you can replay the command stream to rebuild state. Command objects are the durable, serializable record of intent that event-sourced/CQRS systems persist and replay.`
+              },
+              {
+                q: `What is a macro/composite command?`,
+                a: `A command that holds a list of sub-commands and executes (and undoes) them as one unit — Composite applied to Command. Useful for grouping operations into a single undoable transaction.`
+              },
+              {
+                q: `When is Command over-engineering?`,
+                a: `When a plain method call or lambda suffices and you'll never queue, undo, log, or schedule it. Wrapping every call in a dedicated Command class adds ceremony without benefit; a bare lambda already makes the action a value.`
+              },
+              {
+                q: `How does Command decouple invoker from receiver?`,
+                a: `The invoker holds only the Command interface and calls execute(); it knows nothing about which receiver or operation is involved. The concrete command binds the receiver, so invokers are reusable across actions.`
+              },
+              {
+                q: `Where does Command appear in Spring/enterprise systems?`,
+                a: `TaskExecutor/@Async submissions, Spring Batch Tasklets, command buses in CQRS frameworks (e.g., Axon's CommandGateway), and Spring Integration message handlers — all treat an action/request as a dispatched object.`
+              }
+            ]
+          },
+          {
+            id: `12.3.5`,
+            title: `Chain of Responsibility — pipelines, Servlet filters, and the Spring Security filter chain`,
+            notes: `# Chain of Responsibility (CoR)
+
+**Intent:** Avoid coupling the sender of a request to its receiver by giving more than one object a chance to handle it. Chain the receivers and pass the request along until one handles it (or all have had a look).
+
+**Problem it solves:** A request needs to pass through several independent processing steps (auth, logging, rate-limit, validation, business logic), and you want each step pluggable, reorderable, and ignorant of the others. A giant \`if/else\` ladder couples all the steps; CoR makes each a link you can add/remove/reorder.
+
+\`\`\`mermaid
+sequenceDiagram
+  participant R as Request
+  participant H1 as Auth handler
+  participant H2 as RateLimit handler
+  participant H3 as Business handler
+  R->>H1: handle(req)
+  H1->>H2: pass on (or short-circuit)
+  H2->>H3: pass on
+  H3-->>R: response
+\`\`\`
+
+## Two flavors (know the distinction)
+1. **Pure CoR:** exactly one handler in the chain handles the request and stops (e.g., support-ticket escalation, exception handlers, log-level routing).
+2. **Pipeline / "filter chain":** *every* handler gets to pre-process and post-process, explicitly calling \`chain.next()\` to continue — request flows down, response flows back up. This is the dominant real-world form.
+
+> [!TIP]
+> **Servlet \`Filter\` and the Spring Security filter chain are the canonical pipeline CoR.** Each \`Filter.doFilter(req, res, chain)\` does work, then calls \`chain.doFilter(...)\` to pass control on (or short-circuits by *not* calling it, e.g., returning 401). Spring Security's \`FilterChainProxy\` is literally an ordered chain of these filters. Spring MVC \`HandlerInterceptor\` (preHandle/postHandle) and OkHttp/WebClient \`Interceptor\`s are the same shape.
+
+> [!WARNING]
+> **Order matters and is a frequent bug.** Authentication must run before authorization; decompression before parsing; rate-limit before expensive work. CoR makes order explicit and configurable — but if you misorder the chain you get security holes (authorizing before authenticating) or wasted work. Also beware **forgetting to call \`chain.next()\`** (request silently dropped) or calling it twice.
+
+## In the wild (JDK / Spring)
+- JDK: \`java.util.logging\` handler chain; \`ClassLoader\` parent-delegation is a CoR; \`Thread.UncaughtExceptionHandler\` lookup.
+- Spring: \`jakarta.servlet.Filter\`/\`FilterChain\`, Spring Security \`SecurityFilterChain\` + \`FilterChainProxy\`, \`HandlerInterceptor\`, \`ClientHttpRequestInterceptor\` (RestTemplate), \`ExchangeFilterFunction\` (WebClient), Spring Integration message channels.
+
+**Use when:** a request flows through several optional, reorderable, independent steps; you want middleware-style cross-cutting concerns; handlers should be added/removed without touching others.
+**Avoid when:** there is a single fixed handler (just call it); the chain becomes so long that tracing "what happened to my request" is impossible; performance-critical paths where the per-link indirection dominates.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Pipeline-style Chain of Responsibility (the Servlet-filter shape) — runnable`,
+                code: `import java.util.*;
+
+public class ChainDemo {
+
+    // A request/response pair flowing through the chain.
+    static class Request {
+        final String user; final String path; final List<String> trace = new ArrayList<>();
+        Request(String user, String path) { this.user = user; this.path = path; }
+    }
+
+    // The "FilterChain": lets a handler pass control to the next link.
+    interface Chain { void next(Request req); }
+
+    // A handler does pre-work, optionally calls chain.next(), then post-work — or short-circuits.
+    interface Handler { void handle(Request req, Chain chain); }
+
+    // The invoker assembles handlers into a chain (Servlet-filter style).
+    static class Pipeline implements Chain {
+        private final List<Handler> handlers;
+        private int index = 0;
+        Pipeline(List<Handler> handlers) { this.handlers = handlers; }
+        public void next(Request req) {
+            if (index < handlers.size()) {
+                Handler h = handlers.get(index++);
+                h.handle(req, this);
+            }
+        }
+        void run(Request req) { index = 0; next(req); }
+    }
+
+    public static void main(String[] args) {
+        Handler logging = (req, chain) -> {
+            req.trace.add("log:in");
+            chain.next(req);                 // pass on
+            req.trace.add("log:out");        // post-processing on the way back up
+        };
+        Handler auth = (req, chain) -> {
+            if (req.user == null) { req.trace.add("auth:401-STOP"); return; }  // short-circuit
+            req.trace.add("auth:ok");
+            chain.next(req);
+        };
+        Handler business = (req, chain) -> {
+            req.trace.add("handle:" + req.path);
+            // terminal handler: does not call chain.next()
+        };
+
+        Pipeline pipe = new Pipeline(List.of(logging, auth, business));
+
+        Request ok = new Request("alice", "/orders");
+        pipe.run(ok);
+        System.out.println("authenticated: " + ok.trace);
+
+        Request anon = new Request(null, "/orders");
+        pipe.run(anon);
+        System.out.println("anonymous:     " + anon.trace);   // stops at auth, never reaches business
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `A Servlet Filter (real CoR link) — illustration`,
+                code: `import jakarta.servlet.*;
+import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
+
+// Each Filter is one link in the chain. It decides whether to pass control on.
+public class RequestTimingFilter implements Filter {
+    @Override
+    public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
+            throws IOException, ServletException {
+        long start = System.nanoTime();
+        try {
+            chain.doFilter(req, res);          // pass to the NEXT link (or the servlet)
+        } finally {
+            long micros = (System.nanoTime() - start) / 1000;
+            String path = ((HttpServletRequest) req).getRequestURI();
+            System.out.println(path + " took " + micros + "us");   // post-processing
+        }
+    }
+    // To short-circuit (e.g., reject), simply DON'T call chain.doFilter and write the response.
+}`,
+                runnable: false,
+                note: `Requires the Servlet API (jakarta.servlet). This is exactly the same pipeline CoR as the runnable demo; Spring Security's FilterChainProxy orders many such filters.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Chain of Responsibility.`,
+                a: `Decouple sender from receiver by passing a request along a chain of handlers, each of which may handle it and/or pass it on, until one handles it (pure CoR) or all process it (pipeline).`
+              },
+              {
+                q: `Distinguish pure CoR from the pipeline/filter variant.`,
+                a: `Pure CoR: exactly one handler handles the request and stops (escalation, exception routing). Pipeline: every handler pre- and post-processes and explicitly calls chain.next() to continue — the dominant real-world form.`
+              },
+              {
+                q: `How are Servlet Filters an instance of CoR?`,
+                a: `Each Filter.doFilter(req,res,chain) does work then calls chain.doFilter() to pass control to the next filter or the servlet; not calling it short-circuits the chain (e.g., return 401). FilterChainProxy orders many filters.`
+              },
+              {
+                q: `Why does handler order matter in CoR, with an example?`,
+                a: `Steps depend on prior ones: authentication must precede authorization, decompression precede parsing, rate-limiting precede expensive work. Misordering causes security holes (authorize-before-authenticate) or wasted work.`
+              },
+              {
+                q: `What two common bugs occur in pipeline CoR?`,
+                a: `Forgetting to call chain.next() (request silently dropped / handler never runs) and calling it twice (double processing). Both come from each link being responsible for continuation.`
+              },
+              {
+                q: `How does a CoR handler short-circuit the chain?`,
+                a: `By not calling chain.next()/chain.doFilter() and instead producing the response directly — e.g., an auth filter writing 401 and returning, so downstream handlers never run.`
+              },
+              {
+                q: `Give three non-Servlet examples of CoR.`,
+                a: `ClassLoader parent-delegation, java.util.logging handler chain, Spring HandlerInterceptor, RestTemplate ClientHttpRequestInterceptor, WebClient ExchangeFilterFunction, OkHttp Interceptors.`
+              },
+              {
+                q: `When is CoR over-engineering?`,
+                a: `When there is a single fixed handler (call it directly), when the chain grows so long that tracing a request's path is impractical, or on hot paths where per-link indirection costs outweigh the flexibility.`
+              },
+              {
+                q: `How is the Spring Security filter chain related to CoR?`,
+                a: `FilterChainProxy holds an ordered list of security filters (authentication, CSRF, authorization, etc.); each is a CoR link that processes the request and delegates onward, or short-circuits with a 401/403.`
+              },
+              {
+                q: `How does CoR support cross-cutting concerns cleanly?`,
+                a: `Each concern (logging, timing, auth, rate-limit) becomes an independent, reorderable link that wraps the rest of the chain via pre/post hooks, keeping concerns out of business handlers — middleware-style composition.`
+              }
+            ]
+          },
+          {
+            id: `12.3.6`,
+            title: `State — behavior that changes with internal state (no more giant switch)`,
+            notes: `# State
+
+**Intent:** Allow an object to alter its behavior when its internal state changes — the object appears to change its class. Each state is a class; transitions move the object between state objects.
+
+**Problem it solves:** An object's behavior depends on a mode/status (order: NEW→PAID→SHIPPED→DELIVERED; connection: CLOSED→OPEN; document: DRAFT→REVIEW→PUBLISHED). Encoding this with a \`status\` field plus \`switch\`/\`if\` in every method scatters the state logic, makes illegal transitions easy, and grows unmaintainably. State pattern makes each state a class that knows its own behavior **and** its legal transitions.
+
+\`\`\`mermaid
+stateDiagram-v2
+  [*] --> Draft
+  Draft --> InReview : submit()
+  InReview --> Published : approve()
+  InReview --> Draft : reject()
+  Published --> [*]
+\`\`\`
+
+## State vs Strategy (they look identical in UML — know the difference)
+| | State | Strategy |
+|---|---|---|
+| Who picks the object | the object transitions itself based on state | the client/DI picks it |
+| Awareness | states know about each other (transitions) | strategies are independent |
+| Lifetime | changes over the object's life | usually set once |
+| Intent | model a state machine | choose an algorithm |
+
+> [!TIP]
+> The litmus test: if the concrete objects **transition to one another** (state A decides "now we're in state B"), it's State. If the client swaps a behavior and the behaviors don't know about each other, it's Strategy. Same class diagram, different intent.
+
+> [!SUCCESS]
+> For *simple* state machines, a Java **enum with abstract methods** is the cleanest State implementation — each enum constant overrides the behavior, transitions return the next constant, and illegal transitions throw. No class explosion.
+
+> [!WARNING]
+> **Avoid when** there are only two states or the transitions are trivial — a boolean or a simple \`switch\` is clearer than a hierarchy of state classes. Also, putting transition logic inside each state can make the overall machine hard to see at a glance; for complex machines, consider an explicit transition table or a state-machine library (Spring Statemachine).
+
+## In the wild (JDK / Spring)
+- JDK: \`Thread.State\`, \`Future\`/\`CompletableFuture\` internal states, NIO \`SelectionKey\`, regex matcher states.
+- Spring: **Spring Statemachine**, Spring Batch job/step status, the bean lifecycle, TCP/connection state in Reactor Netty.
+
+**Use when:** behavior genuinely varies by a finite set of states; you have illegal-transition rules to enforce; the \`switch (status)\` is spreading across many methods.
+**Avoid when:** two-ish states or trivial transitions; the state has no behavior (just data) — then it's an enum/flag, not the State pattern.`,
+            code: [
+              {
+                lang: `java`,
+                title: `State pattern two ways: state classes and an enum state machine (runnable)`,
+                code: `public class StateDemo {
+
+    // ---- Approach 1: state classes ----
+    interface OrderState {
+        OrderState pay(Order o);
+        OrderState ship(Order o);
+        String name();
+    }
+
+    static class New implements OrderState {
+        public OrderState pay(Order o)  { System.out.println("payment captured"); return new Paid(); }
+        public OrderState ship(Order o) { throw new IllegalStateException("cannot ship unpaid order"); }
+        public String name() { return "NEW"; }
+    }
+    static class Paid implements OrderState {
+        public OrderState pay(Order o)  { throw new IllegalStateException("already paid"); }
+        public OrderState ship(Order o) { System.out.println("shipped"); return new Shipped(); }
+        public String name() { return "PAID"; }
+    }
+    static class Shipped implements OrderState {
+        public OrderState pay(Order o)  { throw new IllegalStateException("already shipped"); }
+        public OrderState ship(Order o) { throw new IllegalStateException("already shipped"); }
+        public String name() { return "SHIPPED"; }
+    }
+
+    static class Order {
+        private OrderState state = new New();
+        void pay()  { state = state.pay(this); }
+        void ship() { state = state.ship(this); }
+        String status() { return state.name(); }
+    }
+
+    // ---- Approach 2: enum state machine (clean for simple machines) ----
+    enum Light {
+        RED    { Light next() { return GREEN; } },
+        GREEN  { Light next() { return YELLOW; } },
+        YELLOW { Light next() { return RED; } };
+        abstract Light next();   // each constant defines its own transition behavior
+    }
+
+    public static void main(String[] args) {
+        Order order = new Order();
+        System.out.println("status: " + order.status());
+        order.pay();
+        System.out.println("status: " + order.status());
+        order.ship();
+        System.out.println("status: " + order.status());
+        try { order.ship(); } catch (IllegalStateException e) {
+            System.out.println("blocked illegal transition: " + e.getMessage());
+        }
+
+        Light l = Light.RED;
+        for (int i = 0; i < 4; i++) { System.out.println("light: " + l); l = l.next(); }
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of the State pattern.`,
+                a: `Let an object alter its behavior when its internal state changes, so it appears to change class. Each state becomes an object encapsulating that state's behavior and legal transitions.`
+              },
+              {
+                q: `How do you tell State from Strategy when the UML is identical?`,
+                a: `State: the concrete objects transition to one another (the object changes its own state over its lifetime). Strategy: the client/DI selects an independent behavior that doesn't know about other strategies. Different intent, same diagram.`
+              },
+              {
+                q: `How does State eliminate the 'switch (status)' smell?`,
+                a: `Instead of every method branching on a status field, each state is a class whose methods implement that state's behavior; the object delegates to its current state object, so behavior lives in one place per state.`
+              },
+              {
+                q: `When is a Java enum the best State implementation?`,
+                a: `For simple, finite state machines: each enum constant overrides abstract methods to define its behavior and transition (returning the next constant), with illegal transitions throwing — no class explosion and exhaustive switch support.`
+              },
+              {
+                q: `How does State enforce legal transitions?`,
+                a: `Each state object only implements the transitions valid from it; calling an illegal transition (e.g., ship() while NEW) throws IllegalStateException, so invalid sequences are impossible to reach silently.`
+              },
+              {
+                q: `When is State over-engineering?`,
+                a: `With two-ish states or trivial transitions a boolean/simple switch is clearer, and when the 'state' carries data but no behavior it's just an enum/flag, not the State pattern.`
+              },
+              {
+                q: `What is a drawback of putting transition logic inside each state class?`,
+                a: `The overall machine becomes hard to see at a glance since transitions are scattered across state classes; for complex machines an explicit transition table or a state-machine library (Spring Statemachine) is clearer.`
+              },
+              {
+                q: `Give JDK examples of state-machine-like behavior.`,
+                a: `Thread.State, CompletableFuture's internal completion states, NIO SelectionKey, and regex Matcher states all model behavior/availability changing with an internal state.`
+              },
+              {
+                q: `Where can state be stored, and what changes if it must be persistent?`,
+                a: `In-memory state objects suffice for transient machines; if the entity is persisted (an order in a DB), you store the state as a column/enum and reconstruct the state object on load — the pattern still applies, transitions just become persisted updates.`
+              },
+              {
+                q: `How does State support the Open/Closed Principle?`,
+                a: `Adding a new state means adding a new state class (and wiring its transitions) without editing the others' core behavior, versus adding a branch to every switch across the codebase.`
+              }
+            ]
+          },
+          {
+            id: `12.3.7`,
+            title: `Iterator + a grab-bag: Mediator, Memento, Visitor, Interpreter, Null Object`,
+            notes: `# Iterator (and a tour of the remaining behavioral patterns)
+
+## Iterator
+**Intent:** Provide a way to access the elements of an aggregate sequentially without exposing its underlying representation.
+
+**Problem it solves:** Clients shouldn't know whether a collection is an array, a tree, or a linked list to traverse it. Iterator gives a uniform \`hasNext()/next()\` cursor and lets multiple independent traversals coexist.
+
+> [!TIP]
+> In Java you almost never *write* an Iterator — you **implement \`Iterable\`** so the for-each loop and streams work. The JDK's \`Iterator\`, \`ListIterator\`, \`Spliterator\` (parallel-friendly), and \`Stream\` are all this pattern. \`Iterator.remove()\` and fail-fast \`ConcurrentModificationException\` are the senior talking points.
+
+\`\`\`mermaid
+classDiagram
+  class Iterable~T~ { +iterator() Iterator~T~ }
+  class Iterator~T~ { +hasNext() +next() +remove() }
+  Iterable~T~ ..> Iterator~T~ : creates
+\`\`\`
+
+**Use when:** you expose traversal over a custom aggregate; you want multiple/lazy traversals. **Avoid when:** a plain \`List\`/\`Stream\` already does it — don't hand-roll iterators in 2026.
+
+---
+
+## Mediator
+**Intent:** Define an object that encapsulates how a set of objects interact, so they refer to the mediator instead of each other — turning a many-to-many web into a hub-and-spoke.
+**Problem:** N components all referencing each other become an unmaintainable mesh. The mediator centralizes the interaction logic.
+**In the wild:** Spring's \`ApplicationContext\` (beans don't wire each other), a UI dialog coordinating its widgets, \`ExecutorService\` mediating tasks↔threads, an airport tower coordinating planes. **Use when** many components have complex mutual interactions. **Avoid when** the mediator becomes a god object that knows everything (it can centralize too much).
+
+\`\`\`mermaid
+classDiagram
+  class Mediator { +notify(sender, event) }
+  ColleagueA --> Mediator
+  ColleagueB --> Mediator
+  ColleagueC --> Mediator
+\`\`\`
+
+---
+
+## Memento
+**Intent:** Capture and externalize an object's internal state (without violating encapsulation) so it can be restored later.
+**Problem:** Implement undo/snapshots without exposing the originator's private fields. The **originator** creates a memento; a **caretaker** stores it but can't read it; later the originator restores from it.
+**In the wild:** undo stacks (pairs with Command), transaction rollback/savepoints, \`Serializable\` snapshots, editor checkpoints, game save states. **Use when** you need restore points without leaking internals. **Avoid when** state is huge (snapshots are expensive — consider command/inverse-op or copy-on-write).
+
+---
+
+## Visitor
+**Intent:** Represent an operation to be performed on the elements of an object structure; define a new operation without changing the classes of the elements.
+**Problem:** You have a stable set of node types (AST, file tree, shapes) but keep adding *operations* (print, evaluate, type-check, optimize). Putting each op as a method on every node bloats the nodes. Visitor moves operations into visitor classes; **double dispatch** (\`element.accept(visitor)\` → \`visitor.visitConcrete(this)\`) routes to the right method.
+**The trade-off (key senior point):** Visitor makes **adding operations easy** but **adding new element types hard** (every visitor must add a method) — the opposite of the usual OO bias. This is the **Expression Problem**.
+**In the wild:** compiler ASTs, \`javax.lang.model\`'s \`ElementVisitor\` (annotation processing), \`FileVisitor\` in \`Files.walkFileTree\`, ASM bytecode visitors, XML/JSON tree processing. **Avoid when** the element hierarchy changes often, or sealed types + pattern-matching \`switch\` (Java 21) express the same dispatch more simply.
+
+\`\`\`mermaid
+sequenceDiagram
+  participant C as Client
+  participant E as Element
+  participant V as Visitor
+  C->>E: accept(v)
+  E->>V: visitConcreteElement(this)
+  V-->>E: result
+\`\`\`
+
+---
+
+## Interpreter
+**Intent:** Given a language, define a representation for its grammar plus an interpreter that uses the representation to interpret sentences in the language.
+**Problem:** You have a small, stable DSL (boolean rules, arithmetic, query filters, feature flags). Interpreter maps each grammar rule to a class with an \`interpret(context)\` method; the AST is a Composite of these.
+**In the wild:** \`java.util.regex.Pattern\` (compiles a regex into a node tree it interprets), SpEL (Spring Expression Language), rule engines, \`java.text.MessageFormat\`. **Use when** the grammar is small and stable. **Avoid when** the grammar is complex or performance matters — use a real parser generator (ANTLR) instead; hand-rolled interpreters explode in size.
+
+---
+
+## Null Object
+**Intent:** Provide a do-nothing object that implements the expected interface, so callers don't special-case \`null\`.
+**Problem:** Scattered \`if (x != null)\` checks. A Null Object (a no-op logger, an empty collection, a "guest" user with no permissions) lets callers always call methods safely.
+**In the wild:** \`Collections.emptyList()\`, \`Optional\` (the modern functional cousin — represents absence without NPE), \`Logger\` no-op backends (SLF4J NOP), \`Comparator\`/\`Function.identity()\`. **Use when** absence has a sensible neutral behavior. **Avoid when** absence is a real error you must not silently swallow (a Null Object can hide bugs by making "nothing happened" look like success).
+
+> [!WARNING]
+> Null Object's danger is **silent swallowing**: if a missing dependency quietly does nothing, a real misconfiguration looks like normal operation. Use it only where "do nothing" is genuinely correct, and prefer \`Optional\` at API boundaries to make absence explicit to the caller.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Iterable (custom Iterator), Memento, Visitor, and Null Object — runnable`,
+                code: `import java.util.*;
+
+public class GrabBagDemo {
+
+    // ---- Iterator: implement Iterable so for-each works over a custom aggregate ----
+    static class Ring<T> implements Iterable<T> {
+        private final List<T> items;
+        Ring(List<T> items) { this.items = items; }
+        public Iterator<T> iterator() {
+            return new Iterator<>() {
+                int i = 0;
+                public boolean hasNext() { return i < items.size(); }
+                public T next() {
+                    if (!hasNext()) throw new NoSuchElementException();
+                    return items.get(i++);
+                }
+            };
+        }
+    }
+
+    // ---- Memento: originator snapshots/restores private state via an opaque token ----
+    static class Editor {
+        private String content = "";
+        void type(String s) { content += s; }
+        String content() { return content; }
+        Memento save() { return new Memento(content); }        // create
+        void restore(Memento m) { content = m.state; }         // restore
+        static final class Memento { private final String state; private Memento(String s){state=s;} }
+    }
+
+    // ---- Visitor: stable node types, add operations via double dispatch ----
+    interface Node { <R> R accept(Visitor<R> v); }
+    record Num(int value) implements Node { public <R> R accept(Visitor<R> v){ return v.visitNum(this);} }
+    record Add(Node left, Node right) implements Node { public <R> R accept(Visitor<R> v){ return v.visitAdd(this);} }
+    interface Visitor<R> { R visitNum(Num n); R visitAdd(Add a); }
+
+    static class EvalVisitor implements Visitor<Integer> {
+        public Integer visitNum(Num n) { return n.value(); }
+        public Integer visitAdd(Add a) { return a.left().accept(this) + a.right().accept(this); }
+    }
+    static class PrintVisitor implements Visitor<String> {
+        public String visitNum(Num n) { return String.valueOf(n.value()); }
+        public String visitAdd(Add a) { return "(" + a.left().accept(this) + " + " + a.right().accept(this) + ")"; }
+    }
+
+    // ---- Null Object: a do-nothing implementation so callers never null-check ----
+    interface Audit { void log(String msg); }
+    static final Audit NO_AUDIT = msg -> { };   // Null Object
+
+    public static void main(String[] args) {
+        for (String s : new Ring<>(List.of("a", "b", "c"))) System.out.print(s);
+        System.out.println();
+
+        Editor ed = new Editor();
+        ed.type("hello");
+        Editor.Memento checkpoint = ed.save();
+        ed.type(" world");
+        System.out.println("before restore: " + ed.content());
+        ed.restore(checkpoint);
+        System.out.println("after restore:  " + ed.content());
+
+        Node ast = new Add(new Num(2), new Add(new Num(3), new Num(4)));
+        System.out.println("print: " + ast.accept(new PrintVisitor()));
+        System.out.println("eval:  " + ast.accept(new EvalVisitor()));
+
+        Audit audit = NO_AUDIT;             // no null check needed at call sites
+        audit.log("this safely does nothing");
+        System.out.println("null-object call returned without NPE");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `In modern Java, what do you implement instead of writing an Iterator by hand?`,
+                a: `Implement Iterable<T> (provide iterator()) so for-each and streams work; only supply a custom Iterator for genuinely custom aggregates. The JDK already gives Iterator, ListIterator, Spliterator, and Stream.`
+              },
+              {
+                q: `What is the Mediator pattern and its main risk?`,
+                a: `It centralizes how a set of objects interact so they reference the mediator instead of each other (many-to-many to hub-and-spoke). Risk: the mediator can grow into a god object that knows and controls everything.`
+              },
+              {
+                q: `How does Memento preserve encapsulation during undo?`,
+                a: `The originator creates an opaque memento holding its private state; a caretaker stores it without reading it, and only the originator can restore from it — so internals never leak to the caretaker.`
+              },
+              {
+                q: `What problem does Visitor solve and what is its key trade-off?`,
+                a: `It lets you add operations over a stable set of element types without modifying them (via double dispatch). Trade-off: adding operations is easy, but adding a new element type forces changing every visitor — the Expression Problem.`
+              },
+              {
+                q: `How does Java 21 reduce the need for Visitor?`,
+                a: `Sealed type hierarchies plus pattern-matching switch give exhaustive, compile-checked dispatch over a closed set of types, expressing the same per-type operation more directly than the accept/visit double-dispatch ceremony.`
+              },
+              {
+                q: `When is the Interpreter pattern appropriate, and when not?`,
+                a: `Appropriate for small, stable grammars (boolean rules, simple expressions). Not appropriate for complex grammars or performance-sensitive parsing — use a parser generator like ANTLR; hand-rolled interpreters explode in size and slowness.`
+              },
+              {
+                q: `Give a JDK example of Interpreter.`,
+                a: `java.util.regex.Pattern compiles a regex into a tree of nodes it then interprets against input; Spring's SpEL and MessageFormat are similar grammar-interpreting examples.`
+              },
+              {
+                q: `What is the Null Object pattern and its danger?`,
+                a: `A do-nothing implementation of an interface so callers avoid null checks (e.g., a no-op logger, empty collection). Danger: it can silently swallow real errors, making a misconfiguration look like normal operation.`
+              },
+              {
+                q: `How does Optional relate to Null Object?`,
+                a: `Optional is the functional cousin: instead of substituting a neutral object, it makes absence explicit at the API boundary so callers must consciously handle the empty case, avoiding both NPEs and silent no-ops.`
+              },
+              {
+                q: `Give a JDK example of double dispatch.`,
+                a: `FileVisitor in Files.walkFileTree and javax.lang.model's ElementVisitor route to type-specific methods; the generic Visitor uses element.accept(visitor) calling visitor.visitConcrete(this) to pick the method by both element and operation type.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `12.4`,
+        title: `Modern Java, Functional & Enterprise Patterns`,
+        hours: 5,
+        sections: [
+          {
+            id: `12.4.1`,
+            title: `Functional patterns in modern Java — lambdas, method refs, composition, the Function toolkit`,
+            notes: `# Functional patterns in modern Java
+
+Java 8's lambdas and method references didn't *replace* design patterns — they made several of them **disappear into the language**. A single-method strategy, command, or factory no longer needs a class; it's a lambda. A senior engineer recognizes the classic pattern *and* its idiomatic functional collapse.
+
+## The core toolkit (\`java.util.function\`)
+| Interface | Shape | Classic pattern it embodies |
+|---|---|---|
+| \`Supplier<T>\` | \`() -> T\` | Factory / lazy provider |
+| \`Consumer<T>\` | \`T -> void\` | Command / callback |
+| \`Function<T,R>\` | \`T -> R\` | Strategy / transformer |
+| \`Predicate<T>\` | \`T -> boolean\` | Strategy (a boolean test/specification) |
+| \`UnaryOperator<T>\` | \`T -> T\` | Strategy (endomorphism) |
+| \`BiFunction<T,U,R>\` | \`(T,U) -> R\` | Strategy with two inputs |
+
+## Patterns reduced to lambdas
+- **Strategy → lambda:** \`Comparator\`, \`Predicate\`, any single-method strategy.
+- **Command → \`Runnable\`/\`Consumer\`:** \`executor.submit(() -> doWork())\`.
+- **Factory → \`Supplier\` / constructor reference:** \`Supplier<List<String>> f = ArrayList::new\`.
+- **Template Method → higher-order function:** pass the variant steps as function params.
+- **Decorator → function composition:** \`f.andThen(g)\` wraps behavior without subclassing.
+
+\`\`\`mermaid
+flowchart LR
+  A["validate: Function"] --> B["enrich: Function"]
+  B --> C["persist: Function"]
+  C --> D[(result)]
+  classDef f fill:#eef,stroke:#557;
+\`\`\`
+
+## Composition: build big behaviors from small ones
+- \`Function.andThen(g)\` — apply this, then g. \`compose(g)\` — apply g first.
+- \`Predicate.and / or / negate\` — boolean strategy algebra (a tiny Specification pattern).
+- \`Comparator.comparing(...).thenComparing(...).reversed()\` — composable sort strategy.
+- \`Consumer.andThen(...)\` — chain side effects.
+
+> [!TIP]
+> **Method references** are the cleanest form: \`String::toUpperCase\` (instance method of an arbitrary object), \`System.out::println\` (bound instance method), \`Integer::parseInt\` (static), \`ArrayList::new\` (constructor). Prefer them over equivalent lambdas — they read as the operation's *name*.
+
+> [!WARNING]
+> **Lambdas are not free of pitfalls.** (1) Capturing \`this\` accidentally retains the enclosing object (memory leak in long-lived callbacks). (2) Effectively-final capture surprises people. (3) Deep \`andThen\` chains and clever currying can be *less* readable than a named method — don't out-clever the reader. (4) Lambdas have ugly stack traces and can't be easily named in profilers. (5) Checked exceptions don't fit the standard functional interfaces (you must wrap or write custom ones).
+
+> [!SUCCESS]
+> Heuristic: **reach for a lambda when the behavior is small, local, and single-method; reach for a named class when it has state, a name worth having, multiple methods, or its own dependencies (DI).**
+
+## In the wild (JDK / Spring)
+- Streams are functional pipelines of strategies; \`Optional.map/flatMap/orElseGet\` compose absence-handling.
+- \`CompletableFuture.thenApply/thenCompose\` compose async strategies.
+- Spring: \`RestClient\`/\`WebClient\` fluent callbacks, functional routing (\`RouterFunction\`), \`@FunctionalInterface\` beans, Spring Cloud Function (a \`Function\` *is* the deployable unit).
+
+**Use functional style when:** behavior is small/stateless/composable. **Stay OO when:** you need names, state, multiple methods, mocking-by-class, or checked-exception ergonomics.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Patterns as lambdas: strategy, command, factory, composition, specification (runnable)`,
+                code: `import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
+
+public class FunctionalPatternsDemo {
+
+    record Person(String name, int age) {}
+
+    public static void main(String[] args) {
+        // Factory via Supplier / constructor reference.
+        Supplier<List<String>> listFactory = ArrayList::new;
+        List<String> list = listFactory.get();
+        list.addAll(List.of("ccc", "a", "bb"));
+
+        // Strategy via Comparator composition.
+        Comparator<String> byLen = Comparator.comparingInt(String::length);
+        list.sort(byLen.thenComparing(Comparator.naturalOrder()));
+        System.out.println("strategy(sort): " + list);
+
+        // Command via Consumer; chained side effects with andThen.
+        Consumer<String> log   = s -> System.out.println("  log: " + s);
+        Consumer<String> shout = s -> System.out.println("  SHOUT: " + s.toUpperCase());
+        Consumer<String> action = log.andThen(shout);     // composed command
+        action.accept("deploy");
+
+        // Function composition: build a pipeline from small transforms.
+        Function<String, String> trim  = String::trim;
+        Function<String, String> upper = String::toUpperCase;
+        Function<String, Integer> len  = String::length;
+        Function<String, Integer> pipeline = trim.andThen(upper).andThen(len);
+        System.out.println("composition:   " + pipeline.apply("   hello  "));
+
+        // Specification pattern via Predicate algebra.
+        Predicate<Person> adult   = p -> p.age() >= 18;
+        Predicate<Person> hasName = p -> !p.name().isBlank();
+        Predicate<Person> valid   = adult.and(hasName);
+        List<Person> people = List.of(new Person("Ann", 30), new Person("", 40), new Person("Bo", 12));
+        List<Person> ok = people.stream().filter(valid).collect(Collectors.toList());
+        System.out.println("specification: " + ok);
+
+        // A registry of strategies — replaces a switch.
+        Map<String, BinaryOperator<Integer>> ops = Map.of(
+            "+", Integer::sum,
+            "*", (a, b) -> a * b);
+        System.out.println("strategy map:  3 * 4 = " + ops.get("*").apply(3, 4));
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Which classic GoF patterns collapse into a single lambda in Java 8+?`,
+                a: `Single-method Strategy (Comparator/Predicate), Command (Runnable/Consumer), Factory (Supplier/constructor ref), and the variant step of Template Method — any one-method behavior no longer needs a class.`
+              },
+              {
+                q: `Map Supplier, Consumer, Function, Predicate to the patterns they embody.`,
+                a: `Supplier = Factory/lazy provider; Consumer = Command/callback; Function = Strategy/transformer; Predicate = a boolean Strategy/Specification test.`
+              },
+              {
+                q: `What is function composition and which methods provide it?`,
+                a: `Building a larger behavior from small functions: Function.andThen/compose, Predicate.and/or/negate, Comparator.thenComparing/reversed, Consumer.andThen. It is Decorator/Strategy assembly without subclassing.`
+              },
+              {
+                q: `Name the four kinds of method reference with an example each.`,
+                a: `Static (Integer::parseInt), bound instance (System.out::println), unbound instance of an arbitrary object (String::toUpperCase), and constructor (ArrayList::new).`
+              },
+              {
+                q: `Why can a lambda cause a memory leak?`,
+                a: `A non-capturing lambda is fine, but a lambda that captures this (or an enclosing field) retains the enclosing object; if the lambda is stored in a long-lived listener/registry, the enclosing object can't be GC'd.`
+              },
+              {
+                q: `Why don't checked exceptions fit the standard functional interfaces?`,
+                a: `Function/Consumer/etc. don't declare checked exceptions, so a lambda body that throws one won't compile. You must catch-and-wrap in a RuntimeException or define custom throwing functional interfaces.`
+              },
+              {
+                q: `When should you keep a named class instead of using a lambda?`,
+                a: `When the behavior has state, deserves a meaningful name, has multiple methods (not a functional interface), needs its own injected dependencies, or must be mocked/tested as a type.`
+              },
+              {
+                q: `What is the Specification pattern in functional terms?`,
+                a: `Composable boolean business rules expressed as Predicate<T> combined with and/or/negate, letting you build complex validation/filtering from small, named, reusable predicates.`
+              },
+              {
+                q: `What readability pitfall comes with heavy functional style?`,
+                a: `Deeply chained andThen/compose, currying, and clever point-free code can be harder to read than a named method, and lambdas produce noisy stack traces and are hard to identify in profilers.`
+              },
+              {
+                q: `How do CompletableFuture and Optional use composition?`,
+                a: `CompletableFuture.thenApply/thenCompose compose async strategies; Optional.map/flatMap/orElseGet compose absence-handling — both apply function-composition to sequence transformations safely.`
+              }
+            ]
+          },
+          {
+            id: `12.4.2`,
+            title: `Patterns baked into the JDK & Spring — recognizing what you already use`,
+            notes: `# Patterns you already use (JDK & Spring)
+
+Seniors are expected to **name the pattern behind a framework feature**, not just use it. This section maps everyday JDK/Spring machinery to GoF/enterprise patterns.
+
+## Dependency Injection / Inversion of Control
+DI is **not** a GoF pattern but the principle behind Spring. It's the industrial form of the **Strategy + Factory + Service Locator** ideas: the container constructs objects (Factory) and supplies their collaborators (injected Strategy), inverting control so a class declares *what* it needs, not *how* to get it.
+> [!SUCCESS]
+> Prefer **constructor injection**: dependencies are final, the object is always valid after construction, and it's trivially testable without the container (just \`new\` it with fakes). Field injection hides dependencies and breaks immutability.
+
+## AOP / Dynamic Proxy
+Spring AOP, \`@Transactional\`, \`@Cacheable\`, \`@Async\` are the **Proxy** + **Decorator** patterns. Spring wraps your bean in a proxy (JDK dynamic proxy if it implements an interface, CGLIB subclass otherwise) that adds cross-cutting behavior around your method.
+> [!WARNING]
+> The proxy gotcha every senior must know: **self-invocation bypasses the proxy.** Calling \`this.cachedMethod()\` from within the same bean does NOT go through the proxy, so \`@Transactional\`/\`@Cacheable\` silently won't apply. The advice only fires on calls that cross the proxy boundary (external callers).
+
+\`\`\`mermaid
+sequenceDiagram
+  participant C as Caller
+  participant P as Spring Proxy
+  participant B as Your Bean
+  C->>P: save()
+  P->>P: begin tx (advice)
+  P->>B: save() (target)
+  B-->>P: return
+  P->>P: commit tx (advice)
+  P-->>C: return
+\`\`\`
+
+## Template Method + Strategy: the \`*Template\` classes
+\`JdbcTemplate\`, \`RestTemplate\`/\`RestClient\`, \`JmsTemplate\`, \`TransactionTemplate\`, \`RedisTemplate\` all implement **Template Method** (fixed skeleton: acquire resource → execute → translate exceptions → release) with **Strategy callbacks** (\`RowMapper\`, \`ResultSetExtractor\`, \`RequestCallback\`) for the variant work. They exist to kill boilerplate and turn checked SQL/IO exceptions into a consistent runtime hierarchy.
+
+## Factory variants in Spring
+- \`@Bean\` methods are **Factory Methods**; \`@Configuration\` classes are configuration factories.
+- \`FactoryBean<T>\` is an explicit factory whose \`getObject()\` produces a bean (used for complex construction, e.g., \`SqlSessionFactoryBean\`).
+- \`BeanFactory\`/\`ApplicationContext\` is an **Abstract Factory** + **Service Locator** + **Mediator** over the whole bean graph.
+
+## Optional as Null Object (functional)
+\`Optional<T>\` is the functional descendant of **Null Object** — it represents "absent" as a first-class value with neutral operations (\`map\`, \`filter\`, \`orElseGet\`) instead of a do-nothing object, forcing the caller to handle absence rather than risk an NPE.
+
+## Other JDK patterns to name on sight
+| Feature | Pattern |
+|---|---|
+| \`StringBuilder\`, \`Stream.Builder\`, \`HttpRequest.newBuilder()\` | **Builder** |
+| \`Collections.unmodifiableList\`, \`synchronizedList\` | **Decorator** |
+| \`Arrays.asList\`, \`List.of\`, \`Executors.newFixedThreadPool\` | **Static Factory Method** |
+| \`Iterator\`/\`Iterable\`/\`Stream\` | **Iterator** |
+| \`Runnable\`/\`Callable\` submitted to executor | **Command** |
+| \`Comparator\`, \`Predicate\` | **Strategy** |
+| \`Thread.State\`, \`Future\` states | **State** |
+| Servlet \`Filter\`, Security filter chain | **Chain of Responsibility** |
+| \`ApplicationEvent\` / \`@EventListener\` | **Observer** |
+
+> [!TIP]
+> In interviews, narrate patterns *as you describe a framework*: "@Transactional is a Proxy adding Decorator-style cross-cutting behavior; JdbcTemplate is Template Method with a RowMapper Strategy." This shows pattern fluency without GoF name-dropping for its own sake.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Recognizing the patterns: Builder, Decorator, Factory, Optional-as-NullObject (runnable)`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class JdkPatternsDemo {
+
+    public static void main(String[] args) {
+        // Builder (StringBuilder) + Static Factory Method (List.of).
+        String csv = new StringBuilder()
+            .append("a").append(",").append("b").append(",").append("c").toString();   // Builder
+        List<String> parts = List.of(csv.split(","));                                   // Static Factory
+        System.out.println("builder+factory: " + parts);
+
+        // Decorator: unmodifiableList wraps a list, adding 'read-only' behavior, same interface.
+        List<String> readOnly = Collections.unmodifiableList(new ArrayList<>(parts));    // Decorator
+        try { readOnly.add("x"); }
+        catch (UnsupportedOperationException e) { System.out.println("decorator(read-only): blocked add"); }
+
+        // Iterator/Strategy: Stream pipeline = Iterator traversal + Strategy (lambdas).
+        String joined = parts.stream()
+            .map(String::toUpperCase)                       // Strategy
+            .collect(Collectors.joining("-"));              // Strategy (collector)
+        System.out.println("iterator+strategy: " + joined);
+
+        // Optional as Null Object: absence handled functionally, no NPE, no if-null.
+        Map<String, Integer> inventory = Map.of("apple", 3);
+        int qty = Optional.ofNullable(inventory.get("banana"))   // absent -> neutral path
+            .orElse(0);                                          // Null-Object-like default
+        System.out.println("optional(null-object): banana qty = " + qty);
+
+        // Factory Method via supplier-style creation (constructor reference).
+        var fresh = Stream.generate(ArrayList<String>::new).limit(1).findFirst().get();
+        fresh.add("created via factory ref");
+        System.out.println("factory-method: " + fresh);
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `The @Transactional self-invocation trap (Proxy boundary) — illustration`,
+                code: `import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class OrderService {
+
+    // BUG: outer() calls this.inner() directly, so the call NEVER crosses the proxy.
+    // @Transactional on inner() is silently ignored -> no transaction is started.
+    public void outer() {
+        inner();                       // self-invocation: bypasses the Spring proxy
+    }
+
+    @Transactional
+    public void inner() {
+        // ... db writes that you THINK are transactional but are not when called via outer() ...
+    }
+
+    // FIXES:
+    // 1) Put @Transactional on outer() (the externally-called method).
+    // 2) Inject a self-reference (@Lazy OrderService self) and call self.inner().
+    // 3) Split inner() into a separate bean so the call crosses a proxy boundary.
+}`,
+                runnable: false,
+                note: `Requires Spring. The takeaway: Spring AOP advice (@Transactional/@Cacheable/@Async) only applies on calls that cross the proxy boundary; internal this-calls bypass it.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Is Dependency Injection a GoF pattern, and what classic ideas does it industrialize?`,
+                a: `No — DI/IoC is a principle, not a GoF pattern. It industrializes Factory (the container creates objects) plus Strategy (it injects collaborators), inverting control so classes declare what they need, not how to obtain it.`
+              },
+              {
+                q: `Why prefer constructor injection over field injection?`,
+                a: `Constructor injection makes dependencies final and explicit, guarantees a fully-valid object after construction, enables immutability, and lets you test by plain new with fakes — no container or reflection needed.`
+              },
+              {
+                q: `Which patterns underlie Spring AOP / @Transactional?`,
+                a: `Proxy (a JDK dynamic proxy or CGLIB subclass wraps the bean) combined with Decorator (it adds cross-cutting behavior around the target method) — the advice runs before/after the real call.`
+              },
+              {
+                q: `Explain the Spring self-invocation proxy trap.`,
+                a: `Calling this.someAnnotatedMethod() from within the same bean doesn't cross the proxy, so @Transactional/@Cacheable/@Async advice never fires. Only calls entering the bean from outside go through the proxy.`
+              },
+              {
+                q: `How do JdbcTemplate/RestTemplate combine two patterns?`,
+                a: `Template Method provides the fixed skeleton (acquire resource, execute, translate exceptions, release) and Strategy callbacks (RowMapper, ResultSetExtractor, RequestCallback) supply the variant work, eliminating boilerplate.`
+              },
+              {
+                q: `What is a Spring FactoryBean and how does it differ from a @Bean method?`,
+                a: `A @Bean method is a Factory Method returning the bean directly; a FactoryBean<T> is a bean whose getObject() produces the actual target bean — used for complex construction (e.g., SqlSessionFactoryBean).`
+              },
+              {
+                q: `How is Optional the functional successor to Null Object?`,
+                a: `Both avoid null checks, but Optional represents absence as an explicit value with neutral operations (map/filter/orElseGet) the caller must handle, rather than substituting a silent do-nothing object that can hide errors.`
+              },
+              {
+                q: `Name the pattern: HttpRequest.newBuilder() / StringBuilder.`,
+                a: `Builder — step-by-step fluent construction of a complex/immutable object, separating construction from representation.`
+              },
+              {
+                q: `Name the pattern: Collections.unmodifiableList / synchronizedList.`,
+                a: `Decorator — they wrap an existing list with the same interface and add behavior (read-only enforcement, synchronization) without changing the wrapped type.`
+              },
+              {
+                q: `How should you narrate framework patterns in an interview?`,
+                a: `Tie the feature to its pattern in passing: '@Transactional is a Proxy adding Decorator-style cross-cutting behavior; JdbcTemplate is Template Method with a RowMapper Strategy' — demonstrating fluency without gratuitous name-dropping.`
+              }
+            ]
+          },
+          {
+            id: `12.4.3`,
+            title: `Enterprise & architectural patterns — Repository, Service Layer, DTO/Mapper, Unit of Work, CQRS`,
+            notes: `# Enterprise & architectural patterns
+
+These are the **layering patterns** (mostly from Fowler's *PoEAA* + DDD) that shape a typical Spring service. Seniors must justify the boundaries, not just draw them.
+
+\`\`\`mermaid
+flowchart TD
+  CTRL["Controller / API<br/>(maps DTO<->domain)"] --> SVC["Service Layer<br/>(use-cases, transactions)"]
+  SVC --> REPO["Repository<br/>(collection-like persistence)"]
+  REPO --> DB[(Database)]
+  CTRL -. DTO .-> CLIENT[Client]
+  SVC --> DOM["Domain model<br/>(entities + behavior)"]
+\`\`\`
+
+## Repository
+**Intent:** Mediate between the domain and data mapping, presenting a **collection-like interface** for accessing domain objects — \`save\`, \`findById\`, \`findByX\` — hiding the persistence mechanism.
+**Why:** the service layer talks to an in-memory-feeling collection, not to SQL/JPA. Swappable, testable (fake the repo), and the query knowledge lives in one place.
+**In the wild:** Spring Data \`JpaRepository\`/\`CrudRepository\` (you declare an interface, Spring generates the impl — a proxy). **Avoid:** leaking JPA \`Entity\`/\`EntityManager\` concerns above the repository (then it's not a real abstraction). Don't let repositories contain business rules.
+
+## Service Layer
+**Intent:** Define an application's boundary with a set of available operations (use-cases), coordinating transactions, security, and orchestration across repositories/domain objects.
+**Why:** transactions and cross-aggregate orchestration belong here (\`@Transactional\` lives on the service, not the controller or repo). It keeps controllers thin and domain objects focused.
+**Avoid:** a service layer that is only pass-through to the repository (anemic) — if every method is \`return repo.save(x)\`, the layer earns its keep only once it holds real use-case logic.
+
+## DTO + Mapper
+**Intent:** **DTO** (Data Transfer Object) is a flat, serializable carrier shaped for the API/wire; the **Mapper** translates between DTO and domain entity.
+**Why:** decouple the API contract from the persistence model — you can evolve the DB schema without breaking clients, avoid leaking entities (and lazy-loading/JPA proxies) over the wire, and control exactly what's exposed (security: don't serialize password hashes).
+**In the wild:** MapStruct (compile-time mappers), records as DTOs, Jackson serialization. **Avoid:** DTOs that are 1:1 copies of entities with hand-written mapping everywhere — that's pure overhead; use them where the contract genuinely differs.
+
+> [!WARNING]
+> **Never expose JPA entities directly from controllers.** It couples your API to your schema, risks lazy-init exceptions during serialization, can leak sensitive fields, and creates mass-assignment vulnerabilities on input. Use DTOs at the boundary.
+
+## Unit of Work
+**Intent:** Track everything changed during a business transaction and coordinate writing it out (and resolving concurrency) as one atomic unit.
+**Where it already lives:** the **JPA \`EntityManager\`/Hibernate \`Session\` is a Unit of Work** — it tracks managed entities and flushes all changes on commit (the *persistence context*). You rarely implement it by hand; you must understand it (dirty checking, flush timing, the 1st-level cache).
+
+## CQRS (pointer)
+**Intent:** **C**ommand **Q**uery **R**esponsibility **S**egregation — separate the model that *writes* (commands, validation, domain rules) from the model that *reads* (queries, denormalized views).
+**When:** read and write workloads differ massively, or reads need denormalized projections the write-model can't serve efficiently. Often paired with **Event Sourcing**.
+> [!DANGER]
+> CQRS is frequently **over-applied**. For a CRUD app it adds two models, eventual consistency, and sync complexity for no benefit. Start with one model; introduce CQRS only when read/write needs genuinely diverge. Saying "we'd reach for CQRS only when justified" is the senior answer.
+
+**Use the layering when:** non-trivial business logic, multiple data sources, an API contract distinct from the schema. **Avoid the ceremony when:** a tiny CRUD service — collapsing layers (controller→repository) can be the right call; don't cargo-cult five layers onto a 200-line app.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Repository + Service + DTO/Mapper layering, all plain Java (runnable)`,
+                code: `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
+
+public class EnterpriseLayersDemo {
+
+    // ---- Domain entity (has identity + behavior) ----
+    static class User {
+        final Long id; String name; String email; String passwordHash;
+        User(Long id, String name, String email, String passwordHash) {
+            this.id = id; this.name = name; this.email = email; this.passwordHash = passwordHash;
+        }
+    }
+
+    // ---- DTO: shaped for the API; note NO passwordHash leaks out ----
+    record UserDto(Long id, String name, String email) {}
+
+    // ---- Mapper: domain <-> DTO translation, exposure controlled here ----
+    static final class UserMapper {
+        static UserDto toDto(User u) { return new UserDto(u.id, u.name, u.email); }   // hides secret
+    }
+
+    // ---- Repository: collection-like persistence interface ----
+    interface UserRepository {
+        User save(User u);
+        Optional<User> findById(Long id);
+        List<User> findAll();
+    }
+    // In-memory impl (Spring Data would generate a JPA-backed proxy instead).
+    static class InMemoryUserRepository implements UserRepository {
+        private final Map<Long, User> store = new ConcurrentHashMap<>();
+        private final AtomicLong seq = new AtomicLong();
+        public User save(User u) {
+            Long id = (u.id != null) ? u.id : seq.incrementAndGet();
+            User saved = new User(id, u.name, u.email, u.passwordHash);
+            store.put(id, saved);
+            return saved;
+        }
+        public Optional<User> findById(Long id) { return Optional.ofNullable(store.get(id)); }
+        public List<User> findAll() { return new ArrayList<>(store.values()); }
+    }
+
+    // ---- Service Layer: use-cases, would carry @Transactional in Spring ----
+    static class UserService {
+        private final UserRepository repo;
+        UserService(UserRepository repo) { this.repo = repo; }
+        UserDto register(String name, String email, String rawPassword) {
+            String hash = "bcrypt(" + rawPassword.hashCode() + ")";   // pretend-hash
+            User saved = repo.save(new User(null, name, email, hash));
+            return UserMapper.toDto(saved);                            // never return the entity
+        }
+        List<UserDto> listUsers() {
+            return repo.findAll().stream().map(UserMapper::toDto).toList();
+        }
+    }
+
+    public static void main(String[] args) {
+        UserService service = new UserService(new InMemoryUserRepository());
+        UserDto created = service.register("Ada", "ada@example.com", "secret");
+        System.out.println("created DTO (no secret): " + created);
+        System.out.println("list:                    " + service.listUsers());
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the Repository pattern and what does it hide?`,
+                a: `It mediates between the domain and data mapping, exposing a collection-like interface (save/findById/findByX) and hiding the persistence mechanism (SQL/JPA), so the service layer treats storage like an in-memory collection.`
+              },
+              {
+                q: `How does Spring Data realize Repository?`,
+                a: `You declare a repository interface (e.g., JpaRepository); Spring generates a proxy implementation at runtime, deriving queries from method names or @Query, so you write no boilerplate DAO code.`
+              },
+              {
+                q: `What belongs in the Service Layer and where do transactions live?`,
+                a: `Use-case orchestration across repositories/domain objects, security, and transaction boundaries — @Transactional belongs on the service, not the controller or repository. It keeps controllers thin.`
+              },
+              {
+                q: `When is a Service Layer just dead weight?`,
+                a: `When every method is a pass-through like return repo.save(x) with no real use-case logic — an anemic pass-through layer adds indirection without value; it earns its place once it holds orchestration/business rules.`
+              },
+              {
+                q: `Why use DTOs at the API boundary instead of returning entities?`,
+                a: `DTOs decouple the API contract from the schema, prevent leaking sensitive fields (e.g., password hashes), avoid lazy-init exceptions and JPA proxy serialization, block mass-assignment on input, and let the contract evolve independently.`
+              },
+              {
+                q: `What is the Unit of Work pattern and where does it already exist in Java?`,
+                a: `It tracks all changes in a business transaction and writes them atomically. The JPA EntityManager/Hibernate Session is a Unit of Work: the persistence context tracks managed entities and flushes dirty changes on commit.`
+              },
+              {
+                q: `What does CQRS separate and when is it justified?`,
+                a: `It separates the write model (commands, validation, domain rules) from the read model (queries, denormalized views). Justified when read/write workloads diverge sharply or reads need projections the write model can't serve efficiently.`
+              },
+              {
+                q: `Why is CQRS often an anti-pattern in practice?`,
+                a: `For ordinary CRUD it doubles the models, introduces eventual consistency and sync complexity, and adds operational burden for no benefit. Start with one model and adopt CQRS only when read/write needs genuinely diverge.`
+              },
+              {
+                q: `What does it mean to 'leak persistence concerns above the repository'?`,
+                a: `Exposing EntityManager, JPA Entity types, or query/transaction details to the service/controller defeats the repository's abstraction; callers then depend on the ORM, making the storage non-swappable and harder to test.`
+              },
+              {
+                q: `When should you collapse enterprise layers rather than apply them all?`,
+                a: `For a tiny CRUD service, five layers are cargo-cult ceremony; collapsing (e.g., controller calling repository directly, no DTO when contract equals schema) can be the pragmatic, maintainable choice.`
+              }
+            ]
+          },
+          {
+            id: `12.4.4`,
+            title: `Concurrency patterns — Producer-Consumer, Thread Pool, Future/Promise, Immutable, ThreadLocal`,
+            notes: `# Concurrency patterns
+
+The patterns that recur in every multithreaded Java system. Most are realized by \`java.util.concurrent\`; your job is to pick and compose them safely.
+
+## Producer-Consumer
+**Intent:** Decouple work *production* from work *consumption* via a shared, thread-safe queue, smoothing bursts and bounding memory.
+**Realization:** \`BlockingQueue\` (\`ArrayBlockingQueue\` bounded, \`LinkedBlockingQueue\`). Producers \`put\` (block when full); consumers \`take\` (block when empty). The bounded queue provides **backpressure**.
+> [!TIP]
+> A **bounded** queue is the safety feature: an unbounded queue under a fast producer is a slow-motion \`OutOfMemoryError\`. Choose capacity deliberately and have a rejection/backpressure policy.
+
+\`\`\`mermaid
+flowchart LR
+  P1[Producer] --> Q[(BlockingQueue<br/>bounded)]
+  P2[Producer] --> Q
+  Q --> C1[Consumer]
+  Q --> C2[Consumer]
+\`\`\`
+
+## Thread Pool
+**Intent:** Reuse a fixed set of worker threads to execute many tasks, amortizing thread-creation cost and bounding concurrency.
+**Realization:** \`ExecutorService\` / \`ThreadPoolExecutor\`. Configure core/max size, the work queue, the \`ThreadFactory\` (name threads!), and the \`RejectedExecutionHandler\` (Strategy).
+> [!WARNING]
+> \`Executors.newFixedThreadPool\` uses an **unbounded** \`LinkedBlockingQueue\` (OOM risk); \`newCachedThreadPool\` can create **unbounded threads**. For production, construct \`ThreadPoolExecutor\` directly with a **bounded** queue and an explicit rejection policy. With JDK 21 **virtual threads**, prefer \`Executors.newVirtualThreadPerTaskExecutor()\` for IO-bound tasks (don't pool virtual threads).
+
+## Future / Promise
+**Intent:** Represent a value that will be available later; let callers compose on completion instead of blocking.
+**Realization:** \`Future\` (blocking \`get()\`), \`CompletableFuture\` (composable: \`thenApply\`, \`thenCompose\`, \`thenCombine\`, \`exceptionally\`). \`CompletableFuture\` is also the **Promise** — the producing side can \`complete()\` it.
+> [!DANGER]
+> \`CompletableFuture\` defaults to the common \`ForkJoinPool\` for async steps — **never run blocking IO there**, it starves CPU-bound work app-wide. Pass an explicit \`Executor\` for blocking stages, or use virtual threads.
+
+## Immutable object
+**Intent:** An object whose state can't change after construction is **inherently thread-safe** — share it freely with no locks.
+**Realization:** \`final\` fields, no setters, defensive copies of mutable inputs, \`record\`s (shallowly immutable). Pair with **copy-on-write** for "modified" versions.
+> [!SUCCESS]
+> Immutability is the cheapest concurrency strategy: no synchronization, no visibility bugs, safe publication via \`final\`. Favor it; reach for locks only for genuinely mutable shared state.
+
+## Thread-Local storage
+**Intent:** Give each thread its own copy of a variable (no sharing, no locks) — for per-request/per-thread context (user, trace id, \`SimpleDateFormat\`).
+> [!DANGER]
+> \`ThreadLocal\` + thread pools = a classic leak/correctness bug: pooled threads are reused, so a value set on request A is still visible to request B unless you **\`remove()\` in a \`finally\`**. Always clean up. On JDK 21+, \`ScopedValue\` is the safer, immutable, structured alternative for virtual threads.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Producer-Consumer + Thread Pool + CompletableFuture + Immutable (runnable)`,
+                code: `import java.util.*;
+import java.util.concurrent.*;
+
+public class ConcurrencyPatternsDemo {
+
+    // Immutable value object: inherently thread-safe, share without locks.
+    record Order(long id, String item) {}   // record => final fields, no setters
+
+    public static void main(String[] args) throws Exception {
+        // ---- Producer-Consumer over a BOUNDED queue (backpressure) ----
+        BlockingQueue<Order> queue = new ArrayBlockingQueue<>(8);
+        ExecutorService pool = Executors.newFixedThreadPool(3);   // Thread Pool
+
+        final int N = 20;
+        // Consumers
+        for (int c = 0; c < 2; c++) {
+            pool.submit(() -> {
+                try {
+                    while (true) {
+                        Order o = queue.poll(200, TimeUnit.MILLISECONDS);
+                        if (o == null) return;            // queue drained -> exit
+                        // process (immutable -> no locking needed)
+                    }
+                } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            });
+        }
+        // Producer
+        for (int i = 0; i < N; i++) queue.put(new Order(i, "item-" + i));   // blocks if full
+        System.out.println("produced " + N + " orders");
+
+        pool.shutdown();
+        pool.awaitTermination(2, TimeUnit.SECONDS);
+        System.out.println("queue drained, remaining = " + queue.size());
+
+        // ---- Future / Promise: compose async work; explicit executor for safety ----
+        ExecutorService io = Executors.newFixedThreadPool(2);
+        CompletableFuture<Integer> a = CompletableFuture.supplyAsync(() -> 21, io);
+        CompletableFuture<Integer> b = CompletableFuture.supplyAsync(() -> 2, io);
+        int result = a.thenCombine(b, (x, y) -> x * y)      // compose two futures
+                      .thenApply(v -> v + 0)                // transform
+                      .exceptionally(ex -> -1)              // recover
+                      .get();
+        System.out.println("composed future result = " + result);   // 42
+        io.shutdown();
+
+        // ---- ThreadLocal with mandatory cleanup ----
+        ThreadLocal<String> traceId = new ThreadLocal<>();
+        try {
+            traceId.set("req-123");
+            System.out.println("threadlocal = " + traceId.get());
+        } finally {
+            traceId.remove();   // MUST remove on pooled threads to avoid leaks/bleed-over
+        }
+        System.out.println("after remove = " + traceId.get());   // null
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does Producer-Consumer decouple and how does a bounded queue help?`,
+                a: `It decouples work production from consumption via a shared thread-safe queue. A bounded BlockingQueue provides backpressure — producers block when full — preventing unbounded memory growth and smoothing bursts.`
+              },
+              {
+                q: `Why avoid Executors.newFixedThreadPool / newCachedThreadPool in production?`,
+                a: `newFixedThreadPool uses an unbounded LinkedBlockingQueue (OOM under load); newCachedThreadPool can spawn unbounded threads. Prefer constructing ThreadPoolExecutor with a bounded queue and an explicit RejectedExecutionHandler.`
+              },
+              {
+                q: `What is the role of RejectedExecutionHandler and which pattern is it?`,
+                a: `It defines what happens when the pool and queue are saturated (abort, caller-runs, discard, discard-oldest). It's the Strategy pattern — a pluggable rejection policy on the executor.`
+              },
+              {
+                q: `How does CompletableFuture realize Future and Promise?`,
+                a: `As a Future it represents a pending result with get(); as a Promise the producing side can complete()/completeExceptionally() it. It adds composition: thenApply/thenCompose/thenCombine/exceptionally.`
+              },
+              {
+                q: `What is the danger of CompletableFuture's default executor?`,
+                a: `Async stages default to the common ForkJoinPool; running blocking IO there starves CPU-bound work across the whole app. Supply an explicit Executor for blocking stages (or use virtual threads).`
+              },
+              {
+                q: `Why are immutable objects the cheapest concurrency strategy?`,
+                a: `They can't change after construction, so they're inherently thread-safe — no locks, no visibility bugs — and final fields guarantee safe publication. Share freely; use copy-on-write for 'modified' versions.`
+              },
+              {
+                q: `What is the classic ThreadLocal-with-thread-pool bug and its fix?`,
+                a: `Pooled threads are reused, so a ThreadLocal set during request A bleeds into request B (leak/incorrect data). Fix: always remove() in a finally block; on JDK 21 prefer ScopedValue.`
+              },
+              {
+                q: `How do virtual threads (JDK 21) change thread-pool advice?`,
+                a: `For IO-bound work, prefer Executors.newVirtualThreadPerTaskExecutor() rather than a small bounded platform-thread pool; don't pool virtual threads (they're cheap to create). CPU-bound work still benefits from bounded platform-thread pools.`
+              },
+              {
+                q: `Why is a ThreadFactory worth configuring on an executor?`,
+                a: `To name threads (and set daemon status, priority, uncaught-exception handler), which makes thread dumps, logs, and profiling readable — anonymous pool-N-thread-M names make production debugging painful.`
+              },
+              {
+                q: `What is backpressure and which concurrency pattern provides it?`,
+                a: `Backpressure is signaling a fast producer to slow down when consumers can't keep up. A bounded BlockingQueue in Producer-Consumer provides it by blocking producers; Reactive Streams generalize it with demand requests.`
+              }
+            ]
+          },
+          {
+            id: `12.4.5`,
+            title: `Anti-patterns & smells — when patterns hurt`,
+            notes: `# Anti-patterns & code smells — when patterns hurt
+
+The senior skill is knowing when a pattern is the *wrong* answer. Misapplied patterns cause more harm than no patterns at all: they add indirection, hide intent, and create the illusion of good design.
+
+## God Object / God Class
+**Smell:** one class that knows and does everything — thousands of lines, dozens of dependencies, every change touches it. Often a "Manager"/"Util"/"Service" that swallowed responsibilities.
+**Why bad:** violates Single Responsibility; impossible to test, reason about, or change safely; a merge-conflict magnet.
+**Fix:** extract cohesive collaborators; identify the multiple reasons-to-change and split along them. (A Mediator can *become* a god object — watch for it.)
+
+## Singleton abuse
+**Smell:** \`getInstance()\` everywhere; global mutable state masquerading as a pattern.
+**Why bad:** hidden global state and hidden dependencies (a class secretly depends on \`Foo.getInstance()\`), untestable (can't substitute a fake), thread-safety hazards, lifecycle you don't control. Singletons are essentially global variables with a fig leaf.
+**Fix:** make it a normal object and inject it (DI gives you one instance — a container-managed singleton — *without* the global access point). "Singleton scope" in Spring is fine; the **Singleton anti-pattern is the static \`getInstance()\` global access**.
+
+> [!DANGER]
+> The classic interview trap: "Singletons are bad" is too glib. Be precise — *container-managed singleton scope is fine*; the harmful part is **global static access + mutable state**, which couples callers invisibly and destroys testability.
+
+## Anemic Domain Model
+**Smell:** entities are bags of getters/setters with **no behavior**; all logic lives in "service" classes. Objects are just data structures; you've written procedural code in OO clothing.
+**Why (sometimes) bad:** in a rich domain, behavior that belongs with the data is scattered into services, losing encapsulation and inviting inconsistent state (anyone can \`setBalance(-100)\`).
+**Nuance:** for simple CRUD, an anemic model + transaction script is perfectly fine and simpler. It's a smell, not a crime — call it out only where rich invariants exist.
+**Fix:** move invariants and behavior onto the entity (\`account.withdraw(amount)\` validates and mutates), keep services for orchestration.
+
+## Premature / speculative patterning
+**Smell:** abstract factories, strategy interfaces, and plugin points for variation that **doesn't exist yet** ("we might need to swap the DB / support 10 payment providers"). YAGNI violated.
+**Why bad:** every speculative abstraction is indirection you pay for forever and flexibility you usually never use; it obscures the one concrete path that actually runs.
+**Fix:** **Rule of Three** — write it concretely; abstract on the *second or third* real variation, when you know the actual axis of change.
+
+## Over-engineering / pattern fever
+**Smell:** a 200-line app with five layers, DTOs that copy entities 1:1, a factory for a class with one impl, an event bus for two in-process calls. Patterns applied for their own sake.
+**Why bad:** the indirection-to-value ratio is terrible; new readers can't find where work happens; "enterprise FizzBuzz."
+**Fix:** start simple, add structure when pain appears. Patterns are a response to forces — no force, no pattern.
+
+> [!WARNING]
+> Other smells to name: **stringly-typed** code (passing meaning in strings), **primitive obsession** (no value objects), **leaky abstractions** (the repository that returns JPA entities with lazy proxies), **feature envy** (a method that mostly uses another class's data — move it), and **shotgun surgery** (one change forces edits across many classes — usually a missing abstraction, the opposite problem).
+
+> [!SUCCESS]
+> The meta-rule: **patterns are tools for managing change you can see, not change you imagine.** Apply a pattern to remove *present* pain (a real second variant, an actual leak, a genuine boundary). If you can't name the force, you're decorating, not designing.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Anemic vs rich domain, and singleton-abuse vs injected dependency (runnable)`,
+                code: `public class AntiPatternsDemo {
+
+    // ---- ANEMIC: entity is a data bag; invariants unenforceable ----
+    static class AnemicAccount {
+        private long balanceCents;
+        public long getBalanceCents() { return balanceCents; }
+        public void setBalanceCents(long v) { this.balanceCents = v; }   // anyone can set anything
+    }
+
+    // ---- RICH: behavior + invariant live with the data ----
+    static class Account {
+        private long balanceCents;
+        Account(long opening) {
+            if (opening < 0) throw new IllegalArgumentException("opening must be >= 0");
+            this.balanceCents = opening;
+        }
+        void withdraw(long cents) {
+            if (cents <= 0) throw new IllegalArgumentException("amount must be > 0");
+            if (cents > balanceCents) throw new IllegalStateException("insufficient funds");
+            balanceCents -= cents;                       // invariant enforced in one place
+        }
+        long balanceCents() { return balanceCents; }
+    }
+
+    // ---- SINGLETON ABUSE: hidden global mutable state, untestable ----
+    static class BadConfig {
+        private static final BadConfig INSTANCE = new BadConfig();
+        private int retries = 3;
+        static BadConfig getInstance() { return INSTANCE; }   // global access point = the smell
+        int retries() { return retries; }
+    }
+    static class CouplesToGlobal {
+        int effort() { return BadConfig.getInstance().retries(); }   // hidden dependency
+    }
+
+    // ---- BETTER: plain object, injected -> testable, explicit dependency ----
+    record Config(int retries) {}
+    static class UsesInjectedConfig {
+        private final Config config;
+        UsesInjectedConfig(Config config) { this.config = config; }   // dependency is visible
+        int effort() { return config.retries(); }
+    }
+
+    public static void main(String[] args) {
+        // Rich model rejects illegal state; anemic model can't.
+        AnemicAccount bad = new AnemicAccount();
+        bad.setBalanceCents(-500);   // nothing stops this
+        System.out.println("anemic allowed negative balance: " + bad.getBalanceCents());
+
+        Account good = new Account(1000);
+        good.withdraw(300);
+        System.out.println("rich balance after withdraw: " + good.balanceCents());
+        try { good.withdraw(10_000); }
+        catch (IllegalStateException e) { System.out.println("rich blocked overdraft: " + e.getMessage()); }
+
+        // Singleton-coupled vs injected.
+        System.out.println("global-coupled effort: " + new CouplesToGlobal().effort());
+        System.out.println("injected effort (testable): " + new UsesInjectedConfig(new Config(5)).effort());
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is a God Object and how do you fix it?`,
+                a: `One class that knows/does everything (huge, many dependencies, every change touches it), violating Single Responsibility. Fix by identifying the multiple reasons-to-change and extracting cohesive collaborators along those seams.`
+              },
+              {
+                q: `Precisely, what part of Singleton is the anti-pattern?`,
+                a: `The harmful part is global static access (getInstance()) combined with mutable state, which hides dependencies and destroys testability. Container-managed singleton scope (one injected instance, no global access point) is fine.`
+              },
+              {
+                q: `Why is a Singleton hard to test?`,
+                a: `Its global static access point can't be substituted with a fake, and its hidden mutable state persists across tests. Callers depend on it invisibly, so you can't isolate the unit under test.`
+              },
+              {
+                q: `What is an Anemic Domain Model and when is it actually OK?`,
+                a: `Entities are getter/setter data bags with no behavior; all logic sits in services (procedural code in OO clothing). It's fine for simple CRUD/transaction-script apps; it's a smell only where rich invariants belong with the data.`
+              },
+              {
+                q: `How do you fix an anemic model with real invariants?`,
+                a: `Move behavior and invariants onto the entity (e.g., account.withdraw(amount) validates and mutates in one place), reserving services for orchestration — so illegal states like setBalance(-100) become impossible.`
+              },
+              {
+                q: `What is premature/speculative patterning and the rule against it?`,
+                a: `Adding abstractions/plugin points for variation that doesn't yet exist (YAGNI violation). Counter it with the Rule of Three: stay concrete until the second or third real variation reveals the true axis of change.`
+              },
+              {
+                q: `Give three symptoms of over-engineering.`,
+                a: `A tiny app with five layers, DTOs copying entities 1:1, a factory/strategy for a single implementation, or an event bus for two in-process calls — indirection with no offsetting force.`
+              },
+              {
+                q: `What is a leaky abstraction, with an example?`,
+                a: `An abstraction that exposes the implementation it should hide — e.g., a repository returning JPA entities with lazy proxies, forcing callers to depend on ORM details and causing lazy-init errors outside the session.`
+              },
+              {
+                q: `Distinguish shotgun surgery from a God Object.`,
+                a: `Shotgun surgery: one change forces edits across many classes (a missing/under-applied abstraction). God Object: one class absorbs too much (over-centralization). They are opposite failures of distributing responsibility.`
+              },
+              {
+                q: `State the meta-rule for when to apply a pattern.`,
+                a: `Apply a pattern to remove present, nameable pain (a real second variant, an actual leak, a genuine boundary). If you can't name the force the pattern addresses, you're decorating, not designing.`
+              }
+            ]
+          },
+          {
+            id: `12.4.6`,
+            title: `Choosing patterns — a decision guide and how to talk about patterns in interviews`,
+            notes: `# Choosing patterns: a decision guide
+
+Patterns are answers to **forces** (things that vary, things that couple, things that change). Start from the force, not the pattern name.
+
+## Decide by the question you're answering
+| The force / question | Reach for |
+|---|---|
+| "I have interchangeable algorithms / want to swap behavior" | **Strategy** (lambda if single-method) |
+| "I have a fixed sequence with a few varying steps" | **Template Method** (or functional template) |
+| "Many things must react to an event" | **Observer** / pub-sub / ApplicationEvent |
+| "A request flows through reorderable steps" | **Chain of Responsibility** (filters) |
+| "I need undo/redo, queue, log, or schedule actions" | **Command** |
+| "Behavior depends on a finite, transitioning status" | **State** (enum if simple) |
+| "I must add operations over a stable type hierarchy" | **Visitor** (or sealed + switch in Java 21) |
+| "Construction is complex / many optional params" | **Builder** |
+| "I need one of several related families of objects" | **Abstract Factory** |
+| "I want to add behavior around an object, same interface" | **Decorator** / Proxy |
+| "Absence should be safe to handle" | **Optional** / Null Object |
+| "Persistence should look like a collection" | **Repository** |
+| "Decouple producers from consumers" | **Producer-Consumer** + BlockingQueue |
+
+\`\`\`mermaid
+flowchart TD
+  Q{What varies?} -->|the whole algorithm| S[Strategy]
+  Q -->|some steps of a fixed flow| T[Template Method]
+  Q -->|object creation| CR{How?}
+  CR -->|complex/optional args| B[Builder]
+  CR -->|families of objects| AF[Abstract Factory]
+  Q -->|who reacts| O[Observer]
+  Q -->|behavior by status| ST[State]
+  Q -->|request routing| CoR[Chain of Responsibility]
+\`\`\`
+
+## The selection checklist (senior heuristics)
+1. **Name the force first.** What actually varies or couples *today*? No force → no pattern.
+2. **Prefer the lightest tool.** Lambda before class; enum before class hierarchy; a \`Map\` before a Strategy interface; composition before inheritance.
+3. **Rule of Three.** Don't abstract until the second/third real variation shows the true axis of change.
+4. **Optimize for the reader.** The pattern must make intent *clearer*, not just more flexible. If it obscures the one real path, drop it.
+5. **Prefer patterns the platform already gives you.** A \`Comparator\`, a \`BlockingQueue\`, \`@Transactional\`, Spring Data — don't reinvent.
+6. **Watch for the pattern's own failure mode.** Strategy → speculative generality; Observer → leaks/ordering; Visitor → rigid type hierarchy; Singleton → global state; CQRS → eventual-consistency tax.
+
+> [!SUCCESS]
+> **Composability beats catalog memorization.** Real systems combine patterns: a Spring \`*Template\` is Template Method + Strategy; a filter chain is CoR + Command; a command bus is Command + Mediator + Observer. Talk in forces and combinations, not isolated GoF cards.
+
+## How to talk about patterns in an interview (without name-dropping)
+> [!TIP]
+> **Lead with the problem, then name the pattern as a label, then the trade-off.** Bad: "I'd use the Strategy pattern." Good: "Pricing has several interchangeable rules that change per campaign, so I'd inject the rule as a small interface — a Strategy — using a lambda since it's single-method, and avoid a switch I'd have to keep editing. The cost is one more indirection, which is worth it because the second rule already exists."
+
+**A reusable 4-beat structure for any 'how would you design X' answer:**
+1. **Force:** "The thing that varies / couples here is ___."
+2. **Choice:** "So I'd use ___ (named lightly), realized as ___ (lambda/class/enum)."
+3. **Trade-off:** "This costs ___ but buys ___; I'd accept it because ___ (a *present* need)."
+4. **Alternative + when I'd switch:** "If ___ changed (e.g., it became multi-method / needed runtime swap / grew a third variant), I'd move to ___."
+
+> [!WARNING]
+> Red flags interviewers listen for: name-dropping patterns with no force ("I'd add a factory" — why?); inability to state a pattern's downside; reaching for CQRS/microservices/event-sourcing reflexively; "Singletons/inheritance/getters are always bad" absolutism. Nuance and trade-off awareness signal seniority far more than reciting the GoF catalog.
+
+> [!EU]
+> Cultural note for cross-team work: in many European/enterprise codebases the GoF vocabulary is shared lingua franca in design reviews — using the right label *concisely* speeds communication. The skill is calibration: name the pattern to communicate, not to impress.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Lightest-tool-first: a Map of strategies beats a Strategy-interface hierarchy (runnable)`,
+                code: `import java.util.*;
+import java.util.function.*;
+
+public class ChoosingPatternsDemo {
+
+    // FORCE: a handful of interchangeable operations selected by a key.
+    // Lightest tool: a Map<String, lambda> — no interface, no classes, no switch to maintain.
+
+    public static void main(String[] args) {
+        Map<String, DoubleUnaryOperator> taxRules = new HashMap<>();
+        taxRules.put("US", amount -> amount * 1.07);
+        taxRules.put("EU", amount -> amount * 1.20);
+        taxRules.put("NONE", DoubleUnaryOperator.identity());   // Null-Object-style neutral rule
+
+        // Adding a region = one map entry, not a new class or switch branch (Open/Closed).
+        taxRules.put("UK", amount -> amount * 1.20);
+
+        for (String region : List.of("US", "EU", "UK", "NONE", "MARS")) {
+            DoubleUnaryOperator rule = taxRules.getOrDefault(region, DoubleUnaryOperator.identity());
+            System.out.printf("%-5s 100.00 -> %.2f%n", region, rule.applyAsDouble(100.0));
+        }
+
+        // When would you 'graduate' to a real Strategy interface/class?
+        // - the rule needs multiple methods (not a functional interface)
+        // - the rule has state or its own injected dependencies (DI)
+        // - the rule must be unit-tested or named as a type
+        // Until then, the Map-of-lambdas is the lighter, clearer choice (Rule of Three).
+        System.out.println("rules registered: " + taxRules.keySet());
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What should drive pattern selection, the pattern name or the force?`,
+                a: `The force — identify what actually varies or couples today (algorithm, creation, reaction, routing, status). No force means no pattern; the name is just a label for the chosen response to that force.`
+              },
+              {
+                q: `State the 'lightest tool first' heuristic with examples.`,
+                a: `Prefer the simplest construct that resolves the force: a lambda before a class, an enum before a class hierarchy, a Map<key, lambda> before a Strategy interface, composition before inheritance.`
+              },
+              {
+                q: `What is the Rule of Three in pattern selection?`,
+                a: `Don't introduce an abstraction until the second or third real variation appears; only then do you know the true axis of change, avoiding speculative generality from guessing wrong early.`
+              },
+              {
+                q: `Which force maps to Chain of Responsibility vs Strategy?`,
+                a: `CoR: a request flows through several reorderable, independent processing steps (filters/middleware). Strategy: you need to swap one interchangeable algorithm/behavior. Different shapes of variation.`
+              },
+              {
+                q: `Give the 4-beat structure for answering a design question in an interview.`,
+                a: `1) Force: what varies/couples. 2) Choice: the pattern (named lightly) and its realization (lambda/class/enum). 3) Trade-off: cost vs benefit and why it's justified now. 4) Alternative: what change would make you switch and to what.`
+              },
+              {
+                q: `How should you phrase a pattern choice instead of name-dropping?`,
+                a: `Lead with the problem, name the pattern as a label, then state the trade-off — e.g., 'pricing rules vary per campaign, so I'd inject the rule (a Strategy) as a lambda to avoid a growing switch; the cost is one indirection, justified because a second rule already exists.'`
+              },
+              {
+                q: `What interview red flags signal weak pattern understanding?`,
+                a: `Naming patterns with no force, inability to state a pattern's downside, reflexively reaching for CQRS/microservices/event-sourcing, and absolutist claims like 'Singletons/inheritance are always bad' instead of trade-offs.`
+              },
+              {
+                q: `Why is 'composability beats catalog memorization' the senior view?`,
+                a: `Real systems combine patterns (Template Method + Strategy in *Template classes; CoR + Command in filter chains; Command + Mediator in command buses). Reasoning in forces and combinations matters more than reciting isolated GoF cards.`
+              },
+              {
+                q: `When does a Map-of-lambdas graduate to a real Strategy class?`,
+                a: `When the strategy needs multiple methods (no longer a functional interface), carries state or its own injected dependencies, or must be named/unit-tested as a type — otherwise the Map stays the lighter, clearer choice.`
+              },
+              {
+                q: `Name each listed pattern's characteristic failure mode.`,
+                a: `Strategy: speculative generality; Observer: memory leaks/ordering; Visitor: rigid element hierarchy; Singleton: hidden global state; Template Method: fragile base class; CQRS: eventual-consistency complexity.`
+              }
+            ]
+          }
+        ]
       }
     ]
   }
