@@ -31017,176 +31017,1244 @@ interface ProcessedStore { boolean markIfNew(String messageId); }`,
       {
         id: `7.1`,
         title: `Docker & Containers`,
-        hours: 3,
+        hours: 5,
         sections: [
           {
-            title: `Docker Fundamentals — Images, Containers & Networking`,
-            notes: `## Docker Fundamentals — Images, Containers & Networking
+            title: `What a Container Really Is — Namespaces, cgroups & the OCI Spec`,
+            notes: `## What a Container Really Is
 
-### What is a Container?
+A container is **not** a lightweight VM. There is no "container" object in the Linux kernel. A container is a **normal Linux process** that the kernel has been told to view through a restricted lens. Three kernel features create that illusion:
 
-\`\`\`
-Container vs VM:
-  VM:        Guest OS + App + Libs    — heavyweight (GBs), slow boot
-  Container: App + Libs only          — lightweight (MBs), instant start
-             Shares host kernel via Linux namespaces + cgroups
+- **Namespaces** → what the process can *see* (isolation).
+- **cgroups** → what the process can *use* (resource limits/accounting).
+- **Union / overlay filesystems** → how the root filesystem is assembled cheaply (layers + copy-on-write).
 
-Namespaces (isolation): pid, net, mnt, uts, ipc, user
-cgroups (limits): CPU %, memory, disk I/O — prevents one container starving others
-\`\`\`
+A "container runtime" (runc, crun) is just glue that calls \`clone(2)\`/\`unshare(2)\` with the right flags, sets up cgroups, pivots the root, drops capabilities, and \`exec\`s your binary.
 
-### Dockerfile — Building Images
+> [!TIP]
+> The senior-level mental model: **"a container is a process in a box made of namespaces, sized by cgroups, viewed through an overlay FS."** If you can name the six namespaces and explain CoW layering, you've answered 80% of the "what is a container" probe.
 
-\`\`\`dockerfile
-# Multi-stage build: build stage + lean runtime stage
-# Stage 1: build (Maven + JDK — ~500MB)
-FROM eclipse-temurin:21-jdk AS builder
-WORKDIR /app
-COPY pom.xml .
-COPY src ./src
-RUN mvn -q clean package -DskipTests
+### Container vs VM
 
-# Stage 2: runtime (JRE only — ~100MB)
-FROM eclipse-temurin:21-jre
-WORKDIR /app
-# Non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-COPY --from=builder /app/target/*.jar app.jar
-RUN chown appuser:appuser app.jar
-USER appuser
-EXPOSE 8080
-# Use exec form to be PID 1 (receives signals properly)
-ENTRYPOINT ["java", "-jar", "app.jar"]
-
-# Optimise for Spring Boot layer caching
-# FROM eclipse-temurin:21-jre
-# COPY --from=builder /app/target/layers/dependencies/ ./
-# COPY --from=builder /app/target/layers/spring-boot-loader/ ./
-# COPY --from=builder /app/target/layers/snapshot-dependencies/ ./
-# COPY --from=builder /app/target/layers/application/ ./
-# ENTRYPOINT ["org.springframework.boot.loader.launch.JarLauncher"]
+\`\`\`mermaid
+graph TB
+  subgraph VM["Virtual Machines"]
+    HW1[Physical Hardware] --> HV[Hypervisor]
+    HV --> G1[Guest OS Kernel A]
+    HV --> G2[Guest OS Kernel B]
+    G1 --> A1[Bins/Libs + App 1]
+    G2 --> A2[Bins/Libs + App 2]
+  end
+  subgraph CT["Containers"]
+    HW2[Physical Hardware] --> HK[Host OS - Single Shared Kernel]
+    HK --> R[Container Runtime]
+    R --> C1[Bins/Libs + App 1]
+    R --> C2[Bins/Libs + App 2]
+  end
 \`\`\`
 
-### Key Docker Commands
+| Dimension | Virtual Machine | Container |
+|---|---|---|
+| Isolation boundary | Hardware-virtualized, separate kernel | Shared host kernel + namespaces |
+| Boot time | Seconds to minutes | Milliseconds (just \`fork/exec\`) |
+| Footprint | GBs (full guest OS) | MBs (app + libs only) |
+| Density per host | Tens | Hundreds to thousands |
+| Attack surface | Smaller (strong kernel isolation) | Larger (shared kernel = shared bugs) |
+| Kernel choice | Any (Windows on Linux host, etc.) | Must match host kernel (Linux on Linux) |
+| Overhead | Hypervisor + guest OS CPU/mem tax | Near-zero — native process speed |
 
-\`\`\`bash
-# Build
-docker build -t myapp:1.0 .
-docker build --no-cache -t myapp:1.0 .
+> [!WARNING]
+> Because containers **share the host kernel**, a kernel-level exploit or a container breakout (e.g. via a misconfigured \`--privileged\` flag or mounted \`/var/run/docker.sock\`) escapes to the host. This is why multi-tenant platforms add a second layer: gVisor (user-space kernel) or Kata Containers (lightweight microVMs). Know this trade-off for staff interviews.
 
-# Run
-docker run -d -p 8080:8080 --name myapp myapp:1.0
-docker run -d -p 8080:8080 -e DB_URL=jdbc:postgres://... --name myapp myapp:1.0
-docker run -d -v /host/data:/app/data myapp:1.0    # volume mount
+### The Six Namespaces
 
-# Inspect
-docker ps                          # running containers
-docker logs -f myapp               # follow logs
-docker exec -it myapp /bin/sh      # shell into container
-docker stats                       # CPU/mem usage
+Each namespace virtualizes one category of global system resource. A process can be in a *different* namespace per category.
 
-# Registry
-docker tag myapp:1.0 registry.io/myapp:1.0
-docker push registry.io/myapp:1.0
-docker pull registry.io/myapp:1.0
+| Namespace | Flag | Virtualizes | Without it you'd see... |
+|---|---|---|---|
+| **PID** | \`CLONE_NEWPID\` | Process IDs | All host processes; your app wouldn't be PID 1 |
+| **NET** | \`CLONE_NEWNET\` | Network stack: interfaces, routes, ports, iptables | Host's eth0 and every host-bound port |
+| **MNT** | \`CLONE_NEWNS\` | Mount points / filesystem tree | Host's full filesystem |
+| **UTS** | \`CLONE_NEWUTS\` | Hostname + domain name | Host's hostname |
+| **IPC** | \`CLONE_NEWIPC\` | System V IPC, POSIX message queues, shared memory | Host's shared-memory segments |
+| **USER** | \`CLONE_NEWUSER\` | UID/GID mappings | Same UIDs as host (root==root) |
 
-# Cleanup
-docker rm -f myapp                 # remove container
-docker rmi myapp:1.0              # remove image
-docker system prune -af           # remove all unused
+> [!DANGER]
+> **The PID-1 trap.** Inside the PID namespace, your process is PID 1 — the init process. PID 1 has special kernel semantics: it must **reap zombie children** and the kernel **ignores default signal handlers** for it. A bare JVM as PID 1 may not forward \`SIGTERM\` to threads correctly and won't reap orphaned child processes, leaking zombies. Fixes: run with \`docker run --init\` (injects \`tini\`), add \`ENTRYPOINT ["tini","--", ...]\`, or ensure your process correctly handles signals + reaping.
+
+The **user namespace** is the security crown jewel: it lets a process be **root (UID 0) inside** the container while being an **unprivileged UID outside**. This is the foundation of *rootless* containers (Podman, rootless Docker).
+
+### cgroups (Control Groups)
+
+Namespaces isolate *visibility*; cgroups limit *consumption* and provide *accounting*. cgroups v2 (unified hierarchy, default on modern distros) exposes controllers:
+
+- **cpu** — \`cpu.max\` (quota/period → effective core count), \`cpu.weight\` (relative shares).
+- **memory** — \`memory.max\` (hard limit → OOM-kill on breach), \`memory.high\` (throttle).
+- **io** — block device read/write throttling.
+- **pids** — max number of processes (fork-bomb protection).
+
+When \`docker run --memory=512m --cpus=1.5\` is used, Docker writes those values into the container's cgroup. The kernel enforces them. **The JVM reads these files** (\`/sys/fs/cgroup/...\`) to size the heap — see Section 6.
+
+### Union / Overlay Filesystems & Copy-on-Write
+
+A container's root filesystem is **not** copied from the image. It's assembled by **overlayfs**, which stacks read-only image layers (the "lowerdir") and adds a single writable layer on top (the "upperdir").
+
+\`\`\`mermaid
+graph TB
+  subgraph "Container Mount (merged view)"
+    M[Unified / merged filesystem]
+  end
+  M --> U["upperdir (writable, per-container)"]
+  M --> L3["lowerdir L3 (read-only image layer)"]
+  M --> L2["lowerdir L2 (read-only image layer)"]
+  M --> L1["lowerdir L1 (read-only base layer)"]
 \`\`\`
 
-### Docker Compose
+- **Read** of an unchanged file → served directly from the read-only layer (zero copy, shared across all containers from that image).
+- **Write/modify** → file is **copied up** to the writable layer first (copy-on-write), then modified there.
+- **Delete** → a "whiteout" marker is written in the upper layer hiding the lower file.
 
-\`\`\`yaml
-# docker-compose.yml — local dev stack
-services:
-  app:
-    build: .
-    ports: ["8080:8080"]
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/mydb
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: secret
-    depends_on:
-      db:
-        condition: service_healthy  # wait for DB healthcheck
+> [!SUCCESS]
+> CoW + shared read-only layers is *why* 100 containers from the same image use almost no extra disk and start instantly: they all share the same immutable lower layers; only their tiny writable upper layers differ.
 
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: mydb
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secret
-    volumes: [postgres_data:/var/lib/postgresql/data]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      retries: 5
+### The OCI Spec — Why It All Interoperates
 
-  redis:
-    image: redis:7-alpine
-    ports: ["6379:6379"]
+"Docker image" is colloquial. The real standards live under the **Open Container Initiative (OCI)**:
 
-volumes:
-  postgres_data:
-\`\`\``,
+- **OCI Image Spec** — the on-disk/registry format: a JSON **manifest** pointing to a **config** (env, entrypoint, layer ordering) + a list of **layer blobs** (tar.gz), all content-addressed by **digest** (sha256). A **manifest list / image index** enables multi-arch images (one tag → arm64 + amd64).
+- **OCI Runtime Spec** — how a runtime turns an unpacked bundle + \`config.json\` into a running process (runc is the reference impl).
+- **OCI Distribution Spec** — the registry HTTP API (push/pull).
+
+\`\`\`mermaid
+flowchart LR
+  D[Dockerfile] -->|docker build / buildkit| IMG[(OCI Image)]
+  IMG -->|docker push| REG[(Registry / Distribution Spec)]
+  REG -->|docker pull| HOST[Host]
+  HOST -->|containerd + runc / Runtime Spec| RUN[Running Container]
+\`\`\`
+
+> [!EU]
+> Because these are open specs, Docker is *one* of many compliant tools. Podman, containerd/nerdctl, BuildKit, Buildah, CRI-O, and Kubernetes all consume the same OCI artifacts. "Docker the company" is replaceable; "OCI the standard" is what survives. Saying this signals you understand the ecosystem, not just one CLI.
+
+### Why "It Works on My Machine" Goes Away
+
+The image **packages the entire userland**: exact JDK build, glibc/musl version, native libs, locale, timezone data, env vars, and the filesystem layout — pinned by **digest**, not a floating tag. The only thing pulled from the host is the kernel syscall interface (stable and backward-compatible). So the bytes that ran in CI are the **identical bytes** that run in prod. Reproducibility shifts the failure mode from "drift between environments" to "the one image is wrong everywhere" — which is far easier to debug.`,
             code: [
-              `# Dockerfile best practices — Spring Boot optimised
+              {
+                lang: `bash`,
+                title: `Proving namespaces & cgroups exist (no magic)`,
+                code: `# Run a container; it's just a process on the host
+docker run -d --name demo --memory=256m --cpus=0.5 nginx
 
-# =======================================================
-# OPTION A: Simple single-stage (for quick demos)
-# =======================================================
-FROM eclipse-temurin:21-jre
-WORKDIR /app
-ARG JAR_FILE=target/*.jar
-COPY \${JAR_FILE} app.jar
-EXPOSE 8080
-ENTRYPOINT ["java",   "-XX:+UseContainerSupport",   "-XX:MaxRAMPercentage=75.0",   "-Djava.security.egd=file:/dev/./urandom",   "-jar", "app.jar"]
+# Find its host PID — it's a normal process in the host's process table
+PID=$(docker inspect -f '{{.State.Pid}}' demo)
+echo "Host PID: $PID"
 
-# =======================================================
-# OPTION B: Multi-stage with Spring Boot layers (best)
-# =======================================================
-FROM eclipse-temurin:21-jdk-alpine AS builder
-WORKDIR /build
-COPY mvnw .
-COPY .mvn .mvn
-COPY pom.xml .
-RUN ./mvnw dependency:go-offline -q   # cache dependencies layer
-COPY src ./src
-RUN ./mvnw package -DskipTests -q
-RUN java -Djarmode=layertools -jar target/*.jar extract --destination target/extracted
+# Inspect the namespaces this process belongs to (each is a kernel inode)
+sudo ls -l /proc/$PID/ns
+# -> net, mnt, pid, uts, ipc, user, cgroup ... each a symlink to ns:[inode]
 
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-COPY --from=builder /build/target/extracted/dependencies/ ./
-COPY --from=builder /build/target/extracted/spring-boot-loader/ ./
-COPY --from=builder /build/target/extracted/snapshot-dependencies/ ./
-COPY --from=builder /build/target/extracted/application/ ./
-USER appuser
-EXPOSE 8080
-ENTRYPOINT ["java",   "-XX:+UseContainerSupport",   "-XX:MaxRAMPercentage=75.0",   "org.springframework.boot.loader.launch.JarLauncher"]
+# Inside the container it's PID 1; on the host it's $PID — same process, two views
+docker exec demo ps -ef        # nginx is PID 1 here
 
-# WHY LAYERS: most rebuilds only change the 'application' layer (~50KB)
-# dependencies layer (~200MB) is cached and reused → fast builds`
+# cgroup v2: the limits we set are just files the kernel reads
+cat /sys/fs/cgroup/system.slice/docker-*.scope/memory.max   # 268435456 (256MiB)
+cat /sys/fs/cgroup/system.slice/docker-*.scope/cpu.max       # 50000 100000 (0.5 CPU)`,
+                runnable: false,
+                note: `Host-level inspection; paths vary by distro/cgroup driver. Demonstrates a container is a namespaced, cgroup-limited process.`
+              },
+              {
+                lang: `bash`,
+                title: `Create a "container" by hand with unshare (the runtime is not magic)`,
+                code: `# New UTS + PID + mount + net namespaces, mount a fresh /proc
+sudo unshare --uts --pid --mount --net --fork --mount-proc bash
+
+# Inside the new namespaces:
+hostname isolated-box        # UTS namespace — host hostname unaffected
+ps -ef                       # PID namespace — bash is PID 1, host procs invisible
+ip addr                      # NET namespace — only loopback, no host eth0
+# This is, in essence, what runc does (plus cgroups, overlayfs root, dropped caps).`,
+                runnable: false,
+                note: `Educational: shows runc/Docker are orchestrating standard Linux primitives.`
+              },
+              {
+                lang: `bash`,
+                title: `Overlay/CoW & image internals`,
+                code: `# See the layer stack the storage driver assembled for a running container
+docker inspect demo -f '{{json .GraphDriver.Data}}' | jq
+# -> LowerDir (RO image layers, ':'-joined), UpperDir (writable), MergedDir, WorkDir
+
+# A write triggers copy-up into the writable layer; the image layers stay immutable
+docker exec demo sh -c 'echo hi > /tmp/x'   # /tmp/x lives only in UpperDir
+
+# Inspect the OCI image config + layer digests
+docker manifest inspect nginx:latest        # manifest list (multi-arch) -> per-arch manifests
+docker image inspect nginx -f '{{json .RootFS.Layers}}' | jq   # sha256 content digests`,
+                runnable: false,
+                note: `Reference commands for inspecting overlayfs layering and OCI digests.`
+              }
             ],
             flashcards: [
               {
-                q: `What is the difference between a Docker image and a container?`,
-                a: `An image is a read-only, layered snapshot — a blueprint. It contains the filesystem, app binaries, libraries, and metadata (ENTRYPOINT, ENV, EXPOSE). Images are built from Dockerfiles and stored in registries. A container is a running instance of an image — it adds a thin writable layer on top of the image layers. Multiple containers can share the same image. "docker run" creates a container from an image. Containers are ephemeral — stopping and removing them destroys the writable layer; the image remains.`
+                q: `In one sentence, what is a container at the kernel level?`,
+                a: `A normal Linux process whose visibility is restricted by namespaces, whose resource use is bounded by cgroups, and whose root filesystem is assembled from read-only image layers plus a copy-on-write writable layer via overlayfs.`
               },
               {
-                q: `What is a multi-stage Docker build and why should you use it for Java?`,
-                a: `Multi-stage builds use multiple FROM instructions. The first stage uses a full JDK + Maven to compile and build. The second stage uses only a JRE (no compiler, no build tools). COPY --from=builder copies just the built artifact. Benefits: final image is much smaller (JRE ~100MB vs JDK ~500MB), no build tools or source code in production image (security), build dependencies don't bloat runtime image. For Spring Boot: use jarmode=layertools to extract layers — enables Docker layer caching so rebuilds only re-copy the changed application layer.`
+                q: `Name the six core namespaces and what each isolates.`,
+                a: `PID (process IDs), NET (network stack/interfaces/ports), MNT (mount points/FS tree), UTS (hostname), IPC (System V IPC & shared memory), USER (UID/GID mappings).`
               },
               {
-                q: `What are Docker volumes and why use them for databases?`,
-                a: `Volumes persist data outside the container's writable layer — data survives container restarts, replacements, and upgrades. Without a volume: stopping and removing a postgres container deletes all data. With a named volume (postgres_data:/var/lib/postgresql/data): data is stored on the host, container mounts it. Types: named volumes (docker manages location), bind mounts (specific host path, e.g. /host/data:/app/data — good for dev, bad for production portability). Use volumes for: databases, file uploads, log files that must survive container lifecycle.`
+                q: `Namespaces vs cgroups — what does each do?`,
+                a: `Namespaces control what a process can SEE (isolation/visibility). cgroups control what a process can USE (CPU/memory/IO/pids limits and accounting). They are orthogonal kernel features.`
               },
+              {
+                q: `Why can a container start in milliseconds but a VM takes seconds?`,
+                a: `A container is just fork/exec of a process with namespace+cgroup setup — no guest OS to boot. A VM must boot a full guest kernel and userland under a hypervisor.`
+              },
+              {
+                q: `What is the PID-1 / init problem in containers?`,
+                a: `Your process becomes PID 1, which must reap zombie children and gets no default signal handlers from the kernel. A naive process leaks zombies and may mishandle SIGTERM. Fix with --init (tini), an init ENTRYPOINT, or proper signal+reaping handling.`
+              },
+              {
+                q: `How does copy-on-write work in an overlay filesystem?`,
+                a: `Reads of unchanged files come straight from shared read-only image layers. The first write to a file copies it up into the per-container writable layer, then modifies the copy. Deletes write a whiteout marker. Image layers stay immutable and shared.`
+              },
+              {
+                q: `Why do 100 containers from one image use almost no extra disk?`,
+                a: `They all share the same immutable read-only lower layers via overlayfs; only their small per-container writable upper layers consume new space.`
+              },
+              {
+                q: `What does the user namespace enable security-wise?`,
+                a: `It maps UID 0 inside the container to an unprivileged UID on the host, so a process can be "root" in-container without host root. This underpins rootless containers (Podman, rootless Docker).`
+              },
+              {
+                q: `What are the three OCI specifications?`,
+                a: `Image Spec (registry/on-disk format: manifest + config + content-addressed layer blobs), Runtime Spec (how a bundle+config.json becomes a running process; runc is the reference), and Distribution Spec (the registry push/pull HTTP API).`
+              },
+              {
+                q: `Why is the security boundary weaker for containers than VMs?`,
+                a: `Containers share the host kernel, so a kernel exploit or misconfiguration (privileged mode, mounted docker.sock) can break out to the host. VMs have a hardware-virtualized boundary with separate kernels. Mitigations: gVisor, Kata Containers, rootless, dropped capabilities, seccomp.`
+              },
+              {
+                q: `Why does "works on my machine" disappear with containers?`,
+                a: `The image pins the entire userland (JDK build, glibc, native libs, locale, env, FS layout) by digest; only the stable kernel syscall interface comes from the host. The exact bytes from CI run in prod.`
+              },
+              {
+                q: `What is a manifest list / image index used for?`,
+                a: `Multi-architecture images: a single tag points to a list of per-arch manifests (e.g. amd64 + arm64), and the runtime picks the one matching the host platform on pull.`
+              }
+            ]
+          },
+          {
+            title: `Images & Layers — Caching, Digests, Registries & Size`,
+            notes: `## Images & Layers
+
+An image is an **ordered stack of read-only layers** plus a **config** (entrypoint, env, exposed ports, layer order). Each \`RUN\`, \`COPY\`, and \`ADD\` instruction produces one layer (a tarball diff). Metadata-only instructions (\`ENV\`, \`WORKDIR\`, \`CMD\`, \`LABEL\`) don't add filesystem layers but do create new image config history entries that affect cache keys.
+
+\`\`\`mermaid
+graph TB
+  CFG["Image Config (JSON): entrypoint, env, ports, layer order"] --- T["Tag/Digest: app:1.4.2 @ sha256:abc..."]
+  T --> L4["Layer 4: COPY app.jar  (your code — changes often)"]
+  L4 --> L3["Layer 3: COPY dependencies (changes rarely)"]
+  L3 --> L2["Layer 2: RUN apt-get install ... (changes ~never)"]
+  L2 --> L1["Layer 1: FROM eclipse-temurin (base — shared)"]
+\`\`\`
+
+### The Build Cache — The Single Highest-Leverage Skill
+
+BuildKit caches each instruction's result. On rebuild it walks the Dockerfile top-down and **reuses a cached layer if the instruction *and all preceding layers* are unchanged**. The first instruction whose inputs changed **busts the cache for itself and everything below it**.
+
+The cache key for \`COPY\`/\`ADD\` is a **checksum of the copied file contents** (not just the path). The cache key for \`RUN\` is the literal command string plus the parent layer's ID.
+
+> [!TIP]
+> **Golden rule: order instructions from least-frequently-changed to most-frequently-changed.** For Java: copy build descriptors and resolve dependencies *before* copying source. Your source changes every commit; your \`pom.xml\` rarely does — so dependency download stays cached across hundreds of code edits.
+
+\`\`\`dockerfile
+# BAD — any source change re-downloads ALL dependencies (cache busts at COPY . .)
+COPY . .
+RUN mvn package
+
+# GOOD — dependency layer is cached until pom.xml itself changes
+COPY pom.xml .
+RUN mvn dependency:go-offline -B   # heavy, cached
+COPY src ./src                     # cheap, changes often
+RUN mvn package -o -B              # offline, fast
+\`\`\`
+
+> [!WARNING]
+> A subtle cache-buster: \`COPY . .\` includes files like \`target/\`, \`.git/\`, logs, and IDE folders. Even a changed \`README\` or a new \`.class\` in \`target/\` changes the layer checksum and busts the cache. Always pair broad copies with a \`.dockerignore\`.
+
+### .dockerignore
+
+Works like \`.gitignore\` but for the **build context** sent to the daemon. It (1) shrinks the context upload, (2) keeps secrets/junk out of the image, and (3) stabilizes \`COPY\` cache keys.
+
+\`\`\`text
+target/
+build/
+.git/
+.gitignore
+**/*.log
+.idea/
+.vscode/
+*.iml
+.env
+.env.*
+Dockerfile
+.dockerignore
+**/node_modules
+\`\`\`
+
+### Tags vs Digests — Mutability Matters
+
+| | Tag (\`app:1.4.2\`, \`app:latest\`) | Digest (\`app@sha256:abc123...\`) |
+|---|---|---|
+| Mutable? | **Yes** — can be re-pushed to point elsewhere | **No** — content-addressed, immutable |
+| Reproducible? | No — \`latest\` is a moving target | Yes — same bytes forever |
+| Use for | Human-friendly references, releases | Deploys, base-image pinning, supply-chain |
+
+> [!DANGER]
+> Never deploy \`:latest\` to production. It's a mutable pointer: a rebuild or someone else's push silently changes what "latest" means, breaking reproducibility and making rollbacks ambiguous. Pin by **immutable digest** (or at least an immutable, never-reused semver tag) in deployment manifests. For base images, \`FROM eclipse-temurin:21-jre@sha256:...\` guarantees byte-identical builds.
+
+### Registries
+
+A registry stores and serves images via the OCI Distribution API. Push/pull move **only the layers the target doesn't already have** (deduplicated by digest). Examples: Docker Hub, GHCR, AWS ECR, GCP Artifact Registry, Azure ACR, Harbor (self-hosted). Auth via \`docker login\`; private registries gate by repo/namespace.
+
+> [!SUCCESS]
+> Layer dedup is why a tiny code change ships fast: only the top \`COPY app.jar\` layer is new; the multi-hundred-MB base + dependency layers are already on the registry and on the target host, so they aren't re-transferred.
+
+### Image Size — Why It Matters & How to Shrink
+
+Smaller images mean faster pulls/cold-starts, less registry/egress cost, and a **smaller attack surface** (fewer packages = fewer CVEs). Levers:
+
+- **Multi-stage builds** — leave the JDK/Maven/build tools behind; ship only a JRE + the jar (Section 3).
+- **Slim/distroless/alpine bases** — but beware musl vs glibc on Alpine (see warning below).
+- **Combine \`RUN\` steps & clean in the same layer** — \`apt-get install ... && rm -rf /var/lib/apt/lists/*\` in one \`RUN\`; cleaning in a *later* layer doesn't shrink the image (the bytes still exist in the earlier layer).
+- **Use jlink/jdeps** to build a custom minimal JRE with only the modules your app uses.
+- **Squash/\`--no-install-recommends\`** to avoid pulling unneeded transitive packages.
+
+> [!WARNING]
+> Deleting files in a *separate, later* \`RUN\` does **not** reduce image size — layers are additive; the earlier layer still ships the bytes, and the delete is just a whiteout on top. You must add and remove within the **same** \`RUN\` instruction.
+
+> [!WARNING]
+> **Alpine for Java is a trap unless you measure.** Alpine uses musl libc, not glibc. The standard HotSpot JDK targets glibc; musl variants exist but historically had subtle issues (DNS resolution, locale, native libs, some JIT/perf edge cases). For Spring Boot, a glibc-based slim/distroless image (\`gcr.io/distroless/java21-debian12\`) is usually the safer, well-supported choice.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `Inspecting layers, cache & size`,
+                code: `# See every layer, its creating instruction, and its size contribution
+docker history --no-trunc --format 'table {{.Size}}\\t{{.CreatedBy}}' app:1.4.2
+
+# Total size and architecture
+docker image inspect app:1.4.2 -f 'size={{.Size}} arch={{.Architecture}}'
+
+# Pin a base image by digest for reproducibility
+docker pull eclipse-temurin:21-jre
+docker image inspect eclipse-temurin:21-jre -f '{{index .RepoDigests 0}}'
+# -> eclipse-temurin@sha256:... (copy this into your FROM line)
+
+# Force a no-cache rebuild (e.g. to pick up new OS security patches)
+docker build --no-cache -t app:1.4.2 .
+
+# Build with explicit registry cache (CI: export/import cache across runners)
+docker buildx build \\
+  --cache-to=type=registry,ref=ghcr.io/acme/app:buildcache,mode=max \\
+  --cache-from=type=registry,ref=ghcr.io/acme/app:buildcache \\
+  -t ghcr.io/acme/app:1.4.2 --push .`,
+                runnable: false,
+                note: `Reference commands for layer inspection, digest pinning, and CI build caching.`
+              },
+              {
+                lang: `bash`,
+                title: `Tag, digest & registry workflow`,
+                code: `# Build, tag immutably + a moving alias
+docker build -t ghcr.io/acme/app:1.4.2 -t ghcr.io/acme/app:latest .
+
+# Log in and push (only new layers transfer; rest deduped by digest)
+echo "$GHCR_TOKEN" | docker login ghcr.io -u acme --password-stdin
+docker push ghcr.io/acme/app:1.4.2
+
+# Resolve the immutable digest after push — deploy THIS in prod manifests
+docker buildx imagetools inspect ghcr.io/acme/app:1.4.2 | grep Digest
+# Deploy reference: ghcr.io/acme/app@sha256:deadbeef...`,
+                runnable: false,
+                note: `Reference: prefer digest references in production deployment manifests.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Which Dockerfile instructions create new filesystem layers?`,
+                a: `RUN, COPY, and ADD create filesystem layers. Metadata instructions (ENV, WORKDIR, CMD, ENTRYPOINT, LABEL, EXPOSE) do not add filesystem layers but do create image-history entries that affect cache keys.`
+              },
+              {
+                q: `How does the build cache decide to reuse a layer?`,
+                a: `It walks instructions top-down; a layer is reused only if that instruction and all preceding layers are unchanged. The first changed instruction busts the cache for itself and everything below it.`
+              },
+              {
+                q: `What is the cache key for a COPY/ADD instruction?`,
+                a: `A checksum of the actual file contents being copied (plus the parent layer ID) — not just the path. Changing any copied file busts that layer and all below.`
+              },
+              {
+                q: `State the golden rule of Dockerfile instruction ordering.`,
+                a: `Order from least-frequently-changed to most-frequently-changed: install OS deps, then resolve app dependencies (copy pom.xml/go.mod first), then copy source code last — so the expensive dependency layer stays cached across code edits.`
+              },
+              {
+                q: `Why must you delete files in the SAME RUN that created them?`,
+                a: `Layers are additive and immutable. Deleting in a later RUN only writes a whiteout on top — the bytes still ship in the earlier layer. Add-and-remove in one RUN to actually shrink the image.`
+              },
+              {
+                q: `Tag vs digest — which is reproducible and why?`,
+                a: `A tag is a mutable pointer that can be re-pushed (latest is a moving target). A digest (sha256 content hash) is immutable and content-addressed — same digest always = same bytes. Deploy by digest for reproducibility.`
+              },
+              {
+                q: `Why is deploying :latest to production dangerous?`,
+                a: `It is mutable; a rebuild or another push silently changes what latest resolves to, breaking reproducibility and making rollbacks ambiguous. Pin by digest or an immutable, never-reused tag.`
+              },
+              {
+                q: `What does .dockerignore do and why does it matter for caching?`,
+                a: `It excludes files from the build context sent to the daemon. It shrinks upload, keeps secrets/junk out of the image, and stabilizes COPY cache keys (so unrelated files like target/ or .git/ do not bust your layers).`
+              },
+              {
+                q: `When pushing/pulling, what actually transfers over the network?`,
+                a: `Only the layers the other side does not already have, deduplicated by digest. Shared base/dependency layers are skipped, so a small code change ships only its top layer.`
+              },
+              {
+                q: `Why is a smaller image more than just a disk-space win?`,
+                a: `Faster pulls and cold-starts, lower registry/egress cost, and a smaller attack surface (fewer packages = fewer CVEs to patch and scan).`
+              },
+              {
+                q: `Why be cautious using Alpine for a Java/Spring Boot app?`,
+                a: `Alpine uses musl libc, not glibc. Standard HotSpot targets glibc; musl builds have had DNS/locale/native-lib/JIT edge cases. A glibc-based slim or distroless Java image is usually safer and better supported.`
+              },
+              {
+                q: `How can jlink/jdeps reduce a Java image?`,
+                a: `jdeps analyzes which JDK modules the app actually uses; jlink builds a custom minimal runtime containing only those modules, producing a much smaller JRE than the full one.`
+              }
+            ]
+          },
+          {
+            title: `Dockerfile Mastery — Instructions, Multi-Stage & the Spring Boot Build`,
+            notes: `## Dockerfile Mastery
+
+### Instruction Reference (the ones that bite in interviews)
+
+| Instruction | Purpose / gotcha |
+|---|---|
+| \`FROM\` | Base image (and stage). \`FROM x AS build\` names a stage for multi-stage. Pin by digest in prod. |
+| \`RUN\` | Executes a command in a new layer at **build** time. Chain with \`&&\` + clean to minimize layers. |
+| \`COPY\` | Copies from build context (or another stage). Preferred over \`ADD\`. |
+| \`ADD\` | Like COPY but also untars local tarballs and fetches URLs — **avoid** unless you need that; surprising behavior. |
+| \`ENV\` | Sets env var, persists into the running container. |
+| \`ARG\` | Build-time variable (\`--build-arg\`); **not** present at runtime. Don't put secrets here (they leak into history). |
+| \`WORKDIR\` | Sets/creates cwd. Use it instead of \`RUN cd\` (which doesn't persist). |
+| \`EXPOSE\` | **Documentation only** — declares a port; does NOT publish it. Publishing is \`-p\` at \`run\` time. |
+| \`USER\` | Switches the user for subsequent instructions and runtime. Use a non-root user. |
+| \`ENTRYPOINT\` | The executable to run; hard to override. |
+| \`CMD\` | Default args / default command; easily overridden. |
+| \`HEALTHCHECK\` | Command the daemon runs to mark container healthy/unhealthy. |
+| \`VOLUME\` | Declares a mount point as a volume (anonymous if not bound). |
+
+### ENTRYPOINT vs CMD — The Classic Probe
+
+| | ENTRYPOINT | CMD |
+|---|---|---|
+| Role | The command that always runs | Default args (or default command) |
+| Override at \`docker run\` | Only via \`--entrypoint\` | Just append args after the image name |
+| Common pattern | Set the binary (\`["java","-jar","app.jar"]\`) | Provide default flags (\`["--spring.profiles.active=prod"]\`) |
+| If both set | ENTRYPOINT runs with CMD appended as its args | — |
+
+> [!TIP]
+> **Always use exec form** \`["java","-jar","app.jar"]\`, never shell form \`java -jar app.jar\`. Shell form wraps your process in \`/bin/sh -c\`, which becomes PID 1 and **does not forward SIGTERM** to the JVM — so graceful shutdown breaks and the container is SIGKILLed after the grace period. Exec form makes the JVM PID 1 (pair with \`tini\`/\`--init\` for proper reaping).
+
+\`\`\`dockerfile
+# ENTRYPOINT = fixed binary; CMD = default, overridable args
+ENTRYPOINT ["java","-jar","/app/app.jar"]
+CMD ["--spring.profiles.active=prod"]
+# docker run img                      -> java -jar app.jar --spring.profiles.active=prod
+# docker run img --debug              -> java -jar app.jar --debug   (CMD overridden)
+\`\`\`
+
+### Multi-Stage Builds — Build Fat, Ship Thin
+
+A multi-stage Dockerfile has several \`FROM\`s. Early stages contain heavyweight build tooling (JDK, Maven, compilers); the final stage \`COPY --from=\` only the **artifacts** into a lean runtime. The build tools never reach the shipped image — smaller and far fewer CVEs.
+
+\`\`\`mermaid
+flowchart LR
+  subgraph S1["Stage 1: builder (JDK + Maven ~600MB)"]
+    A[COPY pom + resolve deps] --> B[COPY src] --> C[mvn package] --> J[app.jar / extracted layers]
+  end
+  subgraph S2["Stage 2: runtime (JRE/distroless ~200MB)"]
+    K[COPY --from=builder layers] --> R[ENTRYPOINT java -jar]
+  end
+  J -. only artifacts cross .-> K
+\`\`\`
+
+### Spring Boot Layer Extraction — The Pro Move
+
+A Spring Boot fat jar bundles your code *and* all dependencies in one file. If you \`COPY app.jar\` as a single layer, **every** code change re-ships the entire (often 50–100MB) jar including unchanged dependencies. Spring Boot's **layertools** splits the jar into ordered layers — \`dependencies\`, \`spring-boot-loader\`, \`snapshot-dependencies\`, \`application\` — so the big, stable \`dependencies\` layer caches and only the tiny \`application\` layer changes per commit. See the production Dockerfile below.
+
+> [!SUCCESS]
+> With layered jars, a one-line code change produces a sub-megabyte new layer instead of a 70MB one — pulls and deploys get dramatically faster, and registry storage shrinks.
+
+> [!TIP]
+> Three good runtime-base choices, increasing minimalism: (1) \`eclipse-temurin:21-jre\` (full glibc JRE, easiest to debug — has a shell); (2) custom **jlink** runtime (only needed modules); (3) **distroless** \`gcr.io/distroless/java21-debian12\` (no shell, no package manager, non-root by default — smallest attack surface, hardest to debug). For most prod Spring Boot services, distroless or temurin-jre is the sweet spot.`,
+            code: [
+              {
+                lang: `dockerfile`,
+                title: `PRODUCTION multi-stage Dockerfile — Spring Boot + layered jar + distroless`,
+                code: `# syntax=docker/dockerfile:1.7
+# =========================================================================
+# Stage 1: BUILD — full JDK + Maven. Heavy, but never shipped.
+# =========================================================================
+FROM eclipse-temurin:21-jdk-jammy AS builder
+WORKDIR /build
+
+# --- Dependency layer: copy ONLY build descriptors first, resolve offline ---
+# This layer is cached until pom.xml changes — survives hundreds of code edits.
+COPY .mvn/ .mvn/
+COPY mvnw pom.xml ./
+RUN ./mvnw -B dependency:go-offline
+
+# --- Source + package (cheap layer, changes every commit) ---
+COPY src ./src
+# BuildKit cache mount keeps the local Maven repo warm across builds (not in image)
+RUN --mount=type=cache,target=/root/.m2 \\
+    ./mvnw -B -o clean package -DskipTests
+
+# --- Explode the Spring Boot fat jar into ordered layers ---
+ARG JAR_FILE=target/*.jar
+RUN cp $(ls target/*.jar | grep -v 'original' | head -1) app.jar && \\
+    java -Djarmode=layertools -jar app.jar extract --destination extracted
+
+# =========================================================================
+# Stage 2: RUNTIME — distroless: no shell, no package manager, non-root.
+# =========================================================================
+FROM gcr.io/distroless/java21-debian12:nonroot AS runtime
+WORKDIR /app
+
+# Copy extracted layers in cache-friendly order: stable first, volatile last.
+# Each is a separate image layer -> only 'application' rebuilds per code change.
+COPY --from=builder /build/extracted/dependencies/ ./
+COPY --from=builder /build/extracted/spring-boot-loader/ ./
+COPY --from=builder /build/extracted/snapshot-dependencies/ ./
+COPY --from=builder /build/extracted/application/ ./
+
+# distroless ':nonroot' already runs as uid 65532 — declare it explicitly.
+USER nonroot:nonroot
+EXPOSE 8080
+
+# Exec form: JVM is PID 1 and receives SIGTERM for graceful shutdown.
+# JVM is container-aware by default on 21 (UseContainerSupport) — let it read cgroups.
+ENTRYPOINT ["java", \\
+  "-XX:MaxRAMPercentage=75.0", \\
+  "-XX:InitialRAMPercentage=50.0", \\
+  "-XX:+ExitOnOutOfMemoryError", \\
+  "-XX:+UseG1GC", \\
+  "org.springframework.boot.loader.launch.JarLauncher"]`,
+                runnable: false,
+                note: `Reference production Dockerfile. Distroless has no shell, so HEALTHCHECK via curl/wget is not possible inside the image — use the orchestrator probe (k8s/compose) or a temurin-jre base if you need an in-image HEALTHCHECK.`
+              },
+              {
+                lang: `dockerfile`,
+                title: `Alternative runtime — temurin JRE with HEALTHCHECK + tini + build args`,
+                code: `# syntax=docker/dockerfile:1.7
+FROM eclipse-temurin:21-jdk-jammy AS builder
+WORKDIR /build
+COPY .mvn/ .mvn/
+COPY mvnw pom.xml ./
+RUN ./mvnw -B dependency:go-offline
+COPY src ./src
+RUN ./mvnw -B clean package -DskipTests && \\
+    java -Djarmode=layertools -jar target/*.jar extract --destination extracted
+
+# ---- Runtime on a glibc JRE: has a shell -> in-image HEALTHCHECK works ----
+FROM eclipse-temurin:21-jre-jammy AS runtime
+WORKDIR /app
+
+# Build args (NOT for secrets — they persist in image history)
+ARG APP_VERSION=dev
+ARG BUILD_DATE
+LABEL org.opencontainers.image.version="\${APP_VERSION}" \\
+      org.opencontainers.image.created="\${BUILD_DATE}" \\
+      org.opencontainers.image.source="https://github.com/acme/app"
+
+# tini as init -> reaps zombies, forwards signals cleanly
+RUN apt-get update && apt-get install -y --no-install-recommends tini curl && \\
+    rm -rf /var/lib/apt/lists/*
+
+# Non-root user
+RUN groupadd -r app && useradd -r -g app -s /usr/sbin/nologin app
+COPY --from=builder /build/extracted/dependencies/ ./
+COPY --from=builder /build/extracted/spring-boot-loader/ ./
+COPY --from=builder /build/extracted/snapshot-dependencies/ ./
+COPY --from=builder /build/extracted/application/ ./
+USER app
+EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=40s --retries=3 \\
+  CMD curl -fsS http://localhost:8080/actuator/health/liveness || exit 1
+
+ENTRYPOINT ["/usr/bin/tini","--","java","-XX:MaxRAMPercentage=75.0", \\
+  "org.springframework.boot.loader.launch.JarLauncher"]`,
+                runnable: false,
+                note: `Reference: use this variant when you want an in-image HEALTHCHECK or a shell for debugging. Build with --build-arg APP_VERSION=1.4.2 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ).`
+              },
+              {
+                lang: `bash`,
+                title: `Building & verifying the image`,
+                code: `# Multi-arch build & push (amd64 + arm64) via buildx
+docker buildx build --platform linux/amd64,linux/arm64 \\
+  --build-arg APP_VERSION=1.4.2 \\
+  --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \\
+  -t ghcr.io/acme/app:1.4.2 --push .
+
+# Confirm the JVM sees the layered launcher and is container-aware
+docker run --rm --memory=512m ghcr.io/acme/app:1.4.2 \\
+  java -XX:+PrintFlagsFinal -version | grep -E 'MaxHeapSize|MaxRAMPercentage'
+
+# Inspect final size & layers
+docker image inspect ghcr.io/acme/app:1.4.2 -f 'size={{.Size}}'
+docker history ghcr.io/acme/app:1.4.2`,
+                runnable: false,
+                note: `Reference build/verify commands.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `ENTRYPOINT vs CMD?`,
+                a: `ENTRYPOINT is the command that always runs (overridable only with --entrypoint); CMD provides default args or a default command (overridden by appending args after the image name). With both, ENTRYPOINT runs and CMD becomes its default arguments.`
+              },
+              {
+                q: `Why prefer exec form over shell form for ENTRYPOINT/CMD?`,
+                a: `Shell form wraps the process in /bin/sh -c, making the shell PID 1; it does not forward SIGTERM, so graceful shutdown fails and the container is SIGKILLed. Exec form (JSON array) makes your binary PID 1 and receives signals directly.`
+              },
+              {
+                q: `EXPOSE — what does it actually do?`,
+                a: `Nothing functional at runtime — it is documentation/metadata declaring a port. Actual publishing happens with -p/-P at docker run (or ports: in compose).`
+              },
+              {
+                q: `COPY vs ADD — which and why?`,
+                a: `Prefer COPY. ADD additionally auto-extracts local tarballs and can fetch URLs, which is surprising and error-prone. Use ADD only when you specifically need tar extraction.`
+              },
+              {
+                q: `Why must you never pass secrets via ARG/--build-arg?`,
+                a: `Build args are baked into the image history/metadata and visible via docker history, leaking the secret. Use BuildKit secret mounts (--mount=type=secret) or inject secrets at runtime instead.`
+              },
+              {
+                q: `What problem do multi-stage builds solve?`,
+                a: `They let you build with heavy tooling (JDK, Maven, compilers) in early stages but COPY --from only the final artifacts into a lean runtime stage, so build tools never ship — smaller image, far fewer CVEs.`
+              },
+              {
+                q: `What is Spring Boot layered-jar extraction and why use it?`,
+                a: `java -Djarmode=layertools extract splits a fat jar into ordered layers (dependencies, spring-boot-loader, snapshot-dependencies, application). Copying them as separate image layers means a code change rebuilds only the tiny application layer, keeping the large dependencies layer cached.`
+              },
+              {
+                q: `Why is WORKDIR preferred over RUN cd?`,
+                a: `Each RUN is a fresh shell, so a cd in one RUN does not persist to the next. WORKDIR sets (and creates) the directory for all subsequent instructions and the runtime.`
+              },
+              {
+                q: `What is the main downside of a distroless runtime image?`,
+                a: `No shell and no package manager, so you cannot docker exec a shell to debug, and in-image HEALTHCHECK via curl/wget is not possible. You rely on orchestrator probes and debug via ephemeral debug containers.`
+              },
+              {
+                q: `Why pair the JVM with tini or docker run --init?`,
+                a: `As PID 1 the JVM must reap zombie children and the kernel gives it no default signal handlers. tini (or --init) acts as a proper init: reaps zombies and forwards signals for clean shutdown.`
+              },
+              {
+                q: `Name three runtime-base options for Java, from easiest-to-debug to most-minimal.`,
+                a: `eclipse-temurin:21-jre (full glibc JRE, has a shell), a custom jlink runtime (only needed modules), and distroless java21 (no shell/package manager, non-root by default, smallest attack surface).`
+              },
+              {
+                q: `What is the launcher main class for an extracted Spring Boot 3.2+ layered jar?`,
+                a: `org.springframework.boot.loader.launch.JarLauncher (the loader package was renamed in Boot 3.2; older versions used org.springframework.boot.loader.JarLauncher).`
+              }
+            ]
+          },
+          {
+            title: `Runtime — Networking, Volumes, Resource Limits, Env, Logs & Restart Policies`,
+            notes: `## Container Runtime
+
+### Networking
+
+Docker creates a virtual network stack per container (NET namespace) connected to the host via virtual ethernet pairs and a bridge.
+
+| Driver | Behaviour | Use case |
+|---|---|---|
+| **bridge** (default) | Private subnet (\`docker0\`); containers get internal IPs; reach outside via NAT; need \`-p\` to be reachable from host | Most single-host workloads |
+| **host** | Shares the host's network namespace directly — no isolation, no \`-p\` needed, container ports == host ports | Max network perf / when you need raw host ports |
+| **none** | No networking at all (only loopback) | Batch jobs needing zero network |
+| **user-defined bridge** | Like bridge but with **embedded DNS** so containers resolve each other by name | Multi-container apps (compose creates one) |
+
+> [!TIP]
+> On the **default** bridge, containers can only talk by IP. On a **user-defined** bridge (what Docker Compose creates), Docker's embedded DNS lets one container reach another by **service/container name** (\`jdbc:postgresql://postgres:5432/app\`). This is why you never hardcode IPs in compose stacks.
+
+**Port publishing.** \`-p 8080:8080\` maps host:container. \`-p 127.0.0.1:8080:8080\` binds only to localhost (don't expose to the world by accident). \`-P\` publishes all \`EXPOSE\`d ports to random high host ports.
+
+\`\`\`mermaid
+flowchart LR
+  C1[app container] -->|service DNS name 'postgres'| C2[postgres container]
+  C1 -. on user-defined bridge .- BR((docker bridge + embedded DNS))
+  C2 -. .- BR
+  H[Host :8080] -->|"-p 8080:8080 NAT"| C1
+\`\`\`
+
+### Volumes vs Bind Mounts — Persisting Data
+
+The container's writable layer is **ephemeral** — it dies with the container. To persist or share data you mount storage from outside the union FS.
+
+| | Named Volume | Bind Mount |
+|---|---|---|
+| Source | Managed by Docker (\`/var/lib/docker/volumes/...\`) | An exact host path you choose |
+| Portability | Portable, host-agnostic | Tied to the host's filesystem layout |
+| Performance | Native | Native (but slow on Docker Desktop macOS/Windows via VM) |
+| Best for | **Production data** (DB files, uploads) | **Dev** (live source mount), config injection |
+| Lifecycle | Survives container removal; explicit \`docker volume rm\` | You own the host dir entirely |
+| Permissions | Docker-managed | Host UID/GID must line up with container user |
+
+> [!WARNING]
+> Never store stateful data (database files, user uploads) in the container's writable layer — \`docker rm\` destroys it permanently. Use a **named volume** for prod state and a **bind mount** for dev source/config.
+
+> [!DANGER]
+> Bind-mounting the Docker socket (\`-v /var/run/docker.sock:/var/run/docker.sock\`) gives the container **root-equivalent control of the host** (it can start a privileged container that mounts the host root FS). Treat it as granting host root. Same for \`--privileged\`. Avoid in anything internet-adjacent.
+
+### Resource Limits
+
+By default a container can consume **all** host CPU and memory. Always cap them in production.
+
+- \`--memory=512m\` — hard cap; exceeding it triggers the kernel **OOM killer** on the container (exit 137).
+- \`--memory-swap\` — total memory + swap; set equal to \`--memory\` to disable swap.
+- \`--cpus=1.5\` — fractional cores (cgroup cpu.max quota). \`--cpu-shares\` sets *relative* weight under contention only.
+- \`--pids-limit=200\` — cap process count (fork-bomb defense).
+
+> [!WARNING]
+> Memory limits and the JVM interact dangerously. If the JVM heap + metaspace + thread stacks + native/direct buffers exceed \`--memory\`, the **container** is OOM-killed (137) even though the JVM never threw \`OutOfMemoryError\`. Size \`-XX:MaxRAMPercentage\` to leave headroom for non-heap memory (see Section 6).
+
+### Environment & Secrets
+
+\`-e KEY=val\` / \`--env-file app.env\` inject config (12-factor). But **env vars are not secrets**: they're visible via \`docker inspect\`, leak into child processes, and may land in logs/crash dumps.
+
+> [!DANGER]
+> For real secrets (DB passwords, API keys) prefer: Docker/Swarm secrets (\`/run/secrets/...\` tmpfs files), Kubernetes Secrets mounted as files, or an external manager (Vault, AWS Secrets Manager). Avoid baking secrets into images or passing them as \`--build-arg\`. File-based secrets beat env vars because they don't appear in \`docker inspect\` or process listings.
+
+### Restart Policies & Logs
+
+- Restart policies: \`no\` (default), \`on-failure[:N]\`, \`always\`, \`unless-stopped\`. In orchestrated environments (k8s) the orchestrator owns restarts instead.
+- Logs: containers should write to **stdout/stderr** (12-factor) — Docker captures them via a logging driver (\`json-file\` default, or \`journald\`/\`fluentd\`/\`awslogs\`). **Never** write app logs to files inside the container; they vanish on \`rm\` and bloat the writable layer.
+
+> [!WARNING]
+> The default \`json-file\` driver has **no rotation** out of the box — a chatty container can fill the host disk. Set \`--log-opt max-size=10m --log-opt max-file=3\` (or configure it in \`/etc/docker/daemon.json\`).`,
+            code: [
+              {
+                lang: `bash`,
+                title: `Networking, volumes, limits, logs — runtime commands`,
+                code: `# ---- Networking ----
+docker network create app-net                 # user-defined bridge (DNS by name)
+docker run -d --name postgres --network app-net postgres:16
+docker run -d --name app --network app-net -p 127.0.0.1:8080:8080 \\
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/app acme/app:1.4.2
+# 'app' resolves 'postgres' by name via embedded DNS — no IPs hardcoded.
+
+# ---- Volumes (prod state) vs bind mount (dev) ----
+docker volume create pgdata
+docker run -d --name pg -v pgdata:/var/lib/postgresql/data postgres:16      # named volume
+docker run -d --name dev -v "$(pwd)/src:/app/src:ro" acme/app:1.4.2          # bind mount, read-only
+
+# ---- Resource limits ----
+docker run -d --name app --memory=512m --memory-swap=512m --cpus=1.5 \\
+  --pids-limit=200 acme/app:1.4.2
+docker stats app                              # live CPU/mem/IO usage
+
+# ---- Env & file-based secrets ----
+docker run --env-file app.env \\
+  -v /etc/secrets/db_password:/run/secrets/db_password:ro acme/app:1.4.2
+
+# ---- Restart policy + bounded logging ----
+docker run -d --restart=unless-stopped \\
+  --log-opt max-size=10m --log-opt max-file=3 acme/app:1.4.2
+docker logs -f --tail=100 app`,
+                runnable: false,
+                note: `Reference runtime commands; combine flags as needed.`
+              },
+              {
+                lang: `bash`,
+                title: `Diagnosing a container OOM-kill (exit 137)`,
+                code: `# Container died — was it OOM-killed by the kernel?
+docker inspect app -f 'exit={{.State.ExitCode}} oom={{.State.OOMKilled}}'
+# -> exit=137 oom=true  means kernel OOM killer fired (RSS exceeded --memory)
+
+# Check what limit was set and what the JVM thought it had
+docker inspect app -f 'memLimit={{.HostConfig.Memory}}'
+docker exec app java -XX:+PrintFlagsFinal -version | grep -E 'MaxHeapSize'
+
+# Fix: lower MaxRAMPercentage or raise --memory so heap+non-heap fits.`,
+                runnable: false,
+                note: `Reference: exit 137 + OOMKilled=true is the signature of a container memory-limit kill.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Difference between the default bridge and a user-defined bridge network?`,
+                a: `On the default bridge containers can only reach each other by IP. A user-defined bridge adds embedded DNS so containers resolve each other by container/service name — which is why compose stacks reference services by name, never IPs.`
+              },
+              {
+                q: `What does host network mode do and its trade-off?`,
+                a: `The container shares the host network namespace directly: no -p needed, container ports are host ports, maximum network performance — but zero network isolation and port conflicts with the host.`
+              },
+              {
+                q: `Why is the container writable layer wrong for stateful data?`,
+                a: `It is ephemeral — docker rm destroys it permanently. Persist DB files/uploads in a named volume; the writable layer also has CoW overhead and is not meant for heavy writes.`
+              },
+              {
+                q: `Named volume vs bind mount — when to use each?`,
+                a: `Named volume: Docker-managed, portable, host-agnostic — use for production state (DB data, uploads). Bind mount: an exact host path you control — use for dev (live source mounts) and config injection.`
+              },
+              {
+                q: `Why is mounting /var/run/docker.sock into a container dangerous?`,
+                a: `It grants root-equivalent control of the host: the container can launch a privileged container that mounts the host root filesystem. Treat it as handing over host root.`
+              },
+              {
+                q: `What does exit code 137 with OOMKilled=true mean?`,
+                a: `The kernel OOM killer terminated the container because its RSS exceeded --memory (137 = 128 + SIGKILL 9). The JVM may never have thrown OutOfMemoryError — total process memory, not just heap, breached the cgroup limit.`
+              },
+              {
+                q: `Why are environment variables a poor place for secrets?`,
+                a: `They are visible via docker inspect, are inherited by child processes, and can leak into logs/crash dumps. Prefer file-based secrets (tmpfs /run/secrets), k8s Secrets as files, or an external manager like Vault.`
+              },
+              {
+                q: `Where should a containerized app write its logs and why?`,
+                a: `To stdout/stderr (12-factor). Docker captures them via a logging driver. Writing to files inside the container loses logs on rm, bloats the writable layer, and bypasses the platform log pipeline.`
+              },
+              {
+                q: `What is the danger of the default json-file log driver?`,
+                a: `It has no rotation by default, so a chatty container can fill the host disk. Set max-size and max-file (per container or in daemon.json).`
+              },
+              {
+                q: `What does --cpus=1.5 actually configure?`,
+                a: `It sets the cgroup CPU quota/period (cpu.max) to allow at most 1.5 cores of CPU time. (--cpu-shares only sets relative weight under contention and is not a hard cap.)`
+              },
+              {
+                q: `How do you publish a port only to localhost?`,
+                a: `docker run -p 127.0.0.1:8080:8080 binds the published port to the loopback interface only, so it is not reachable from other hosts — useful to avoid accidentally exposing services.`
+              },
+              {
+                q: `Who owns container restarts in Kubernetes vs plain Docker?`,
+                a: `In plain Docker, the daemon honors --restart policies (no/on-failure/always/unless-stopped). In Kubernetes the kubelet/controller owns restarts (restartPolicy + Deployment), so Docker-level restart policies are not used.`
+              }
+            ]
+          },
+          {
+            title: `Docker Compose — Multi-Container Local Stacks`,
+            notes: `## Docker Compose
+
+Compose declares a **multi-container application** in one YAML file and runs it as a unit (\`docker compose up\`). It's the standard way to run a Java service plus its dependencies (Postgres, Redis, Kafka) locally and in CI — one command spins the whole stack with a shared network, named volumes, and ordered startup.
+
+> [!TIP]
+> Compose auto-creates a **user-defined bridge network** for the project, so every service resolves the others by **service name** via embedded DNS. In the app you use \`jdbc:postgresql://postgres:5432/app\` — \`postgres\` is the service name, not an IP.
+
+### depends_on Is Not Enough — Use Healthchecks
+
+\`depends_on\` only orders **container start**, not **service readiness**. Postgres' container can be "started" while the database is still initializing and refusing connections. To wait for *readiness*, combine \`depends_on\` with \`condition: service_healthy\` and a \`healthcheck\` on the dependency.
+
+> [!WARNING]
+> A classic flake: app boots, immediately tries to connect to Postgres, fails because the DB isn't accepting connections yet, and crashes. \`depends_on\` alone won't fix it — it doesn't wait for health. Use \`condition: service_healthy\`, and still build retry/backoff into the app (the dependency can restart at any time in prod).
+
+\`\`\`mermaid
+flowchart TB
+  subgraph net["Compose network: app-net (embedded DNS)"]
+    APP[app :8080]
+    PG[(postgres :5432)]
+    RD[(redis :6379)]
+  end
+  APP -->|"depends_on: service_healthy"| PG
+  APP -->|"depends_on: service_healthy"| RD
+  HOST[Host :8080] -->|ports| APP
+  PG --- V1[(volume pgdata)]
+\`\`\`
+
+> [!SUCCESS]
+> A good compose file is living documentation of your service's runtime dependencies and wiring. A new engineer runs \`docker compose up\` and has the entire stack — DB, cache, app — in under a minute, identical to everyone else's.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Complete docker-compose.yml — Spring Boot + Postgres + Redis`,
+                code: `# docker-compose.yml — full local stack for a Java service
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: \${APP_VERSION:-dev}
+    image: ghcr.io/acme/app:\${APP_VERSION:-dev}
+    ports:
+      - "127.0.0.1:8080:8080"          # bound to localhost only
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      # Reference dependencies BY SERVICE NAME (embedded DNS), never IPs:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/app
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD_FILE: /run/secrets/db_password
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
+    secrets:
+      - db_password
+    depends_on:
+      postgres:
+        condition: service_healthy      # waits for DB readiness, not just start
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 512M
+    restart: unless-stopped
+    networks: [app-net]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # named volume -> data survives 'down'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks: [app-net]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--maxmemory", "256mb",
+              "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [app-net]
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  app-net:
+    driver: bridge
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt     # file-based secret -> /run/secrets/db_password`,
+                runnable: false,
+                note: `Reference compose file. Uses file-based secrets, healthcheck-gated startup, named volumes, and service-name DNS. Modern Compose (v2) ignores the obsolete top-level version: key.`
+              },
+              {
+                lang: `bash`,
+                title: `Compose lifecycle commands`,
+                code: `# Build images and start the whole stack (detached), waiting for health
+docker compose up -d --build --wait
+
+# Tail logs for one service
+docker compose logs -f app
+
+# Show status incl. health column
+docker compose ps
+
+# Exec into a running service
+docker compose exec postgres psql -U app -d app -c '\\dt'
+
+# Rebuild only the app after a code change (deps stay cached)
+docker compose up -d --build app
+
+# Stop & remove containers/network but KEEP named volumes (data persists)
+docker compose down
+
+# Tear down INCLUDING volumes (destroys DB data — careful)
+docker compose down -v
+
+# Override for prod/CI without editing the base file
+docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d`,
+                runnable: false,
+                note: `Reference: docker compose (v2 plugin) syntax. --wait blocks until services are healthy.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How do services in a Compose stack reach each other?`,
+                a: `Compose creates a user-defined bridge network with embedded DNS, so each service is reachable by its service name (e.g. jdbc:postgresql://postgres:5432/app). You never hardcode IPs.`
+              },
+              {
+                q: `Why is depends_on alone insufficient for a database dependency?`,
+                a: `depends_on only orders container START, not service READINESS. The DB container can be "started" while still initializing and refusing connections. Combine it with condition: service_healthy plus a healthcheck on the dependency.`
+              },
+              {
+                q: `What does condition: service_healthy require to work?`,
+                a: `The depended-on service must define a healthcheck; Compose then waits until that healthcheck reports healthy before starting the dependent service.`
+              },
+              {
+                q: `Even with service_healthy, why still add app-side retries?`,
+                a: `Dependencies can restart or briefly drop at any time in production (and after the initial wait). Resilient apps use connection retry/backoff rather than assuming the dependency is always up.`
+              },
+              {
+                q: `What survives docker compose down vs docker compose down -v?`,
+                a: `down removes containers and the network but keeps named volumes (so DB data persists). down -v also deletes the named volumes, destroying persisted data.`
+              },
+              {
+                q: `How do you persist Postgres data across compose restarts?`,
+                a: `Mount a named volume at the data directory: pgdata:/var/lib/postgresql/data, and declare pgdata under the top-level volumes:. It survives container recreation and compose down (but not down -v).`
+              },
+              {
+                q: `How do you rebuild just one service after a code change?`,
+                a: `docker compose up -d --build app rebuilds and recreates only the app service, reusing cached dependency layers, while leaving postgres/redis running.`
+              },
+              {
+                q: `What does docker compose up --wait do?`,
+                a: `It blocks until all services with healthchecks report healthy (or fails), making it ideal for CI so tests do not start before the stack is actually ready.`
+              },
+              {
+                q: `How do you supply file-based secrets in Compose?`,
+                a: `Define a top-level secrets: entry sourced from a file, reference it under the service secrets:, and the value is mounted at /run/secrets/<name> (tmpfs) — read by the app via *_PASSWORD_FILE conventions.`
+              },
+              {
+                q: `How can you layer environment-specific config without editing the base compose file?`,
+                a: `Use multiple -f files: docker compose -f docker-compose.yml -f docker-compose.ci.yml up. Later files override/merge into earlier ones.`
+              },
+              {
+                q: `Why is a good compose file valuable beyond just running locally?`,
+                a: `It is executable documentation of the service runtime dependencies and wiring, gives every engineer and CI an identical one-command stack, and reduces onboarding to docker compose up.`
+              },
+              {
+                q: `Is the top-level version: key still needed in modern Compose?`,
+                a: `No. Compose v2 treats it as obsolete and ignores it; the Compose Specification dropped it. You define services/volumes/networks directly.`
+              }
+            ]
+          },
+          {
+            title: `Production & Security — Distroless, Non-Root, Scanning & JVM-in-Container`,
+            notes: `## Production & Security Hardening
+
+### The Security Checklist (what a staff reviewer expects)
+
+- **Minimal base** — distroless or slim glibc; fewer packages = fewer CVEs and no shell for an attacker to pivot through.
+- **Non-root user** — never run as root; \`USER\` a dedicated uid (distroless \`:nonroot\` = 65532).
+- **Read-only root filesystem** — \`--read-only\` + \`tmpfs\` for \`/tmp\`; the app can't be tampered with at runtime.
+- **Drop capabilities** — \`--cap-drop=ALL\` then add back only what's needed; \`--security-opt=no-new-privileges\`.
+- **seccomp/AppArmor** — keep the default seccomp profile (blocks dangerous syscalls); don't run \`--privileged\`.
+- **Pin base images by digest** + scan in CI; rebuild regularly to absorb OS patches.
+- **No secrets in image/layers/ARG**; inject at runtime as files.
+- **Sign & verify images** (cosign / Notation) and generate an **SBOM**.
+
+\`\`\`dockerfile
+# Hardening snippet (runtime stage)
+FROM gcr.io/distroless/java21-debian12:nonroot
+USER nonroot:nonroot                 # uid 65532, never root
+# run with: --read-only --tmpfs /tmp --cap-drop=ALL --security-opt=no-new-privileges
+\`\`\`
+
+\`\`\`bash
+docker run -d \\
+  --read-only --tmpfs /tmp:rw,size=64m \\
+  --cap-drop=ALL --security-opt=no-new-privileges \\
+  --memory=512m --cpus=1.5 --pids-limit=200 \\
+  --user 65532:65532 \\
+  ghcr.io/acme/app:1.4.2
+\`\`\`
+
+### Vulnerability Scanning & Supply Chain
+
+> [!TIP]
+> Scan images in CI and **fail the build** on HIGH/CRITICAL fixable CVEs. Tools: Trivy, Grype, Docker Scout, Snyk. Generate an **SBOM** (Syft → SPDX/CycloneDX) so you can answer "are we affected by CVE-X?" by querying inventory instead of rebuilding. **Sign** images with cosign and **verify signatures** at admission (Kyverno/OPA Gatekeeper, Sigstore policy-controller) so only trusted images run.
+
+\`\`\`bash
+trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 ghcr.io/acme/app:1.4.2
+syft ghcr.io/acme/app:1.4.2 -o spdx-json > sbom.json
+cosign sign --key cosign.key ghcr.io/acme/app:1.4.2
+cosign verify --key cosign.pub ghcr.io/acme/app:1.4.2
+\`\`\`
+
+### Build Reproducibility
+
+> [!EU]
+> Reproducible builds matter for supply-chain trust (and increasingly for compliance, e.g. SLSA / the EU Cyber Resilience Act direction). Pin **base images by digest**, pin **dependency versions** (lockfiles), set \`SOURCE_DATE_EPOCH\` to avoid embedding build timestamps, and prefer deterministic build tooling so two builds of the same commit produce byte-identical (or attestable) images.
+
+### THE BIG ONE: JVM-in-Container Gotchas
+
+This is the highest-signal senior Docker+Java topic. Pre-Java-10 JVMs read host-level \`/proc/meminfo\` and \`Runtime.availableProcessors()\` — they saw the **whole host**, ignored the cgroup limit, sized a huge heap, and got OOM-killed at exit 137. Modern JVMs (8u191+, 10+, and solid on 11/17/21) are **container-aware** by default (\`-XX:+UseContainerSupport\`): they read the cgroup limits.
+
+#### Heap sizing — use percentages, not fixed -Xmx
+
+\`\`\`mermaid
+flowchart TB
+  L["Container memory limit (--memory 512m)"] --> H["Heap (MaxRAMPercentage 75%) ~ 384m"]
+  L --> NH["Non-heap: Metaspace + thread stacks + code cache + direct/native buffers ~ 128m"]
+  NH -.->|"if Heap too large, total RSS > limit"| OOM["Kernel OOM-kill: exit 137"]
+\`\`\`
+
+> [!DANGER]
+> **Total JVM RSS = heap + Metaspace + thread stacks + JIT code cache + GC structures + direct/native (NIO, Netty) buffers.** If you set \`-Xmx\` to nearly the whole limit, non-heap pushes RSS over the cgroup limit and the **container is OOM-killed (137)** with no Java \`OutOfMemoryError\`. Use \`-XX:MaxRAMPercentage=75.0\` (leave ~25% headroom for non-heap) rather than a fixed \`-Xmx\` that ignores resizing.
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Exit 137, no Java OOM in logs | Total RSS > \`--memory\` (non-heap underestimated) | Lower \`MaxRAMPercentage\`, raise \`--memory\`, cap direct memory |
+| Heap huge despite small limit | Old JVM, container support off, or \`--memory\` unset | Use container-aware JVM; always set \`--memory\` |
+| Java \`OutOfMemoryError: Java heap space\` | Real heap exhaustion / leak | Profile heap, fix leak, then size heap |
+
+#### CPU — shares vs quota shape the JVM's defaults
+
+The JVM derives **GC thread count, JIT compiler threads, common ForkJoinPool size, and \`availableProcessors()\`** from the CPU it detects. Under cgroups:
+
+- \`--cpus=N\` (CPU **quota**) → JVM rounds up to N processors. Predictable.
+- \`--cpu-shares\` only (no quota) → relative weight, not a count; the JVM may see all host CPUs and spawn too many GC/JIT threads, causing context-switch thrash on a constrained host.
+
+> [!WARNING]
+> Prefer **\`--cpus\` (quota)** over bare \`--cpu-shares\` for Java. With only shares, the JVM can over-provision GC/compiler threads based on the host core count, hurting throughput and latency on a busy node. If you must use shares, pin \`-XX:ActiveProcessorCount=N\` to tell the JVM the truth.
+
+> [!SUCCESS]
+> Recommended baseline JVM flags for containers (Java 17/21): \`-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError\` and set \`--memory\` + \`--cpus\` explicitly. \`ExitOnOutOfMemoryError\` makes the orchestrator restart a poisoned pod instead of limping with a corrupt heap.
+
+> [!WARNING]
+> Verify container-awareness by running \`java -XX:+PrintFlagsFinal -version | grep MaxHeapSize\` **inside** the constrained container — confirm MaxHeapSize ≈ 75% of \`--memory\`, not 25% of the host RAM. Don't assume; measure.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `Hardened production run + verifying JVM container-awareness`,
+                code: `# Hardened runtime: read-only FS, no new privs, all caps dropped, limited
+docker run -d --name app \\
+  --read-only --tmpfs /tmp:rw,size=64m,mode=1777 \\
+  --cap-drop=ALL --security-opt=no-new-privileges \\
+  --memory=512m --memory-swap=512m --cpus=1.5 --pids-limit=200 \\
+  --user 65532:65532 \\
+  --restart=unless-stopped \\
+  ghcr.io/acme/app@sha256:deadbeef...      # digest-pinned
+
+# PROVE the JVM respects the cgroup limit (must run INSIDE the constraint)
+docker run --rm --memory=512m ghcr.io/acme/app:1.4.2 \\
+  java -XX:+PrintFlagsFinal -version | grep -E 'MaxHeapSize|MaxRAMPercentage|ActiveProcessorCount'
+# Expect MaxHeapSize ~ 402653184 (~384MiB = 75% of 512MiB), NOT host-RAM-based.
+
+# What CPU count does the JVM think it has?
+docker run --rm --cpus=2 ghcr.io/acme/app:1.4.2 \\
+  java -XX:+PrintFlagsFinal -version | grep ActiveProcessorCount   # -> 2`,
+                runnable: false,
+                note: `Reference: always verify MaxHeapSize inside the limited container, not on the host.`
+              },
+              {
+                lang: `bash`,
+                title: `CI security gate — scan, SBOM, sign, verify`,
+                code: `# Fail the pipeline on fixable HIGH/CRITICAL vulnerabilities
+trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \\
+  ghcr.io/acme/app:1.4.2
+
+# Generate an SBOM for inventory / future CVE queries
+syft ghcr.io/acme/app:1.4.2 -o cyclonedx-json > sbom.cdx.json
+
+# Sign with cosign (keyless or key-based) and attach the SBOM as attestation
+cosign sign --yes ghcr.io/acme/app@sha256:deadbeef...
+cosign attest --predicate sbom.cdx.json --type cyclonedx \\
+  ghcr.io/acme/app@sha256:deadbeef...
+
+# At deploy/admission: verify signature before running
+cosign verify ghcr.io/acme/app@sha256:deadbeef... \\
+  --certificate-identity-regexp '.*' --certificate-oidc-issuer-regexp '.*'`,
+                runnable: false,
+                note: `Reference CI supply-chain commands (Trivy, Syft, cosign). Wire verification into k8s admission via Kyverno/Sigstore policy-controller.`
+              },
+              {
+                lang: `java`,
+                title: `Graceful shutdown so SIGTERM (docker stop) drains cleanly`,
+                code: `// Spring Boot: enable graceful shutdown so in-flight requests finish on SIGTERM.
+// application.yml:
+//   server.shutdown: graceful
+//   spring.lifecycle.timeout-per-shutdown-phase: 25s
+// docker stop sends SIGTERM, waits 10s (configurable -t), then SIGKILL.
+// With exec-form ENTRYPOINT the JVM IS PID 1 and receives SIGTERM directly.
+
+@SpringBootApplication
+public class App {
+    public static void main(String[] args) {
+        SpringApplication.run(App.class, args);
+    }
+}
+
+// A bean can hook shutdown to drain connection pools, flush, deregister, etc.
+@Component
+class ShutdownHook {
+    @PreDestroy
+    void onShutdown() {
+        // close pools, stop accepting work, flush metrics...
+        // runs during the graceful window before SIGKILL.
+    }
+}`,
+                runnable: false,
+                note: `Illustrative Spring Boot graceful-shutdown wiring; pairs with exec-form ENTRYPOINT and an appropriate docker stop -t / k8s terminationGracePeriodSeconds.`
+              }
+            ],
+            flashcards: [
               {
                 q: `Why run containers as a non-root user?`,
-                a: `By default containers run as root (UID 0). If the app is compromised, the attacker has root inside the container and may escape to the host or mount sensitive host paths. Running as a non-root user limits the blast radius: the attacker has minimal permissions. Add to Dockerfile: RUN useradd -r appuser && USER appuser. Many container security policies (Kubernetes PodSecurityPolicy, OpenShift) REQUIRE non-root. Also: the user inside the container doesn't need write access to its own binary — read-only root filesystem is even more secure.`
+                a: `If an attacker breaks out of the app, root-in-container is far closer to root-on-host (especially without user namespaces). A dedicated non-root uid (e.g. distroless 65532) limits blast radius. Combine with no-new-privileges and dropped capabilities.`
+              },
+              {
+                q: `What does --read-only (plus tmpfs /tmp) buy you?`,
+                a: `It makes the container root filesystem immutable at runtime, preventing tampering, dropped malware, or unexpected writes. A small tmpfs covers legitimately writable paths like /tmp.`
+              },
+              {
+                q: `Are modern JVMs container-aware by default? Which versions?`,
+                a: `Yes — UseContainerSupport is on by default in 8u191+, 10+, and is solid on 11/17/21. The JVM reads cgroup memory and CPU limits instead of host /proc values.`
+              },
+              {
+                q: `Why prefer -XX:MaxRAMPercentage over a fixed -Xmx in containers?`,
+                a: `Percentage sizing tracks the cgroup memory limit and leaves headroom for non-heap memory, adapting if the limit changes. A fixed -Xmx near the limit risks total RSS (heap + non-heap) breaching the cgroup and an OOM-kill.`
+              },
+              {
+                q: `List the components of total JVM RSS that must fit under --memory.`,
+                a: `Heap + Metaspace + thread stacks + JIT code cache + GC data structures + direct/native (NIO/Netty) buffers. Only sizing the heap ignores the rest and causes exit-137 OOM-kills.`
+              },
+              {
+                q: `Container exits 137 with no Java OutOfMemoryError — diagnosis?`,
+                a: `The kernel OOM-killed the container because total RSS exceeded --memory, usually from underestimated non-heap memory. Lower MaxRAMPercentage, cap direct memory, or raise --memory; it is not a heap-exhaustion bug.`
+              },
+              {
+                q: `How does the CPU limit type affect the JVM?`,
+                a: `The JVM sizes GC threads, JIT compiler threads, the common ForkJoinPool, and availableProcessors() from detected CPUs. --cpus (quota) gives a predictable count; bare --cpu-shares may let the JVM see all host cores and over-provision threads, causing thrash. Pin -XX:ActiveProcessorCount if using shares.`
+              },
+              {
+                q: `What does -XX:+ExitOnOutOfMemoryError give you in a container?`,
+                a: `On OOM the JVM exits immediately instead of limping with a corrupt/degraded heap, so the orchestrator can restart a clean pod — fail-fast over silent degradation.`
+              },
+              {
+                q: `Why distroless over a full base image in production?`,
+                a: `No shell, no package manager, minimal packages: dramatically smaller attack surface and far fewer CVEs to patch/scan. Downside: harder to debug (no exec shell) — use ephemeral debug containers.`
+              },
+              {
+                q: `What is an SBOM and why generate one?`,
+                a: `A Software Bill of Materials (SPDX/CycloneDX) lists every component/version in the image. It lets you answer "are we affected by CVE-X?" by querying inventory instantly instead of rebuilding/rescanning, and supports compliance/attestation.`
+              },
+              {
+                q: `How do image signing and verification fit the supply chain?`,
+                a: `Sign images with cosign/Notation (Sigstore) and verify signatures at admission (Kyverno, OPA Gatekeeper, policy-controller) so only trusted, untampered images run — preventing supply-chain injection.`
+              },
+              {
+                q: `How does SIGTERM handling enable graceful shutdown, and how does Docker drive it?`,
+                a: `docker stop sends SIGTERM, waits the grace period (-t, default 10s), then SIGKILL. With exec-form ENTRYPOINT the JVM is PID 1 and receives SIGTERM directly; with server.shutdown=graceful it drains in-flight requests before exit. Shell-form ENTRYPOINT swallows SIGTERM and breaks this.`
+              },
+              {
+                q: `What practices make a container build reproducible?`,
+                a: `Pin base images by digest, pin dependency versions via lockfiles, set SOURCE_DATE_EPOCH to avoid embedded timestamps, and use deterministic tooling so the same commit yields byte-identical (or attestable) images — supporting SLSA-style supply-chain trust.`
               }
             ]
           }
@@ -31195,272 +32263,1795 @@ ENTRYPOINT ["java",   "-XX:+UseContainerSupport",   "-XX:MaxRAMPercentage=75.0",
       {
         id: `7.2`,
         title: `Kubernetes Core Concepts`,
-        hours: 4,
+        hours: 8,
         sections: [
           {
-            title: `Kubernetes Architecture & Core Resources`,
-            notes: `## Kubernetes Architecture & Core Resources
+            title: `Cluster Architecture & the Reconciliation Loop`,
+            notes: `## What a Kubernetes Cluster Actually Is
 
-### Why Kubernetes?
+A **Kubernetes cluster** is a set of machines (physical or virtual, called **nodes**) that pool their CPU, memory, and storage so that a single logical platform can schedule and run containerized workloads. You do not talk to individual machines — you talk to the **cluster**, and the cluster decides *where* and *how* your containers run.
 
+A cluster has two planes:
+
+- **Control plane** — the "brain". Stores desired state, makes scheduling decisions, runs the reconciliation loops. Usually 1 node for dev, 3 (or 5) for HA in production (etcd needs an odd quorum).
+- **Data plane (worker nodes)** — the "muscle". Actually runs your Pods.
+
+> [!TIP]
+> Senior framing: *"A cluster is a declarative, self-healing control system. You submit **desired state** (objects) to the API server; controllers continuously drive **observed state** toward it. You never imperatively place containers — you declare intent and let the reconcilers converge."*
+
+### Cluster topology
+
+\`\`\`mermaid
+graph TB
+  subgraph CP["Control Plane (the brain)"]
+    API["kube-apiserver<br/>(REST front door, authN/authZ, validation)"]
+    ETCD["etcd<br/>(consistent KV store · single source of truth)"]
+    SCHED["kube-scheduler<br/>(binds Pods → Nodes)"]
+    CM["kube-controller-manager<br/>(Deployment/RS/Node/Job controllers)"]
+    CCM["cloud-controller-manager<br/>(LB, routes, volumes)"]
+    API <--> ETCD
+    SCHED --> API
+    CM --> API
+    CCM --> API
+  end
+
+  subgraph N1["Worker Node 1"]
+    K1["kubelet"]
+    KP1["kube-proxy"]
+    CR1["container runtime<br/>(containerd / CRI-O)"]
+    P1["Pod"]
+    P2["Pod"]
+    K1 --> CR1 --> P1
+    CR1 --> P2
+  end
+
+  subgraph N2["Worker Node 2"]
+    K2["kubelet"]
+    KP2["kube-proxy"]
+    CR2["container runtime"]
+    P3["Pod"]
+    K2 --> CR2 --> P3
+  end
+
+  KUBECTL["kubectl / CI / clients"] -->|HTTPS| API
+  K1 -->|watch + report status| API
+  K2 -->|watch + report status| API
 \`\`\`
-Docker Compose is for one machine. What if you need:
-  - Run across 10 machines (nodes)?
-  - Auto-restart crashed containers?
-  - Roll out new versions without downtime?
-  - Scale from 2 to 20 replicas based on CPU?
-  - Route traffic to healthy pods only?
 
-Kubernetes (K8s) is the orchestrator that handles all of this.
+### Control plane components
+
+| Component | Role | Interview probe |
+|---|---|---|
+| **kube-apiserver** | The *only* component that talks to etcd. Front door for every read/write. Does authN, authZ (RBAC), admission control, validation. Horizontally scalable (stateless). | "How does kubelet learn what to run?" → it **watches** the API server, never reads etcd directly. |
+| **etcd** | Distributed, strongly-consistent (Raft) key-value store. Holds the *entire* cluster state. Lose etcd = lose the cluster. | "Why an odd number of etcd members?" → Raft quorum = (n/2)+1; odd avoids split-brain and wasted nodes. |
+| **kube-scheduler** | Watches for Pods with no \`nodeName\`. Filters (predicates: resources, taints, affinity) then scores (spread, least-loaded) and **binds** the Pod to a node. | "Scheduler only *decides*; kubelet *executes*." |
+| **kube-controller-manager** | Bundle of control loops: Deployment, ReplicaSet, Node, Job, EndpointSlice, ServiceAccount controllers. Each loop = observe → diff → act. | "What makes a crashed Pod come back?" → the ReplicaSet controller, not kubelet restarting a container. |
+| **cloud-controller-manager** | Integrates with the cloud provider: provisions LoadBalancers, routes, attaches volumes. | Decouples cloud-specific logic from core. |
+
+### Worker node components
+
+| Component | Role |
+|---|---|
+| **kubelet** | Node agent. Watches API server for Pods bound to *its* node, drives the container runtime via **CRI**, runs probes, reports status. The kubelet is what makes a node a "Kubernetes node". |
+| **kube-proxy** | Programs **iptables/IPVS** (or hands off to eBPF CNI) so that the virtual Service IP load-balances to healthy Pod IPs. |
+| **container runtime** | containerd / CRI-O. Pulls images, runs containers. (Docker shim removed in 1.24.) |
+
+### The declarative model & reconciliation loop
+
+This is *the* central idea of Kubernetes. Everything is an **object** with a \`spec\` (desired state) and a \`status\` (observed state). Controllers run a never-ending loop:
+
+\`\`\`mermaid
+graph LR
+  A["Desired state<br/>(spec in etcd)"] --> B["Controller observes<br/>actual state"]
+  B --> C{"diff?"}
+  C -->|yes| D["take action<br/>(create/delete/update)"]
+  D --> B
+  C -->|no| E["sleep / re-watch"]
+  E --> B
 \`\`\`
 
-### Cluster Architecture
+> [!SUCCESS]
+> **Why this matters in interviews:** This level-triggered (not edge-triggered) reconciliation is why K8s is *self-healing*. Delete a Pod managed by a Deployment and it comes back — the controller saw replicas drop below desired and acted. There is no "event" required; it re-converges from current state on every loop.
 
-\`\`\`
-Control Plane (master):
-  ├── kube-apiserver     — REST API, entry point for all commands (kubectl → apiserver)
-  ├── etcd               — distributed key-value store, cluster state (single source of truth)
-  ├── kube-scheduler     — picks which node to run a new pod on
-  └── kube-controller-manager — reconciliation loops (ReplicaSet, Deployment controllers)
+> [!WARNING]
+> Don't confuse "the API server applied my YAML" with "my app is running". \`kubectl apply\` only **records intent** in etcd. Convergence is asynchronous. Always verify with \`kubectl rollout status\` / \`get pods\`.
 
-Worker Nodes (where your app runs):
-  ├── kubelet            — agent: ensures containers run per spec; reports health
-  ├── kube-proxy         — networking: iptables rules for Service load balancing
-  └── container runtime  — containerd or Docker: actually runs containers
-\`\`\`
+> [!EU]
+> For EU data-residency: pin nodes to EU regions/zones and ensure etcd backups (which contain Secrets) stay in-region. Control-plane location matters for GDPR because etcd holds all cluster state.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `Inspect the cluster & its components`,
+                code: `# Who/where is the control plane?
+kubectl cluster-info
 
-### Core Resources
+# Nodes and their roles (control-plane vs worker)
+kubectl get nodes -o wide
 
-\`\`\`yaml
-# Pod — smallest deployable unit; one or more containers
+# Control-plane pods (in managed clusters these may be hidden)
+kubectl get pods -n kube-system
+
+# Show the API resources the cluster understands (namespaced vs cluster-scoped)
+kubectl api-resources --namespaced=true | head
+kubectl api-resources --namespaced=false   # cluster-scoped: nodes, namespaces, PVs, ...
+
+# Component health (older clusters)
+kubectl get componentstatuses
+
+# Watch the reconciliation loop in action: delete a pod and watch it return
+kubectl run demo --image=nginx
+kubectl get pods -w   # observe lifecycle`,
+                runnable: false
+              },
+              {
+                lang: `yaml`,
+                title: `A bare object showing spec (desired) vs status (observed)`,
+                code: `# Every K8s object has this shape. You write metadata + spec;
+# the controllers populate status. You almost never set status by hand.
 apiVersion: v1
 kind: Pod
 metadata:
-  name: myapp-pod
+  name: example
+  namespace: default
   labels:
-    app: myapp
-spec:
+    app: example
+spec:                 # <-- DESIRED state (what YOU declare)
   containers:
-    - name: myapp
-      image: myrepo/myapp:1.0
-      ports: [{containerPort: 8080}]
-      resources:
-        requests: {cpu: "250m", memory: "256Mi"}   # scheduler uses this
-        limits: {cpu: "500m", memory: "512Mi"}     # enforced; OOMKill on exceed
-      env:
-        - name: DB_URL
-          valueFrom:
-            secretKeyRef:
-              name: db-secret
-              key: url
-      readinessProbe:                              # pod not in Service until ready
-        httpGet: {path: /actuator/health/readiness, port: 8080}
-        initialDelaySeconds: 10
-        periodSeconds: 5
-      livenessProbe:                               # restart pod if this fails
-        httpGet: {path: /actuator/health/liveness, port: 8080}
-        initialDelaySeconds: 30
-        periodSeconds: 10
+    - name: app
+      image: nginx:1.27
+status:               # <-- OBSERVED state (what the cluster REPORTS)
+  phase: Running
+  podIP: 10.244.1.7
+  conditions:
+    - type: Ready
+      status: "True"`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is a Kubernetes cluster?`,
+                a: `A set of nodes (machines) pooled under a single control plane that schedules and runs containerized workloads via a declarative API. You submit desired state; the cluster converges to it.`
+              },
+              {
+                q: `Which control-plane component is the ONLY one that talks to etcd directly?`,
+                a: `kube-apiserver. All other components (scheduler, controllers, kubelet) read/write cluster state by watching the API server, never etcd directly.`
+              },
+              {
+                q: `What does the kube-scheduler actually do — and not do?`,
+                a: `It selects a node for an unscheduled Pod (filter via predicates, then score) and binds the Pod to it. It does NOT start the container — the kubelet on the chosen node does that.`
+              },
+              {
+                q: `What makes a deleted Pod (managed by a Deployment) come back?`,
+                a: `The ReplicaSet controller in the controller-manager. Its reconciliation loop observes replicas < desired and creates a replacement. Self-healing is a property of controllers, not kubelet.`
+              },
+              {
+                q: `Explain level-triggered vs edge-triggered reconciliation.`,
+                a: `K8s is level-triggered: controllers re-evaluate full current state on each loop and converge, so no event can be "missed". Edge-triggered would react only to discrete change events and could drift if one is lost.`
+              },
+              {
+                q: `Why does etcd typically run with an odd number of members (3 or 5)?`,
+                a: `etcd uses Raft consensus needing a quorum of (n/2)+1. Odd counts maximize fault tolerance per node and avoid split-brain; an even count adds a member without improving quorum tolerance.`
+              },
+              {
+                q: `What is the role of kubelet?`,
+                a: `The per-node agent. It watches the API server for Pods bound to its node, drives the container runtime via CRI, executes probes, and reports Pod/node status back.`
+              },
+              {
+                q: `What does kube-proxy do?`,
+                a: `Programs the node networking (iptables/IPVS rules, or defers to an eBPF CNI) so traffic to a virtual Service IP is load-balanced across the Service’s healthy backend Pod IPs.`
+              },
+              {
+                q: `spec vs status on a K8s object?`,
+                a: `spec = desired state you declare; status = observed state the controllers report. Reconciliation drives status toward spec.`
+              },
+              {
+                q: `Does \`kubectl apply\` mean my app is running?`,
+                a: `No. It records intent in etcd via the API server. Convergence is asynchronous. Verify actual state with \`kubectl rollout status\` / \`kubectl get pods\`.`
+              },
+              {
+                q: `What is the cloud-controller-manager for?`,
+                a: `It integrates the cluster with a cloud provider — provisioning LoadBalancers, routes, and attaching block storage — keeping cloud-specific logic out of the core controllers.`
+              },
+              {
+                q: `Which component performs RBAC authorization and admission control?`,
+                a: `The kube-apiserver, as part of the request pipeline: authentication → authorization (RBAC) → admission controllers → validation → persist to etcd.`
+              }
+            ]
+          },
+          {
+            title: `Namespaces & Multi-Tenancy`,
+            notes: `## What a Namespace Is and Why It Exists
+
+A **Namespace** is a *virtual cluster inside a cluster* — a logical partition that scopes the **names** of resources and provides a boundary for **access control (RBAC)**, **resource governance (ResourceQuota / LimitRange)**, and **policy (NetworkPolicy)**.
+
+Key mental model: namespaces partition **namespaced** objects (Pods, Services, Deployments, ConfigMaps, Secrets, PVCs). They do **not** partition **cluster-scoped** objects (Nodes, PersistentVolumes, Namespaces themselves, ClusterRoles, StorageClasses).
+
+> [!TIP]
+> Senior framing: *"A namespace is the unit of soft multi-tenancy. It gives you a name-uniqueness scope, an RBAC blast-radius boundary, and a place to attach quotas and network policy. It is NOT a hard security boundary — that requires NetworkPolicy + RBAC + possibly separate clusters."*
+
+### Namespace partitioning
+
+\`\`\`mermaid
+graph TB
+  subgraph CLUSTER["One Kubernetes Cluster"]
+    subgraph NSA["Namespace: team-payments"]
+      DA["Deployment: api"]
+      SA["Service: api"]
+      CA["ConfigMap / Secret"]
+      QA["ResourceQuota + LimitRange"]
+    end
+    subgraph NSB["Namespace: team-orders"]
+      DB["Deployment: api"]
+      SB["Service: api"]
+      CB["ConfigMap / Secret"]
+      QB["ResourceQuota + LimitRange"]
+    end
+    subgraph SYS["Namespace: kube-system"]
+      DNS["CoreDNS"]
+      PROXY["kube-proxy / CNI"]
+    end
+  end
+  CLUSTERWIDE["Cluster-scoped (shared): Nodes · PersistentVolumes · StorageClasses · ClusterRoles"]
 \`\`\`
 
-### Deployment & Service
+Notice **both** teams have a Deployment named \`api\` and a Service named \`api\` — that is fine because names only need to be unique *within* a namespace.
 
-\`\`\`yaml
-# Deployment — manages ReplicaSet → ensures N replicas running
-apiVersion: apps/v1
+### The four default namespaces
+
+| Namespace | Purpose |
+|---|---|
+| \`default\` | Where objects land if you don't specify one. Best practice: don't ship prod workloads here. |
+| \`kube-system\` | Control-plane add-ons: CoreDNS, kube-proxy, CNI, metrics-server. Don't touch unless you must. |
+| \`kube-public\` | World-readable; holds cluster bootstrap info (e.g., \`cluster-info\`). |
+| \`kube-node-lease\` | Holds node heartbeat Lease objects for fast node-health detection. |
+
+### When to split into namespaces
+
+- **Per team / per tenant** (soft multi-tenancy) — most common.
+- **Per environment on a shared non-prod cluster** (\`dev\`, \`staging\`, \`qa\`). Prod usually gets its own *cluster*.
+- **Per bounded context / domain** in a large platform.
+- To attach **different quotas, RBAC, and NetworkPolicy** to different groups.
+
+> [!WARNING]
+> Don't over-split. Hundreds of micro-namespaces multiply RBAC/quota maintenance. And remember: a namespace is not a network boundary by default — Pods in \`team-a\` can reach Pods in \`team-b\` unless you add a **NetworkPolicy**.
+
+### DNS naming across namespaces
+
+CoreDNS gives every Service a stable DNS name. The fully-qualified form is:
+
+\`\`\`
+<service>.<namespace>.svc.cluster.local
+\`\`\`
+
+| From a Pod in... | To reach Service \`api\` in \`team-orders\`, use... |
+|---|---|
+| same namespace (\`team-orders\`) | \`api\` |
+| different namespace | \`api.team-orders\` |
+| fully qualified (always works) | \`api.team-orders.svc.cluster.local\` |
+
+> [!SUCCESS]
+> Interview gold: *"Short names resolve within the Pod's own namespace via the DNS search path in /etc/resolv.conf. To cross namespaces you must qualify with the namespace — \`service.namespace\`."*
+
+### Governance: ResourceQuota vs LimitRange
+
+| | **ResourceQuota** | **LimitRange** |
+|---|---|---|
+| Scope | The whole namespace (aggregate) | Per-Pod / per-Container |
+| Limits | Total CPU/mem/storage, object counts (Pods, Services, PVCs) | Min/max & default requests/limits for each container |
+| Effect | Rejects creation once namespace total exceeded | Injects defaults; rejects out-of-range containers |
+| Catch | If a quota sets \`requests.cpu\`, every Pod **must** declare requests/limits or it's rejected | Solves that by injecting defaults |
+
+> [!EU]
+> Namespaces are a natural place to enforce data-locality policy per tenant: combine a namespace with NetworkPolicy + node affinity to keep an EU customer's workloads on EU nodes and isolate their traffic.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Namespace + ResourceQuota + LimitRange (governance bundle)`,
+                code: `apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-payments
+  labels:
+    team: payments
+    env: prod
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: payments-quota
+  namespace: team-payments
+spec:
+  hard:
+    requests.cpu: "8"          # sum of all container CPU requests
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    pods: "50"                 # max 50 pods in this namespace
+    services: "20"
+    services.loadbalancers: "2"
+    persistentvolumeclaims: "10"
+    count/deployments.apps: "20"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: payments-limits
+  namespace: team-payments
+spec:
+  limits:
+    - type: Container
+      default:                 # applied as 'limits' if container omits them
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:          # applied as 'requests' if container omits them
+        cpu: 100m
+        memory: 128Mi
+      max:                     # a single container may not exceed
+        cpu: "2"
+        memory: 2Gi
+      min:
+        cpu: 50m
+        memory: 64Mi`,
+                runnable: false
+              },
+              {
+                lang: `bash`,
+                title: `Working with namespaces`,
+                code: `# Create a namespace imperatively
+kubectl create namespace team-orders
+
+# List namespaces
+kubectl get ns
+
+# Run a command in a specific namespace
+kubectl get pods -n team-payments
+
+# Set a default namespace for the current context (avoid typing -n everywhere)
+kubectl config set-context --current --namespace=team-payments
+
+# Inspect quota usage (used vs hard)
+kubectl get resourcequota -n team-payments
+kubectl describe resourcequota payments-quota -n team-payments
+
+# Show cluster-scoped vs namespaced resources
+kubectl api-resources --namespaced=false
+
+# Delete a namespace (deletes EVERYTHING inside it — be careful)
+kubectl delete namespace team-orders`,
+                runnable: false
+              },
+              {
+                lang: `yaml`,
+                title: `NetworkPolicy: default-deny ingress (namespace becomes an isolation boundary)`,
+                code: `# Without this, namespaces do NOT isolate traffic.
+# This denies all inbound traffic to pods in the namespace by default.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: team-payments
+spec:
+  podSelector: {}        # selects ALL pods in the namespace
+  policyTypes:
+    - Ingress            # empty ingress rules = deny all inbound
+---
+# Then explicitly allow only the orders namespace to call us:
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-orders
+  namespace: team-payments
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              team: orders
+      ports:
+        - protocol: TCP
+          port: 8080`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is a Kubernetes Namespace?`,
+                a: `A logical partition of a cluster that scopes resource names and serves as a boundary for RBAC, ResourceQuota/LimitRange, and NetworkPolicy. It is soft multi-tenancy, not a hard security boundary.`
+              },
+              {
+                q: `Name objects that are NOT namespaced (cluster-scoped).`,
+                a: `Nodes, PersistentVolumes, StorageClasses, ClusterRoles/ClusterRoleBindings, Namespaces themselves, and IngressClasses. These are shared cluster-wide.`
+              },
+              {
+                q: `Can two namespaces both contain a Service named "api"?`,
+                a: `Yes. Names only need to be unique within a namespace, so identical names in different namespaces are fine and addressed via DNS by namespace qualifier.`
+              },
+              {
+                q: `What is the FQDN of a Service?`,
+                a: `<service>.<namespace>.svc.cluster.local. From a Pod in the same namespace you can use just <service>; across namespaces use <service>.<namespace>.`
+              },
+              {
+                q: `Why can a short Service name resolve without the namespace?`,
+                a: `The Pod’s /etc/resolv.conf has a DNS search path including <ns>.svc.cluster.local, so unqualified names resolve within the Pod’s own namespace.`
+              },
+              {
+                q: `Do namespaces isolate network traffic by default?`,
+                a: `No. By default any Pod can reach any other Pod across namespaces. You must add a NetworkPolicy (e.g., default-deny) to create network isolation.`
+              },
+              {
+                q: `ResourceQuota vs LimitRange?`,
+                a: `ResourceQuota caps aggregate consumption and object counts for the whole namespace. LimitRange sets per-container min/max and default requests/limits.`
+              },
+              {
+                q: `A namespace has a ResourceQuota on requests.cpu but a Pod omits resource requests — what happens?`,
+                a: `The Pod is rejected. When a quota constrains a compute resource, every container must declare requests/limits — or a LimitRange must inject defaults.`
+              },
+              {
+                q: `What are the four default namespaces?`,
+                a: `default (your stuff if unspecified), kube-system (control-plane add-ons), kube-public (world-readable bootstrap info), kube-node-lease (node heartbeat Leases).`
+              },
+              {
+                q: `When should you split into a new cluster instead of a namespace?`,
+                a: `For hard isolation: untrusted tenants, strict compliance/blast-radius separation, separate control-plane upgrade cadence, or prod vs non-prod. Namespaces are soft isolation only.`
+              },
+              {
+                q: `What happens when you delete a namespace?`,
+                a: `All namespaced objects within it are cascade-deleted (Deployments, Services, ConfigMaps, Secrets, PVCs...). It is destructive and irreversible.`
+              },
+              {
+                q: `How do you set a default namespace so you stop typing -n?`,
+                a: `kubectl config set-context --current --namespace=<ns>. It edits the current context’s namespace in your kubeconfig.`
+              }
+            ]
+          },
+          {
+            title: `Pods, ReplicaSets & Deployments`,
+            notes: `## The Pod: Smallest Deployable Unit
+
+A **Pod** is the smallest schedulable unit in Kubernetes — *not* a container. A Pod wraps **one or more** containers that:
+
+- share the same **network namespace** (same IP, same port space, reach each other on \`localhost\`),
+- can share **storage volumes**,
+- are **always co-scheduled** on the same node and share a lifecycle.
+
+> [!TIP]
+> Why not just a container? Because some helpers must live *right next to* the main app — a log shipper, a proxy, a config-reloader. The Pod is the atom that binds a main container to its tightly-coupled helpers.
+
+> [!WARNING]
+> Pods are **ephemeral and cattle, not pets**. A Pod gets a new IP each time it's recreated. Never hardcode Pod IPs — talk to a **Service**. You rarely create bare Pods; you create a **Deployment** which owns a **ReplicaSet** which owns Pods.
+
+### Multi-container patterns
+
+| Pattern | What it is | Example |
+|---|---|---|
+| **init container** | Runs to completion *before* app containers start; ordered. | Run DB migrations, wait for a dependency, fetch config. |
+| **sidecar** | Long-running helper alongside the main container. | Log shipper, Envoy proxy (service mesh), config reloader. |
+| **ambassador** | Sidecar that proxies outbound to external services. | Local proxy to a sharded DB. |
+| **adapter** | Sidecar that normalizes the app's output. | Reformat logs/metrics to a standard. |
+
+(As of K8s 1.29 *native sidecars* exist: an init container with \`restartPolicy: Always\` that starts before and stops after the app.)
+
+### The ownership chain
+
+\`\`\`mermaid
+graph TB
+  D["Deployment<br/>(declares replicas, image, strategy)"] -->|creates & manages| RS["ReplicaSet<br/>(one per pod-template revision)"]
+  RS -->|creates & manages| P1["Pod 1"]
+  RS --> P2["Pod 2"]
+  RS --> P3["Pod 3"]
+  D -. "rolling update creates a NEW ReplicaSet" .-> RS2["ReplicaSet v2"]
+  RS2 --> NP1["Pod (new image)"]
+\`\`\`
+
+- **ReplicaSet** — ensures *N* identical Pods exist. Pure replica count + selector. You rarely manage it directly.
+- **Deployment** — manages ReplicaSets to give you **rolling updates, rollback, and revision history**. This is what you actually deploy.
+
+### Labels & selectors — the glue
+
+Almost everything in K8s is wired together by **labels** (key/value on objects) and **selectors** (queries over labels). A Deployment's \`selector.matchLabels\` must match its Pod template's labels; a Service selects Pods by labels; an HPA targets a Deployment.
+
+> [!DANGER]
+> A Deployment's \`spec.selector\` is **immutable** after creation. If \`selector.matchLabels\` doesn't match \`template.metadata.labels\`, the apply is rejected. Get this right up front.
+
+### Rolling updates & rollback
+
+When you change the Pod template (e.g., new image), the Deployment controller creates a **new ReplicaSet** and shifts Pods over gradually, bounded by:
+
+- \`maxUnavailable\` — how many Pods can be down during the update.
+- \`maxSurge\` — how many *extra* Pods can be created above desired.
+
+\`\`\`mermaid
+graph LR
+  subgraph Before
+    A1["RS v1: 3 pods"]
+  end
+  subgraph During
+    B1["RS v1: 2 pods"]
+    B2["RS v2: 2 pods (maxSurge=1)"]
+  end
+  subgraph After
+    C1["RS v2: 3 pods"]
+    C2["RS v1: 0 pods (kept for rollback)"]
+  end
+  A1 --> B1 --> C1
+\`\`\`
+
+The old ReplicaSet is scaled to 0 but **retained** (see \`revisionHistoryLimit\`) so you can instantly \`kubectl rollout undo\`.
+
+> [!SUCCESS]
+> Probe answer: *"A rolling update is a controlled handoff between two ReplicaSets. Readiness probes gate it — a new Pod only counts toward availability once it passes readiness, so a broken image never silently takes traffic. If the rollout stalls, \`progressDeadlineSeconds\` marks the Deployment as failed."*`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Pod with init container + sidecar (multi-container patterns)`,
+                code: `apiVersion: v1
+kind: Pod
+metadata:
+  name: orders-pod
+  labels:
+    app: orders
+spec:
+  initContainers:
+    - name: run-migrations          # runs to completion BEFORE app starts
+      image: ghcr.io/acme/orders-migrator:1.4
+      command: ["./migrate", "up"]
+  containers:
+    - name: app                     # the main container
+      image: ghcr.io/acme/orders:1.4
+      ports:
+        - containerPort: 8080
+      volumeMounts:
+        - name: logs
+          mountPath: /var/log/app
+    - name: log-shipper             # sidecar: ships logs, shares the volume
+      image: grafana/promtail:3.0
+      volumeMounts:
+        - name: logs
+          mountPath: /var/log/app
+  volumes:
+    - name: logs
+      emptyDir: {}                  # shared scratch volume between the two`,
+                runnable: false
+              },
+              {
+                lang: `yaml`,
+                title: `Production Deployment (rolling update, labels, full template)`,
+                code: `apiVersion: apps/v1
 kind: Deployment
-metadata: {name: myapp}
+metadata:
+  name: orders
+  namespace: team-orders
+  labels:
+    app: orders
 spec:
   replicas: 3
+  revisionHistoryLimit: 5           # keep 5 old ReplicaSets for rollback
+  progressDeadlineSeconds: 600      # mark rollout failed if stuck >10m
+  selector:
+    matchLabels:
+      app: orders                   # MUST match template labels below
   strategy:
     type: RollingUpdate
-    rollingUpdate: {maxUnavailable: 1, maxSurge: 1}  # at most 1 down, at most 4 total
-  selector:
-    matchLabels: {app: myapp}
+    rollingUpdate:
+      maxUnavailable: 0             # never drop below desired (zero-downtime)
+      maxSurge: 1                   # add 1 extra pod during rollout
   template:
     metadata:
-      labels: {app: myapp}
+      labels:
+        app: orders                 # <-- selector targets these
     spec:
-      containers: [...]
----
-# Service — stable VIP + DNS + load balancing to pods
-apiVersion: v1
-kind: Service
-metadata: {name: myapp}
-spec:
-  type: ClusterIP          # ClusterIP (internal), NodePort, LoadBalancer
-  selector: {app: myapp}  # finds pods by label
-  ports:
-    - port: 80              # Service port
-      targetPort: 8080      # Pod port
----
-# Ingress — HTTP routing from outside cluster
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: myapp-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-spec:
-  rules:
-    - host: myapp.example.com
-      http:
-        paths:
-          - path: /api
-            pathType: Prefix
-            backend:
-              service: {name: myapp, port: {number: 80}}
+      containers:
+        - name: app
+          image: ghcr.io/acme/orders:1.4
+          ports:
+            - containerPort: 8080
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits:   { cpu: "1",  memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 5`,
+                runnable: false
+              },
+              {
+                lang: `bash`,
+                title: `Deploy, update, watch, rollback`,
+                code: `kubectl apply -f deployment.yaml
+
+# Watch the rollout (blocks until complete or fails)
+kubectl rollout status deployment/orders -n team-orders
+
+# Trigger a rolling update by changing the image
+kubectl set image deployment/orders app=ghcr.io/acme/orders:1.5 -n team-orders
+
+# See the ReplicaSets created per revision
+kubectl get rs -n team-orders
+
+# Revision history
+kubectl rollout history deployment/orders -n team-orders
+
+# Instant rollback to the previous revision
+kubectl rollout undo deployment/orders -n team-orders
+
+# ...or roll back to a specific revision
+kubectl rollout undo deployment/orders --to-revision=3 -n team-orders
+
+# Pause/resume a rollout (e.g., to batch multiple changes)
+kubectl rollout pause deployment/orders -n team-orders
+kubectl rollout resume deployment/orders -n team-orders
+
+# Manually scale
+kubectl scale deployment/orders --replicas=5 -n team-orders`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is the Pod, not the container, the smallest unit?`,
+                a: `A Pod groups one or more tightly-coupled containers that share a network namespace (same IP/port space, localhost), can share volumes, and are co-scheduled with a shared lifecycle.`
+              },
+              {
+                q: `Two containers in the same Pod — how do they reach each other?`,
+                a: `Over localhost on the shared network namespace. They share one IP and port space, so a sidecar can hit the app at 127.0.0.1:<port>.`
+              },
+              {
+                q: `init container vs sidecar?`,
+                a: `An init container runs to completion (ordered) before app containers start — for setup like migrations. A sidecar is a long-running helper alongside the app — log shipping, proxy, config reload.`
+              },
+              {
+                q: `What is the Deployment → ReplicaSet → Pod ownership chain?`,
+                a: `A Deployment manages ReplicaSets (one per pod-template revision); each ReplicaSet ensures N identical Pods exist. The Deployment adds rolling updates, rollback, and revision history on top of ReplicaSets.`
+              },
+              {
+                q: `What happens to the old ReplicaSet during a rolling update?`,
+                a: `It is scaled down to 0 but retained (up to revisionHistoryLimit) so you can instantly \`kubectl rollout undo\` to the previous revision.`
+              },
+              {
+                q: `What do maxUnavailable and maxSurge control?`,
+                a: `During a RollingUpdate, maxUnavailable = how many Pods may be unavailable below desired; maxSurge = how many extra Pods may be created above desired. maxUnavailable:0 + maxSurge:1 gives zero-downtime.`
+              },
+              {
+                q: `Why is a Deployment’s spec.selector immutable?`,
+                a: `Changing it would orphan/re-adopt Pods unpredictably. K8s rejects selector changes; the selector must match the pod template labels at creation time.`
+              },
+              {
+                q: `How do readiness probes interact with a rolling update?`,
+                a: `A new Pod only counts as available (and receives Service traffic) once readiness passes, so a broken new image never silently takes traffic and the rollout safely stalls.`
+              },
+              {
+                q: `What is progressDeadlineSeconds?`,
+                a: `If a rollout makes no progress within this window, the Deployment is marked Failed (condition Progressing=False), letting CI/CD detect a stuck deploy.`
+              },
+              {
+                q: `Why should you never hardcode a Pod IP?`,
+                a: `Pods are ephemeral; a recreated Pod gets a new IP. Use a Service’s stable virtual IP / DNS name, which load-balances to current healthy Pods.`
+              },
+              {
+                q: `How are Services wired to Pods?`,
+                a: `Via labels and selectors: the Service’s selector matches Pod labels; the EndpointSlice controller tracks matching ready Pod IPs as endpoints.`
+              },
+              {
+                q: `What is a native sidecar (1.29+)?`,
+                a: `An init container declared with restartPolicy: Always — it starts before app containers, runs for the Pod’s lifetime, and terminates after them, fixing ordering/shutdown issues of plain sidecars.`
+              }
+            ]
+          },
+          {
+            title: `Services, Networking & Ingress`,
+            notes: `## The Problem Services Solve
+
+Pods are ephemeral with changing IPs. A **Service** gives a stable virtual IP (the *ClusterIP*) and DNS name in front of a dynamic set of Pods, load-balancing across the ones currently **ready**. The Service tracks backends via a **selector** → the EndpointSlice controller maintains the list of ready Pod IPs.
+
+> [!TIP]
+> One-liner: *"A Service is a stable, load-balanced abstraction over an ephemeral set of Pods, with membership driven by label selectors and readiness."*
+
+### Service types
+
+| Type | What you get | Use when |
+|---|---|---|
+| **ClusterIP** (default) | Virtual IP reachable only *inside* the cluster | Internal service-to-service calls |
+| **NodePort** | ClusterIP + opens a static port (30000–32767) on every node | Quick external access, dev, behind an external LB |
+| **LoadBalancer** | NodePort + provisions a cloud L4 load balancer with an external IP | Public-facing in a cloud, one LB per Service |
+| **Headless** (\`clusterIP: None\`) | No virtual IP; DNS returns Pod IPs directly | StatefulSets, client-side LB, peer discovery |
+| **ExternalName** | CNAME to an external DNS name | Alias an external dependency |
+
+\`\`\`mermaid
+graph TB
+  EXT["External client (browser)"] -->|HTTPS :443| LB["Cloud LoadBalancer / Ingress entrypoint"]
+  LB --> ING["Ingress (L7 routing rules + TLS)"]
+  ING -->|host: shop.acme.com path: /orders| SVC1["Service: orders (ClusterIP)"]
+  ING -->|path: /payments| SVC2["Service: payments (ClusterIP)"]
+  SVC1 -->|kube-proxy / endpoints| PA["Pod orders-1"]
+  SVC1 --> PB["Pod orders-2"]
+  SVC2 --> PC["Pod payments-1"]
 \`\`\`
 
-### Key kubectl Commands
+### How a Service routes (kube-proxy)
 
-\`\`\`bash
-kubectl apply -f deployment.yaml        # declarative create/update
-kubectl get pods -n mynamespace         # list pods
-kubectl describe pod myapp-abc123       # detailed info + events
-kubectl logs myapp-abc123 -f            # stream logs
-kubectl exec -it myapp-abc123 -- sh     # shell into pod
-kubectl scale deployment myapp --replicas=5
-kubectl rollout status deployment/myapp
-kubectl rollout undo deployment/myapp   # rollback
-kubectl port-forward pod/myapp-abc123 8080:8080  # local debugging
-\`\`\``,
+A ClusterIP is **virtual** — no process listens on it. **kube-proxy** programs each node's **iptables** (or **IPVS**, or an eBPF CNI like Cilium does it kernel-side) so packets to the ClusterIP are DNAT'd to one of the backend Pod IPs. CoreDNS resolves the Service name → ClusterIP.
+
+> [!WARNING]
+> Only **Ready** Pods (passing readiness probes) are in the Service's endpoint list. A Pod that is Running but failing readiness gets **no traffic** — that's the mechanism behind safe rollouts and graceful startup.
+
+### The Pod network (CNI) basics
+
+Kubernetes mandates a flat network: **every Pod gets its own IP and can reach every other Pod without NAT**. K8s itself doesn't implement this — a **CNI plugin** (Calico, Cilium, Flannel, AWS VPC CNI) does, plus enforcing NetworkPolicy. This is why you never port-map between Pods.
+
+### Ingress vs Service
+
+A \`LoadBalancer\` Service is **L4** (one external IP per Service — expensive). An **Ingress** is **L7 (HTTP/HTTPS)**: one entry point doing **host-based and path-based routing**, **TLS termination**, and routing to many backend Services. An **Ingress Controller** (nginx, Traefik, AWS ALB, Istio gateway) actually implements the rules — *the Ingress object alone does nothing without a controller running*.
+
+\`\`\`mermaid
+graph LR
+  C["client"] --> A["Ingress Controller<br/>(nginx/traefik pod)"]
+  A -->|reads| IObj["Ingress objects (rules)"]
+  A --> S1["Service A"] --> P1["Pods A"]
+  A --> S2["Service B"] --> P2["Pods B"]
+\`\`\`
+
+> [!SUCCESS]
+> Probe: *"An Ingress is just routing rules; an Ingress Controller is the running reverse proxy that watches those rules and configures itself. No controller = your Ingress does nothing."* (Gateway API is the modern successor — mention it for bonus points.)`,
             code: [
-              `# Full Spring Boot deployment manifest
-# Includes: ConfigMap, Secret, Deployment, Service, HPA, Ingress
----
+              {
+                lang: `yaml`,
+                title: `ClusterIP and Headless Services`,
+                code: `# Standard internal Service — stable virtual IP, load-balances ready pods
 apiVersion: v1
+kind: Service
+metadata:
+  name: orders
+  namespace: team-orders
+spec:
+  type: ClusterIP
+  selector:
+    app: orders             # picks Pods labelled app=orders
+  ports:
+    - name: http
+      port: 80              # the Service port
+      targetPort: 8080      # the container port
+---
+# Headless Service — no virtual IP; DNS returns each Pod IP directly.
+# Required for StatefulSet stable per-pod DNS (pod-0.orders-hl...).
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-hl
+  namespace: team-orders
+spec:
+  clusterIP: None
+  selector:
+    app: orders
+  ports:
+    - port: 8080`,
+                runnable: false
+              },
+              {
+                lang: `yaml`,
+                title: `Ingress with TLS, host + path routing`,
+                code: `apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: acme-ingress
+  namespace: team-orders
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"   # auto TLS via cert-manager
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - shop.acme.com
+      secretName: acme-tls          # TLS cert/key stored in this Secret
+  rules:
+    - host: shop.acme.com
+      http:
+        paths:
+          - path: /orders
+            pathType: Prefix
+            backend:
+              service:
+                name: orders
+                port:
+                  number: 80
+          - path: /payments
+            pathType: Prefix
+            backend:
+              service:
+                name: payments
+                port:
+                  number: 80`,
+                runnable: false
+              },
+              {
+                lang: `bash`,
+                title: `Networking & DNS debugging`,
+                code: `# List services and their ClusterIPs / external IPs
+kubectl get svc -n team-orders -o wide
+
+# See the actual backend endpoints (ready pod IPs) behind a Service
+kubectl get endpointslices -n team-orders
+kubectl describe svc orders -n team-orders   # shows Endpoints
+
+# DNS lookup from inside the cluster
+kubectl run dnsutils --rm -it --image=tutum/dnsutils -- \\
+  nslookup orders.team-orders.svc.cluster.local
+
+# Test a ClusterIP service without an Ingress (local tunnel)
+kubectl port-forward svc/orders 8080:80 -n team-orders
+
+# Check the ingress
+kubectl get ingress -n team-orders
+kubectl describe ingress acme-ingress -n team-orders`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `What problem does a Service solve?`,
+                a: `Pods are ephemeral with changing IPs. A Service provides a stable virtual IP + DNS name that load-balances across the currently ready Pods matched by its selector.`
+              },
+              {
+                q: `Compare ClusterIP, NodePort, and LoadBalancer.`,
+                a: `ClusterIP: internal-only virtual IP (default). NodePort: also opens a static port on every node. LoadBalancer: also provisions a cloud L4 LB with an external IP. Each builds on the previous.`
+              },
+              {
+                q: `What is a headless Service and when is it used?`,
+                a: `A Service with clusterIP: None — no virtual IP; DNS returns the individual Pod IPs. Used by StatefulSets for stable per-Pod DNS and for client-side load balancing / peer discovery.`
+              },
+              {
+                q: `How does traffic actually reach a Pod behind a ClusterIP?`,
+                a: `kube-proxy programs iptables/IPVS (or an eBPF CNI) to DNAT the virtual ClusterIP to one of the backend Pod IPs. The ClusterIP itself has no listening process.`
+              },
+              {
+                q: `Which Pods receive Service traffic?`,
+                a: `Only Ready Pods (passing their readiness probe) are kept in the Service’s EndpointSlice. Running-but-not-Ready Pods get no traffic.`
+              },
+              {
+                q: `What guarantees does the Kubernetes pod network model give?`,
+                a: `Every Pod gets its own IP and can reach every other Pod without NAT (flat network). A CNI plugin implements this; K8s core does not.`
+              },
+              {
+                q: `Ingress vs LoadBalancer Service?`,
+                a: `A LoadBalancer Service is L4 with one external IP per Service. An Ingress is L7 (HTTP/S): one entry point doing host/path routing and TLS termination to many Services.`
+              },
+              {
+                q: `Does an Ingress object do anything by itself?`,
+                a: `No. It is just routing rules. An Ingress Controller (nginx, Traefik, ALB) must be running to watch those objects and configure itself as the reverse proxy.`
+              },
+              {
+                q: `How is TLS terminated for an Ingress?`,
+                a: `The Ingress references a Secret (type kubernetes.io/tls) holding the cert and key; the Ingress Controller terminates TLS using it. cert-manager can auto-provision the cert.`
+              },
+              {
+                q: `What is the role of CoreDNS in Service networking?`,
+                a: `CoreDNS resolves Service names (e.g., orders.team-orders.svc.cluster.local) to the Service’s ClusterIP, and for headless Services returns the backing Pod IPs.`
+              },
+              {
+                q: `What does targetPort vs port mean in a Service?`,
+                a: `port is the Service’s own listening port (what clients hit); targetPort is the container port traffic is forwarded to.`
+              },
+              {
+                q: `What is the modern successor to Ingress?`,
+                a: `The Gateway API — a more expressive, role-oriented, and portable standard (GatewayClass/Gateway/HTTPRoute) replacing Ingress for advanced L4–L7 routing.`
+              }
+            ]
+          },
+          {
+            title: `Configuration: ConfigMaps & Secrets`,
+            notes: `## Externalized Configuration (12-Factor)
+
+The **12-factor app** principle III says: *store config in the environment*, strictly separated from code. In Kubernetes that means your image is **immutable and environment-agnostic**, and per-environment config is injected at runtime via **ConfigMap** (non-sensitive) and **Secret** (sensitive).
+
+> [!TIP]
+> Senior framing: *"One image, many environments. The same \`orders:1.4\` image runs in dev/staging/prod — only the ConfigMap/Secret bound to it changes. This is the contract that makes promotion-based CD safe."*
+
+### ConfigMap vs Secret
+
+| | ConfigMap | Secret |
+|---|---|---|
+| For | Non-sensitive config (URLs, flags, properties) | Sensitive data (passwords, tokens, keys, TLS) |
+| Encoding | Plain text | base64 in the API (NOT encryption!) |
+| At rest | etcd | etcd — **encrypt with encryption-at-rest provider** |
+| Size limit | ~1 MiB | ~1 MiB |
+| Mount as | env var or file | env var or file (file is preferred) |
+
+> [!DANGER]
+> base64 is **encoding, not encryption** — anyone with \`get secret\` RBAC can decode it. For real protection: enable **encryption at rest** for etcd, restrict RBAC on Secrets, and prefer an external manager (External Secrets Operator → Vault/AWS Secrets Manager, or Sealed Secrets for GitOps).
+
+### Two ways to consume: env vars vs volume mounts
+
+| | Env var | Volume (file) |
+|---|---|---|
+| Visibility | Shows in \`kubectl describe pod\`, child processes, crash dumps | On a tmpfs file, less leak-prone |
+| Live update | **NOT** updated when the source changes — needs Pod restart | Volume-mounted ConfigMaps/Secrets **auto-update** (eventually) |
+| Best for | Simple scalars | Secrets, large config files, anything that may rotate |
+
+> [!WARNING]
+> Mark frequently-read, rarely-changed config as \`immutable: true\`. This stops the kubelet from watching it (less API/etcd load) and prevents accidental edits — but then you must roll a new ConfigMap name to change it.
+
+### How a Spring Boot app consumes this
+
+Spring Boot reads config in priority order; environment variables and mounted files slot in cleanly:
+
+- **Env vars**: \`SPRING_DATASOURCE_URL\` maps to \`spring.datasource.url\` (relaxed binding). Inject via \`envFrom\` a ConfigMap/Secret.
+- **Mounted file**: mount a ConfigMap as \`/config/application.yml\` and point Spring at it with \`SPRING_CONFIG_ADDITIONAL_LOCATION=/config/\`.
+- **Spring Cloud Kubernetes** can natively map ConfigMaps/Secrets and even hot-reload on change.
+
+\`\`\`mermaid
+graph LR
+  CM["ConfigMap (app props)"] -->|envFrom| C["Spring Boot container"]
+  SEC["Secret (db password)"] -->|secretKeyRef / volume| C
+  C -->|relaxed binding| PROPS["spring.datasource.* etc."]
+\`\`\`
+
+> [!SUCCESS]
+> Probe: *"How does the same image become prod-specific?"* → It doesn't bake config in. The Deployment binds a ConfigMap + Secret; Spring's relaxed binding turns \`SPRING_DATASOURCE_URL\` into \`spring.datasource.url\`. Image stays immutable; config is the only variable.
+
+> [!EU]
+> For GDPR, keep customer-identifying secrets and connection strings out of ConfigMaps. Use Secrets with encryption-at-rest, and prefer an external secret store so secret material never lands in your Git repo.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `ConfigMap (properties + whole file) and Secret`,
+                code: `apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: myapp-config
-  namespace: production
+  name: orders-config
+  namespace: team-orders
+immutable: true               # optional: lock it, reduce watch load
 data:
-  SPRING_PROFILES_ACTIVE: "prod"
   LOG_LEVEL: "INFO"
-  DB_HOST: "postgres-service"
-  DB_PORT: "5432"
-  DB_NAME: "mydb"
+  FEATURE_NEW_CHECKOUT: "true"
+  # A whole file as a single key (consumed via volume mount)
+  application.yml: |
+    server:
+      port: 8080
+    spring:
+      jpa:
+        open-in-view: false
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: myapp-secrets
-  namespace: production
+  name: orders-secret
+  namespace: team-orders
 type: Opaque
-data:
-  # Values must be base64-encoded: echo -n 'value' | base64
-  DB_PASSWORD: cGFzc3dvcmQxMjM=   # "password123"
-  JWT_SECRET: c2VjcmV0a2V5MTIz    # "secretkey123"
----
-apiVersion: apps/v1
+# stringData is plaintext in YAML; the API stores it base64-encoded.
+stringData:
+  DB_USERNAME: orders_app
+  DB_PASSWORD: "s3cr3t-rotate-me"`,
+                runnable: false
+              },
+              {
+                lang: `yaml`,
+                title: `Consuming config in a Deployment — env + secretKeyRef + volume`,
+                code: `apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: myapp
-  namespace: production
-  labels:
-    app: myapp
-    version: "1.5.2"
+  name: orders
+  namespace: team-orders
 spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: myapp
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1    # at most 1 pod down during update
-      maxSurge: 1          # at most 1 extra pod during update
+  replicas: 2
+  selector: { matchLabels: { app: orders } }
   template:
-    metadata:
-      labels:
-        app: myapp
-        version: "1.5.2"
+    metadata: { labels: { app: orders } }
     spec:
       containers:
-        - name: myapp
-          image: myrepo/myapp:1.5.2
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8080
+        - name: app
+          image: ghcr.io/acme/orders:1.4
+          # 1) Bulk-inject all ConfigMap keys as env vars
           envFrom:
             - configMapRef:
-                name: myapp-config
+                name: orders-config
           env:
-            - name: DB_PASSWORD
+            # 2) Spring relaxed binding: SPRING_DATASOURCE_* -> spring.datasource.*
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://orders-db:5432/orders
+            # 3) Pull a single key from the Secret
+            - name: SPRING_DATASOURCE_USERNAME
               valueFrom:
-                secretKeyRef:
-                  name: myapp-secrets
-                  key: DB_PASSWORD
-          resources:
-            requests:
-              cpu: "250m"     # 0.25 vCPU guaranteed
-              memory: "512Mi"
-            limits:
-              cpu: "1000m"    # 1 vCPU max
-              memory: "1Gi"
-          readinessProbe:
-            httpGet:
-              path: /actuator/health/readiness
-              port: 8080
-            initialDelaySeconds: 15
+                secretKeyRef: { name: orders-secret, key: DB_USERNAME }
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: orders-secret, key: DB_PASSWORD }
+            # 4) Point Spring at a mounted config file
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: /config/
+          volumeMounts:
+            - name: app-config        # mounts application.yml as a file
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: app-config
+          configMap:
+            name: orders-config
+            items:
+              - key: application.yml
+                path: application.yml`,
+                runnable: false
+              },
+              {
+                lang: `bash`,
+                title: `Creating & inspecting config/secrets`,
+                code: `# Create a ConfigMap from literals or a file
+kubectl create configmap orders-config \\
+  --from-literal=LOG_LEVEL=INFO \\
+  --from-file=application.yml -n team-orders
+
+# Create a Secret from literals (avoids hand base64-ing)
+kubectl create secret generic orders-secret \\
+  --from-literal=DB_PASSWORD='s3cr3t' -n team-orders
+
+# Decode a secret value (base64 is encoding, not security!)
+kubectl get secret orders-secret -n team-orders \\
+  -o jsonpath='{.data.DB_PASSWORD}' | base64 -d
+
+# Trigger a restart so env-var changes are picked up (env vars don't hot-reload)
+kubectl rollout restart deployment/orders -n team-orders`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `What 12-factor principle do ConfigMaps/Secrets implement?`,
+                a: `Factor III: store config in the environment, separated from code. The image stays immutable and environment-agnostic; per-env config is injected at runtime.`
+              },
+              {
+                q: `Is data in a Secret encrypted?`,
+                a: `No — it is only base64-encoded in the API, which is encoding, not encryption. Anyone with get-secret RBAC can decode it. Enable etcd encryption-at-rest and tight RBAC for real protection.`
+              },
+              {
+                q: `ConfigMap vs Secret — when to use which?`,
+                a: `ConfigMap for non-sensitive config (URLs, flags, files); Secret for sensitive data (passwords, tokens, TLS). Secrets get base64 storage, separate RBAC, and should be encrypted at rest.`
+              },
+              {
+                q: `Do env-var-injected ConfigMap values update live?`,
+                a: `No. Env vars are set at container start and do NOT change when the ConfigMap changes — you must restart the Pod. Volume-mounted ConfigMaps/Secrets DO auto-update (eventually).`
+              },
+              {
+                q: `Why mount Secrets as volumes rather than env vars?`,
+                a: `Files (tmpfs) are less likely to leak via process listings/crash dumps/child processes, and they auto-update on rotation, whereas env vars are static and more exposed.`
+              },
+              {
+                q: `What does immutable: true on a ConfigMap/Secret do?`,
+                a: `Prevents edits and stops the kubelet watching it (reducing API/etcd load). To change it you must create a new object (new name) and update references.`
+              },
+              {
+                q: `How does a Spring Boot app pick up SPRING_DATASOURCE_URL from an env var?`,
+                a: `Via Spring relaxed binding: the env var SPRING_DATASOURCE_URL maps to property spring.datasource.url. Inject it through env / envFrom / secretKeyRef in the Deployment.`
+              },
+              {
+                q: `How do you make the SAME image environment-specific?`,
+                a: `Don’t bake config in. Bind a different ConfigMap + Secret per environment; the immutable image reads them at runtime. This enables promotion-based CD.`
+              },
+              {
+                q: `How do you load a whole application.yml file from a ConfigMap?`,
+                a: `Store the file content as a key in the ConfigMap, mount it as a volume at e.g. /config/application.yml, and set SPRING_CONFIG_ADDITIONAL_LOCATION=/config/.`
+              },
+              {
+                q: `What is a safer alternative to plain Secrets for GitOps?`,
+                a: `Sealed Secrets (encrypted, safe to commit) or External Secrets Operator pulling from Vault/AWS Secrets Manager, so raw secret material never lives in Git.`
+              },
+              {
+                q: `difference between envFrom and env with valueFrom?`,
+                a: `envFrom bulk-imports every key of a ConfigMap/Secret as env vars; env+valueFrom (configMapKeyRef/secretKeyRef) injects one specific key, optionally renaming it.`
+              },
+              {
+                q: `Why might a config change have no effect until restart?`,
+                a: `If consumed as env vars, the new value only loads on container start. Run \`kubectl rollout restart\` (or use volume mounts / Spring Cloud Kubernetes reload) to apply changes.`
+              }
+            ]
+          },
+          {
+            title: `Health, Scheduling, Resources & Autoscaling`,
+            notes: `## Probes: Telling Kubernetes the Truth About Your App
+
+Kubernetes can only manage your app well if your app tells it the truth via three probe types.
+
+| Probe | Question it answers | On failure | Typical for Spring Boot |
+|---|---|---|---|
+| **liveness** | "Are you alive, or wedged/deadlocked?" | kubelet **restarts** the container | \`/actuator/health/liveness\` |
+| **readiness** | "Are you ready to serve traffic right now?" | Pod **removed from Service endpoints** (no restart) | \`/actuator/health/readiness\` |
+| **startup** | "Have you finished slow startup yet?" | disables liveness/readiness until it passes; failure restarts | guards slow JVM warmup |
+
+\`\`\`mermaid
+graph LR
+  START["Container starts"] --> SU{"startupProbe<br/>passed?"}
+  SU -->|no, keep trying| SU
+  SU -->|yes| EN["liveness + readiness enabled"]
+  EN --> LV{"liveness ok?"}
+  LV -->|fail| RESTART["kubelet restarts container"]
+  EN --> RD{"readiness ok?"}
+  RD -->|fail| OUT["removed from Service endpoints"]
+  RD -->|ok| IN["receives traffic"]
+\`\`\`
+
+> [!DANGER]
+> Classic bug: pointing **liveness** at an endpoint that depends on the database. DB blips → liveness fails → kubelet **restarts** the Pod → makes the outage worse (restart storm). Liveness should check *only* the process itself; **readiness** is where you reflect dependency health.
+
+> [!TIP]
+> Use a **startupProbe** for slow-booting JVMs so a generous startup window doesn't force you to weaken liveness (\`failureThreshold * periodSeconds\` = total startup budget).
+
+## Requests vs Limits, and QoS
+
+| | **requests** | **limits** |
+|---|---|---|
+| Meaning | Guaranteed minimum; used by the **scheduler** to place the Pod | Hard ceiling enforced at runtime |
+| CPU over limit | **Throttled** (compressible) — never killed for CPU | n/a (just throttled) |
+| Memory over limit | n/a | **OOMKilled** (incompressible) |
+| Scheduling | A Pod is placed only if a node has free *requests* | — |
+
+> [!WARNING]
+> CPU is *compressible* (you get throttled), memory is *incompressible* (exceed the limit → **OOMKilled**, exit code 137). Set memory requests = limits for predictable behavior; be cautious with tight CPU limits causing latency from throttling.
+
+### QoS classes (drive eviction order)
+
+| QoS | Condition | Eviction priority under node pressure |
+|---|---|---|
+| **Guaranteed** | every container has requests == limits (cpu & mem) | evicted **last** |
+| **Burstable** | has requests, but requests != limits | middle |
+| **BestEffort** | no requests or limits at all | evicted **first** |
+
+## Scheduling controls
+
+- **nodeSelector** — simplest: Pod runs only on nodes with a matching label.
+- **affinity / anti-affinity** — richer rules; e.g., spread replicas across zones (pod anti-affinity), or prefer GPU nodes (node affinity).
+- **taints & tolerations** — a node *repels* Pods (taint); only Pods with a matching *toleration* may land there. Used to dedicate nodes (e.g., GPU, or a tenant).
+
+> [!SUCCESS]
+> Probe: *"taints repel, tolerations permit, affinity attracts."* nodeSelector/affinity are *Pod-side pull*; taints are *node-side push*.
+
+## HorizontalPodAutoscaler (HPA)
+
+The HPA watches a metric (CPU/memory via metrics-server, or custom/external) and adjusts \`replicas\` to keep it near a target. Requires resource **requests** to compute CPU utilization. (Note: VPA tunes requests/limits; Cluster Autoscaler adds *nodes*. HPA scales *Pods*.)`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `All three probes + requests/limits (Guaranteed QoS)`,
+                code: `apiVersion: apps/v1
+kind: Deployment
+metadata: { name: orders, namespace: team-orders }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: orders } }
+  template:
+    metadata: { labels: { app: orders } }
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/acme/orders:1.4
+          ports: [{ containerPort: 8080 }]
+          resources:                 # requests == limits => Guaranteed QoS
+            requests: { cpu: 500m, memory: 512Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          startupProbe:              # generous window for slow JVM boot
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            failureThreshold: 30     # 30 * 5s = 150s startup budget
             periodSeconds: 5
-            failureThreshold: 3
-          livenessProbe:
-            httpGet:
-              path: /actuator/health/liveness
-              port: 8080
-            initialDelaySeconds: 30
+          livenessProbe:             # process-only health (NO db dependency!)
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
             periodSeconds: 10
             failureThreshold: 3
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: myapp
-  namespace: production
-spec:
-  selector:
-    app: myapp
-  ports:
-    - port: 80
-      targetPort: 8080
----
-apiVersion: autoscaling/v2
+          readinessProbe:            # reflects ability to serve (may check deps)
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
+            periodSeconds: 5
+            failureThreshold: 3`,
+                runnable: false
+              },
+              {
+                lang: `yaml`,
+                title: `HorizontalPodAutoscaler (CPU + memory, autoscaling/v2)`,
+                code: `apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: myapp-hpa
-  namespace: production
+  name: orders-hpa
+  namespace: team-orders
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: myapp
+    name: orders
   minReplicas: 3
-  maxReplicas: 10
+  maxReplicas: 20
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 70  # scale up when avg CPU > 70%`
+          averageUtilization: 70    # keep avg CPU ~70% of REQUEST
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:                          # tame flapping
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60`,
+                runnable: false
+              },
+              {
+                lang: `yaml`,
+                title: `Affinity, taints/tolerations, topology spread`,
+                code: `apiVersion: v1
+kind: Pod
+metadata: { name: orders, labels: { app: orders } }
+spec:
+  nodeSelector:
+    disktype: ssd                    # only nodes labelled disktype=ssd
+  tolerations:                       # allowed onto nodes tainted dedicated=payments
+    - key: "dedicated"
+      operator: "Equal"
+      value: "payments"
+      effect: "NoSchedule"
+  affinity:
+    podAntiAffinity:                 # spread replicas across hosts for HA
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels: { app: orders }
+          topologyKey: kubernetes.io/hostname
+  topologySpreadConstraints:         # even spread across zones
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels: { app: orders }
+  containers:
+    - name: app
+      image: ghcr.io/acme/orders:1.4`,
+                runnable: false
+              },
+              {
+                lang: `bash`,
+                title: `Diagnosing health/resources`,
+                code: `# Why is a pod restarting? Look at the previous container's logs
+kubectl logs orders-xyz -n team-orders --previous
+
+# Reason for restart (look for OOMKilled / exit code 137)
+kubectl describe pod orders-xyz -n team-orders | grep -A3 "Last State"
+
+# Live resource usage (needs metrics-server)
+kubectl top pods -n team-orders
+kubectl top nodes
+
+# HPA status (current vs target metric, current replicas)
+kubectl get hpa -n team-orders
+kubectl describe hpa orders-hpa -n team-orders
+
+# Check QoS class of a pod
+kubectl get pod orders-xyz -n team-orders -o jsonpath='{.status.qosClass}'`,
+                runnable: false
+              }
             ],
             flashcards: [
               {
-                q: `What is the difference between a Pod, Deployment, and Service in Kubernetes?`,
-                a: `Pod: the smallest deployable unit — wraps one or more containers that share network/storage. Pods are ephemeral; when they die, they're replaced with a new IP. Deployment: manages a set of identical pods via a ReplicaSet. Ensures N replicas are always running, handles rolling updates and rollbacks. You never manage pods directly in production — use a Deployment. Service: a stable endpoint (DNS name + virtual IP) that load-balances traffic across pods. Because pod IPs change, other services talk to the Service, not directly to pods. Types: ClusterIP (internal), NodePort (external via port), LoadBalancer (cloud-provisioned LB).`
+                q: `Liveness vs readiness probe — effect of failure?`,
+                a: `Liveness failure → kubelet restarts the container. Readiness failure → Pod is removed from Service endpoints (no restart) so it stops receiving traffic.`
               },
               {
-                q: `What is the difference between a readinessProbe and a livenessProbe?`,
-                a: `ReadinessProbe: "is this pod ready to serve traffic?" If it fails, the pod is removed from the Service endpoints — it won't receive requests, but it's not killed. Useful during startup (waiting for DB connection, cache warmup) and for temporary overload. LivenessProbe: "is this pod still alive?" If it fails (N times), kubelet restarts the container. Catches deadlocks or crashes that leave a process running but not processing. Rule: always have both for Spring Boot. Use /actuator/health/readiness and /actuator/health/liveness respectively. Set initialDelaySeconds to allow startup time.`
+                q: `What is a startup probe for?`,
+                a: `Slow-starting apps. While it runs, liveness/readiness are disabled, giving a generous boot window (failureThreshold * periodSeconds) without weakening liveness sensitivity.`
               },
               {
-                q: `What are resource requests and limits in Kubernetes and why do they matter?`,
-                a: `Requests: the minimum CPU/memory guaranteed to the pod. The scheduler uses requests to decide which node to place the pod on — it won't schedule a pod on a node without enough free capacity. Limits: the maximum. CPU is throttled if exceeded (not killed). Memory: if a pod exceeds its memory limit, it's OOMKilled (Out of Memory Killed) and restarted. Rule: always set both. Without requests: pods get scheduled on overloaded nodes. Without limits: one runaway pod starves others. Common ratio: limit = 2× request. Memory limit should match JVM -Xmx setting.`
+                q: `Why is putting a DB check in the liveness probe dangerous?`,
+                a: `A DB blip makes liveness fail, triggering kubelet restarts of healthy app Pods — a restart storm that worsens the outage. Dependency health belongs in readiness, not liveness.`
               },
               {
-                q: `What is a HorizontalPodAutoscaler (HPA) and how does it work?`,
-                a: `HPA automatically adjusts replica count based on metrics (typically CPU or memory). It reads metrics from the Metrics Server every 15 seconds, compares against the target (e.g., 70% avg CPU), and scales the Deployment's replicas between minReplicas and maxReplicas. Scale-up is fast (default ~3 min stabilization); scale-down is slow (default ~5 min to avoid flapping). Prerequisites: resource requests must be set (HPA calculates utilization as actual/request %). Custom metrics (RPS, queue depth) possible with KEDA or Prometheus adapter. Combine with PodDisruptionBudgets (PDB) to ensure minimum pods stay up during scale-down.`
+                q: `requests vs limits?`,
+                a: `requests = guaranteed minimum the scheduler reserves to place the Pod; limits = hard runtime ceiling. CPU over limit is throttled; memory over limit is OOMKilled.`
+              },
+              {
+                q: `Why is CPU treated differently from memory at the limit?`,
+                a: `CPU is compressible — exceeding the limit just throttles the container. Memory is incompressible — exceeding it kills the container (OOMKilled, exit 137).`
+              },
+              {
+                q: `What does exit code 137 / OOMKilled mean?`,
+                a: `The container exceeded its memory limit (or node memory pressure) and was killed by the kernel OOM killer (128 + SIGKILL 9 = 137).`
+              },
+              {
+                q: `Name the three QoS classes and eviction order.`,
+                a: `Guaranteed (requests==limits for cpu&mem) evicted last; Burstable (requests set, !=limits) middle; BestEffort (no requests/limits) evicted first under node pressure.`
+              },
+              {
+                q: `How do you get Guaranteed QoS?`,
+                a: `Every container in the Pod must set both CPU and memory requests equal to their limits.`
+              },
+              {
+                q: `taints/tolerations vs node affinity?`,
+                a: `Taints repel Pods from a node (node-side push); a matching toleration lets a Pod tolerate the taint. Node affinity/nodeSelector attracts Pods to labelled nodes (Pod-side pull).`
+              },
+              {
+                q: `What does the HorizontalPodAutoscaler scale, and what does it need?`,
+                a: `It scales the number of Pod replicas to keep a metric near target. It needs metrics-server (for CPU/mem) and resource requests defined to compute utilization.`
+              },
+              {
+                q: `HPA vs VPA vs Cluster Autoscaler?`,
+                a: `HPA scales replica count (out/in); VPA tunes a Pod’s requests/limits (up/down); Cluster Autoscaler adds/removes nodes when Pods can’t be scheduled or nodes are idle.`
+              },
+              {
+                q: `How do you ensure replicas are spread across nodes/zones for HA?`,
+                a: `Use podAntiAffinity with topologyKey kubernetes.io/hostname (per-node spread) and/or topologySpreadConstraints with topology.kubernetes.io/zone for even zone distribution.`
+              },
+              {
+                q: `How do you find why a Pod keeps restarting?`,
+                a: `kubectl describe pod (Last State / Reason, e.g., OOMKilled) and kubectl logs --previous to see the crashed container’s output.`
+              }
+            ]
+          },
+          {
+            title: `Storage: Volumes, PV/PVC & StatefulSets`,
+            notes: `## Ephemeral vs Persistent Storage
+
+A container's filesystem is **ephemeral** — it dies with the container. For anything that must survive a restart, reschedule, or be shared, you need **Volumes** and, for durability across Pod lifecycles, **PersistentVolumes**.
+
+| Need | Use |
+|---|---|
+| Scratch space, shared between containers in a Pod | \`emptyDir\` (dies with the Pod) |
+| Mount a ConfigMap/Secret as files | \`configMap\` / \`secret\` volume |
+| Durable data surviving Pod deletion/reschedule | **PersistentVolumeClaim → PersistentVolume** |
+| Stable identity + storage per replica (databases) | **StatefulSet** |
+
+## The PV / PVC / StorageClass model
+
+Kubernetes splits storage into **supply** and **demand** to decouple app authors from infra:
+
+- **PersistentVolume (PV)** — a piece of cluster storage (an EBS volume, NFS export, etc.). Cluster-scoped. The *supply*.
+- **PersistentVolumeClaim (PVC)** — a *request* for storage (size, access mode, class) by a workload. Namespaced. The *demand*.
+- **StorageClass** — a template for **dynamic provisioning**: when a PVC asks for a class, the provisioner creates a PV on the fly.
+
+\`\`\`mermaid
+graph LR
+  POD["Pod"] -->|mounts| PVC["PersistentVolumeClaim<br/>(req: 10Gi, RWO, class=fast)"]
+  PVC -->|bound to| PV["PersistentVolume<br/>(actual disk)"]
+  SC["StorageClass: fast<br/>(provisioner: ebs.csi.aws.com)"] -.->|dynamically provisions| PV
+  PV --> DISK["Cloud disk / NFS / CSI backend"]
+\`\`\`
+
+**Binding lifecycle**: PVC created → matched to (or dynamically provisioned as) a PV → \`Bound\` → Pod mounts it. The PV's \`reclaimPolicy\` decides what happens when the PVC is deleted: \`Delete\` (destroy the disk) or \`Retain\` (keep it for manual recovery).
+
+| Access mode | Meaning |
+|---|---|
+| **ReadWriteOnce (RWO)** | Mounted read-write by a single *node* (most block storage, e.g. EBS) |
+| **ReadOnlyMany (ROX)** | Read-only by many nodes |
+| **ReadWriteMany (RWX)** | Read-write by many nodes (NFS, CephFS) |
+| **ReadWriteOncePod** | Read-write by exactly one *Pod* (strict) |
+
+> [!WARNING]
+> Most cloud block volumes are **RWO** — they cannot be mounted by Pods on different nodes simultaneously. If you need shared read-write, you need an RWX backend (NFS/EFS/CephFS). This trips people scaling a Deployment that writes to a single PVC.
+
+## StatefulSet vs Deployment
+
+A **Deployment** treats Pods as interchangeable, anonymous cattle. A **StatefulSet** gives each Pod a **stable identity**: stable name (\`pg-0\`, \`pg-1\`), stable DNS, and its **own** PersistentVolume that follows it across reschedules — essential for databases, Kafka, ZooKeeper, etc.
+
+| | **Deployment** | **StatefulSet** |
+|---|---|---|
+| Pod identity | Random suffix, interchangeable | Stable ordinal: \`name-0\`, \`name-1\` |
+| Network identity | Shared Service | Stable per-Pod DNS via a **headless Service** |
+| Storage | Usually shared/none | Per-Pod PVC via \`volumeClaimTemplates\` |
+| Scaling/updates | All at once-ish | **Ordered** (0,1,2 up; reverse down) |
+| Use for | Stateless apps, web/API | Databases, queues, anything with stable identity/data |
+
+\`\`\`mermaid
+graph TB
+  HS["Headless Service: pg"] --- P0["pg-0<br/>(pvc: data-pg-0)"]
+  HS --- P1["pg-1<br/>(pvc: data-pg-1)"]
+  HS --- P2["pg-2<br/>(pvc: data-pg-2)"]
+\`\`\`
+
+> [!DANGER]
+> Deleting a StatefulSet does **not** delete its PVCs by default (data safety). You must delete the PVCs manually to release storage — easy to leak orphaned volumes (and cloud cost).
+
+> [!SUCCESS]
+> Probe: *"Why not run a database as a Deployment?"* → Deployment Pods are interchangeable and may share or lose their volume; a DB needs **stable identity + stable per-replica storage + ordered bootstrap** (so replica-0 initializes before replicas join). StatefulSet provides exactly that.
+
+> [!EU]
+> For data residency, bind PVs to a StorageClass/zone in the required region and ensure volume snapshots/backups stay in-region — persistent volumes hold the actual customer data.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `StorageClass + PVC + Pod mount (dynamic provisioning)`,
+                code: `apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast
+provisioner: ebs.csi.aws.com         # CSI driver does the provisioning
+parameters:
+  type: gp3
+reclaimPolicy: Delete                 # delete the disk when PVC is deleted
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer  # bind once a Pod is scheduled (zone-aware)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: orders-data
+  namespace: team-orders
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: fast
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: orders, namespace: team-orders }
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/acme/orders:1.4
+      volumeMounts:
+        - name: data
+          mountPath: /var/lib/app
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: orders-data`,
+                runnable: false
+              },
+              {
+                lang: `yaml`,
+                title: `StatefulSet for PostgreSQL (stable identity + per-pod PVC)`,
+                code: `apiVersion: v1
+kind: Service                          # headless service for stable DNS
+metadata:
+  name: pg
+  namespace: team-orders
+spec:
+  clusterIP: None
+  selector: { app: pg }
+  ports: [{ port: 5432 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pg
+  namespace: team-orders
+spec:
+  serviceName: pg                      # ties to the headless Service above
+  replicas: 3
+  selector: { matchLabels: { app: pg } }
+  template:
+    metadata: { labels: { app: pg } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports: [{ containerPort: 5432 }]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:                # one PVC per pod: data-pg-0, data-pg-1...
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: fast
+        resources: { requests: { storage: 20Gi } }`,
+                runnable: false
+              },
+              {
+                lang: `bash`,
+                title: `Storage operations & inspection`,
+                code: `# PVs (cluster-scoped) and PVCs (namespaced)
+kubectl get pv
+kubectl get pvc -n team-orders
+
+# Why is a PVC stuck Pending? (often: no StorageClass / no matching PV / zone)
+kubectl describe pvc orders-data -n team-orders
+
+# Stable per-pod identity of a StatefulSet
+kubectl get pods -n team-orders -l app=pg   # pg-0, pg-1, pg-2 (ordered)
+
+# Storage classes available
+kubectl get storageclass
+
+# WARNING: deleting a StatefulSet leaves PVCs behind — clean up manually
+kubectl delete statefulset pg -n team-orders
+kubectl get pvc -n team-orders               # still there!
+kubectl delete pvc -l app=pg -n team-orders  # release the storage`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is a container’s filesystem not enough for stateful data?`,
+                a: `It is ephemeral — it dies with the container. Data that must survive restarts/reschedules needs a Volume backed by a PersistentVolume.`
+              },
+              {
+                q: `PV vs PVC vs StorageClass?`,
+                a: `PV = actual cluster storage (supply, cluster-scoped). PVC = a workload’s request for storage (demand, namespaced). StorageClass = template enabling dynamic provisioning of PVs to satisfy PVCs.`
+              },
+              {
+                q: `What is dynamic provisioning?`,
+                a: `When a PVC references a StorageClass, the class’s provisioner (CSI driver) automatically creates a matching PV (e.g., a cloud disk) on demand — no pre-provisioned PV needed.`
+              },
+              {
+                q: `What does the PV reclaimPolicy control?`,
+                a: `What happens to the underlying storage when its PVC is deleted: Delete destroys the disk; Retain keeps it (Released) for manual recovery.`
+              },
+              {
+                q: `Explain RWO vs RWX access modes.`,
+                a: `ReadWriteOnce = read-write by a single node (typical for cloud block storage). ReadWriteMany = read-write by many nodes simultaneously (needs NFS/EFS/CephFS).`
+              },
+              {
+                q: `Why can scaling a Deployment that writes to one RWO PVC fail?`,
+                a: `RWO volumes mount read-write on only one node. Replicas scheduled on other nodes can’t attach the same volume, so Pods get stuck. Use RWX storage or per-Pod PVCs (StatefulSet).`
+              },
+              {
+                q: `Deployment vs StatefulSet — core difference?`,
+                a: `Deployment Pods are interchangeable with random names and shared/no storage. StatefulSet gives stable ordinal identity (name-0,1,2), stable DNS via a headless Service, per-Pod PVCs, and ordered operations.`
+              },
+              {
+                q: `Why run a database as a StatefulSet, not a Deployment?`,
+                a: `It needs stable identity, stable per-replica persistent storage that follows the Pod, and ordered startup (so the primary initializes before replicas join) — exactly what a StatefulSet provides.`
+              },
+              {
+                q: `What does volumeClaimTemplates do in a StatefulSet?`,
+                a: `It creates a dedicated PVC per Pod (data-<name>-0, -1, ...) so each replica gets its own persistent volume that stays bound to it across reschedules.`
+              },
+              {
+                q: `What happens to PVCs when you delete a StatefulSet?`,
+                a: `By default they are retained (data safety) — you must delete them manually, or you leak orphaned volumes and cloud cost.`
+              },
+              {
+                q: `Why is a headless Service used with a StatefulSet?`,
+                a: `It provides stable per-Pod DNS (pod-0.svc.namespace...) so peers can address each replica individually for clustering/replication.`
+              },
+              {
+                q: `What does volumeBindingMode: WaitForFirstConsumer achieve?`,
+                a: `It delays PV binding until a Pod using the PVC is scheduled, so the volume is provisioned in the same zone as the Pod — avoiding cross-zone attach failures.`
+              }
+            ]
+          },
+          {
+            title: `Operations, RBAC & Troubleshooting`,
+            notes: `## kubectl: the Operator's Toolkit
+
+\`kubectl\` is the universal client. Master a small set of verbs and you can operate any cluster.
+
+| Command | Use |
+|---|---|
+| \`apply -f\` | Declaratively create/update from YAML (the GitOps verb) |
+| \`get\` / \`get -o wide\` / \`-o yaml\` | List/inspect objects |
+| \`describe\` | Human-readable detail + **Events** (where most answers hide) |
+| \`logs\` (\`-f\`, \`--previous\`, \`-c\`) | Container logs; \`--previous\` for a crashed container |
+| \`exec -it ... -- sh\` | Shell into a running container |
+| \`rollout status/undo/restart\` | Manage Deployments |
+| \`port-forward\` | Tunnel a Service/Pod to localhost for debugging |
+| \`top\` | Live CPU/mem (needs metrics-server) |
+| \`events --sort-by=.lastTimestamp\` | Cluster events timeline |
+
+## RBAC: who can do what
+
+RBAC has four object types that compose into "**subject** can do **verbs** on **resources** in a **scope**":
+
+- **Role** — verbs on resources, **within one namespace**.
+- **ClusterRole** — same, but cluster-wide (or for cluster-scoped resources like nodes/PVs).
+- **RoleBinding** — grants a Role (or ClusterRole) to subjects **in a namespace**.
+- **ClusterRoleBinding** — grants a ClusterRole cluster-wide.
+
+Subjects are **Users**, **Groups** (from the auth layer), or **ServiceAccounts** (identities for *Pods*).
+
+\`\`\`mermaid
+graph LR
+  SA["ServiceAccount<br/>(pod identity)"] --> RB["RoleBinding"]
+  USER["User / Group"] --> RB
+  RB --> ROLE["Role<br/>(verbs on resources)"]
+  ROLE --> RES["Pods, Secrets, ... in namespace"]
+\`\`\`
+
+> [!TIP]
+> Every Pod runs as a **ServiceAccount** (the namespace \`default\` SA if unset) and gets a mounted token. To let a Pod call the K8s API (operators, controllers) or assume a cloud role (IRSA on EKS, Workload Identity on GKE), bind a dedicated ServiceAccount to a Role with least privilege.
+
+> [!DANGER]
+> Never bind \`cluster-admin\` to application ServiceAccounts. A compromised Pod then owns the cluster. Grant the **minimum** verbs/resources, scoped to one namespace. Audit with \`kubectl auth can-i\`.
+
+## Debugging a CrashLoopBackOff (the #1 interview scenario)
+
+\`CrashLoopBackOff\` means the container keeps starting and exiting; the kubelet backs off (10s, 20s, 40s...) between restarts. Method:
+
+\`\`\`mermaid
+graph TB
+  A["Pod in CrashLoopBackOff"] --> B["kubectl describe pod<br/>(Events + Last State + exit code)"]
+  B --> C{"exit code?"}
+  C -->|137 / OOMKilled| MEM["raise memory limit / fix leak"]
+  C -->|1 / app error| LOG["kubectl logs --previous<br/>(app stack trace)"]
+  C -->|liveness failing| PROBE["fix/relax probe; add startupProbe"]
+  B --> D{"image pull error?"}
+  D -->|ImagePullBackOff| IMG["bad tag / missing imagePullSecret"]
+  B --> E{"config missing?"}
+  E -->|CreateContainerConfigError| CFG["missing ConfigMap/Secret key"]
+\`\`\`
+
+### Common interview troubleshooting scenarios
+
+| Symptom | Likely cause | First check |
+|---|---|---|
+| \`ImagePullBackOff\` | Wrong tag, private registry without secret | \`describe pod\` events; \`imagePullSecrets\` |
+| \`CrashLoopBackOff\`, exit 1 | App throws on startup (bad config/DB down) | \`logs --previous\` |
+| \`OOMKilled\` (exit 137) | Memory limit too low / leak | \`describe\` Last State; \`top pods\` |
+| Pod \`Pending\` | No node fits requests, taint, unbound PVC | \`describe pod\` events |
+| Pod Running but no traffic | Readiness failing → not in endpoints | \`describe\` readiness; \`get endpointslices\` |
+| Service returns nothing | Selector doesn't match Pod labels | \`describe svc\` (Endpoints empty?) |
+| \`CreateContainerConfigError\` | Referenced ConfigMap/Secret/key missing | \`describe pod\` events |
+| DNS fails | CoreDNS down / wrong FQDN | resolve from a debug Pod |
+
+> [!SUCCESS]
+> Probe: *"Pod is Pending — walk me through it."* → \`kubectl describe pod\` and read **Events**: \`Insufficient cpu/memory\` (requests too big / cluster full → scale nodes), \`untolerated taint\` (add toleration), \`pod has unbound immediate PersistentVolumeClaims\` (storage issue), or \`didn't match node affinity\`.
+
+> [!SUCCESS]
+> Probe: *"Service has no endpoints."* → 99% of the time the Service \`selector\` doesn't match the Pod \`labels\`, or the Pods aren't **Ready**. \`kubectl describe svc\` shows an empty Endpoints list — the smoking gun.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `kubectl essentials`,
+                code: `# Apply / diff (declarative)
+kubectl apply -f ./k8s/
+kubectl diff -f ./k8s/                       # preview changes before applying
+
+# Inspect — describe is where Events live
+kubectl get pods -n team-orders -o wide
+kubectl describe pod orders-xyz -n team-orders
+
+# Logs
+kubectl logs -f deploy/orders -n team-orders          # follow a deployment's pods
+kubectl logs orders-xyz -c app --previous -n team-orders   # crashed container
+
+# Exec into a container
+kubectl exec -it orders-xyz -n team-orders -- sh
+
+# Debug a distroless pod with an ephemeral container (no shell in image)
+kubectl debug -it orders-xyz --image=busybox --target=app -n team-orders
+
+# Rollouts
+kubectl rollout status deploy/orders -n team-orders
+kubectl rollout undo deploy/orders -n team-orders
+kubectl rollout restart deploy/orders -n team-orders
+
+# Port-forward to test without an Ingress
+kubectl port-forward svc/orders 8080:80 -n team-orders
+
+# Events timeline (great for Pending/scheduling issues)
+kubectl events --sort-by=.lastTimestamp -n team-orders`,
+                runnable: false
+              },
+              {
+                lang: `yaml`,
+                title: `ServiceAccount + Role + RoleBinding (least privilege)`,
+                code: `# A dedicated identity for a Pod that only needs to read pods/configmaps
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orders-reader
+  namespace: team-orders
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-config-reader
+  namespace: team-orders
+rules:
+  - apiGroups: [""]                 # core API group
+    resources: ["pods", "configmaps"]
+    verbs: ["get", "list", "watch"] # read-only, least privilege
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: orders-reader-binding
+  namespace: team-orders
+subjects:
+  - kind: ServiceAccount
+    name: orders-reader
+    namespace: team-orders
+roleRef:
+  kind: Role
+  name: pod-config-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# Attach the SA to the workload
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: orders, namespace: team-orders }
+spec:
+  selector: { matchLabels: { app: orders } }
+  template:
+    metadata: { labels: { app: orders } }
+    spec:
+      serviceAccountName: orders-reader     # <-- pod runs as this identity
+      automountServiceAccountToken: true
+      containers:
+        - name: app
+          image: ghcr.io/acme/orders:1.4`,
+                runnable: false
+              },
+              {
+                lang: `bash`,
+                title: `RBAC verification & troubleshooting`,
+                code: `# Can THIS subject do THIS verb? (impersonate to test)
+kubectl auth can-i get secrets -n team-orders
+kubectl auth can-i list pods -n team-orders \\
+  --as=system:serviceaccount:team-orders:orders-reader
+
+# What can a ServiceAccount do? (needs a plugin or describe rolebindings)
+kubectl get rolebindings,clusterrolebindings -A \\
+  -o wide | grep orders-reader
+
+# Triage a crashlooping pod end to end
+kubectl get pods -n team-orders                       # see STATUS / RESTARTS
+kubectl describe pod orders-xyz -n team-orders        # Events + Last State + exit code
+kubectl logs orders-xyz -n team-orders --previous     # app error from the crash
+
+# Triage a service with no endpoints
+kubectl describe svc orders -n team-orders            # Endpoints: <none> ?
+kubectl get pods -n team-orders --show-labels         # do labels match the selector?`,
+                runnable: false
+              }
+            ],
+            flashcards: [
+              {
+                q: `Where do you look first when a Pod misbehaves?`,
+                a: `kubectl describe pod — its Events section and the container Last State / exit code reveal scheduling failures, OOMKills, probe failures, and config errors. Then kubectl logs --previous for app errors.`
+              },
+              {
+                q: `Role vs ClusterRole?`,
+                a: `A Role grants permissions within a single namespace. A ClusterRole grants them cluster-wide and is required for cluster-scoped resources (nodes, PVs) or to reuse one role across namespaces.`
+              },
+              {
+                q: `RoleBinding vs ClusterRoleBinding?`,
+                a: `A RoleBinding grants a Role (or ClusterRole) to subjects within one namespace. A ClusterRoleBinding grants a ClusterRole across the entire cluster.`
+              },
+              {
+                q: `What is a ServiceAccount?`,
+                a: `An identity for Pods (vs Users/Groups for humans). Every Pod runs as one (default if unset) and gets a mounted token used to authenticate to the API server or assume cloud roles.`
+              },
+              {
+                q: `Why is binding cluster-admin to an app ServiceAccount dangerous?`,
+                a: `A compromised Pod would then control the whole cluster. RBAC should grant least privilege: minimal verbs/resources scoped to one namespace.`
+              },
+              {
+                q: `What does CrashLoopBackOff mean?`,
+                a: `A container repeatedly starts and exits; the kubelet applies an exponential back-off (10s→20s→40s...) before each restart. Investigate with describe (exit code) + logs --previous.`
+              },
+              {
+                q: `ImagePullBackOff — what causes it and how to check?`,
+                a: `The image can’t be pulled: wrong tag/name, or a private registry without an imagePullSecret. Check the Pod Events in kubectl describe pod.`
+              },
+              {
+                q: `A Pod is stuck Pending — what are the usual causes?`,
+                a: `No node satisfies its resource requests, an untolerated taint, unbound PVC, or unmatched node affinity/selector. The describe-pod Events name the exact reason.`
+              },
+              {
+                q: `A Service returns nothing — most likely cause?`,
+                a: `The Service selector doesn’t match the Pod labels, or the Pods aren’t Ready, so the endpoint list is empty. kubectl describe svc shows Endpoints: <none>.`
+              },
+              {
+                q: `How do you test what permissions a subject has?`,
+                a: `kubectl auth can-i <verb> <resource> [--as=system:serviceaccount:ns:name]. It evaluates RBAC for that subject without needing their credentials.`
+              },
+              {
+                q: `How do you debug a distroless container with no shell?`,
+                a: `kubectl debug -it <pod> --image=busybox --target=<container> attaches an ephemeral debug container sharing the target’s namespaces.`
+              },
+              {
+                q: `What causes CreateContainerConfigError?`,
+                a: `A referenced ConfigMap/Secret or a specific key in it is missing, so the kubelet can’t build the container’s env/volumes. The describe-pod Events name the missing object/key.`
+              },
+              {
+                q: `How do you reach a ClusterIP Service from your laptop without an Ingress?`,
+                a: `kubectl port-forward svc/<name> <local>:<svcPort> -n <ns> opens a local tunnel to the Service/Pod for debugging.`
               }
             ]
           }
@@ -31469,191 +34060,1337 @@ spec:
       {
         id: `7.3`,
         title: `Helm: Zero to Advanced`,
-        hours: 3,
+        hours: 5,
         sections: [
           {
-            title: `Helm — Kubernetes Package Manager`,
-            notes: `## Helm — Kubernetes Package Manager
+            title: `Why Helm: The Problem with Raw Manifests`,
+            notes: `## Why Helm Exists
 
-### What is Helm?
+Raw \`kubectl apply -f\` works fine for a demo. It collapses the moment you run **the same service across dev/staging/prod**, or ship a chart that *other teams* install. Helm is the answer to three problems that plain manifests cannot solve cleanly: **duplication**, **per-environment configuration**, and **lifecycle/release management**.
 
-\`\`\`
-Problem: deploying to 3 environments (dev/staging/prod) requires 3 copies of every YAML.
-Change the image tag → update 3 files. Change a label → 3 files. Error-prone.
+### Problem 1 — Duplication
 
-Helm is the package manager for Kubernetes:
-  Chart     = package (like npm package) — collection of YAML templates
-  Release   = a deployed instance of a chart (like npm install)
-  Values    = configuration that templates are rendered with (like .env per environment)
-
-helm install my-app ./mychart -f values-prod.yaml
-helm upgrade my-app ./mychart -f values-prod.yaml --set image.tag=1.5.3
-helm rollback my-app 1
-helm uninstall my-app
-\`\`\`
-
-### Chart Structure
+A typical Spring Boot service is a Deployment + Service + Ingress + ConfigMap + HPA + ServiceAccount. That is ~6 YAML files. Now multiply by 3 environments:
 
 \`\`\`
-mychart/
-  Chart.yaml              # chart metadata: name, version, description
-  values.yaml             # default values (overridden per environment)
-  charts/                 # dependency charts (subcharts)
-  templates/
-    deployment.yaml       # templated Kubernetes resources
-    service.yaml
-    ingress.yaml
-    configmap.yaml
-    _helpers.tpl          # named templates / shared macros
-    NOTES.txt             # post-install instructions
+k8s/
+  dev/      deployment.yaml service.yaml ingress.yaml configmap.yaml hpa.yaml ...
+  staging/  deployment.yaml service.yaml ingress.yaml configmap.yaml hpa.yaml ...
+  prod/     deployment.yaml service.yaml ingress.yaml configmap.yaml hpa.yaml ...
 \`\`\`
 
-### templates/deployment.yaml
+The files differ by a handful of values — image tag, replica count, resource limits, ingress host — but you copy/paste **the entire manifest** 3 times. Change a label selector and you must edit it in 18 places. This is exactly the duplication a package manager removes: one **template**, many **value sets**.
 
-\`\`\`yaml
-apiVersion: apps/v1
+> [!WARNING]
+> Tools like \`kubectl apply -k\` (Kustomize) attack the same duplication problem with *patches/overlays* instead of *templates*. Helm wins when you need a **distributable, versioned package with a release lifecycle**; Kustomize wins when you just want overlays with no templating language. Senior interviews love the "Helm vs Kustomize" trade-off — answer it on those axes.
+
+### Problem 2 — Per-Environment Configuration
+
+You want \`replicas: 2\` in dev and \`replicas: 8\` in prod, a 256Mi heap in dev and 4Gi in prod, \`debug\` logging in dev and \`warn\` in prod. With raw YAML those differences are scattered across files. Helm pulls every knob into **\`values.yaml\`** and lets you override per environment with \`-f values-prod.yaml\`. One template, parameterised.
+
+### Problem 3 — Releases & Lifecycle
+
+\`kubectl apply\` has no concept of a **release**. There is no "what did we deploy last Tuesday", no atomic "roll the whole app back one version". Helm tracks every install/upgrade as a numbered **revision** and stores it in the cluster, so \`helm rollback my-app 7\` restores the exact rendered manifests of revision 7.
+
+## Helm Vocabulary: Chart vs Release vs Repository
+
+These three nouns appear in every Helm interview. Keep them crisp:
+
+| Term | Analogy (npm) | Definition |
+|------|---------------|------------|
+| **Chart** | the package (\`lodash\`) | A versioned bundle of templates + default values + metadata. The *thing you install*. |
+| **Release** | \`npm install\` in a project | A specific *installation* of a chart into a namespace, with a name and a value set. The same chart can be installed many times (e.g. \`payments-eu\`, \`payments-us\`). |
+| **Repository** | the npm registry | An HTTP (or OCI) server hosting packaged \`.tgz\` charts + an \`index.yaml\`. Where charts are published and pulled from. |
+| **Values** | \`package.json\` config / env | The configuration rendered into templates to produce final manifests. |
+| **Revision** | a git commit | A numbered snapshot of a release. Each \`upgrade\` bumps the revision; \`rollback\` targets one. |
+
+> [!TIP]
+> The single sharpest distinction: **a chart is a template/definition; a release is a running, named, versioned instance of that chart in a cluster.** One chart → many releases. One release → many revisions.
+
+## How Helm Renders & Applies
+
+\`\`\`mermaid
+flowchart LR
+  A["Chart<br/>templates/ + values.yaml"] -->|"helm install/upgrade<br/>(client renders)"| B["Rendered<br/>Manifests"]
+  C["-f values-prod.yaml<br/>--set image.tag=1.5.3"] --> B
+  B -->|"kube-apiserver"| D["Kubernetes<br/>Objects"]
+  B -->|"stored as"| E["Release Secret<br/>sh.helm.release.v1.*"]
+  E -.->|"helm rollback"| B
+  D --> F["Pods / Services /<br/>Ingress in namespace"]
+\`\`\`
+
+## Helm 3 Architecture: No Tiller
+
+Helm 2 shipped a cluster-side component called **Tiller** — a pod with broad RBAC that received rendered manifests over gRPC and applied them. It was a notorious **security liability**: anyone who could reach Tiller could deploy anything, and it muddied the Kubernetes RBAC model because actions ran as Tiller's identity, not the user's.
+
+**Helm 3 removed Tiller entirely.** The \`helm\` binary is now a pure client that:
+1. Renders templates **locally**.
+2. Talks to the **kube-apiserver directly** using *your* kubeconfig and *your* RBAC.
+3. Stores release state as a **Secret** (\`sh.helm.release.v1.<release>.v<rev>\`, gzip+base64) **in the release's namespace** — not in a single global Tiller store.
+
+| Aspect | Helm 2 | Helm 3 |
+|--------|--------|--------|
+| Cluster component | Tiller pod (gRPC) | **None** — client-only |
+| Security model | Tiller's service account | **Caller's kubeconfig + RBAC** |
+| Release storage | ConfigMaps in tiller namespace | **Secrets** in the release namespace |
+| Release scope | Global (cluster-wide names) | **Namespace-scoped** names |
+| CRD handling | implicit | \`crds/\` dir, installed once, never templated |
+| \`helm install\` name | auto-generated by default | **name required** (or \`--generate-name\`) |
+| Library charts | no | **yes** (\`type: library\`) |
+| OCI registries | no | **yes** (charts as OCI artifacts) |
+
+> [!DANGER]
+> If a job posting or codebase still mentions **Tiller**, \`helm init\`, or \`helm reset\`, it is Helm 2 (EOL since 2020). Migrating means the \`helm-2to3\` plugin: convert config, convert releases (ConfigMaps→Secrets), then clean up Tiller. Never run new workloads on Helm 2.
+
+> [!SUCCESS]
+> Mental model to walk into the interview with: **Helm = templating engine + values + a release database living in the cluster.** Helm 3 made it safe by deleting the server and deferring entirely to Kubernetes RBAC.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `The duplication problem Helm solves (before/after)`,
+                code: `# BEFORE Helm: copy-paste manifests per environment
+kubectl apply -f k8s/dev/      # 6 files
+kubectl apply -f k8s/staging/  # 6 near-identical files
+kubectl apply -f k8s/prod/     # 6 near-identical files
+# Change one label selector => edit 18 files.
+
+# AFTER Helm: one chart, many value sets
+helm install payments ./payments  -f values-dev.yaml
+helm install payments ./payments  -f values-staging.yaml -n staging
+helm install payments ./payments  -f values-prod.yaml    -n prod
+# Change a label once in templates/, re-render everywhere.`,
+                runnable: false,
+                note: `One template + N value files replaces N copies of every manifest.`
+              },
+              {
+                lang: `bash`,
+                title: `Chart vs Release vs Repository in practice`,
+                code: `# REPOSITORY: where charts live
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+helm search repo bitnami/postgresql      # find a CHART in a repo
+
+# CHART: the package (pull it locally to inspect)
+helm pull bitnami/postgresql --untar      # downloads postgresql-x.y.z.tgz, unpacks
+
+# RELEASE: a named installation of that chart
+helm install pg-orders bitnami/postgresql -n orders     # release "pg-orders"
+helm install pg-billing bitnami/postgresql -n billing   # SAME chart, different RELEASE
+
+helm list -A                  # every release across namespaces
+helm status pg-orders -n orders`,
+                runnable: false,
+                note: `One chart (postgresql) installed twice => two independent releases.`
+              },
+              {
+                lang: `bash`,
+                title: `Helm 3 stores release state as a Secret (no Tiller)`,
+                code: `# Each revision of a release is a Secret in the release's namespace
+kubectl get secret -n orders -l owner=helm
+# NAME                              TYPE                 DATA
+# sh.helm.release.v1.pg-orders.v1   helm.sh/release.v1   1
+# sh.helm.release.v1.pg-orders.v2   helm.sh/release.v1   1   <- after one upgrade
+
+# The Secret holds the gzip+base64 rendered manifests + values + chart metadata.
+# This is how 'helm rollback pg-orders 1' can reconstruct revision 1 exactly.
+
+# Helm 3 uses YOUR kubeconfig/RBAC -- no privileged server-side pod.
+kubectl config current-context
+helm version --short   # v3.x => no Tiller anywhere in the cluster`,
+                runnable: false,
+                note: `Release history is just Secrets; rollback replays a stored revision.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What three problems with raw Kubernetes manifests does Helm solve?`,
+                a: `(1) Duplication — copy/pasting full manifests per environment; (2) Per-environment configuration — scattered env-specific values; (3) Release lifecycle — no concept of a versioned, rollback-able deployment unit. Helm gives one template + value sets + a release database in the cluster.`
+              },
+              {
+                q: `Precisely distinguish a Helm chart, a release, and a repository.`,
+                a: `Chart = a versioned bundle of templates + default values (the package/definition). Release = a specific named installation of a chart into a namespace with a value set (one chart → many releases). Repository = an HTTP or OCI server hosting packaged .tgz charts plus an index.yaml.`
+              },
+              {
+                q: `What is a Helm revision and how does it relate to a release?`,
+                a: `A revision is a numbered snapshot of a release. Each install is revision 1; every successful upgrade increments the revision. Helm stores each revision so \`helm rollback <release> <rev>\` can restore that exact rendered state. Like git commits for a release.`
+              },
+              {
+                q: `What was Tiller and why was it removed in Helm 3?`,
+                a: `Tiller was Helm 2's cluster-side pod that received rendered manifests over gRPC and applied them using its own broad service account. It was a security hole (anyone reaching it could deploy anything) and bypassed user RBAC. Helm 3 removed it — the client renders locally and applies directly with the caller's kubeconfig/RBAC.`
+              },
+              {
+                q: `Where does Helm 3 store release state, and in what format?`,
+                a: `As a Secret named \`sh.helm.release.v1.<release>.v<revision>\` in the release's own namespace. The payload is the gzip+base64-encoded rendered manifests, supplied values, and chart metadata. (Helm 2 used ConfigMaps in the Tiller namespace.)`
+              },
+              {
+                q: `Helm vs Kustomize — when do you choose each?`,
+                a: `Helm = templating language + values + versioned, distributable package with a release lifecycle (install/upgrade/rollback). Kustomize = patch/overlay model, no templating language, built into kubectl. Choose Helm for packaged, parameterised, shippable apps; Kustomize for simple per-env overlays of your own manifests.`
+              },
+              {
+                q: `In Helm 3, what RBAC identity performs the install, and why does it matter?`,
+                a: `The caller's own kubeconfig identity — Helm uses standard Kubernetes RBAC. There is no privileged intermediary, so a user can only deploy what their RBAC already permits. This is the core security improvement over Helm 2's Tiller.`
+              },
+              {
+                q: `Can the same chart be installed more than once in a cluster? Give an example.`,
+                a: `Yes. Each install is a distinct release with its own name/namespace/values. e.g. one PostgreSQL chart installed as release \`pg-orders\` in namespace orders and \`pg-billing\` in namespace billing — independent revisions, independent rollbacks.`
+              },
+              {
+                q: `Why is \`helm install <name> <chart>\` requiring a name a notable Helm 3 change?`,
+                a: `Helm 2 auto-generated release names by default, which led to surprise names in CI. Helm 3 requires an explicit name (or \`--generate-name\`), making releases deterministic and scriptable.`
+              },
+              {
+                q: `Does Helm 3 talk to the cluster differently per command, or render server-side?`,
+                a: `Rendering is entirely client-side: the helm binary expands templates locally into final manifests, then sends those to the kube-apiserver. Nothing renders in the cluster — which is why you can \`helm template\` offline to see exactly what will be applied.`
+              }
+            ]
+          },
+          {
+            title: `Chart Anatomy: A Complete Spring Boot Chart`,
+            notes: `## The Chart Directory Layout
+
+A chart is just a directory with a fixed structure. Helm treats specific names specially — get them right and everything else is conventional.
+
+\`\`\`
+payments/
+├── Chart.yaml          # REQUIRED: chart metadata (name, version, appVersion, deps)
+├── values.yaml         # default configuration values
+├── values.schema.json  # OPTIONAL: JSON Schema to validate values
+├── charts/             # subcharts (dependencies) live here, vendored as .tgz
+├── crds/               # CRDs installed BEFORE templates, only on install, never templated
+├── templates/
+│   ├── deployment.yaml     # templated K8s resources
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   ├── configmap.yaml
+│   ├── serviceaccount.yaml
+│   ├── hpa.yaml
+│   ├── _helpers.tpl        # named templates (files starting "_" are NOT rendered as manifests)
+│   ├── NOTES.txt           # printed after install/upgrade
+│   └── tests/
+│       └── test-connection.yaml   # 'helm test' pods
+├── .helmignore         # like .gitignore — excludes files from the packaged chart
+└── README.md
+\`\`\`
+
+> [!TIP]
+> Files in \`templates/\` starting with an underscore (\`_helpers.tpl\`) or named \`NOTES.txt\` are **never emitted as Kubernetes objects**. Everything else in \`templates/\` is rendered and applied. \`crds/\` is special: raw YAML (no templating), installed once, **never upgraded or deleted** by Helm.
+
+## Chart.yaml — The Metadata
+
+\`Chart.yaml\` is the chart's identity card. Two version fields trip people up:
+
+- **\`version\`** — the *chart's* SemVer. Bump it whenever the templates change. This is what the repo indexes and what \`helm pull\` resolves.
+- **\`appVersion\`** — the version of the *application* the chart deploys (e.g. your Spring Boot service's image tag). Informational; does not need to be SemVer.
+
+\`type:\` is \`application\` (installable) or \`library\` (helpers only, not installable). \`dependencies:\` declares subcharts.
+
+> [!WARNING]
+> Bumping \`appVersion\` does **not** change what gets deployed unless your templates actually reference it (e.g. \`tag: {{ .Chart.AppVersion }}\`). It's metadata, not behaviour. A common bug: editing \`appVersion\` and expecting a new image to roll out while \`values.yaml\` still pins an old \`image.tag\`.
+
+## values.yaml — Defaults & Conventions
+
+\`values.yaml\` holds **defaults**. Convention (followed by \`helm create\` and most public charts):
+
+- Group by resource concern: \`image.*\`, \`service.*\`, \`ingress.*\`, \`resources.*\`, \`autoscaling.*\`.
+- Use \`enabled:\` booleans to toggle optional objects (\`ingress.enabled\`, \`autoscaling.enabled\`).
+- Keep types stable — if \`replicaCount\` is an int in defaults, never let an override make it a string.
+
+## The Render Pipeline
+
+\`\`\`mermaid
+flowchart TD
+  V["values.yaml<br/>(defaults)"] --> M["Merged Values<br/>(deep merge)"]
+  O["-f values-prod.yaml"] --> M
+  S["--set image.tag=1.6.0"] --> M
+  M --> R["Go template engine<br/>renders templates/*.yaml"]
+  H["_helpers.tpl<br/>named templates"] --> R
+  R --> Y["Final K8s manifests"]
+  Y --> K["kube-apiserver apply"]
+\`\`\`
+
+> [!SUCCESS]
+> Run \`helm template payments ./payments -f values-prod.yaml\` or \`helm install --dry-run --debug\` to print the **fully rendered manifests** without touching the cluster. This is your single most useful debugging command — most "why didn't my value take effect" questions are answered by reading the rendered output.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Chart.yaml — a Spring Boot service chart`,
+                code: `apiVersion: v2
+name: payments
+description: Payments Spring Boot service
+type: application
+
+# Chart version (SemVer) -- bump when templates change
+version: 1.4.2
+# Version of the app this chart deploys (your Docker image tag)
+appVersion: "2.8.1"
+
+keywords: [payments, spring-boot, java]
+home: https://git.example.com/platform/payments
+maintainers:
+  - name: Platform Team
+    email: platform@example.com
+
+dependencies:
+  - name: postgresql
+    version: "15.5.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: common
+    version: "2.x.x"
+    repository: oci://registry.example.com/charts`,
+                runnable: false,
+                note: `apiVersion v2 = Helm 3 chart format. version != appVersion.`
+              },
+              {
+                lang: `yaml`,
+                title: `values.yaml — defaults for the payments service`,
+                code: `replicaCount: 2
+
+image:
+  repository: registry.example.com/payments
+  tag: ""              # defaults to .Chart.AppVersion if empty (see deployment.yaml)
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: payments.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests: { cpu: 250m, memory: 512Mi }
+  limits:   { cpu: "1",  memory: 1Gi }
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+
+# Application config rendered into a ConfigMap
+config:
+  SPRING_PROFILES_ACTIVE: prod
+  LOG_LEVEL: warn
+  JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
+
+probes:
+  readinessPath: /actuator/health/readiness
+  livenessPath:  /actuator/health/liveness
+
+postgresql:
+  enabled: false`,
+                runnable: false,
+                note: `enabled: toggles, grouped keys, empty tag => fall back to appVersion.`
+              },
+              {
+                lang: `yaml`,
+                title: `templates/deployment.yaml — fully templated`,
+                code: `apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "mychart.fullname" . }}          # from _helpers.tpl
-  namespace: {{ .Values.namespace }}
+  name: {{ include "payments.fullname" . }}
   labels:
-    {{- include "mychart.labels" . | nindent 4 }}   # indent 4 spaces
+    {{- include "payments.labels" . | nindent 4 }}
 spec:
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
-      {{- include "mychart.selectorLabels" . | nindent 6 }}
+      {{- include "payments.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # Roll pods when the ConfigMap content changes
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
       labels:
-        {{- include "mychart.selectorLabels" . | nindent 8 }}
+        {{- include "payments.selectorLabels" . | nindent 8 }}
     spec:
+      serviceAccountName: {{ include "payments.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: {{ .Values.service.targetPort }}
-          {{- if .Values.resources }}
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "payments.fullname" . }}-config
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readinessPath }}
+              port: http
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.livenessPath }}
+              port: http
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.resources | nindent 12 }}`,
+                runnable: false,
+                note: `include named templates, default to AppVersion, checksum annotation rolls pods on config change.`
+              },
+              {
+                lang: `yaml`,
+                title: `templates/service.yaml, configmap.yaml, ingress.yaml`,
+                code: `# ---------------- service.yaml ----------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "payments.fullname" . }}
+  labels:
+    {{- include "payments.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "payments.selectorLabels" . | nindent 4 }}
+---
+# ---------------- configmap.yaml ----------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "payments.fullname" . }}-config
+  labels:
+    {{- include "payments.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.config }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+---
+# ---------------- ingress.yaml ----------------
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "payments.fullname" . }}
+  labels:
+    {{- include "payments.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "payments.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.port }}
           {{- end }}
+    {{- end }}
+{{- end }}`,
+                runnable: false,
+                note: `ingress wrapped in if .enabled; configmap iterates .Values.config; note $ to reach root scope inside range.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Which files/dirs in a chart get special treatment by Helm?`,
+                a: `\`Chart.yaml\` (required metadata), \`values.yaml\` (defaults), \`charts/\` (vendored subcharts), \`crds/\` (raw CRDs installed once, never templated/upgraded), \`templates/\` (rendered & applied), \`templates/_*.tpl\` and \`NOTES.txt\` (NOT emitted as objects), \`values.schema.json\` (validation), \`.helmignore\` (packaging excludes).`
+              },
+              {
+                q: `Difference between Chart.yaml \`version\` and \`appVersion\`?`,
+                a: `\`version\` is the chart's own SemVer — bump it whenever templates change; it's what repos index and \`helm pull\` resolves. \`appVersion\` is the version of the application being deployed (e.g. your image tag); informational and not required to be SemVer. Changing appVersion alone changes nothing unless a template references it.`
+              },
+              {
+                q: `Why do files in templates/ starting with underscore not produce Kubernetes objects?`,
+                a: `Helm convention: \`_*.tpl\` files (and \`NOTES.txt\`) are treated as partials/helpers, not as renderable manifests. They define named templates used via \`include\`/\`template\` but are skipped when generating objects to apply.`
+              },
+              {
+                q: `How is the \`crds/\` directory different from putting CRDs in templates/?`,
+                a: `\`crds/\` holds raw (non-templated) CRD YAML that Helm installs BEFORE any templates and only on first install — it never upgrades or deletes them. CRDs in \`templates/\` are templated and follow normal lifecycle but risk ordering/race issues. \`crds/\` solves the 'CRD must exist before CR' bootstrap problem.`
+              },
+              {
+                q: `What's the single best command to debug why a value didn't take effect?`,
+                a: `\`helm template <release> <chart> -f values.yaml\` (or \`helm install --dry-run --debug\`). It renders the final manifests client-side without applying, so you can read exactly what Helm produced from your merged values.`
+              },
+              {
+                q: `Why add a \`checksum/config\` annotation on the pod template?`,
+                a: `It's the sha256 of the rendered ConfigMap. When the ConfigMap content changes, the annotation changes, which changes the pod template hash and forces a rolling restart. Without it, editing a ConfigMap doesn't restart pods, so new config isn't picked up.`
+              },
+              {
+                q: `What does \`image.tag | default .Chart.AppVersion\` accomplish?`,
+                a: `If \`values.yaml\` leaves \`image.tag\` empty, the template falls back to the chart's \`appVersion\`. This keeps the deployed image tag in sync with chart metadata by default, while still allowing an explicit override per environment.`
+              },
+              {
+                q: `Why use \`$\` inside a \`range\` block (e.g. \`$.Values.service.port\`)?`,
+                a: `Inside \`range\`/\`with\`, the dot \`.\` is rebound to the current iteration element, so \`.Values\` no longer resolves. \`$\` always refers to the top-level/root context, letting you reach \`.Values\`, \`.Release\`, etc. from inside a loop.`
+              },
+              {
+                q: `What is the convention for optional resources like Ingress or HPA in a chart?`,
+                a: `Gate them on an \`enabled\` boolean in values (\`ingress.enabled\`, \`autoscaling.enabled\`) and wrap the whole template in \`{{- if .Values.x.enabled }} ... {{- end }}\`. The object is only rendered/applied when the flag is true.`
+              },
+              {
+                q: `How do you turn a map in values.yaml into ConfigMap data entries?`,
+                a: `Iterate with \`{{- range $k, $v := .Values.config }}\` and emit \`{{ $k }}: {{ $v | quote }}\`. \`range\` over a map yields key/value pairs; \`quote\` ensures values are valid YAML strings.`
+              },
+              {
+                q: `What is \`values.schema.json\` and when does it run?`,
+                a: `A JSON Schema for the chart's values. Helm validates merged values against it during \`install\`, \`upgrade\`, \`lint\`, and \`template\`, failing fast on wrong types, missing required keys, or out-of-range values — turning silent misconfigurations into clear errors.`
+              }
+            ]
+          },
+          {
+            title: `Templating: Go Templates, Helpers, Pipelines & Whitespace`,
+            notes: `## The Go Template Engine
+
+Helm templates are **Go \`text/template\`** plus the **Sprig** function library plus a handful of Helm-specific functions (\`include\`, \`tpl\`, \`required\`, \`lookup\`, \`toYaml\`). Everything between \`{{ ... }}\` is an action evaluated against a **context** — the dot \`.\`.
+
+### The Built-in Objects
+
+| Object | Holds |
+|--------|-------|
+| \`.Values\` | merged values (defaults + \`-f\` + \`--set\`) |
+| \`.Release\` | \`.Name\`, \`.Namespace\`, \`.Revision\`, \`.IsInstall\`, \`.IsUpgrade\` |
+| \`.Chart\` | \`Chart.yaml\` fields — \`.Name\`, \`.Version\`, \`.AppVersion\` |
+| \`.Capabilities\` | cluster info — \`.KubeVersion\`, \`.APIVersions.Has\` |
+| \`.Template\` | \`.Name\` (current file), \`.BasePath\` |
+| \`.Files\` | access non-template files in the chart (\`.Files.Get\`) |
+
+\`\`\`yaml
+metadata:
+  name: {{ .Release.Name }}-{{ .Chart.Name }}     # e.g. payments-prod-payments
+  annotations:
+    revision: "{{ .Release.Revision }}"
+\`\`\`
+
+## Pipelines & Functions
+
+The pipe \`|\` feeds the left value as the **last argument** to the right function — the same Unix pipe mental model.
+
+\`\`\`yaml
+name: {{ .Values.name | default "app" | trunc 63 | trimSuffix "-" | quote }}
+cpu:  {{ .Values.cpu | quote }}
+data: {{ .Values.config | toYaml | nindent 2 }}
+host: {{ .Values.host | required "host is required!" }}
+\`\`\`
+
+Workhorse functions: \`default\`, \`quote\`, \`upper/lower\`, \`trunc\`, \`trimSuffix\`, \`indent\`/\`nindent\`, \`toYaml\`, \`required\`, \`printf\`, \`b64enc\`, \`sha256sum\`, \`tpl\`.
+
+> [!TIP]
+> \`required "msg" .Values.x\` fails the render (with your message) if \`x\` is empty — far better than shipping a half-rendered manifest. Use it for values that have no safe default (DB host, image repo).
+
+## Control Flow: if / range / with
+
+\`\`\`yaml
+# if / else
+{{- if .Values.ingress.enabled }}
+kind: Ingress
+{{- else }}
+# no ingress
+{{- end }}
+
+# range over a list
+{{- range .Values.env }}
+- name: {{ .name }}
+  value: {{ .value | quote }}
+{{- end }}
+
+# range over a map (key, value)
+{{- range $key, $val := .Values.labels }}
+{{ $key }}: {{ $val | quote }}
+{{- end }}
+
+# with: rebind the scope to reduce repetition
+{{- with .Values.resources }}
+resources:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+\`\`\`
+
+> [!WARNING]
+> \`with\` and \`range\` **rebind the dot** \`.\` to the block's subject. Inside \`{{- with .Values.resources }}\`, \`.\` is now \`.Values.resources\` and \`.Release\` is unreachable. Use \`$\` (root) or \`$.Release\` to climb back out. This is the #1 cause of "nil pointer evaluating interface" errors.
+
+## Named Templates & _helpers.tpl
+
+A **named template** is a reusable snippet defined with \`define\` and invoked with \`include\` (preferred) or \`template\`. Convention: keep them in \`templates/_helpers.tpl\`.
+
+\`include\` vs \`template\`:
+
+| | \`template "name" .\` | \`include "name" .\` |
+|---|---|---|
+| Returns | nothing (writes directly) | a **string** |
+| Pipeable | ❌ cannot \`| nindent\` | ✅ \`include ... | nindent 4\` |
+| Recommended | rarely | **always** (so you can pipe through \`nindent\`/\`indent\`) |
+
+The classic helper set generated by \`helm create\`: \`<chart>.name\`, \`<chart>.fullname\`, \`<chart>.labels\`, \`<chart>.selectorLabels\`, \`<chart>.serviceAccountName\`.
+
+> [!SUCCESS]
+> **Always** \`include\` named templates and pipe through \`nindent N\`, never \`template\`. \`include\` returns a string so you can re-indent it to wherever it's embedded; \`template\` writes inline and cannot be re-indented, which corrupts YAML.
+
+## Whitespace Control: the \`-\` Trick
+
+YAML is indentation-sensitive, so stray newlines/spaces from template actions break rendering. The dash trims whitespace:
+
+- \`{{-\` trims **all whitespace before** (left of) the action, **including the preceding newline**.
+- \`-}}\` trims **all whitespace after** (right of) the action, including the following newline.
+
+\`\`\`yaml
+# WITHOUT trim -> blank lines where the {{ if }} used to be
+metadata:
+  {{ if .Values.annotate }}
+  foo: bar
+  {{ end }}
+
+# WITH trim -> clean output
+metadata:
+  {{- if .Values.annotate }}
+  foo: bar
+  {{- end }}
+\`\`\`
+
+> [!DANGER]
+> Be careful: \`-}}\` eats the newline *after* the action, which can glue the next line onto the current one. The safe, idiomatic pattern is \`{{-\` on control-flow lines and a plain \`}}\` at the end. Always verify with \`helm template\` — invisible whitespace bugs are the hardest Helm issues to spot from source alone.`,
+            code: [
+              {
+                lang: `text`,
+                title: `templates/_helpers.tpl — the standard helper set`,
+                code: `{{/*
+Expand the name of the chart.
+*/}}
+{{- define "payments.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Fully qualified app name. Truncated at 63 chars (DNS label limit).
+*/}}
+{{- define "payments.fullname" -}}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Common labels -- attached to every object.
+*/}}
+{{- define "payments.labels" -}}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{ include "payments.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{/*
+Selector labels -- stable, used in spec.selector (must never change).
+*/}}
+{{- define "payments.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "payments.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+Name of the service account to use.
+*/}}
+{{- define "payments.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "payments.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}`,
+                runnable: false,
+                note: `define + include. fullname truncates to 63 (DNS limit). selectorLabels kept separate because they must be immutable.`
+              },
+              {
+                lang: `yaml`,
+                title: `Built-in objects, pipelines, and required`,
+                code: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  # .Release / .Chart built-ins
+  name: {{ printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    revision: "{{ .Release.Revision }}"
+    chartVersion: {{ .Chart.Version | quote }}
+data:
+  # pipelines: default -> quote
+  profile: {{ .Values.config.SPRING_PROFILES_ACTIVE | default "prod" | quote }}
+  # required: fail render if missing (no safe default)
+  dbHost:  {{ required "config.dbHost is required" .Values.config.dbHost | quote }}
+  # toYaml + nindent to embed a nested structure
+  features: |
+    {{- toYaml .Values.features | nindent 4 }}
+  # capability gating
+  {{- if .Capabilities.APIVersions.Has "autoscaling/v2" }}
+  hpaApi: "autoscaling/v2"
+  {{- else }}
+  hpaApi: "autoscaling/v1"
+  {{- end }}`,
+                runnable: false,
+                note: `required halts render with a message; Capabilities.APIVersions.Has gates on cluster API support.`
+              },
+              {
+                lang: `yaml`,
+                title: `Control flow: if / range / with and scope ($) gotchas`,
+                code: `spec:
+  template:
+    spec:
+      containers:
+        - name: app
           env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: {{ .Values.environment }}
-            {{- range .Values.extraEnv }}
+            # range over a LIST of {name,value}
+            {{- range .Values.env }}
             - name: {{ .name }}
               value: {{ .value | quote }}
             {{- end }}
+            # range over a MAP; use $ to reach root .Release inside the loop
+            {{- range $k, $v := .Values.extraEnv }}
+            - name: {{ $k }}
+              value: "{{ $v }}-{{ $.Release.Name }}"   # $ = root scope
+            {{- end }}
+          # with rebinds '.' to .Values.resources for the block
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}`,
+                runnable: false,
+                note: `Inside with/range the dot is rebound; $ climbs back to root. Forgetting this => 'nil pointer evaluating interface'.`
+              },
+              {
+                lang: `yaml`,
+                title: `Whitespace control demonstrated`,
+                code: `# {{-  trims whitespace+newline to the LEFT
+# -}}  trims whitespace+newline to the RIGHT
+metadata:
+  labels:
+    {{- range $k, $v := .Values.labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  annotations:
+    # Idiomatic: {{- on control lines, plain }} at the end
+    {{- if .Values.annotations }}
+    {{- toYaml .Values.annotations | nindent 4 }}
+    {{- end }}
+
+# Common bug: -}} glues next line onto current one
+# value: {{ .Values.x -}}     <-- DON'T; the trailing newline is eaten
+# Verify everything with:  helm template . | less`,
+                runnable: false,
+                note: `Use {{- on control-flow lines; avoid -}} unless you intend to merge lines. Always confirm with helm template.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Name the major built-in template objects and one field of each.`,
+                a: `\`.Values\` (merged config), \`.Release\` (.Name/.Namespace/.Revision/.IsUpgrade), \`.Chart\` (.Name/.Version/.AppVersion), \`.Capabilities\` (.KubeVersion/.APIVersions.Has), \`.Template\` (.Name/.BasePath), \`.Files\` (.Get). The dot \`.\` is the current render context.`
+              },
+              {
+                q: `What does the pipe \`|\` do in a Helm template?`,
+                a: `It passes the left-hand value as the LAST argument to the right-hand function, like a Unix pipe. e.g. \`.Values.name | default "app" | quote\` runs default then quote in sequence.`
+              },
+              {
+                q: `Difference between \`include\` and \`template\`, and which to prefer?`,
+                a: `\`template "x" .\` writes output directly and returns nothing — it cannot be piped. \`include "x" .\` returns a string, so you can pipe it through \`nindent\`/\`indent\` to fix indentation. Always prefer \`include\` so embedded snippets indent correctly in YAML.`
+              },
+              {
+                q: `Why does \`{{- with .Values.resources }}\` break access to \`.Release\`?`,
+                a: `\`with\` (and \`range\`) rebind the dot \`.\` to the block's subject — inside the block \`.\` is \`.Values.resources\`, so \`.Release\`/\`.Values\` are no longer reachable. Use \`$\` (always the root context) or \`$.Release\` to climb back out.`
+              },
+              {
+                q: `What does \`required "msg" .Values.x\` do?`,
+                a: `If \`.Values.x\` is empty/nil, it aborts the render with the given error message; otherwise it returns the value. Used for values with no safe default (DB host, image repo) so you fail fast instead of applying a broken manifest.`
+              },
+              {
+                q: `Explain \`{{-\` and \`-}}\` whitespace trimming.`,
+                a: `\`{{-\` removes all whitespace to the left of the action including the preceding newline; \`-}}\` removes all whitespace to the right including the following newline. They keep YAML indentation clean by deleting blank lines left behind by control-flow actions.`
+              },
+              {
+                q: `Why is \`-}}\` more dangerous than \`{{-\`?`,
+                a: `\`-}}\` eats the newline AFTER the action, which can glue the next line onto the current one and silently corrupt YAML. The idiomatic pattern is \`{{-\` on control-flow lines and a plain \`}}\` at the end, then verify with \`helm template\`.`
+              },
+              {
+                q: `Why are selectorLabels kept separate from common labels in _helpers.tpl?`,
+                a: `\`spec.selector.matchLabels\` is immutable on a Deployment. Selector labels must be a small, stable set (name + instance). Common labels include version/chart which change on upgrade — putting those in the selector would make upgrades fail with an immutable-field error.`
+              },
+              {
+                q: `Why do fullname helpers \`trunc 63 | trimSuffix "-"\`?`,
+                a: `Kubernetes object names must be valid DNS labels ≤ 63 chars. \`trunc 63\` enforces the limit; \`trimSuffix "-"\` ensures truncation didn't leave a trailing hyphen (illegal as the last char of a DNS label).`
+              },
+              {
+                q: `How do you gate a template on the cluster's API support?`,
+                a: `\`{{- if .Capabilities.APIVersions.Has "autoscaling/v2" }}\` — \`.Capabilities.APIVersions.Has\` checks whether the target cluster exposes that API/version, letting one chart support multiple Kubernetes versions (e.g. autoscaling/v2 vs v1).`
+              },
+              {
+                q: `What is the \`tpl\` function used for?`,
+                a: `\`tpl\` renders a string that itself contains template directives, using the current context. Useful when a VALUE needs to embed \`{{ }}\` (e.g. an annotation value that should reference \`.Release.Name\`), since values are not normally re-evaluated as templates.`
+              }
+            ]
+          },
+          {
+            title: `Releases & Lifecycle: install, upgrade, rollback, diff`,
+            notes: `## The Release Lifecycle
+
+Helm manages a release through a small set of verbs. Each one operates on the **release database** (the Secrets in the namespace), not just the cluster objects.
+
+\`\`\`mermaid
+stateDiagram-v2
+  [*] --> Deployed: helm install (rev 1)
+  Deployed --> Deployed: helm upgrade (rev 2, 3, ...)
+  Deployed --> Deployed: helm rollback N (rev N+1, copy of N)
+  Deployed --> Failed: upgrade fails
+  Failed --> Deployed: rollback / --atomic auto-revert
+  Deployed --> [*]: helm uninstall
 \`\`\`
 
-### values.yaml and per-environment overrides
+| Command | Effect | Revision |
+|---------|--------|----------|
+| \`helm install <name> <chart>\` | create release | rev 1 |
+| \`helm upgrade <name> <chart>\` | change config/chart | rev++ |
+| \`helm upgrade --install\` | install if absent, else upgrade (idempotent — CI favourite) | rev 1 or ++ |
+| \`helm rollback <name> <rev>\` | restore a prior revision | **new** rev copying \`<rev>\` |
+| \`helm uninstall <name>\` | delete release + objects | — (\`--keep-history\` keeps records) |
+| \`helm history <name>\` | list revisions | — |
+
+> [!TIP]
+> In CI/CD pipelines always use **\`helm upgrade --install\`** (a.k.a. "helmfile-style upsert"). It's idempotent: first run installs, subsequent runs upgrade. You never branch on "does this release exist yet?".
+
+## --set vs Values Files
+
+| | \`--set key=val\` | \`-f values-prod.yaml\` |
+|---|---|---|
+| Source | CLI flag | a file checked into git |
+| Type handling | string-ish; arrays via \`a={x,y}\` or \`a[0]=x\` | full YAML types |
+| Audit trail | ephemeral, lost after the command | **versioned, reviewable** |
+| Best for | one-off overrides (\`image.tag=$GIT_SHA\` in CI) | the env's standing config |
+| Precedence | **highest** (beats files) | lower than \`--set\` |
+
+**Precedence (lowest → highest):** chart \`values.yaml\` → \`-f a.yaml\` → \`-f b.yaml\` (later \`-f\` wins) → \`--set\` → \`--set-string\`/\`--set-file\`.
+
+> [!WARNING]
+> \`--set a.b=1 --set a.c=2\` deep-merges, but \`--set list={x,y}\` **replaces** the whole list — Helm does not merge lists. The same applies to \`-f\`: a list in an override file replaces, never appends to, the default list. This surprises people overriding \`ingress.hosts\` or \`env\`.
+
+## Per-Environment Values Files
+
+The standard pattern: one chart, one \`values.yaml\` of defaults, plus thin per-environment overlays committed to git.
+
+\`\`\`
+payments/
+  values.yaml         # safe defaults (often the dev-ish baseline)
+  values-dev.yaml     # replicas:1, debug logging
+  values-staging.yaml # replicas:3
+  values-prod.yaml    # replicas:8, prod DB, ingress.enabled:true, tight resources
+\`\`\`
+
+\`helm upgrade --install payments ./payments -f values-prod.yaml -n prod\` merges \`values.yaml\` then \`values-prod.yaml\` on top. Keep env files **small** — only the deltas.
+
+## Atomic Upgrades & Safety Flags
+
+A failed upgrade can leave a release **half-applied** (some objects new, some old). Safety flags:
+
+- **\`--atomic\`** — if the upgrade fails, automatically **roll back** to the prior revision. Implies \`--wait\`.
+- **\`--wait\`** — block until all pods/PVCs/Services are Ready (honours readiness probes) before declaring success.
+- **\`--timeout 5m\`** — how long \`--wait\` waits before failing.
+- **\`--cleanup-on-fail\`** — delete new resources created during a failed upgrade.
+
+> [!DANGER]
+> Without \`--atomic --wait\`, \`helm upgrade\` returns success as soon as the API server *accepts* the manifests — **before pods are healthy**. A crash-looping new image will be reported as a successful deploy. Always pair \`--atomic --wait --timeout\` in production pipelines so a bad rollout self-heals instead of silently breaking traffic.
+
+## helm diff — See Before You Apply
+
+The community \`helm-diff\` plugin shows what an upgrade would change, like \`terraform plan\`:
+
+\`\`\`
+helm diff upgrade payments ./payments -f values-prod.yaml
+\`\`\`
+
+Indispensable for change reviews — you see the exact manifest delta (image tag, replica count, env var) before touching prod.
+
+> [!SUCCESS]
+> Production deploy recipe: \`helm diff upgrade\` in the PR for review → \`helm upgrade --install --atomic --wait --timeout 5m -f values-prod.yaml\` in the pipeline → \`helm history\` / \`helm rollback\` as the break-glass. Three commands cover plan, apply, and recover.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `Core lifecycle commands`,
+                code: `# Install (revision 1)
+helm install payments ./payments -n prod --create-namespace -f values-prod.yaml
+
+# Idempotent upsert -- THE command to use in CI
+helm upgrade --install payments ./payments -n prod -f values-prod.yaml
+
+# Override just the image tag for this deploy (CI passes the git SHA)
+helm upgrade --install payments ./payments -n prod \\
+  -f values-prod.yaml --set image.tag=\${GIT_SHA}
+
+# Inspect
+helm list -n prod
+helm status payments -n prod
+helm get values payments -n prod          # values actually used
+helm get manifest payments -n prod        # rendered objects in the cluster
+
+# Remove (keep history so you could re-roll)
+helm uninstall payments -n prod --keep-history`,
+                runnable: false,
+                note: `upgrade --install is idempotent; --set image.tag injects the CI build tag over the env file.`
+              },
+              {
+                lang: `bash`,
+                title: `History, revisions, and rollback`,
+                code: `helm history payments -n prod
+# REVISION  STATUS      CHART           APP VERSION  DESCRIPTION
+# 1         superseded  payments-1.4.0  2.7.0        Install complete
+# 2         superseded  payments-1.4.1  2.8.0        Upgrade complete
+# 3         failed      payments-1.4.2  2.8.1        Upgrade "payments" failed
+# 4         deployed    payments-1.4.1  2.8.0        Rollback to 2
+
+# Roll back to revision 2 (creates revision 4 as a copy of 2)
+helm rollback payments 2 -n prod --wait
+
+# Roll back to the immediately previous revision
+helm rollback payments -n prod
+
+# Each rollback is itself a new revision -- history is append-only
+helm history payments -n prod | tail -1`,
+                runnable: false,
+                note: `Rollback does NOT delete history; it appends a new revision that copies the target's stored manifests.`
+              },
+              {
+                lang: `bash`,
+                title: `Atomic, waited, safe production upgrade`,
+                code: `# Production-grade upgrade: self-reverts on failure, waits for readiness
+helm upgrade --install payments ./payments -n prod \\
+  -f values-prod.yaml \\
+  --set image.tag=\${GIT_SHA} \\
+  --atomic \\
+  --wait \\
+  --timeout 5m \\
+  --cleanup-on-fail
+
+# --atomic        : roll back automatically if the upgrade fails
+# --wait          : block until pods/services are Ready (uses readiness probes)
+# --timeout 5m    : fail (and with --atomic, revert) if not Ready in 5 min
+# --cleanup-on-fail: remove resources created during the failed attempt
+
+# Dry run to preview the rendered manifest before applying:
+helm upgrade payments ./payments -f values-prod.yaml --dry-run --debug | less`,
+                runnable: false,
+                note: `Without --wait, success only means 'API accepted it', not 'pods are healthy'. --atomic makes a bad rollout self-revert.`
+              },
+              {
+                lang: `bash`,
+                title: `helm diff and per-environment files`,
+                code: `# Install the diff plugin once
+helm plugin install https://github.com/databus23/helm-diff
+
+# Plan: show exactly what an upgrade would change (like terraform plan)
+helm diff upgrade payments ./payments -n prod -f values-prod.yaml
+# ~ payments, Deployment (apps) has changed:
+#   - image: registry.example.com/payments:2.8.0
+#   + image: registry.example.com/payments:2.8.1
+#   - replicas: 6
+#   + replicas: 8
+
+# Per-environment overlays (values.yaml is merged first, then the overlay)
+helm upgrade --install payments ./payments -n dev     -f values-dev.yaml
+helm upgrade --install payments ./payments -n staging -f values-staging.yaml
+helm upgrade --install payments ./payments -n prod    -f values-prod.yaml
+
+# Later -f wins; --set beats all files:
+helm template payments ./payments -f values.yaml -f values-prod.yaml --set replicaCount=12`,
+                runnable: false,
+                note: `helm diff = plan step in code review. Precedence: defaults < -f (later wins) < --set.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is \`helm upgrade --install\` the preferred CI command?`,
+                a: `It's idempotent/upsert: installs the release if it doesn't exist, upgrades it if it does. Pipelines never need to branch on 'does this release already exist?', so the same command works for first deploy and every subsequent one.`
+              },
+              {
+                q: `What does \`helm rollback <release> 2\` actually do to the revision history?`,
+                a: `It creates a NEW revision whose contents are a copy of revision 2's stored manifests/values, and marks it \`deployed\`. History is append-only — rollback never deletes revisions, so you can roll forward again afterwards.`
+              },
+              {
+                q: `Precedence order of values sources, lowest to highest?`,
+                a: `Chart \`values.yaml\` → \`-f\` files in order (later \`-f\` overrides earlier) → \`--set\` → \`--set-string\`/\`--set-file\`. \`--set\` always beats values files; among \`-f\` files the last one wins on conflicts.`
+              },
+              {
+                q: `Do \`--set\`/\`-f\` list overrides merge or replace?`,
+                a: `Maps deep-merge, but LISTS are replaced wholesale — Helm never appends to a list. Overriding \`ingress.hosts\` or \`env\` replaces the entire default list, a common surprise.`
+              },
+              {
+                q: `What does \`--atomic\` do on \`helm upgrade\`?`,
+                a: `If the upgrade fails (and it implies \`--wait\`, so 'fails' includes pods not becoming Ready within \`--timeout\`), Helm automatically rolls the release back to the previous revision, leaving a consistent state instead of a half-applied one.`
+              },
+              {
+                q: `Why is plain \`helm upgrade\` (no --wait) dangerous in production?`,
+                a: `Without \`--wait\` Helm reports success as soon as the API server accepts the manifests — before pods are healthy. A crash-looping new image is reported as a successful deploy. Pair \`--atomic --wait --timeout\` so unhealthy rollouts fail and self-revert.`
+              },
+              {
+                q: `--set vs a values file — when do you use each?`,
+                a: `\`--set\` for ephemeral, per-run overrides like \`image.tag=$GIT_SHA\` in CI. A \`-f values-prod.yaml\` file for the environment's standing, version-controlled, reviewable config. Use files for the audit trail; \`--set\` for dynamic CI values.`
+              },
+              {
+                q: `What does the helm-diff plugin give you and when in the workflow?`,
+                a: `It renders the proposed upgrade and shows the exact manifest delta vs what's live (like \`terraform plan\`). Run it in the PR/change-review step so reviewers see precisely what will change (image, replicas, env) before applying to prod.`
+              },
+              {
+                q: `How do per-environment values files combine with the chart's values.yaml?`,
+                a: `Helm merges the chart's \`values.yaml\` first as the base, then deep-merges the \`-f values-<env>.yaml\` overlay on top. Keep env files thin — only the deltas (replicas, hosts, resources, profile) — relying on defaults for everything else.`
+              },
+              {
+                q: `What does \`--keep-history\` on uninstall do, and why use it?`,
+                a: `It deletes the release's Kubernetes objects but retains the release records (Secrets). This lets you see the history and potentially re-create, instead of wiping all trace of the release. Without it, uninstall removes history too.`
+              },
+              {
+                q: `How do you see the values and manifests actually applied to a live release?`,
+                a: `\`helm get values <release>\` shows the merged values used; \`helm get manifest <release>\` shows the rendered Kubernetes objects stored for the current revision. Both read from the release Secret, reflecting reality rather than your local files.`
+              }
+            ]
+          },
+          {
+            title: `Advanced: Subcharts, Hooks, Tests, Library Charts & OCI`,
+            notes: `## Dependencies, Subcharts & Umbrella Charts
+
+A chart can depend on other charts. Declared in \`Chart.yaml\` under \`dependencies:\`, they are vendored into \`charts/\` by \`helm dependency update\` (which also writes \`Chart.lock\`).
+
+- **Subchart** — a dependency chart (e.g. \`postgresql\`) installed alongside your app.
+- **Umbrella chart** — a parent chart with *no real templates of its own*, whose only job is to bundle several subcharts (your microservices) into one deployable unit.
+
+\`\`\`mermaid
+flowchart TD
+  U["platform (umbrella chart)<br/>Chart.yaml + global values"]
+  U --> A["payments (subchart)"]
+  U --> B["orders (subchart)"]
+  U --> C["postgresql (subchart, library)"]
+  U --> D["common (library chart)"]
+  A -.uses.-> D
+  B -.uses.-> D
+\`\`\`
+
+### Global Values & Override Scoping
+
+The **parent's values flow down to subcharts** under a key matching the subchart name; **\`global:\`** is shared by all:
 
 \`\`\`yaml
-# values.yaml — defaults
-replicaCount: 2
-namespace: default
-environment: dev
-image:
-  repository: myrepo/myapp
-  tag: ""  # overridden at deploy time
-service:
-  port: 80
-  targetPort: 8080
-resources:
-  requests: {cpu: "250m", memory: "256Mi"}
-  limits: {cpu: "500m", memory: "512Mi"}
-extraEnv: []
+# parent values.yaml
+global:
+  imageRegistry: registry.example.com   # visible to EVERY subchart as .Values.global.*
+postgresql:                              # overrides the postgresql subchart's values
+  auth:
+    database: payments
+\`\`\`
 
+> [!WARNING]
+> A subchart can read \`.Values.global.*\` but **cannot** read the parent's non-global values. The parent overrides a child only through the \`<childName>:\` block. \`condition:\`/\`tags:\` in \`dependencies\` toggle whether a subchart is rendered at all (\`postgresql.enabled\`).
+
+## Hooks: Lifecycle Injection Points
+
+A normal template becomes a **hook** via the \`helm.sh/hook\` annotation. Hooks run at defined points and are tracked **separately** from the release's normal resources.
+
+| Hook | Fires |
+|------|-------|
+| \`pre-install\` / \`post-install\` | before / after first install |
+| \`pre-upgrade\` / \`post-upgrade\` | before / after an upgrade |
+| \`pre-delete\` / \`post-delete\` | before / after uninstall |
+| \`pre-rollback\` / \`post-rollback\` | around rollback |
+| \`test\` | only on \`helm test\` |
+
+Control them with:
+- \`helm.sh/hook-weight: "5"\` — ordering (lower runs first).
+- \`helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded\` — when to GC the hook Job.
+
+Classic use: a **DB migration Job** as a \`pre-upgrade\` hook (Flyway/Liquibase) that must complete before the new pods roll.
+
+> [!DANGER]
+> Hook resources are **not** part of the release's normal manifest set, so \`helm rollback\` does **not** undo what a hook did. A \`pre-upgrade\` migration that ran a destructive DDL will **not** be reverted by rolling the app back. Make migrations backward-compatible (expand/contract pattern) and never assume Helm can undo data changes.
+
+## helm test
+
+\`helm test <release>\` runs the pods in \`templates/tests/\` annotated \`helm.sh/hook: test\`. Use it for smoke tests — hit \`/actuator/health\`, verify a DB connection — post-deploy.
+
+## Library Charts
+
+A chart with \`type: library\` ships **only named templates** (no installable objects). Other charts depend on it and \`include\` its helpers, so you share label conventions, security contexts, and boilerplate across dozens of service charts without copy/paste. The canonical example is Bitnami's \`common\` chart.
+
+> [!TIP]
+> If you maintain 20 microservice charts that all repeat the same \`deployment.yaml\`, factor the shared structure into a **library chart** and have each service chart call \`include "common.deployment" .\`. One place to fix a label or security context, propagated everywhere.
+
+## Packaging & Publishing (OCI Registries)
+
+Charts are distributed as \`.tgz\` archives. Two distribution models:
+
+1. **Classic HTTP repo** — \`helm package\` → \`helm repo index\` → host \`.tgz\` + \`index.yaml\` on any web server / GitHub Pages / ChartMuseum.
+2. **OCI registry** (modern, Helm 3.8+ GA) — push the chart as an **OCI artifact** to the same registry you use for container images (ECR/GHCR/Harbor/ACR). No separate \`index.yaml\`; the registry is the index.
+
+\`\`\`
+helm package ./payments               # -> payments-1.4.2.tgz
+helm push payments-1.4.2.tgz oci://registry.example.com/charts
+helm install payments oci://registry.example.com/charts/payments --version 1.4.2
+\`\`\`
+
+> [!SUCCESS]
+> OCI is the recommended path now: one registry for images **and** charts, unified auth/RBAC, content-addressable, signable with cosign. Mention "we publish charts as OCI artifacts to the same registry as our images, signed with cosign" and you sound current.
+
+## Schema Validation
+
+\`values.schema.json\` (JSON Schema draft-07) validates merged values on \`install\`/\`upgrade\`/\`lint\`/\`template\`. It catches wrong types, missing required keys, and out-of-range numbers **before** anything is applied — turning a runtime mystery into a clear "replicaCount: expected integer, got string" at render time.
+
+> [!EU]
+> For regulated/EU workloads, combine \`values.schema.json\` (enforce required securityContext, resource limits, no \`latest\` tags) with \`helm lint\` in CI and **signed OCI charts (cosign)** so the provenance chain — who built this chart, with what values constraints — is auditable end to end.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Umbrella Chart.yaml + global/subchart values`,
+                code: `# platform/Chart.yaml  (umbrella -- bundles microservices)
+apiVersion: v2
+name: platform
+version: 3.1.0
+type: application
+dependencies:
+  - name: payments
+    version: "1.4.x"
+    repository: oci://registry.example.com/charts
+    condition: payments.enabled
+  - name: orders
+    version: "2.0.x"
+    repository: oci://registry.example.com/charts
+    condition: orders.enabled
+  - name: postgresql
+    version: "15.5.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
 ---
-# values-prod.yaml — production overrides
-replicaCount: 5
-namespace: production
-environment: prod
-resources:
-  requests: {cpu: "500m", memory: "512Mi"}
-  limits: {cpu: "2000m", memory: "2Gi"}
-extraEnv:
-  - name: LOG_LEVEL
-    value: WARN
+# platform/values.yaml
+global:
+  imageRegistry: registry.example.com    # readable by every subchart as .Values.global.imageRegistry
+  environment: prod
 
-# Deploy: helm upgrade --install my-app ./mychart -f values-prod.yaml --set image.tag=1.5.3
-\`\`\`
+payments:               # overrides keys INSIDE the payments subchart
+  enabled: true
+  replicaCount: 8
+orders:
+  enabled: true
+postgresql:
+  enabled: true
+  auth:
+    database: platform`,
+                runnable: false,
+                note: `global: flows to all subcharts; <name>: blocks override that specific subchart. condition toggles rendering.`
+              },
+              {
+                lang: `bash`,
+                title: `Managing dependencies`,
+                code: `# Resolve & vendor subcharts into charts/, write Chart.lock
+helm dependency update ./platform
+helm dependency build  ./platform     # rebuild charts/ from an existing Chart.lock
+helm dependency list   ./platform
 
-### Helm Hooks
+# Chart.lock pins exact resolved versions (commit it, like package-lock.json)
+cat platform/Chart.lock
+# dependencies:
+# - name: payments
+#   repository: oci://registry.example.com/charts
+#   version: 1.4.2
+# digest: sha256:...
 
-\`\`\`yaml
-# Run DB migration BEFORE the deployment is updated
-apiVersion: batch/v1
+# Install the whole umbrella as one release
+helm upgrade --install platform ./platform -n prod -f values-prod.yaml --atomic --wait`,
+                runnable: false,
+                note: `Chart.lock pins versions like package-lock.json. One umbrella release deploys all subcharts atomically.`
+              },
+              {
+                lang: `yaml`,
+                title: `templates/migrate-job.yaml — a pre-upgrade hook`,
+                code: `apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate
+  name: {{ include "payments.fullname" . }}-migrate
+  labels:
+    {{- include "payments.labels" . | nindent 4 }}
   annotations:
-    "helm.sh/hook": pre-upgrade          # run before upgrade
-    "helm.sh/hook-weight": "-5"           # ordering
-    "helm.sh/hook-delete-policy": hook-succeeded
+    # Run BEFORE install and upgrade...
+    "helm.sh/hook": pre-install,pre-upgrade
+    # ...ordered before other weight-0 hooks...
+    "helm.sh/hook-weight": "-5"
+    # ...and clean up the Job before re-running / after success
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
+  backoffLimit: 2
   template:
     spec:
       restartPolicy: Never
       containers:
-        - name: migrate
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          command: ["java", "-jar", "app.jar", "--migrate-only"]
-\`\`\``,
-            code: [
-              `# Helm cheat sheet — most-used commands
+        - name: flyway
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          command: ["java","-jar","/app/app.jar","--spring.flyway.enabled=true","--migrate-only"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "payments.fullname" . }}-config`,
+                runnable: false,
+                note: `DB migration runs before new pods roll. WARNING: helm rollback does NOT undo what this hook did -- keep migrations backward-compatible.`
+              },
+              {
+                lang: `yaml`,
+                title: `templates/tests/test-health.yaml — helm test + library chart use`,
+                code: `# ---- helm test pod (runs only on 'helm test <release>') ----
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "payments.fullname" . }}-test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: smoke
+      image: curlimages/curl:8.7.1
+      command: ["sh","-c"]
+      args:
+        - >
+          curl -fsS
+          http://{{ include "payments.fullname" . }}:{{ .Values.service.port }}/actuator/health
+          | grep -q '"status":"UP"'
+---
+# ---- consuming a LIBRARY chart's named template ----
+# A library chart (type: library) named "common" exposes "common.deployment".
+# {{ include "common.deployment" (dict "Values" .Values "Release" .Release "Chart" .Chart) }}`,
+                runnable: false,
+                note: `helm test runs smoke checks against the live release; library charts share named templates across many service charts.`
+              },
+              {
+                lang: `bash`,
+                title: `Package, validate, and publish to an OCI registry`,
+                code: `# Lint + schema validation before publishing
+helm lint ./payments --strict        # checks templates + values.schema.json
 
-# Install / Upgrade
-helm install my-app ./mychart                         # first install
-helm install my-app ./mychart -f values-prod.yaml    # with env overrides
-helm install my-app ./mychart --set image.tag=1.5.3  # inline override
-helm upgrade my-app ./mychart -f values-prod.yaml --set image.tag=1.5.3
-helm upgrade --install my-app ./mychart -f values.yaml  # idempotent: install if not present
+# Package into a versioned .tgz
+helm package ./payments              # -> payments-1.4.2.tgz
 
-# Inspect
-helm list                                    # all releases in current namespace
-helm list -n production                      # specific namespace
-helm status my-app                           # release status
-helm history my-app                          # revision history
-helm get values my-app                       # see currently applied values
-helm get manifest my-app                     # rendered YAML in cluster
+# --- OCI registry (recommended, Helm 3.8+) ---
+helm registry login registry.example.com -u ci -p \${TOKEN}
+helm push payments-1.4.2.tgz oci://registry.example.com/charts
+helm show chart oci://registry.example.com/charts/payments --version 1.4.2
+helm install payments oci://registry.example.com/charts/payments --version 1.4.2 -n prod
 
-# Rollback
-helm rollback my-app                         # to previous version
-helm rollback my-app 3                       # to specific revision
-
-# Dry run / debug
-helm template ./mychart -f values-prod.yaml  # render templates locally
-helm template ./mychart --set image.tag=X | kubectl apply --dry-run=client -f -
-helm lint ./mychart                          # validate chart
-helm upgrade my-app ./mychart --dry-run      # simulate upgrade
-
-# Repositories (public charts)
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
-helm search repo bitnami/postgresql
-helm install my-postgres bitnami/postgresql --set auth.password=secret
-
-# Package / push
-helm package ./mychart                       # creates mychart-0.1.0.tgz
-helm push mychart-0.1.0.tgz oci://myregistry.io/charts
-
-# Uninstall
-helm uninstall my-app                        # removes all resources
-helm uninstall my-app --keep-history         # remove but keep history for rollback`
+# --- Classic HTTP repo (legacy) ---
+helm repo index . --url https://charts.example.com   # generates/updates index.yaml
+# upload *.tgz + index.yaml to the web server`,
+                runnable: false,
+                note: `helm lint --strict enforces values.schema.json. OCI push reuses your container registry's auth; no index.yaml needed.`
+              },
+              {
+                lang: `text`,
+                title: `values.schema.json — fail fast on bad values`,
+                code: `{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["image", "replicaCount", "resources"],
+  "properties": {
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "image": {
+      "type": "object",
+      "required": ["repository"],
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": "string", "not": { "const": "latest" } },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "required": ["limits", "requests"]
+    }
+  }
+}`,
+                runnable: false,
+                note: `Validated on install/upgrade/lint/template. Bans image tag 'latest', requires resource limits, enforces replicaCount >= 1.`
+              }
             ],
             flashcards: [
               {
-                q: `What is Helm and what problem does it solve in Kubernetes?`,
-                a: `Helm is the package manager for Kubernetes. Without Helm: deploying to dev/staging/prod means maintaining near-identical YAML files for each environment — changing a label or image tag requires editing multiple files, drift creeps in. Helm: templates the YAML with Go templating; a values.yaml provides defaults; per-environment values files (values-prod.yaml) override just what differs. helm upgrade --install is idempotent (install if not present, upgrade if present). Also enables: rollback (helm rollback), release history, sharing via registries (like bitnami charts for postgres, redis).`
+                q: `What is the difference between a subchart and an umbrella chart?`,
+                a: `A subchart is a dependency chart installed alongside your app (e.g. postgresql). An umbrella chart is a parent with little/no templates of its own whose purpose is to bundle several subcharts (your microservices) into a single deployable, versioned release.`
               },
               {
-                q: `What is the difference between helm install and helm upgrade?`,
-                a: `helm install: creates a brand new release. Fails if the release already exists. helm upgrade: updates an existing release to a new chart version or new values. Fails if the release doesn't exist. helm upgrade --install: idempotent — installs if missing, upgrades if present. This is what CI/CD pipelines use. Each upgrade creates a new revision. helm rollback my-app reverts to the previous revision. helm rollback my-app 3 reverts to a specific revision. Revision history is stored as Secrets in the same namespace.`
+                q: `How do a parent chart's values reach a subchart, and what is \`global:\`?`,
+                a: `The parent overrides a subchart only through a top-level block matching the subchart's name (\`postgresql: {...}\`). The \`global:\` map is special — every subchart can read it as \`.Values.global.*\`. A subchart cannot read the parent's non-global values.`
               },
               {
-                q: `How do Helm hooks work and why is pre-upgrade used for DB migrations?`,
-                a: `Helm hooks are resources with "helm.sh/hook" annotations that run at specific lifecycle points: pre-install, post-install, pre-upgrade, post-upgrade, pre-delete, post-delete. pre-upgrade: runs BEFORE the new Deployment is rolled out — perfect for DB migrations. If the migration Job fails, the upgrade aborts — the old version keeps running. Without hooks: migration runs as an init container (same rollout, race condition) or separately (deployment order not guaranteed). "helm.sh/hook-delete-policy": hook-succeeded cleans up completed Jobs. "helm.sh/hook-weight" orders multiple hooks.`
+                q: `What does \`condition:\` on a dependency do?`,
+                a: `It points to a boolean value (e.g. \`postgresql.enabled\`) that toggles whether the subchart is rendered/installed at all. Lets an umbrella chart include optional components that callers switch on or off per environment.`
+              },
+              {
+                q: `What is \`Chart.lock\` and why commit it?`,
+                a: `Written by \`helm dependency update\`, it pins the exact resolved versions and digests of all dependencies (like package-lock.json). Committing it makes builds reproducible; \`helm dependency build\` rebuilds \`charts/\` from the lock without re-resolving.`
+              },
+              {
+                q: `Name the main Helm hook events.`,
+                a: `pre-install/post-install, pre-upgrade/post-upgrade, pre-delete/post-delete, pre-rollback/post-rollback, and test. A template becomes a hook via the \`helm.sh/hook\` annotation, and runs separately from normal release resources.`
+              },
+              {
+                q: `Why does \`helm rollback\` NOT undo a pre-upgrade hook's effects?`,
+                a: `Hook resources are tracked separately from the release's normal manifests, so rollback only restores the normal objects. A migration Job that ran destructive DDL is not reversed — hence migrations must be backward-compatible (expand/contract) and never rely on Helm to undo data changes.`
+              },
+              {
+                q: `What do hook-weight and hook-delete-policy control?`,
+                a: `\`helm.sh/hook-weight\` orders hooks within the same phase (lower runs first; can be negative). \`helm.sh/hook-delete-policy\` (e.g. \`before-hook-creation,hook-succeeded\`) decides when Helm garbage-collects the hook resource — typically delete the old one before re-creating and delete after success.`
+              },
+              {
+                q: `What is a library chart and when do you use one?`,
+                a: `A chart with \`type: library\` that ships only named templates (no installable objects, can't be installed directly). Other charts depend on it and \`include\` its helpers, sharing label/securityContext/deployment boilerplate across many service charts. Bitnami's \`common\` is the canonical example.`
+              },
+              {
+                q: `What does \`helm test\` do?`,
+                a: `Runs the pods in \`templates/tests/\` annotated \`helm.sh/hook: test\` against the live release — smoke tests like hitting \`/actuator/health\` or verifying a DB connection. Useful as a post-deploy gate to confirm the release is actually functional.`
+              },
+              {
+                q: `How do you publish a chart to an OCI registry and why prefer it?`,
+                a: `\`helm package\` then \`helm push chart.tgz oci://registry/charts\`; install with \`helm install name oci://registry/charts/name --version x\`. Preferred because one registry holds images AND charts with unified auth/RBAC, content-addressable storage, and cosign signing — no separate index.yaml to maintain.`
+              },
+              {
+                q: `What does \`values.schema.json\` enforce and when does it run?`,
+                a: `A JSON Schema validating merged values on install/upgrade/lint/template. It can require keys (resources, image.repository), enforce types/ranges (replicaCount integer ≥ 1), and ban values (image tag == latest), failing the render with a clear message before anything is applied.`
               }
             ]
           }
@@ -31662,262 +35399,2739 @@ helm uninstall my-app --keep-history         # remove but keep history for rollb
       {
         id: `7.4`,
         title: `CI/CD & GitOps`,
-        hours: 3,
+        hours: 5,
         sections: [
           {
-            title: `CI/CD Pipelines & GitOps with GitHub Actions`,
-            notes: `## CI/CD Pipelines & GitOps with GitHub Actions
+            title: `CI Fundamentals: Pipeline Stages, Fast Feedback & Branching`,
+            notes: `## CI Fundamentals — Building the Feedback Machine
 
-### CI/CD Philosophy
+Continuous Integration is not "we run tests on a branch." For a senior/staff candidate it is a **designed feedback system**: every commit on the mainline produces a *signed, versioned, scanned artifact* with the fastest possible signal-to-developer. The whole game is **mean time to feedback** and **trust in the green build**.
 
-\`\`\`
-CI (Continuous Integration): every push → build + test automatically
-  → Catch bugs immediately, not weeks later
-  → Everyone integrates small changes frequently (not big bang merges)
+### The canonical pipeline stages
 
-CD (Continuous Delivery): every green build → deployable artifact ready
-  → Deploy to staging automatically; prod is one human click
-
-CD (Continuous Deployment): every green build → automatically deployed to prod
-  → High trust in test suite; feature flags control rollout
-
-CI/CD Pipeline stages:
-  1. Lint + compile         → catch syntax/type errors
-  2. Unit tests             → fast (< 2 min)
-  3. Build Docker image     → tag with git SHA
-  4. Push to registry       → available to deploy
-  5. Deploy to staging      → smoke test
-  6. Integration tests      → API contract tests
-  7. Deploy to production   → rolling update
+\`\`\`mermaid
+flowchart LR
+  A[git push / PR] --> B[Checkout + restore cache]
+  B --> C[Compile / Build]
+  C --> D[Unit tests + coverage]
+  D --> E[Static analysis<br/>SpotBugs / Checkstyle]
+  E --> F[SAST + secret scan<br/>CodeQL / Trivy fs]
+  F --> G[Package<br/>mvn package -DskipTests]
+  G --> H[Build OCI image<br/>Buildx / Jib]
+  H --> I[Image scan<br/>Trivy / Grype]
+  I --> J[SBOM + sign<br/>syft + cosign]
+  J --> K[Publish<br/>GHCR / Nexus]
+  K --> L{branch?}
+  L -- main --> M[Trigger CD / GitOps bump]
+  L -- PR --> N[Status check only]
 \`\`\`
 
-### GitHub Actions — Spring Boot CI
+| Stage | Goal | Fail-fast? | Typical tool (Java) |
+|---|---|---|---|
+| Build | Compiles, deps resolve | Yes | Maven / Gradle |
+| Unit test | Logic correctness | Yes | JUnit5, AssertJ |
+| Coverage gate | No silent rot | Yes (threshold) | JaCoCo |
+| Static analysis | Bug patterns, style | Warn→fail | SpotBugs, Checkstyle, PMD, Error Prone |
+| SAST | Security defects in code | Yes on high | CodeQL, Semgrep, Snyk Code |
+| Secret scan | No leaked creds | Yes | gitleaks, trufflehog |
+| Package | Build deployable jar | Yes | mvn package |
+| Image build | Reproducible OCI image | Yes | Buildx, Jib, Buildpacks |
+| Image/dep scan | No critical CVEs | Yes on CRITICAL | Trivy, Grype, Snyk |
+| SBOM + sign | Supply-chain provenance | Yes | syft, cosign |
+| Publish | Immutable artifact | Yes | GHCR, ECR, Nexus |
 
-\`\`\`yaml
-# .github/workflows/ci.yml
-name: CI
+### Fast feedback — order stages by cost and likelihood of failure
+
+> [!TIP]
+> **Cheap-and-flaky-prone first.** Run compile + unit tests + linters before the slow image build & scans. A typo should fail in 90 seconds, not after a 6-minute Docker build. Split into **PR pipeline** (fast: build, unit, lint, SAST) and **main pipeline** (full: image, scan, sign, publish). Use \`fail-fast\` matrices and parallel jobs so an early failure cancels the rest.
+
+### Caching — the single biggest lever on pipeline time
+
+- **Dependency cache**: \`~/.m2/repository\` keyed on a hash of \`pom.xml\`/\`*.gradle\`. A miss only happens when deps change.
+- **Build layer cache** for Docker: BuildKit \`--cache-from\`/\`--cache-to\` (registry or GHA cache backend) so unchanged layers are reused.
+- **Test result / incremental caches** (Gradle build cache, Maven \`-T\` parallel, Develocity remote cache).
+
+> [!WARNING]
+> **Cache poisoning & staleness.** A cache key that is too broad (e.g. just the branch name) serves stale deps and produces "works on CI, breaks in prod." Key on a content hash of the lockfile/pom. Never cache build *outputs* that feed the published artifact across untrusted PRs — a forked PR could poison a shared cache.
+
+### Artifact identity & versioning
+
+Every build must yield an **immutable, traceable** artifact:
+
+- **Image tags**: never rely on \`:latest\`. Tag with the **git SHA** (immutable) plus a semantic/CalVer tag for humans. e.g. \`ghcr.io/acme/orders:1.8.3\` and \`ghcr.io/acme/orders:sha-9f2c1ab\`.
+- **Semantic versioning** for libraries (MAJOR.MINOR.PATCH); **CalVer** (\`2026.06.0\`) is common for services that ship continuously.
+- **Provenance label**: stamp the image with the commit, build URL, and timestamp via OCI labels.
+
+> [!DANGER]
+> **Mutable tags are a rollback trap.** If two deploys both point at \`orders:latest\`, you cannot reliably roll back — the tag has moved. GitOps and rollbacks *require* immutable, content-addressable references (a digest \`@sha256:...\` is the gold standard).
+
+### Trunk-based vs GitFlow
+
+| Dimension | Trunk-based | GitFlow |
+|---|---|---|
+| Long-lived branches | None (short-lived only) | \`develop\`, \`release/*\`, \`hotfix/*\` |
+| Integration frequency | Many merges/day to main | Batched at release |
+| Merge conflicts | Small, frequent, cheap | Large, painful "merge hell" |
+| Feature isolation | **Feature flags** | Branch isolation |
+| Suits | Continuous delivery, high DORA | Versioned/on-prem releases |
+| CI implication | Main is always releasable | Pipelines per branch type |
+
+> [!SUCCESS]
+> **Trunk-based development is the prerequisite for elite DORA performance.** Short-lived branches (< 1 day) + feature flags + a continuously-green main are what enable multiple deploys/day. GitFlow's release branches inflate lead time. Staff interviewers want you to connect *branching model → deploy frequency → DORA*.
+
+### Test pyramid inside CI
+
+\`\`\`mermaid
+flowchart TD
+  E2E[End-to-end / UI<br/>few, slow, brittle]
+  INT[Integration<br/>Testcontainers, real DB/Kafka]
+  UNIT[Unit<br/>many, fast, isolated]
+  UNIT --> INT --> E2E
+\`\`\`
+
+- **Unit** (70%): run on every PR, milliseconds, no I/O. Fail-fast.
+- **Integration** (20%): **Testcontainers** spins real Postgres/Kafka in the runner — high fidelity without mocks. Slower, gated on PR or pre-merge.
+- **E2E/contract** (10%): nightly or pre-prod; consumer-driven contracts (Pact) catch breaking API changes cheaply.
+
+> [!EU]
+> Under the **EU Cyber Resilience Act (CRA)**, products with digital elements must demonstrate secure development practices and produce SBOMs. SAST + dependency scanning + SBOM generation in CI is becoming a compliance requirement, not just hygiene, for software sold into the EU.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `Maven CI stages locally (the same commands CI runs)`,
+                code: `# Fast feedback first — fail in seconds
+mvn -B -ntp clean verify              # compile + unit + integration + jacoco gate
+mvn -B com.github.spotbugs:spotbugs-maven-plugin:check   # static analysis
+
+# Coverage gate enforced in pom (jacoco-maven-plugin check rule):
+#   <limit><counter>LINE</counter><value>COVEREDRATIO</value>
+#          <minimum>0.80</minimum></limit>
+# Build fails if line coverage < 80%.
+
+# Reproducible parallel build
+mvn -B -T 1C -ntp package -DskipTests
+
+# Image build with layer cache (Jib needs no Docker daemon)
+mvn -B com.google.cloud.tools:jib-maven-plugin:build \\
+    -Dimage=ghcr.io/acme/orders:sha-$(git rev-parse --short HEAD)`,
+                runnable: false,
+                note: `Jib builds OCI images without a Docker daemon and caches layers deterministically — great for CI.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the single most important metric a CI pipeline optimizes for?`,
+                a: `Mean time to feedback — how fast a developer learns their commit is broken. It drives stage ordering (cheap/flaky stages first) and pipeline splitting (fast PR pipeline vs full main pipeline).`
+              },
+              {
+                q: `Why order pipeline stages cheap-and-fast first?`,
+                a: `A failing stage cancels the rest (fail-fast). A compile error or unit failure should surface in ~90s, not after a 6-minute image build and scan. Maximizes feedback speed and saves runner minutes.`
+              },
+              {
+                q: `How should you key a dependency cache to avoid staleness?`,
+                a: `On a content hash of the lockfile/pom (e.g. hashFiles("**/pom.xml")), not on branch name. Too-broad keys serve stale deps; too-narrow keys never hit. Restore-keys give partial fallback.`
+              },
+              {
+                q: `Why are mutable image tags (:latest) dangerous for rollback?`,
+                a: `The tag moves between builds, so you cannot reliably reference "the previous version." Rollback and GitOps need immutable references — git SHA tags or, best, the content digest @sha256:....`
+              },
+              {
+                q: `Trunk-based vs GitFlow — which enables elite DORA and why?`,
+                a: `Trunk-based: short-lived branches (<1 day) merged frequently to an always-green main, with feature flags hiding incomplete work. This minimizes lead time and enables multiple deploys/day. GitFlow batches changes into release branches, inflating lead time.`
+              },
+              {
+                q: `What is the test pyramid and how does it map to CI stages?`,
+                a: `Many fast unit tests (run every PR), fewer integration tests (Testcontainers, real DB/Kafka, pre-merge), fewest E2E/contract tests (nightly/pre-prod). Wide-and-fast bottom, narrow-and-slow top.`
+              },
+              {
+                q: `What does Testcontainers give you over mocks in integration tests?`,
+                a: `It boots real dependencies (Postgres, Kafka, Redis) in throwaway Docker containers, so tests exercise real SQL/driver/serialization behavior — high fidelity without a shared staging DB or brittle mocks.`
+              },
+              {
+                q: `What does SAST cover that dependency scanning does not?`,
+                a: `SAST (CodeQL/Semgrep) analyzes YOUR source for security defects (injection, deserialization, path traversal). Dependency/SCA scanning (Trivy/Snyk) finds known CVEs in third-party libraries. You need both.`
+              },
+              {
+                q: `Why split a PR pipeline from the main/merge pipeline?`,
+                a: `PR pipeline runs fast checks (build, unit, lint, SAST) for quick reviewer feedback. Main pipeline runs the expensive, security-sensitive steps (image build, scan, sign, publish, CD trigger) only on trusted merged code — also avoids running publish/sign on untrusted forked PRs.`
+              },
+              {
+                q: `How do you make a build artifact traceable to its source?`,
+                a: `Tag the image with the git SHA, stamp OCI labels (org.opencontainers.image.revision, .source, .created, build URL), and generate provenance/SBOM. Given a running image you can map digest → SHA → PR → pipeline run.`
+              }
+            ]
+          },
+          {
+            title: `A Real CI Pipeline: GitHub Actions for a Maven Spring Boot Service`,
+            notes: `## A Production GitHub Actions Pipeline
+
+This is the workflow a staff engineer is expected to be able to read, critique, and extend. It builds a Spring Boot service with Maven, gates on tests + JaCoCo, scans, then builds and pushes a signed image to **GHCR** with BuildKit caching — only on \`main\`.
+
+### Anatomy of the workflow
+
+\`\`\`mermaid
+flowchart LR
+  subgraph PR["on: pull_request"]
+    A[build-test job<br/>matrix JDK 17/21] --> B[jacoco report + gate]
+    B --> C[CodeQL SAST]
+  end
+  subgraph MAIN["on: push main"]
+    A2[build-test] --> D[image job<br/>setup-buildx + login GHCR]
+    D --> E[build & push<br/>cache-from/to gha]
+    E --> F[trivy image scan]
+    F --> G[cosign sign + SBOM]
+    G --> H[bump GitOps manifest]
+  end
+\`\`\`
+
+### Why each piece matters
+
+- **\`matrix\` on JDK 17 & 21**: proves the service runs on the current and next LTS; \`fail-fast: false\` lets you see *all* failures, not just the first.
+- **\`actions/cache\` on \`~/.m2\`** keyed on \`pom.xml\` hash: cuts dependency download from minutes to seconds.
+- **\`permissions:\` least-privilege**: the token gets \`contents: read\`, and only the image job gets \`packages: write\` + \`id-token: write\` (for keyless cosign / OIDC). Never a blanket \`write-all\`.
+- **\`docker/build-push-action\` with \`cache-from/to: type=gha\`**: persists BuildKit layer cache across runs.
+- **Secrets**: \`\${{ secrets.X }}\` are injected from the repo/org/environment secret store; **GHCR login uses the auto-provisioned \`GITHUB_TOKEN\`**, no PAT needed. For cloud registries, prefer **OIDC federation** over long-lived keys.
+- **\`environment: production\`** with required reviewers turns the deploy step into a gated, audited approval.
+
+> [!WARNING]
+> **\`pull_request_target\` and secrets on forks.** A forked PR's workflow runs WITHOUT your secrets by design — otherwise a malicious PR could exfiltrate them. Don't "fix" this by switching to \`pull_request_target\` and checking out the PR head: that runs untrusted code with your secrets in scope. Keep publish/sign on \`push: main\` only.
+
+> [!TIP]
+> **Concurrency control** stops wasted runs: a new push to a branch cancels the in-flight run for that branch. Use \`concurrency: { group: \${{ github.ref }}, cancel-in-progress: true }\`.
+
+### Jenkins & GitLab equivalents
+
+| Concept | GitHub Actions | Jenkins (declarative) | GitLab CI |
+|---|---|---|---|
+| Pipeline def | \`.github/workflows/*.yml\` | \`Jenkinsfile\` | \`.gitlab-ci.yml\` |
+| Parallelism | \`strategy.matrix\` | \`parallel { }\` | \`parallel: matrix:\` |
+| Cache | \`actions/cache\` | plugin / stash | \`cache: { key, paths }\` |
+| Secrets | \`secrets.*\` / OIDC | Credentials store | CI/CD variables (masked/protected) |
+| Stages | jobs + \`needs:\` | \`stage('x')\` | \`stages:\` + \`stage:\` |
+| Runner | GitHub-hosted / self | agent/node | shared/specific runners |
+| Approval gate | \`environment\` reviewers | \`input\` step | \`when: manual\` + protected env |
+
+> [!SUCCESS]
+> **Reusable workflows** (\`workflow_call\`) let you define the CI once and call it from every microservice repo with inputs — the org-wide "golden pipeline." This is how platform teams enforce scanning/signing across 200 services without copy-paste drift.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `.github/workflows/ci.yml — full Maven + GHCR + cosign pipeline`,
+                code: `name: ci
 
 on:
-  push:
-    branches: [main, develop]
   pull_request:
-    branches: [main]
+  push:
+    branches: [ main ]
 
+# Least-privilege default; jobs widen only what they need
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-\${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/\${{ github.repository }}
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [ '17', '21' ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK \${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: \${{ matrix.java }}
+          cache: maven            # caches ~/.m2 keyed on pom hashes
+
+      - name: Build, test, coverage gate
+        run: mvn -B -ntp clean verify   # jacoco check rule fails build if < threshold
+
+      - name: Publish JaCoCo report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-\${{ matrix.java }}
+          path: target/site/jacoco/
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with: { languages: java }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21', cache: maven }
+      - run: mvn -B -ntp -DskipTests package
+      - uses: github/codeql-action/analyze@v3
+
+  image:
+    needs: [ build-test, codeql ]
+    if: github.ref == 'refs/heads/main'   # only publish from main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # push to GHCR
+      id-token: write          # keyless cosign (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: \${{ github.actor }}
+          password: \${{ secrets.GITHUB_TOKEN }}   # auto-provisioned
+
+      - name: Build & push (BuildKit layer cache)
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            \${{ env.IMAGE }}:sha-\${{ github.sha }}
+            \${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Scan image (fail on CRITICAL)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: \${{ env.IMAGE }}:sha-\${{ github.sha }}
+          severity: CRITICAL
+          exit-code: '1'
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Keyless sign by digest
+        run: cosign sign --yes \${{ env.IMAGE }}@\${{ steps.push.outputs.digest }}
+
+  deploy:
+    needs: image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production      # required reviewers / audited approval
+    steps:
+      - name: Bump GitOps manifest (push to env repo)
+        run: echo "patch image tag in gitops repo -> ArgoCD reconciles"`,
+                runnable: false,
+                note: `GitHub Actions interpolation \${{ }} is GHA syntax, not shell. cosign signs by DIGEST (immutable), never by mutable tag.`
+              },
+              {
+                lang: `yaml`,
+                title: `GitLab CI equivalent (.gitlab-ci.yml) — same shape`,
+                code: `stages: [ test, scan, build ]
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+
+cache:
+  key:
+    files: [ pom.xml ]
+  paths: [ .m2/repository ]
+
+test:
+  stage: test
+  image: eclipse-temurin:21
+  script: mvn -B -ntp clean verify
+  coverage: '/Total.*?([0-9]{1,3})%/'
+
+sast:
+  stage: scan
+  script: mvn -B -ntp -DskipTests package && run-codeql.sh
+
+build-image:
+  stage: build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  image: docker:27
+  services: [ docker:27-dind ]
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE:sha-$CI_COMMIT_SHORT_SHA .
+    - docker push $CI_REGISTRY_IMAGE:sha-$CI_COMMIT_SHORT_SHA`,
+                runnable: false,
+                note: `GitLab variables use $VAR (shell-style), unlike GitHub Actions \${{ }}.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why use a matrix over JDK 17 and 21 in CI?`,
+                a: `It proves the service compiles and passes tests on the current LTS and the next, de-risking the JDK upgrade. fail-fast: false runs all matrix legs so you see every failure at once.`
+              },
+              {
+                q: `How does GHCR login work without a personal access token?`,
+                a: `GitHub auto-provisions a scoped GITHUB_TOKEN per run; with permissions: packages: write the job can push to ghcr.io using github.actor + secrets.GITHUB_TOKEN. No long-lived PAT to manage or leak.`
+              },
+              {
+                q: `Why must publish/sign steps only run on push to main, not on PRs?`,
+                a: `Forked PRs run without your secrets by design (anti-exfiltration). Running publish/sign on untrusted PR code with privileged tokens is a supply-chain risk. Gate them with if: github.ref == "refs/heads/main".`
+              },
+              {
+                q: `What does cache-from/cache-to type=gha do for Docker builds?`,
+                a: `It stores and restores BuildKit layer cache in the GitHub Actions cache backend, so unchanged image layers are reused across runs — turning multi-minute image builds into seconds.`
+              },
+              {
+                q: `Why does the workflow set permissions: contents: read at the top?`,
+                a: `Least privilege: the default GITHUB_TOKEN is read-only, and each job widens only what it needs (packages: write, id-token: write for cosign). A compromised step cannot push code or packages it was not granted.`
+              },
+              {
+                q: `What is the danger of pull_request_target with checkout of the PR head?`,
+                a: `pull_request_target runs in the context of the base repo WITH secrets, but checking out the fork PR head executes untrusted code with those secrets — a classic exfiltration vector. Avoid it for anything touching secrets.`
+              },
+              {
+                q: `What does id-token: write enable, and why sign by digest?`,
+                a: `It grants an OIDC token for keyless cosign signing via Sigstore (no stored private key). Signing by @sha256:digest binds the signature to immutable content; signing by tag is meaningless since tags move.`
+              },
+              {
+                q: `What problem do reusable workflows (workflow_call) solve at org scale?`,
+                a: `They define the golden pipeline once (scan, sign, SBOM, publish) and let every service repo call it with inputs, so the platform team enforces standards across hundreds of repos without copy-paste drift.`
+              },
+              {
+                q: `How does the GitHub "environment" feature add a deploy gate?`,
+                a: `A job with environment: production can require named reviewers, wait timers, and branch restrictions; the deploy pauses for an audited human approval and secrets scoped to that environment become available.`
+              },
+              {
+                q: `Map matrix, cache, and secrets across GHA, Jenkins, and GitLab.`,
+                a: `Matrix: strategy.matrix / parallel{} / parallel:matrix. Cache: actions/cache / stash+plugin / cache:key:paths. Secrets: secrets.*+OIDC / Credentials store / masked-protected CI variables.`
+              },
+              {
+                q: `What does concurrency with cancel-in-progress prevent?`,
+                a: `Stacked runs on rapid pushes. Grouping by github.ref and cancelling in-progress runs means only the latest commit per branch consumes runners, saving minutes and giving feedback on the newest code.`
+              }
+            ]
+          },
+          {
+            title: `CD & Deployment Strategies: Rolling, Blue-Green, Canary, Migrations & Rollback`,
+            notes: `## Continuous Delivery — Getting Bits to Prod Safely
+
+CD is where senior interviews get interesting: the question is rarely "how do you deploy" but "how do you deploy **without downtime or risk**, and how do you **roll back** when it goes wrong — including the database."
+
+### Deployment strategies compared
+
+| | Rolling | Blue-Green | Canary |
+|---|---|---|---|
+| Mechanism | Replace pods batch-by-batch | Two full envs, flip traffic | Shift small % of traffic to new |
+| Extra capacity | ~surge % | **2x** (both envs live) | small overlap |
+| Rollback speed | Slow (roll back pods) | **Instant** (flip back) | Fast (route 0% to new) |
+| Blast radius if bad | Growing as it rolls | All-or-nothing at flip | **Tiny** (only canary %) |
+| Real-traffic validation | Limited | Smoke before flip | **Yes, with real users** |
+| Complexity / cost | Low | Medium-High (2x infra) | High (traffic mgmt + metrics) |
+| Best for | Stateless, backward-compat | Risky releases, fast revert | High-traffic, data-driven gates |
+
+> [!TIP]
+> **Default to rolling, reach for canary for risky changes, blue-green when you need instant, atomic rollback** (e.g. regulated systems). Kubernetes Deployments give you rolling out of the box with \`maxSurge\`/\`maxUnavailable\`. Argo Rollouts or Flagger add canary/blue-green with automated metric analysis.
+
+### Canary done right = progressive delivery
+
+A real canary isn't "send 5% and eyeball Grafana." It's **automated analysis**: shift 5% → query SLO metrics (error rate, p99 latency) → if healthy, 25% → 50% → 100%; if a metric breaches, **auto-abort and roll back**. Tools: **Argo Rollouts** (with AnalysisTemplates querying Prometheus), **Flagger**.
+
+\`\`\`mermaid
+flowchart LR
+  V1[Stable v1 100%] --> S5[Canary v2 5%]
+  S5 -->|metrics OK| S25[25%]
+  S25 -->|metrics OK| S50[50%]
+  S50 -->|metrics OK| FULL[v2 100%]
+  S5 -->|SLO breach| RB[Abort + scale v2 to 0]
+  S25 -->|SLO breach| RB
+  S50 -->|SLO breach| RB
+\`\`\`
+
+### Feature flags decouple deploy from release
+
+> [!SUCCESS]
+> **Deploy ≠ release.** Ship code dark behind a flag (LaunchDarkly/Unleash/Flagsmith), then *release* by flipping the flag to a cohort — independent of the deploy. This enables trunk-based development (merge incomplete features safely), instant kill-switches without a redeploy, and A/B experiments. The flag flip *is* the canary at the application layer.
+
+### Database migrations in the pipeline — the hard part
+
+Schema changes are the #1 cause of failed deploys and irreversible incidents. Use **Flyway** or **Liquibase** with versioned, ordered, idempotent migrations applied automatically.
+
+> [!DANGER]
+> **Never couple a non-backward-compatible schema change to the same release as the code that needs it.** During a rolling/canary deploy, old and new app versions run *simultaneously* against *one* database. A dropped/renamed column breaks the old pods still serving traffic. Use the **expand–contract (parallel change)** pattern.
+
+**Expand–contract for renaming a column** \`name\` → \`full_name\`:
+1. **Expand**: add \`full_name\`, backfill, dual-write from app. Old code still uses \`name\` — both work.
+2. **Migrate reads**: deploy app version that reads \`full_name\`.
+3. **Contract**: in a *later* release, drop \`name\`.
+
+Each step is independently deployable and reversible. Migrations are **forward-only**; you don't "down-migrate" prod — you roll forward with a compensating migration.
+
+> [!WARNING]
+> **Where to run migrations?** Prefer a dedicated **migration job/init-container** that runs once *before* the new pods take traffic, not on every app-pod startup (race conditions, lock contention with N replicas). Flyway/Liquibase take a DB lock, but a Kubernetes \`Job\` (or Argo PreSync hook) is cleaner and gates the rollout on migration success.
+
+### Rollback strategy
+
+- **Stateless app**: roll back the image to the previous digest (\`kubectl rollout undo\` / re-point GitOps to prior SHA). Instant with blue-green.
+- **With schema changes**: you can only roll back the app if the *schema is still compatible* — which is exactly what expand-contract guarantees. If you contracted, you must roll *forward*.
+- **Feature flag**: fastest rollback of all — flip the flag off, no deploy.
+
+### Environment promotion
+
+> [!TIP]
+> **Promote the same immutable artifact** (same image digest) dev → staging → prod. Never rebuild per environment — rebuilding can pull different transitive deps and breaks the "what I tested is what I shipped" guarantee. Config differs per env (via ConfigMaps/secrets/Helm values), the *binary* does not.`,
+            code: [
+              {
+                lang: `sql`,
+                title: `Flyway expand–contract migration (V8 → V10)`,
+                code: `-- db/migration/V8__add_full_name_expand.sql  (EXPAND step)
+ALTER TABLE customer ADD COLUMN full_name VARCHAR(255);
+
+-- backfill existing rows; safe to re-run
+UPDATE customer
+   SET full_name = name
+ WHERE full_name IS NULL;
+
+-- NOTE: app now DUAL-WRITES both 'name' and 'full_name'.
+-- Old pods still read 'name'; new pods read 'full_name'. Both work.
+
+-- ---------------------------------------------------------------
+-- A LATER release, only after all pods read full_name:
+-- db/migration/V10__drop_name_contract.sql  (CONTRACT step)
+ALTER TABLE customer DROP COLUMN name;`,
+                runnable: false,
+                note: `Versioned, ordered (V8, V10), forward-only. Flyway records each in flyway_schema_history with a checksum; editing an applied migration triggers a validation failure.`
+              },
+              {
+                lang: `bash`,
+                title: `kubectl / helm deploy, status, and rollback commands`,
+                code: `# --- Rolling update via Helm (immutable digest, promote same artifact) ---
+helm upgrade --install orders ./charts/orders \\
+  --namespace prod \\
+  --set image.repository=ghcr.io/acme/orders \\
+  --set image.tag=sha-9f2c1ab \\
+  --atomic --timeout 5m            # --atomic auto-rolls-back on failure
+
+# Watch the rollout
+kubectl -n prod rollout status deployment/orders --timeout=120s
+
+# Instant rollback (stateless / backward-compatible schema)
+kubectl -n prod rollout undo deployment/orders          # previous revision
+kubectl -n prod rollout undo deployment/orders --to-revision=7
+helm rollback orders 4 --namespace prod                 # Helm release history
+
+# Tune rolling behavior
+kubectl -n prod patch deployment orders -p \\
+  '{"spec":{"strategy":{"rollingUpdate":{"maxSurge":1,"maxUnavailable":0}}}}'
+
+# Run a migration as a one-shot Job BEFORE new pods take traffic
+kubectl -n prod create job orders-migrate-v10 \\
+  --image=ghcr.io/acme/orders-migrate:sha-9f2c1ab
+kubectl -n prod wait --for=condition=complete job/orders-migrate-v10 --timeout=300s`,
+                runnable: false,
+                note: `helm upgrade --atomic and kubectl rollout undo are your two fastest safety nets. Always wait on migration Job completion before the app rollout proceeds.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Blue-green vs canary — the core difference?`,
+                a: `Blue-green keeps two full environments and flips ALL traffic atomically (instant rollback, 2x cost, no gradual real-user validation). Canary shifts a small % of real traffic to the new version, validates SLO metrics, then ramps — tiny blast radius but more complex traffic/metric machinery.`
+              },
+              {
+                q: `Why is rolling update risky for non-backward-compatible schema changes?`,
+                a: `During the roll, old and new app versions run simultaneously against one database. A dropped/renamed column breaks the old pods still serving traffic. The schema must stay compatible with both versions — hence expand-contract.`
+              },
+              {
+                q: `Describe expand–contract (parallel change) for a column rename.`,
+                a: `1) Expand: add new column, backfill, dual-write (old + new both work). 2) Deploy app that reads the new column. 3) Contract: in a later release, drop the old column. Each step is independently deployable and reversible.`
+              },
+              {
+                q: `Why are production migrations forward-only?`,
+                a: `Down-migrations are unreliable (data already lost on a drop, locks, and old code may depend on the old shape). You roll forward with a compensating migration. Expand-contract keeps the app rollback-able without ever down-migrating.`
+              },
+              {
+                q: `How does a feature flag differ from a deployment strategy?`,
+                a: `It decouples deploy from release: code ships dark, then you flip the flag to release to a cohort — no redeploy. It is the fastest rollback (flip off) and enables trunk-based dev, kill-switches, and A/B tests.`
+              },
+              {
+                q: `What makes a canary "progressive delivery" rather than manual?`,
+                a: `Automated metric analysis: after each traffic increment, query SLO metrics (error rate, p99) from Prometheus; auto-promote if healthy, auto-abort and roll back if a threshold breaches. Tools: Argo Rollouts AnalysisTemplates, Flagger.`
+              },
+              {
+                q: `Where should DB migrations run in Kubernetes, and why not on pod startup?`,
+                a: `In a dedicated Job / init-container / Argo PreSync hook that runs once before new pods take traffic. Running on every app-pod startup with N replicas causes lock contention and races; a Job gates the rollout on migration success.`
+              },
+              {
+                q: `Why promote the same image digest across environments instead of rebuilding?`,
+                a: `Rebuilding per environment can resolve different transitive dependencies, breaking the "what I tested is what I shipped" guarantee. Promote the identical immutable artifact; only config (ConfigMaps/secrets/values) varies per env.`
+              },
+              {
+                q: `What does helm upgrade --atomic do?`,
+                a: `If the upgrade fails or times out, Helm automatically rolls back to the last known-good release, so a bad deploy does not leave the release in a broken half-applied state.`
+              },
+              {
+                q: `You contracted the schema (dropped a column) and the new app is broken. Can you roll back the app?`,
+                a: `No — the old app needs the dropped column. Once you contract, you must roll FORWARD with a fix. This is why contract steps are delayed to a separate, later release after the new code is proven stable.`
+              }
+            ]
+          },
+          {
+            title: `GitOps: Declarative Infra, Reconciliation, Drift & Secrets`,
+            notes: `## GitOps — Git as the Single Source of Truth
+
+GitOps inverts deployment: instead of CI *pushing* to the cluster, a controller *inside* the cluster continuously *pulls* the desired state from git and reconciles reality to match it. Git becomes the **single source of truth and the audit log**.
+
+### The four GitOps principles (OpenGitOps)
+1. **Declarative** — the whole system is described declaratively (YAML/Helm/Kustomize).
+2. **Versioned & immutable** — desired state lives in git; every change is a commit.
+3. **Pulled automatically** — agents pull approved state from git.
+4. **Continuously reconciled** — agents observe and converge actual → desired, forever.
+
+### The pull-based reconciliation loop
+
+\`\`\`mermaid
+flowchart LR
+  Dev[Developer] -->|PR + merge| Repo[(Git: desired state<br/>manifests / Helm)]
+  CI[CI builds image,\\nbumps image tag in repo] --> Repo
+  subgraph Cluster
+    Ctrl[ArgoCD / Flux controller] -->|1 watch / poll| Repo
+    Ctrl -->|2 diff desired vs live| K8s[Kubernetes API]
+    K8s -->|3 observed state| Ctrl
+    Ctrl -->|4 apply to converge| K8s
+    Ctrl -->|5 self-heal on drift| K8s
+  end
+  K8s -->|status / health| Repo2[Git status / UI]
+\`\`\`
+
+### Push vs Pull deployment
+
+| | Push (classic CI/CD) | Pull (GitOps) |
+|---|---|---|
+| Who applies | CI job from outside | Controller inside cluster |
+| Cluster credentials | Stored in CI (broad blast radius) | **Never leave the cluster** |
+| Source of truth | Pipeline logs / imperative scripts | **Git, declarative** |
+| Drift handling | None — manual \`kubectl\` sticks | **Detected + auto-healed** |
+| Audit trail | Scattered CI logs | **git log = full history** |
+| Rollback | Re-run a pipeline | \`git revert\` → reconcile |
+| Multi-cluster | Pipeline fans out | Each cluster pulls its own state |
+
+> [!SUCCESS]
+> **The security win is decisive.** In pull mode, kube-admin credentials never live in CI. CI only needs write access to a git repo. A compromised CI runner cannot directly \`kubectl apply\` to prod — it can only open a PR, which is reviewed. This shrinks the blast radius dramatically.
+
+### Drift detection & self-heal
+
+> [!TIP]
+> If someone runs \`kubectl edit\` or \`kubectl scale\` directly on the cluster, the live state diverges from git — that's **drift**. ArgoCD shows the app as \`OutOfSync\`. With \`selfHeal: true\`, the controller automatically reverts the manual change back to what git says. Git is law; the cluster cannot keep ad-hoc edits.
+
+> [!WARNING]
+> **Self-heal can fight you during incident response.** A 3am manual \`kubectl scale\` to add capacity gets reverted in seconds. The disciplined fix is to commit the change to git (or temporarily disable auto-sync). Teams new to GitOps get burned by this.
+
+### App-of-apps pattern
+
+> [!TIP]
+> Bootstrap an entire platform from one root Application. The **app-of-apps** is an ArgoCD Application whose git source is a directory of *other* Application manifests. Sync the root → it creates all child apps (ingress, monitoring, cert-manager, your services). One \`git clone\` + one apply reconstructs the whole platform — the basis of disaster recovery and ephemeral environments.
+
+### Secrets in GitOps — you cannot commit plaintext
+
+Git is the source of truth, but you cannot put raw secrets in a repo. Three patterns:
+
+| Pattern | How it works | Trade-off |
+|---|---|---|
+| **Sealed Secrets** (Bitnami) | Encrypt secret with controller's public key; commit the SealedSecret CRD; controller decrypts in-cluster | Cluster-bound key; rotation/migration is fiddly |
+| **SOPS** (+ age/KMS) | Encrypt values with KMS/age; commit encrypted YAML; Flux/ArgoCD plugin decrypts at apply | Need KMS access; great for GitOps repos |
+| **External Secrets Operator** | Commit only a *reference*; ESO pulls the real value from Vault/AWS Secrets Manager/GCP SM at runtime | Secret lives in a real secrets manager (best practice), small live dependency |
+
+> [!DANGER]
+> **Never commit a plaintext Kubernetes Secret** — base64 is encoding, not encryption. Anyone with repo read access (and your whole git history forever) gets the credential. Use sealed-secrets/SOPS/ESO so the repo holds only ciphertext or references.
+
+> [!EU]
+> For audit/compliance regimes (SOC 2, ISO 27001, DORA in EU financial services), GitOps is a gift: every production change is a signed git commit with an approver, giving a tamper-evident change-management trail out of the box — auditors love \`git log\`.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `ArgoCD Application — auto-sync, self-heal, prune`,
+                code: `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: orders
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # cascade delete on app removal
+spec:
+  project: payments
+  source:
+    repoURL: https://github.com/acme/gitops-prod.git
+    targetRevision: main
+    path: apps/orders            # Helm/Kustomize manifests live here
+    helm:
+      valueFiles: [ values-prod.yaml ]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prod
+  syncPolicy:
+    automated:
+      prune: true                # delete resources removed from git
+      selfHeal: true             # revert manual drift back to git
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+  revisionHistoryLimit: 10       # keeps rollback targets`,
+                runnable: false,
+                note: `prune + selfHeal = full reconciliation: git is law. CI bumps image.tag in gitops-prod; ArgoCD detects the commit and rolls it out.`
+              },
+              {
+                lang: `yaml`,
+                title: `App-of-apps root + an External Secret reference`,
+                code: `# root.yaml — one Application that creates all the others
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: { name: root, namespace: argocd }
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/acme/gitops-prod.git
+    targetRevision: main
+    path: bootstrap/apps         # a folder full of Application manifests
+  destination: { server: https://kubernetes.default.svc, namespace: argocd }
+  syncPolicy: { automated: { prune: true, selfHeal: true } }
+---
+# Only a REFERENCE is committed; ESO fetches the real value from Vault/ASM.
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata: { name: orders-db, namespace: prod }
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: aws-secrets-manager, kind: ClusterSecretStore }
+  target: { name: orders-db-secret }       # the real K8s Secret ESO creates
+  data:
+    - secretKey: password
+      remoteRef: { key: prod/orders/db, property: password }`,
+                runnable: false,
+                note: `No plaintext secret in git — only a pointer. ESO syncs the real value from the external manager into a live K8s Secret.`
+              },
+              {
+                lang: `bash`,
+                title: `ArgoCD CLI / kubectl GitOps operations`,
+                code: `# See sync + health status
+argocd app get orders
+argocd app list --output wide
+
+# Show the diff between git (desired) and cluster (live)
+argocd app diff orders
+
+# Force a reconcile now instead of waiting for the poll interval
+argocd app sync orders
+
+# Rollback = point git back, OR roll to a prior synced revision
+argocd app rollback orders 12
+git -C gitops-prod revert <bad-sha> && git push   # the GitOps-native rollback
+
+# Inspect drift the controller detected
+kubectl -n argocd get applications.argoproj.io orders \\
+  -o jsonpath='{.status.sync.status}{"\\n"}'   # Synced | OutOfSync`,
+                runnable: false,
+                note: `git revert + push is the canonical GitOps rollback — it keeps git as the source of truth and the audit trail intact.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Define GitOps in one sentence.`,
+                a: `A controller running inside the cluster continuously pulls declarative desired state from git and reconciles the live cluster to match it, making git the single source of truth and audit log.`
+              },
+              {
+                q: `Push vs pull deployment — the security difference?`,
+                a: `In push, CI holds kube-admin credentials and applies from outside (broad blast radius). In pull/GitOps, the controller lives in the cluster and credentials never leave it; CI only needs git write access, so a compromised runner can at most open a PR.`
+              },
+              {
+                q: `What is drift and how does self-heal handle it?`,
+                a: `Drift is divergence of live cluster state from git (e.g. a manual kubectl edit). The controller marks the app OutOfSync; with selfHeal: true it automatically reverts the manual change back to the git-declared state.`
+              },
+              {
+                q: `Why can self-heal hurt during incident response?`,
+                a: `A manual emergency change (e.g. kubectl scale to add capacity) is reverted within seconds because it is not in git. The correct fix is to commit the change to git or temporarily disable auto-sync.`
+              },
+              {
+                q: `What is the app-of-apps pattern and what does it enable?`,
+                a: `A root ArgoCD Application whose source is a directory of other Application manifests. Syncing it bootstraps the entire platform (ingress, monitoring, services) from one apply — the basis for DR and ephemeral environments.`
+              },
+              {
+                q: `Why is committing a plaintext Kubernetes Secret unsafe?`,
+                a: `Secret data is base64-encoded, not encrypted. Anyone with repo read access — and the entire immutable git history forever — can decode the credential. Use Sealed Secrets, SOPS, or External Secrets.`
+              },
+              {
+                q: `Compare Sealed Secrets, SOPS, and External Secrets Operator.`,
+                a: `Sealed Secrets: commit ciphertext encrypted with the cluster controller key, decrypted in-cluster. SOPS: commit KMS/age-encrypted YAML, decrypted at apply. ESO: commit only a reference; the real value is pulled from Vault/AWS SM at runtime (secret stays in a real manager).`
+              },
+              {
+                q: `What is the GitOps-native way to roll back?`,
+                a: `git revert the bad commit and push — the controller reconciles the cluster back. This preserves git as source of truth and keeps a complete, auditable history (vs an out-of-band kubectl apply).`
+              },
+              {
+                q: `How does the reconciliation loop actually work?`,
+                a: `The controller watches/polls the git repo, diffs desired state against the live cluster via the K8s API, and applies changes to converge; it repeats forever, so any drift is continuously corrected.`
+              },
+              {
+                q: `Why do auditors (SOC 2 / DORA) like GitOps?`,
+                a: `Every production change is a signed git commit with an approving reviewer, giving a tamper-evident, immutable change-management trail. git log is the audit log — no separate change-tracking system needed.`
+              },
+              {
+                q: `What does ArgoCD prune: true do, and what is the risk?`,
+                a: `It deletes cluster resources that were removed from git, keeping the cluster a true mirror of the repo. Risk: an accidental manifest deletion (or a bad path) removes live resources, so combine with reviews and PrunePropagationPolicy/finalizers.`
+              }
+            ]
+          },
+          {
+            title: `Supply Chain & Release Safety: Signing, SBOM, Provenance & DORA`,
+            notes: `## Release Safety & Supply-Chain Integrity
+
+After SolarWinds and Log4Shell, "is this image the one we built, from the source we think, with no tampering?" is a board-level question. Staff candidates must speak to **provenance, SBOM, signing, and measuring delivery with DORA**.
+
+### Software supply chain: SLSA, provenance, signing
+
+- **SLSA** (Supply-chain Levels for Software Artifacts) is a graded framework. Higher levels require **provenance** — verifiable metadata of *how/where/from-what-source* an artifact was built — and increasingly hermetic, tamper-resistant builds.
+- **Provenance attestation** answers: which commit, which builder, which dependencies. GitHub Actions can emit signed provenance (\`provenance: true\` on build-push, or the SLSA generator).
+- **cosign** (Sigstore) signs images. **Keyless signing** uses a short-lived OIDC identity (the workflow's identity) recorded in the **Rekor** transparency log — no private key to steal.
+
+> [!SUCCESS]
+> **Verify at admission, not just at build.** Sign in CI, then enforce in the cluster: a Kyverno/Gatekeeper or cosign admission policy *rejects any image without a valid signature from your CI identity*. This closes the loop — unsigned or tampered images literally cannot run.
+
+### SBOM — Software Bill of Materials
+
+> [!TIP]
+> An **SBOM** (CycloneDX or SPDX) is the ingredient list of an artifact: every dependency and version. Generate it in CI (\`syft\`, or \`sbom: true\` on build-push) and attach it as an attestation. When the next Log4Shell drops, you query SBOMs to answer "which of our 300 services ship the vulnerable version?" in minutes, not weeks.
+
+### Environment parity & observability of deploys
+
+> [!WARNING]
+> **"Works in staging, breaks in prod" is usually an environment-parity failure** — different config, data shape, scale, or downstream versions. Minimize the dev/prod gap (same image, same chart, prod-like data volume in load tests). Treat config as the only legitimate difference (12-factor).
+
+**Observe every deploy as a first-class event:**
+- Emit a **deployment marker** to Grafana/Datadog so dashboards correlate a latency spike with the deploy that caused it.
+- Watch **SLO error budgets** post-deploy; wire them into canary analysis for automatic abort.
+- **Trace-level** comparison of the canary vs stable (RED metrics: Rate, Errors, Duration).
+
+### DORA metrics — measuring delivery performance
+
+\`\`\`mermaid
+flowchart LR
+  subgraph Throughput
+    DF[Deployment Frequency]
+    LT[Lead Time for Changes]
+  end
+  subgraph Stability
+    MTTR[Time to Restore<br/>MTTR]
+    CFR[Change Failure Rate]
+  end
+\`\`\`
+
+| Metric | Question it answers | Elite benchmark | Improve by |
+|---|---|---|---|
+| **Deployment Frequency** | How often do we ship to prod? | On-demand, multiple/day | Trunk-based, small batches, automation |
+| **Lead Time for Changes** | Commit → running in prod? | < 1 hour | CI automation, fast pipelines, feature flags |
+| **MTTR / Time to Restore** | How fast do we recover? | < 1 hour | Fast rollback, canary auto-abort, good observability |
+| **Change Failure Rate** | % of deploys causing a failure | 0–15% | Testing, progressive delivery, expand-contract |
+
+> [!TIP]
+> **Throughput (DF, LT) and stability (MTTR, CFR) are NOT a trade-off.** The DORA research shows elite teams are better at *both*: small frequent changes are easier to test, ship, and revert, so they fail less and recover faster. If someone "slows down to be safe," they usually get *less* safe.
+
+> [!DANGER]
+> **Beware gaming the metrics.** Optimizing deployment frequency by counting trivial deploys, or hiding failures to lower CFR, corrupts the signal. DORA metrics are health indicators for the *system*, not individual performance targets — Goodhart's law applies.
+
+> [!EU]
+> The **EU Cyber Resilience Act** and **NIS2** push SBOMs, vulnerability handling, and provenance toward legal obligation for products and critical-sector operators. Signing, SBOM attestation, and a documented patch pipeline move from "nice to have" to "required to sell/operate in the EU."`,
+            code: [
+              {
+                lang: `bash`,
+                title: `cosign sign/verify, SBOM, and admission verification`,
+                code: `# Sign by DIGEST keylessly (OIDC identity recorded in Rekor transparency log)
+cosign sign --yes ghcr.io/acme/orders@sha256:9f2c...
+
+# Verify the signature came from OUR CI workflow identity
+cosign verify \\
+  --certificate-identity-regexp 'https://github.com/acme/.*' \\
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\
+  ghcr.io/acme/orders@sha256:9f2c... | jq .
+
+# Generate + attach an SBOM (CycloneDX) as an attestation
+syft ghcr.io/acme/orders@sha256:9f2c... -o cyclonedx-json > sbom.json
+cosign attest --yes --predicate sbom.json --type cyclonedx \\
+  ghcr.io/acme/orders@sha256:9f2c...
+
+# Verify provenance/SLSA attestation exists before promoting
+cosign verify-attestation --type slsaprovenance \\
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\
+  ghcr.io/acme/orders@sha256:9f2c...`,
+                runnable: false,
+                note: `Keyless cosign needs no stored key: it uses the short-lived workflow OIDC identity, logged publicly in Rekor for tamper-evidence.`
+              },
+              {
+                lang: `yaml`,
+                title: `Kyverno policy — reject unsigned images at admission`,
+                code: `apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata: { name: require-signed-images }
+spec:
+  validationFailureAction: Enforce      # block, do not just audit
+  rules:
+    - name: verify-ghcr-signature
+      match:
+        any:
+          - resources: { kinds: [ Pod ] }
+      verifyImages:
+        - imageReferences: [ "ghcr.io/acme/*" ]
+          attestors:
+            - entries:
+                - keyless:
+                    issuer: https://token.actions.githubusercontent.com
+                    subject: "https://github.com/acme/*"
+                    rekor: { url: https://rekor.sigstore.dev }`,
+                runnable: false,
+                note: `Closes the loop: an image not signed by the acme CI OIDC identity cannot be scheduled in the cluster.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is SLSA and what does provenance give you?`,
+                a: `SLSA is a graded supply-chain security framework. Provenance is verifiable, signed metadata of how/where/from-what an artifact was built (commit, builder, deps), letting you confirm an image really came from your pipeline and source.`
+              },
+              {
+                q: `What is keyless signing with cosign and why is it safer?`,
+                a: `Cosign uses a short-lived OIDC identity (the CI workflow itself) instead of a stored private key, recording the signature in the Rekor transparency log. There is no long-lived key to leak, and the log is tamper-evident.`
+              },
+              {
+                q: `Why sign and verify images by digest rather than tag?`,
+                a: `A digest (@sha256:...) is content-addressable and immutable; a tag can be re-pointed. Signing the digest binds the signature to exactly the bits you built; verifying by digest prevents a swapped image under the same tag.`
+              },
+              {
+                q: `What is an SBOM and what problem does it solve?`,
+                a: `A Software Bill of Materials (CycloneDX/SPDX) is the full dependency list of an artifact. When a new CVE drops (e.g. Log4Shell), you query SBOMs to find every affected service in minutes instead of auditing repos for weeks.`
+              },
+              {
+                q: `How do you stop unsigned/tampered images from running in the cluster?`,
+                a: `An admission policy (Kyverno/Gatekeeper with cosign) verifies each image has a valid signature from your CI OIDC identity and rejects any that do not — enforcing supply-chain trust at deploy time, not just build time.`
+              },
+              {
+                q: `Name the four DORA metrics and their two categories.`,
+                a: `Throughput: Deployment Frequency and Lead Time for Changes. Stability: Time to Restore (MTTR) and Change Failure Rate.`
+              },
+              {
+                q: `Are DORA throughput and stability a trade-off?`,
+                a: `No. DORA research shows elite teams excel at both: small, frequent changes are easier to test, ship, and revert, so they fail less and recover faster. Slowing down "to be safe" usually reduces safety.`
+              },
+              {
+                q: `What is Change Failure Rate and how do you lower it?`,
+                a: `The percentage of deployments that cause a failure (incident, rollback, hotfix). Lower it with stronger testing, progressive delivery (canary auto-abort), expand-contract migrations, and small batch sizes. Elite is 0–15%.`
+              },
+              {
+                q: `How do you make MTTR (time to restore) small?`,
+                a: `Fast, automated rollback (image digest revert / git revert), canary auto-abort on SLO breach, feature-flag kill switches, and strong observability (deployment markers + error-budget alerts) so you detect and revert quickly.`
+              },
+              {
+                q: `Why is "works in staging, fails in prod" usually a parity problem?`,
+                a: `Staging differs in config, data shape/volume, scale, or downstream service versions. The fix is to minimize the dev/prod gap (same image and chart, prod-like data in load tests) and treat config as the only legitimate difference (12-factor).`
+              },
+              {
+                q: `How can DORA metrics be gamed, and how should they be used?`,
+                a: `Counting trivial deploys inflates frequency; hiding failures lowers CFR (Goodhart law applies). Use them as system-health indicators trended over time, never as individual performance targets.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `7.5`,
+        title: `Microservices on Kubernetes: End-to-End`,
+        hours: 7,
+        sections: [
+          {
+            title: `1. The System & the Toolchain (Code → Production)`,
+            notes: `# The "Orders" system, end to end
+
+Everything in this module is built around **one** concrete system so the tooling never feels abstract. We take a 3-service Spring Boot estate from a Maven build on your laptop to a self-healing, observable, GitOps-driven Kubernetes deployment.
+
+## The business system
+
+An **Orders** platform composed of three Spring Boot microservices, a relational store, and an event backbone:
+
+| Service | Responsibility | Talks to | Datastore |
+|---|---|---|---|
+| **order-service** | Owns the order lifecycle, the public API surface | inventory-service (sync REST), Kafka (async) | \`orders\` DB (Postgres) |
+| **inventory-service** | Stock levels, reservations | Kafka (consume \`order.created\`) | \`inventory\` DB (Postgres) |
+| **payment-service** | Charges, refunds, settlement | Kafka (consume \`order.confirmed\`) | \`payments\` DB (Postgres) |
+
+The **happy path**: a client calls \`POST /api/orders\` → order-service synchronously checks stock via inventory-service → persists the order → publishes \`order.created\` to Kafka → inventory reserves stock and emits \`order.confirmed\` → payment-service charges the card. North-south traffic enters through an **Ingress + gateway**; east-west traffic is service-to-service inside the cluster.
+
+> [!TIP]
+> The single most common staff-interview failure mode is talking about Kubernetes primitives in isolation. Anchor every answer to a request flowing through a real system: "a \`POST /api/orders\` lands on the Ingress, gets routed to the order-service Service, which load-balances across 3 pods…". Concrete beats encyclopedic.
+
+\`\`\`mermaid
+flowchart TB
+  client([Client / Mobile / Web])
+  subgraph cluster["Kubernetes cluster"]
+    ingress["Ingress + API Gateway<br/>(NGINX / Spring Cloud Gateway)"]
+    subgraph ns["namespace: orders-prod"]
+      os["order-service<br/>(3 replicas)"]
+      is["inventory-service<br/>(2 replicas)"]
+      ps["payment-service<br/>(2 replicas)"]
+      kafka[("Kafka")]
+      pg[("Postgres<br/>orders / inventory / payments")]
+    end
+  end
+  client -->|HTTPS north-south| ingress
+  ingress -->|/api/orders| os
+  os -->|REST east-west<br/>check stock| is
+  os -->|publish order.created| kafka
+  kafka -->|consume| is
+  kafka -->|consume order.confirmed| ps
+  os --> pg
+  is --> pg
+  ps --> pg
+\`\`\`
+
+## The toolchain: what each tool does and WHEN
+
+You do not "use Kubernetes". You compose a **toolchain**, each layer with one job. Knowing *when* each tool enters the lifecycle is what separates a senior from a mid.
+
+| Stage | Tool | Job | When you touch it |
+|---|---|---|---|
+| Build | **Maven / Gradle** | Compile, test, produce a runnable jar | Every commit (local + CI) |
+| Package | **Docker (multi-stage)** | Turn the jar into an immutable OCI image | CI, after a green build |
+| Store | **Registry** (ECR / GHCR / Harbor) | Versioned, scanned image storage | CI push; cluster pull |
+| Orchestrate | **Kubernetes** | Run, schedule, heal, scale containers | The runtime substrate |
+| Template | **Helm** | Parameterize K8s YAML per environment | Package + per-env config |
+| Deliver | **ArgoCD** (GitOps) | Reconcile cluster to a Git-declared desired state | Continuous; git is the trigger |
+| Observe | **Prometheus / Grafana / Tempo** | Metrics, dashboards, traces, alerts | Day-2 operations |
+
+> [!SUCCESS]
+> **Mental model:** Maven makes the *jar*. Docker makes the *image*. Kubernetes runs the *image*. Helm *parameterizes* the run. ArgoCD *delivers* the parameters from Git. Prometheus *watches* it all. Each tool has exactly one reason to exist — if you can recite that line you can defend the whole stack.
+
+\`\`\`mermaid
+flowchart LR
+  dev([Developer])
+  git[("Git repo<br/>(app + manifests)")]
+  ci["CI: GitHub Actions<br/>mvn verify → docker build → push"]
+  reg[["Container Registry<br/>ghcr.io/acme/order-service:sha-abc123"]]
+  argo["ArgoCD<br/>(GitOps controller)"]
+  k8s["Kubernetes API"]
+  cluster["Cluster pods<br/>orders-dev → orders-prod"]
+  obs["Prometheus + Grafana<br/>scrape /actuator/prometheus"]
+
+  dev -->|git push| git
+  git -->|webhook| ci
+  ci -->|push image| reg
+  ci -->|bump image tag<br/>in manifests repo| git
+  git -->|desired state| argo
+  argo -->|kubectl apply| k8s
+  reg -.->|image pull| cluster
+  k8s --> cluster
+  cluster --> obs
+\`\`\`
+
+## Two pipelines, not one
+
+A subtle but staff-level point: there are **two** flows and they meet only in Git.
+
+- **CI (push-based):** code → test → image → push → *commit the new image tag*. CI never talks to the cluster.
+- **CD (pull-based / GitOps):** ArgoCD watches the manifests repo and *pulls* desired state into the cluster.
+
+> [!WARNING]
+> Do **not** let CI run \`kubectl apply\` directly to prod. That couples your build system to cluster credentials, makes drift invisible, and removes the Git audit trail. The CI job's last step should be a commit that bumps an image tag; ArgoCD does the deploy. This is the "git as the single source of truth" principle and is the answer interviewers want.
+
+> [!EU]
+> For regulated/EU workloads, the GitOps split is also a compliance win: every production change is a signed, reviewable, revertible Git commit — you get an immutable change-audit trail (useful for SOC 2 / ISO 27001 / DORA evidence) without bolting on a separate ticketing integration.
+
+## What "done" looks like by the end of this module
+
+1. Each service builds into a small, non-root, multi-stage image.
+2. \`docker-compose up\` runs the whole stack locally.
+3. Namespaces, quotas, RBAC isolate dev from prod.
+4. Deployments + Services + Config/Secrets run the services with probes and limits.
+5. Ingress + TLS + NetworkPolicy control north-south and east-west traffic.
+6. An umbrella Helm chart + ArgoCD ships dev → prod from Git.
+7. HPA, rolling updates, dashboards, traces, and a runbook keep it alive.`,
+            code: [
+              {
+                lang: `text`,
+                title: `Repository layout (mono-repo for app + manifests)`,
+                code: `orders-platform/
+├── order-service/
+│   ├── src/main/java/...
+│   ├── src/main/resources/application.yml
+│   ├── pom.xml
+│   └── Dockerfile
+├── inventory-service/        # same shape
+├── payment-service/          # same shape
+├── docker-compose.yml        # run the whole stack locally
+├── deploy/
+│   ├── helm/
+│   │   ├── orders-umbrella/  # umbrella chart
+│   │   │   ├── Chart.yaml
+│   │   │   ├── values.yaml
+│   │   │   ├── values-dev.yaml
+│   │   │   ├── values-prod.yaml
+│   │   │   └── charts/
+│   │   │       ├── order-service/
+│   │   │       ├── inventory-service/
+│   │   │       └── payment-service/
+│   └── argocd/
+│       ├── app-orders-dev.yaml
+│       └── app-orders-prod.yaml
+└── .github/workflows/ci.yml`,
+                "note?": `App code and deployment manifests can live in one repo or be split (app repo + 'config' repo). GitOps purists split them so a tag-bump commit doesn't retrigger the app build. Either works — be ready to justify your choice.`
+              },
+              {
+                lang: `bash`,
+                title: `Toolchain versions — pin everything`,
+                code: `# Reproducibility is non-negotiable at staff level. Pin tool versions.
+java   --version   # Temurin 21 (LTS)
+mvn    --version   # 3.9.x
+docker --version   # 24.x, buildkit enabled
+kubectl version --client   # match cluster minor +/- 1
+helm   version     # 3.14.x
+argocd version --client    # 2.10.x
+
+# Cluster context hygiene — know which cluster you're pointed at, always.
+kubectl config get-contexts
+kubectl config current-context   # 'orders-dev' or 'orders-prod' — CHECK before every apply`,
+                "note?": `Skew policy: kubectl must be within one minor of the API server. A mismatched kubectl is a silent source of 'works for me' bugs.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `In one sentence each, what is the single job of Maven, Docker, Kubernetes, Helm, and ArgoCD in this pipeline?`,
+                a: `Maven produces the jar; Docker packages the jar into an immutable image; Kubernetes runs/schedules/heals the image; Helm parameterizes the K8s manifests per environment; ArgoCD reconciles the cluster to the Git-declared desired state.`
+              },
+              {
+                q: `Why should CI NOT run \`kubectl apply\` directly against production?`,
+                a: `It couples the build system to cluster credentials, hides configuration drift, and bypasses the Git audit trail. The CI job should end by committing a new image tag; a GitOps controller (ArgoCD) pulls and applies it, keeping Git as the single source of truth.`
+              },
+              {
+                q: `Distinguish north-south from east-west traffic in this system.`,
+                a: `North-south is external client traffic entering through the Ingress/gateway (e.g. POST /api/orders). East-west is service-to-service traffic inside the cluster (order-service → inventory-service over cluster DNS). They have different security and routing controls — Ingress/TLS for N-S, NetworkPolicy/mTLS for E-W.`
+              },
+              {
+                q: `What is 'GitOps' and what makes a deployment GitOps vs. just CI/CD?`,
+                a: `GitOps makes Git the single source of truth for declarative infrastructure, with an in-cluster controller that continuously pulls and reconciles actual state to the Git-declared desired state. Plain CI/CD pushes changes imperatively; GitOps is pull-based, self-healing, and auto-detects/corrects drift.`
+              },
+              {
+                q: `Which two pipelines exist in this architecture and where do they meet?`,
+                a: `A push-based CI pipeline (code → test → image → push → commit tag) and a pull-based CD/GitOps pipeline (ArgoCD watches the manifests repo). They meet only in Git: CI's output is a commit; CD's input is that commit.`
+              },
+              {
+                q: `Why are immutable, content-addressed image tags (e.g. sha-abc123) preferred over \`latest\` in this pipeline?`,
+                a: `Immutable tags make deployments deterministic and auditable: a given tag always means the same bytes, rollbacks are exact, and ArgoCD can detect real changes. \`latest\` is mutable, so two pods can run different code under the same tag and rollbacks are meaningless.`
+              },
+              {
+                q: `In a staff interview, what's the strongest way to frame a Kubernetes answer?`,
+                a: `Anchor it to a concrete request flowing through a real system rather than reciting primitives in isolation: trace POST /api/orders from Ingress → Service → pod → downstream service → Kafka → DB, naming the controls at each hop.`
+              },
+              {
+                q: `What is the kubectl/API-server version skew rule and why does it matter?`,
+                a: `kubectl should be within one minor version of the API server. Outside that window, command behavior and field support can silently diverge, producing 'works on my machine' deployment bugs. Pin and match tool versions for reproducibility.`
+              },
+              {
+                q: `Where do Prometheus and Grafana fit in the toolchain and when do you engage them?`,
+                a: `They're day-2 (operations) tooling: Prometheus scrapes /actuator/prometheus metrics from each pod, Grafana visualizes and alerts. You engage them after the system is running — for SLOs, capacity, and incident response — not as part of the build.`
+              },
+              {
+                q: `Why keep the whole stack runnable with docker-compose before going to Kubernetes?`,
+                a: `It gives a fast, local, dependency-complete feedback loop (services + Postgres + Kafka) to validate wiring and config without cluster complexity, catching integration bugs cheaply before Helm/K8s amplifies the cost of finding them.`
+              },
+              {
+                q: `For an EU/regulated workload, what compliance advantage does the GitOps split give you?`,
+                a: `Every production change becomes a signed, reviewable, revertible Git commit, yielding an immutable change-audit trail that supports SOC 2 / ISO 27001 / DORA evidence requirements without a separate change-management integration.`
+              }
+            ]
+          },
+          {
+            title: `2. Containerize Each Service (Docker, Registry, Compose)`,
+            notes: `# From jar to immutable image
+
+Each service must become a **small, secure, reproducible** OCI image. The two non-negotiables: **multi-stage builds** (build deps never reach the runtime image) and **layered jars** (so a code-only change doesn't re-download every dependency).
+
+## Multi-stage anatomy
+
+\`\`\`mermaid
+flowchart LR
+  subgraph s1["Stage 1: builder (≈600 MB)"]
+    a["maven:3.9-eclipse-temurin-21"]
+    b["mvn -o package -DskipTests<br/>+ layertools extract"]
+  end
+  subgraph s2["Stage 2: runtime (≈180 MB)"]
+    c["eclipse-temurin:21-jre + non-root user"]
+    d["COPY only extracted layers"]
+  end
+  a --> b --> d
+  c --> d
+  d --> img[["order-service:sha-abc123"]]
+\`\`\`
+
+> [!TIP]
+> Use Spring Boot **layered jars** (\`layertools\`). Copy dependencies, spring-boot-loader, snapshot deps, and application classes as *separate* COPY layers. Your app code changes daily; your dependencies change weekly. Layering means a code change rebuilds ~2 MB instead of ~80 MB — huge CI cache wins.
+
+> [!WARNING]
+> Never run containers as root. Add a dedicated non-root user and set \`USER\`. A root container that's compromised + a host escape = cluster-wide blast radius. Kubernetes \`securityContext.runAsNonRoot: true\` will refuse to start a root image — fix it at the Dockerfile.
+
+> [!DANGER]
+> Do **not** bake secrets (DB passwords, API keys) into images. Images live in registries, get pulled by many nodes, and are cached forever. Secrets belong in Kubernetes Secrets / external secret stores, injected at runtime. A leaked DB password in an image layer is effectively public.
+
+## Image tagging strategy
+
+| Tag | Use | Mutable? |
+|---|---|---|
+| \`sha-<git-sha>\` | The canonical, deployable tag | No — immutable |
+| \`1.4.2\` (semver) | Human-facing releases | No |
+| \`pr-481\` | Ephemeral preview environments | Yes |
+| \`latest\` | Local convenience only — **never** in K8s | Yes |
+
+The deployable artifact is always \`registry/service:sha-<gitsha>\`. ArgoCD and rollbacks rely on this immutability.
+
+## JVM in a container: the classic gotcha
+
+> [!WARNING]
+> Old JVMs ignored cgroup limits and saw the *host's* RAM, then sized the heap to a fraction of that and got OOMKilled. On Java 21 this is handled, but still set heap bounds relative to the container. Use \`-XX:MaxRAMPercentage=75.0\` rather than a fixed \`-Xmx\` so the heap tracks the pod's memory limit. Always leave headroom for metaspace, thread stacks, and direct buffers (the non-heap ~25%).`,
+            code: [
+              {
+                lang: `dockerfile`,
+                title: `order-service/Dockerfile — production multi-stage, layered, non-root`,
+                code: `# syntax=docker/dockerfile:1.7
+# ---------- Stage 1: build ----------
+FROM maven:3.9-eclipse-temurin-21 AS builder
+WORKDIR /build
+
+# Cache dependencies separately from source for fast incremental builds
+COPY pom.xml .
+RUN --mount=type=cache,target=/root/.m2 mvn -B -e -o dependency:go-offline || \\
+    mvn -B -e dependency:go-offline
+
+COPY src ./src
+RUN --mount=type=cache,target=/root/.m2 mvn -B -DskipTests clean package
+
+# Explode the Spring Boot layered jar into layers
+RUN java -Djarmode=layertools -jar target/*.jar extract --destination target/extracted
+
+# ---------- Stage 2: runtime ----------
+FROM eclipse-temurin:21-jre AS runtime
+WORKDIR /app
+
+# Non-root user
+RUN groupadd -r app && useradd -r -g app -u 10001 app
+
+# Copy layers in change-frequency order (least → most frequently changed)
+COPY --from=builder /build/target/extracted/dependencies/ ./
+COPY --from=builder /build/target/extracted/spring-boot-loader/ ./
+COPY --from=builder /build/target/extracted/snapshot-dependencies/ ./
+COPY --from=builder /build/target/extracted/application/ ./
+
+USER 10001
+EXPOSE 8080
+
+# Heap tracks the container limit; leave ~25% for non-heap
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+
+# Use the JarLauncher entrypoint produced by layertools
+ENTRYPOINT ["sh","-c","exec java $JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher"]`,
+                "runnable?": false,
+                "note?": `ExitOnOutOfMemoryError makes the JVM die fast on OOM so Kubernetes restarts it cleanly instead of limping along. The MaxRAMPercentage lets one image work across pods with different memory limits.`
+              },
+              {
+                lang: `bash`,
+                title: `Build, tag, and push to the registry`,
+                code: `SERVICE=order-service
+REGISTRY=ghcr.io/acme
+GIT_SHA=$(git rev-parse --short HEAD)
+
+# Build with the immutable sha tag
+docker build -t $REGISTRY/$SERVICE:sha-$GIT_SHA ./$SERVICE
+
+# Also tag a semver release if this is a tagged commit
+docker tag $REGISTRY/$SERVICE:sha-$GIT_SHA $REGISTRY/$SERVICE:1.4.2
+
+# Authenticate (GHCR example) and push
+echo "$GHCR_TOKEN" | docker login ghcr.io -u acme-ci --password-stdin
+docker push $REGISTRY/$SERVICE:sha-$GIT_SHA
+docker push $REGISTRY/$SERVICE:1.4.2
+
+# Scan before you trust it (fail the build on HIGH/CRITICAL)
+trivy image --severity HIGH,CRITICAL --exit-code 1 $REGISTRY/$SERVICE:sha-$GIT_SHA`,
+                "note?": `Tag with the git SHA first (always present), add semver only on release tags. Trivy/Grype scanning in CI is table stakes for senior roles — supply-chain security is a frequent interview topic.`
+              },
+              {
+                lang: `yaml`,
+                title: `docker-compose.yml — run the WHOLE stack locally before K8s`,
+                code: `services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: localdev
+      POSTGRES_MULTIPLE_DBS: orders,inventory,payments
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app"]
+      interval: 5s
+      retries: 10
+
+  kafka:
+    image: bitnami/kafka:3.7
+    environment:
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    ports: ["9092:9092"]
+
+  order-service:
+    build: ./order-service
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka:    { condition: service_started }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orders
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: localdev
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      INVENTORY_SERVICE_URL: http://inventory-service:8080
+    ports: ["8080:8080"]
+
+  inventory-service:
+    build: ./inventory-service
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka:    { condition: service_started }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/inventory
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: localdev
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports: ["8081:8080"]
+
+  payment-service:
+    build: ./payment-service
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka:    { condition: service_started }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payments
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: localdev
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports: ["8082:8080"]
+
+volumes:
+  pgdata: {}`,
+                "note?": `Note how compose service names (postgres, kafka, inventory-service) become DNS names — the same model as Kubernetes cluster DNS. Validate inter-service wiring here, cheaply, before adding cluster complexity.`
+              },
+              {
+                lang: `bash`,
+                title: `Run and smoke-test the local stack`,
+                code: `docker compose up --build -d
+docker compose ps                    # all healthy?
+docker compose logs -f order-service # watch startup
+
+# Smoke test the happy path
+curl -s localhost:8080/actuator/health | jq .
+curl -s -X POST localhost:8080/api/orders \\
+  -H 'Content-Type: application/json' \\
+  -d '{"sku":"WIDGET-1","qty":2}' | jq .
+
+docker compose down -v               # tear down + wipe volumes`,
+                "note?": `If the happy path works in compose, your application wiring (DB URLs, Kafka bootstrap, inter-service URLs) is correct. Remaining K8s issues are then almost always infra (DNS, probes, config injection) — a much smaller search space.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why use a multi-stage Dockerfile for a Spring Boot service?`,
+                a: `The build stage (Maven, JDK, source) is huge and full of tooling you never want at runtime. The final stage copies only the built artifact into a slim JRE base, producing a smaller image with a smaller attack surface and no build-time secrets or tooling shipped to production.`
+              },
+              {
+                q: `What are Spring Boot layered jars and why do they matter for Docker caching?`,
+                a: `layertools splits the jar into dependency / loader / snapshot / application layers. Copying each as a separate Docker layer means a code-only change invalidates just the small application layer, so CI reuses cached dependency layers — drastically faster builds and pushes.`
+              },
+              {
+                q: `A teammate hardcodes the DB password as an ENV in the Dockerfile. What's wrong?`,
+                a: `Secrets baked into an image are stored in registry layers, pulled to every node, and cached indefinitely — effectively public and unrotatable. Inject secrets at runtime via Kubernetes Secrets / an external secret store, never in the image.`
+              },
+              {
+                q: `Why set -XX:MaxRAMPercentage instead of a fixed -Xmx in a containerized JVM?`,
+                a: `MaxRAMPercentage sizes the heap relative to the container's cgroup memory limit, so one image behaves correctly across pods with different limits. It also forces you to leave headroom (~25%) for non-heap memory (metaspace, thread stacks, direct buffers), avoiding OOMKilled.`
+              },
+              {
+                q: `Why must the container run as a non-root user?`,
+                a: `A compromised root container plus a container-escape gives an attacker host/cluster-level access — large blast radius. Running as a dedicated non-root UID limits damage, and Kubernetes securityContext.runAsNonRoot will refuse to start a root image.`
+              },
+              {
+                q: `Describe a sound image tagging strategy for this pipeline.`,
+                a: `Always tag with an immutable sha-<gitsha> as the canonical deployable artifact; add semver tags on releases; use ephemeral pr-<n> tags for preview envs; never deploy \`latest\` to Kubernetes because it's mutable and breaks deterministic rollbacks.`
+              },
+              {
+                q: `Why run the entire stack in docker-compose before moving to Kubernetes?`,
+                a: `Compose gives a fast local loop with all dependencies (Postgres, Kafka, the three services) to validate application wiring and config cheaply. If the happy path works there, remaining failures in K8s are almost always infra-level (DNS, probes, config injection), shrinking the debugging search space.`
+              },
+              {
+                q: `How do docker-compose service names relate to Kubernetes networking?`,
+                a: `In compose, service names become DNS names on the user-defined network (e.g. http://inventory-service:8080) — the same service-discovery-by-name model Kubernetes provides via cluster DNS, so the inter-service URL config carries over almost unchanged.`
+              },
+              {
+                q: `What does -XX:+ExitOnOutOfMemoryError buy you in a containerized service?`,
+                a: `On an OutOfMemoryError the JVM exits immediately instead of limping in a degraded state. Kubernetes then restarts the pod cleanly via its restart policy, turning a murky half-dead process into a fast, observable restart.`
+              },
+              {
+                q: `Where should container image vulnerability scanning happen and what should it do on a critical CVE?`,
+                a: `In CI, right after build/push, using Trivy or Grype. On HIGH/CRITICAL findings it should fail the build (non-zero exit) so a vulnerable image never reaches the registry as a deployable tag — a core supply-chain control.`
+              },
+              {
+                q: `Your image is 900 MB and CI is slow. What two Dockerfile changes give the biggest wins?`,
+                a: `Switch to a multi-stage build with a JRE (not JDK/Maven) runtime base to cut size, and use Spring Boot layered jars with dependency layers copied before application classes so cached layers are reused across builds. Together they shrink the image and slash rebuild/push time.`
+              }
+            ]
+          },
+          {
+            title: `3. The Cluster & Namespaces (Isolation, Quotas, RBAC)`,
+            notes: `# Carving the cluster into safe tenancy
+
+Before any pod runs, decide the **tenancy boundaries**. We isolate environments with **namespaces**, cap blast radius with **ResourceQuota / LimitRange**, and grant least-privilege identities with **RBAC + ServiceAccounts**.
+
+## Namespace strategy
+
+Two namespaces, one per environment, on (ideally) separate clusters or at least separate node pools:
+
+\`\`\`mermaid
+flowchart TB
+  subgraph cl["Cluster"]
+    subgraph dev["namespace: orders-dev"]
+      d1["order-service<br/>SA: order-svc-sa"]
+      d2["inventory-service<br/>SA: inventory-svc-sa"]
+      d3["payment-service<br/>SA: payment-svc-sa"]
+      dq["ResourceQuota<br/>LimitRange"]
+    end
+    subgraph prod["namespace: orders-prod"]
+      p1["order-service"]
+      p2["inventory-service"]
+      p3["payment-service"]
+      pq["ResourceQuota<br/>LimitRange"]
+    end
+    subgraph plat["namespace: observability"]
+      pr["Prometheus"]
+      gr["Grafana"]
+    end
+  end
+\`\`\`
+
+> [!TIP]
+> One namespace per environment, **not** per service. Services in the same environment need to discover each other by short DNS name and share NetworkPolicy/quota policy. Per-service namespaces explode policy management for no isolation benefit (the real isolation boundary you care about is dev vs prod).
+
+## Why ResourceQuota AND LimitRange (they're different)
+
+| Object | Scope | Answers |
+|---|---|---|
+| **ResourceQuota** | Whole namespace | "This namespace may use at most 20 CPU / 40Gi total." |
+| **LimitRange** | Each pod/container | "Every container must request ≥100m and may not exceed 2 CPU; here's the default if you omit it." |
+
+> [!WARNING]
+> If a namespace has a ResourceQuota on \`requests.cpu\`/\`requests.memory\`, then **every** pod *must* declare requests and limits or the API server rejects it. The LimitRange's \`defaultRequest\`/\`default\` saves you here by injecting sane defaults, so a developer who forgets isn't blocked. Pair them.
+
+## RBAC & ServiceAccounts: least privilege per service
+
+Each service gets its **own ServiceAccount**. Why? The SA is the pod's *identity* — for cloud IAM (IRSA/Workload Identity), for NetworkPolicy targeting, and for audit. Most app pods need **zero** Kubernetes API permissions (they talk to Postgres/Kafka, not the API server), so bind them to a near-empty Role.
+
+> [!DANGER]
+> Never let app pods use the namespace's \`default\` ServiceAccount with broad permissions, and disable token automounting unless the pod actually calls the K8s API (\`automountServiceAccountToken: false\`). A leaked, over-privileged SA token is a direct path to lateral movement and privilege escalation across the namespace.
+
+> [!EU]
+> Strong namespace + RBAC boundaries underpin the data-residency and least-privilege controls auditors expect under GDPR/ISO 27001. Combined with NetworkPolicy (Section 5), you can demonstrate that payment data processing is segmented and access is need-to-know.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Namespaces with labels (for NetworkPolicy + Prometheus selection)`,
+                code: `apiVersion: v1
+kind: Namespace
+metadata:
+  name: orders-dev
+  labels:
+    env: dev
+    team: orders
+    monitoring: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: orders-prod
+  labels:
+    env: prod
+    team: orders
+    monitoring: "true"
+    # Enforce Pod Security Standards: no privileged pods in prod
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest`,
+                "note?": `Namespace labels are load-bearing: NetworkPolicy selects peers by namespace label, Prometheus discovers targets by them, and the pod-security labels enforce the 'restricted' profile (non-root, no privilege escalation) at admission time.`
+              },
+              {
+                lang: `yaml`,
+                title: `ResourceQuota + LimitRange for orders-prod`,
+                code: `apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: orders-prod-quota
+  namespace: orders-prod
+spec:
+  hard:
+    requests.cpu: "20"
+    requests.memory: 40Gi
+    limits.cpu: "40"
+    limits.memory: 80Gi
+    pods: "60"
+    persistentvolumeclaims: "10"
+    services.loadbalancers: "2"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: orders-prod-limits
+  namespace: orders-prod
+spec:
+  limits:
+    - type: Container
+      # Injected when a container omits requests/limits
+      defaultRequest:
+        cpu: 250m
+        memory: 256Mi
+      default:
+        cpu: "1"
+        memory: 512Mi
+      # Hard guardrails — reject containers outside this band
+      min:
+        cpu: 50m
+        memory: 64Mi
+      max:
+        cpu: "2"
+        memory: 2Gi`,
+                "note?": `ResourceQuota caps the whole namespace; LimitRange governs each container and supplies defaults so the quota's 'requests must be set' rule never blocks a developer who forgot.`
+              },
+              {
+                lang: `yaml`,
+                title: `Per-service ServiceAccount + least-privilege Role + binding`,
+                code: `apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: order-svc-sa
+  namespace: orders-prod
+# App pods don't call the K8s API — don't hand them a token.
+automountServiceAccountToken: false
+---
+# Most app pods need NO api access. If they read their own ConfigMap at
+# runtime (rare; prefer env injection), grant only that:
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: order-svc-role
+  namespace: orders-prod
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["order-service-config"]   # scope to ONE configmap
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: order-svc-rolebinding
+  namespace: orders-prod
+subjects:
+  - kind: ServiceAccount
+    name: order-svc-sa
+    namespace: orders-prod
+roleRef:
+  kind: Role
+  name: order-svc-role
+  apiGroup: rbac.authorization.k8s.io`,
+                "note?": `Role (namespaced) vs ClusterRole (cluster-wide): app services should almost always use a namespaced Role. resourceNames scopes the grant to a single named object — least privilege at its finest.`
+              },
+              {
+                lang: `bash`,
+                title: `Create and verify the tenancy boundary`,
+                code: `kubectl apply -f deploy/cluster/namespaces.yaml
+kubectl apply -f deploy/cluster/quota-prod.yaml
+kubectl apply -f deploy/cluster/rbac-order-service.yaml
+
+# Inspect quota consumption (used vs hard)
+kubectl get resourcequota -n orders-prod
+kubectl describe resourcequota orders-prod-quota -n orders-prod
+
+# Verify least privilege with the auth-can-i probe
+kubectl auth can-i list secrets \\
+  --as=system:serviceaccount:orders-prod:order-svc-sa -n orders-prod
+# -> "no"  (good — the SA cannot read secrets via the API)
+
+kubectl auth can-i get configmaps/order-service-config \\
+  --as=system:serviceaccount:orders-prod:order-svc-sa -n orders-prod
+# -> "yes"`,
+                "note?": `kubectl auth can-i --as=<sa> is the fastest way to prove RBAC is least-privilege. Interviewers love that you can verify, not just assert, your security posture.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why use one namespace per environment rather than one per service?`,
+                a: `Services within an environment must discover each other by short DNS name and share NetworkPolicy/quota/policy. The real isolation boundary is dev vs prod. Per-service namespaces multiply policy overhead with no added isolation; per-environment matches the actual blast-radius boundary.`
+              },
+              {
+                q: `What's the difference between ResourceQuota and LimitRange?`,
+                a: `ResourceQuota caps aggregate resource usage for the entire namespace (e.g. total CPU/memory/pod count). LimitRange governs individual containers — setting min/max bounds and default requests/limits. You typically use both: quota for the namespace ceiling, LimitRange for per-container guardrails and defaults.`
+              },
+              {
+                q: `If a namespace has a ResourceQuota on requests, why can a pod without requests get rejected, and how do you prevent surprise rejections?`,
+                a: `When a quota constrains requests.cpu/memory, every pod must declare them or the API server rejects creation. A LimitRange with defaultRequest/default injects sane values for containers that omit them, so a developer who forgets isn't blocked. Pair quota with LimitRange.`
+              },
+              {
+                q: `Why give each microservice its own ServiceAccount?`,
+                a: `The SA is the pod's identity — used for cloud IAM mapping (IRSA/Workload Identity), audit attribution, and as a NetworkPolicy/RBAC subject. Per-service SAs enable least privilege and traceability; sharing the default SA blurs identity and tends toward over-permissioning.`
+              },
+              {
+                q: `Most app pods don't call the Kubernetes API. What should you do with their SA token?`,
+                a: `Set automountServiceAccountToken: false so no API token is mounted. If the pod doesn't talk to the API server, a mounted token is pure attack surface — a leaked, over-privileged token enables lateral movement. Mount tokens only for pods that genuinely need API access.`
+              },
+              {
+                q: `When should a service use a Role vs a ClusterRole?`,
+                a: `Application services should use a namespaced Role bound by a RoleBinding — permissions scoped to one namespace. ClusterRole is for cluster-scoped resources or cross-namespace access (controllers, operators). Granting app pods ClusterRole is almost always over-privileged.`
+              },
+              {
+                q: `How do you quickly verify that a ServiceAccount has least privilege?`,
+                a: `Use kubectl auth can-i <verb> <resource> --as=system:serviceaccount:<ns>:<sa> -n <ns>. It evaluates RBAC for that SA and returns yes/no, letting you prove (not just assert) that, e.g., the SA cannot list secrets but can read its single allowed ConfigMap.`
+              },
+              {
+                q: `What does the pod-security.kubernetes.io/enforce: restricted namespace label do?`,
+                a: `It applies the Pod Security Standards 'restricted' profile at admission: pods must run as non-root, drop capabilities, disallow privilege escalation, etc. Pods violating the profile are rejected, enforcing baseline hardening cluster-side independent of each manifest.`
+              },
+              {
+                q: `Why are namespace labels considered 'load-bearing' here?`,
+                a: `NetworkPolicy selects peer namespaces by label, Prometheus discovers scrape targets by namespace/pod labels, and pod-security labels drive admission enforcement. Misnaming or omitting a label can silently break network policy or monitoring — they're functional config, not decoration.`
+              },
+              {
+                q: `resourceNames in an RBAC rule — what does it achieve?`,
+                a: `It restricts the verb to specific named objects (e.g. get only configmap 'order-service-config' rather than all configmaps), giving object-level least privilege. Note it can't constrain list/watch, only individual-object verbs like get/update/delete.`
+              },
+              {
+                q: `From a compliance standpoint, what do namespace + RBAC + NetworkPolicy boundaries give an EU/regulated workload?`,
+                a: `They provide demonstrable segmentation and need-to-know access (e.g. payment data isolated and access-restricted), supporting GDPR/ISO 27001 least-privilege and data-segregation evidence. Auditors can see enforced, declarative boundaries rather than trust-based ones.`
+              }
+            ]
+          },
+          {
+            title: `4. Deploy the Services (Deployments, Services, Config, Probes)`,
+            notes: `# Running the services with discovery, config, and health
+
+Now we run the images. Each service is a **Deployment** (manages a ReplicaSet of pods) fronted by a **Service** (stable virtual IP + DNS name for discovery). Configuration comes from **ConfigMaps** (non-secret) and **Secrets** (credentials). **Probes** tell Kubernetes when a pod is alive vs ready. **Requests/limits** drive scheduling and protect neighbors.
+
+## Service discovery: how order→inventory→payment actually resolves
+
+A Service named \`inventory-service\` in namespace \`orders-prod\` is reachable at:
+
+- \`inventory-service\` (same namespace, short name)
+- \`inventory-service.orders-prod\` (namespaced)
+- \`inventory-service.orders-prod.svc.cluster.local\` (FQDN)
+
+So order-service just calls \`http://inventory-service:8080/api/stock\`. Cluster DNS (CoreDNS) resolves the name to the Service's ClusterIP; kube-proxy load-balances across the ready inventory pods.
+
+\`\`\`mermaid
+sequenceDiagram
+  participant C as Client
+  participant OS as order-service pod
+  participant DNS as CoreDNS
+  participant ISvc as inventory-service (ClusterIP)
+  participant IP as inventory pod
+  C->>OS: POST /api/orders
+  OS->>DNS: resolve inventory-service
+  DNS-->>OS: ClusterIP 10.96.x.x
+  OS->>ISvc: GET /api/stock?sku=WIDGET-1
+  ISvc->>IP: load-balanced to a ready pod
+  IP-->>OS: 200 {available: true}
+  OS->>OS: persist order + publish order.created (Kafka)
+  OS-->>C: 201 Created
+\`\`\`
+
+## The three probes — get this right or pods flap
+
+| Probe | Question | On failure |
+|---|---|---|
+| **startupProbe** | "Has it finished booting?" | Holds off the other probes; kills pod if boot never completes |
+| **readinessProbe** | "Can it serve traffic *right now*?" | Removed from Service endpoints (no traffic) — pod NOT killed |
+| **livenessProbe** | "Is it deadlocked/unrecoverable?" | Pod is **killed and restarted** |
+
+> [!DANGER]
+> The classic outage: pointing the **liveness** probe at a deep health check that also pings the DB. The DB hiccups → liveness fails → Kubernetes kills *every* pod → a transient DB blip becomes a full outage and a restart storm. **Liveness must be cheap and self-only** (\`/actuator/health/liveness\`). Put the dependency checks in **readiness** (\`/actuator/health/readiness\`) — that just removes the pod from rotation until the DB recovers.
+
+> [!TIP]
+> Spring Boot has built-in liveness/readiness groups. Enable \`management.endpoint.health.probes.enabled=true\` and point Kubernetes at \`/actuator/health/liveness\` and \`/actuator/health/readiness\`. Spring even flips readiness to OUT_OF_SERVICE during graceful shutdown automatically.
+
+## Graceful shutdown & rolling updates
+
+> [!WARNING]
+> When a pod is deleted, Kubernetes sends \`SIGTERM\` and removes it from endpoints — but in-flight requests can still be mid-arrival due to propagation lag. Set a \`preStop\` sleep (a few seconds) and Spring's \`server.shutdown=graceful\` so the app drains connections before exit. Without this you get sporadic 502s on every deploy.
+
+## Requests vs limits — the scheduling contract
+
+- **requests**: what the scheduler *reserves* (guaranteed). Drives bin-packing.
+- **limits**: the hard ceiling. Exceed CPU → throttled. Exceed memory → **OOMKilled**.
+
+> [!TIP]
+> For latency-sensitive Java services, set memory \`request == limit\` (Guaranteed QoS) to avoid OOM surprises, and set a CPU request but be cautious with tight CPU limits — aggressive CPU limits cause throttling that tanks p99 latency. Many teams omit CPU limits and rely on requests + HPA.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `ConfigMap (non-secret) + Secret (credentials) for order-service`,
+                code: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-service-config
+  namespace: orders-prod
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka.orders-prod.svc.cluster.local:9092"
+  INVENTORY_SERVICE_URL: "http://inventory-service:8080"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/orders"
+  MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "0.1"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: order-service-secret
+  namespace: orders-prod
+type: Opaque
+stringData:
+  SPRING_DATASOURCE_USERNAME: "orders_app"
+  SPRING_DATASOURCE_PASSWORD: "REPLACED_BY_EXTERNAL_SECRETS"`,
+                "note?": `In production this Secret is NOT committed — it's synced from Vault/AWS Secrets Manager via External Secrets Operator or Sealed Secrets. The stringData here is a placeholder for the manifest shape.`
+              },
+              {
+                lang: `yaml`,
+                title: `order-service Deployment — probes, config, limits, securityContext`,
+                code: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  namespace: orders-prod
+  labels: { app: order-service }
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: order-service }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0      # never drop below desired capacity
+      maxSurge: 1            # add one new pod at a time
+  template:
+    metadata:
+      labels: { app: order-service }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/actuator/prometheus"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: order-svc-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: order-service
+          image: ghcr.io/acme/order-service:sha-abc123
+          ports: [ { containerPort: 8080 } ]
+          envFrom:
+            - configMapRef: { name: order-service-config }
+            - secretRef:    { name: order-service-secret }
+          resources:
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits:   { memory: "512Mi" }   # mem request==limit; no CPU limit
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            failureThreshold: 30
+            periodSeconds: 5            # allow up to 150s to boot
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec: { command: ["sh","-c","sleep 5"] }   # drain before SIGTERM
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+  namespace: orders-prod
+spec:
+  selector: { app: order-service }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP`,
+                "note?": `This is the full pattern for ONE service; inventory-service and payment-service are identical in shape with different images/config. startupProbe protects slow JVM boots so liveness doesn't kill a pod that's merely still warming up.`
+              },
+              {
+                lang: `yaml`,
+                title: `application.yml for the Kubernetes profile (Spring Boot side)`,
+                code: `spring:
+  application:
+    name: order-service
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  datasource:
+    url: \${SPRING_DATASOURCE_URL}
+    username: \${SPRING_DATASOURCE_USERNAME}
+    password: \${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+  kafka:
+    bootstrap-servers: \${SPRING_KAFKA_BOOTSTRAP_SERVERS}
+    consumer:
+      group-id: order-service
+
+server:
+  port: 8080
+  shutdown: graceful   # drain in-flight requests on SIGTERM
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true                 # expose liveness/readiness groups
+      show-details: when-authorized
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: \${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:0.1}
+  metrics:
+    tags:
+      application: \${spring.application.name}
+
+# Downstream service URL injected from ConfigMap
+inventory:
+  service:
+    url: \${INVENTORY_SERVICE_URL}`,
+                "note?": `Config values are read from env vars (\\\${...}) populated by the ConfigMap/Secret. server.shutdown=graceful + probes.enabled wire the app into Kubernetes' lifecycle and health model.`
+              },
+              {
+                lang: `bash`,
+                title: `Apply, watch the rollout, and verify inter-service DNS`,
+                code: `kubectl apply -f deploy/order-service/ -n orders-prod
+kubectl rollout status deployment/order-service -n orders-prod
+
+kubectl get pods -n orders-prod -l app=order-service -o wide
+kubectl get endpoints order-service -n orders-prod   # ready pods behind the Service
+
+# Verify cluster DNS resolution + reachability from inside order-service
+kubectl exec -it deploy/order-service -n orders-prod -- \\
+  curl -s http://inventory-service:8080/actuator/health | head
+
+# Confirm what config the app actually received
+kubectl exec deploy/order-service -n orders-prod -- env | grep -E 'INVENTORY|KAFKA|DATASOURCE_URL'`,
+                "note?": `kubectl get endpoints is the fastest way to see which pods (if any) are actually behind a Service. Empty endpoints = readiness failing or selector mismatch = the #1 cause of 'service unreachable'.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `order-service can't reach inventory-service. Walk through what you check.`,
+                a: `1) DNS: exec into order-service and curl http://inventory-service:8080 — does the name resolve? 2) Service endpoints: kubectl get endpoints inventory-service — are any ready pods listed? Empty means readiness failing or a selector/label mismatch. 3) NetworkPolicy: is east-west traffic to inventory allowed? 4) Port/targetPort correctness. 5) The inventory pods' own health. Endpoints + DNS catch the vast majority.`
+              },
+              {
+                q: `Explain the difference between liveness, readiness, and startup probes and their failure actions.`,
+                a: `Liveness: 'is it unrecoverable?' — failure restarts the pod. Readiness: 'can it serve now?' — failure removes it from Service endpoints (no traffic, no restart). Startup: 'has it booted?' — gates the other two and kills the pod only if boot never completes. Use startup for slow JVM boot, readiness for dependencies, liveness for deadlocks.`
+              },
+              {
+                q: `Why is putting a DB check in the liveness probe dangerous?`,
+                a: `A transient DB blip fails liveness on every pod, so Kubernetes kills and restarts them all — turning a brief dependency hiccup into a full outage and restart storm. Liveness must be cheap and self-only; dependency checks belong in readiness, which merely pulls the pod from rotation until the dependency recovers.`
+              },
+              {
+                q: `How does order-service discover inventory-service in the cluster?`,
+                a: `Via cluster DNS (CoreDNS): the Service named inventory-service resolves at inventory-service[.namespace[.svc.cluster.local]] to its ClusterIP; kube-proxy load-balances to ready backing pods. The app just calls http://inventory-service:8080 — no client-side discovery code needed.`
+              },
+              {
+                q: `What's the difference between a resource request and a limit, and what happens at each boundary?`,
+                a: `Request is the reserved/guaranteed amount the scheduler uses for placement; limit is the hard ceiling. Exceeding the CPU limit causes throttling; exceeding the memory limit causes OOMKilled (process killed). Requests affect scheduling and QoS; limits enforce isolation.`
+              },
+              {
+                q: `Why set memory request == limit for a latency-sensitive Java service?`,
+                a: `It places the pod in the Guaranteed QoS class, giving predictable memory and making it the last to be evicted under node pressure, while avoiding surprise OOMKills from bursting above the request. Memory isn't compressible, so a tight, equal bound is safer than hoping headroom exists.`
+              },
+              {
+                q: `Why are tight CPU limits often discouraged for JVM services?`,
+                a: `CPU limits enforce CFS throttling: once a pod hits its quota within a scheduling period it's stalled until the next, spiking p99/tail latency even when the node has spare CPU. Many teams set CPU requests (for fair scheduling) but omit or loosen CPU limits, relying on requests + HPA.`
+              },
+              {
+                q: `You get sporadic 502s during every deploy. What's the likely cause and fix?`,
+                a: `Pods receive SIGTERM and are removed from endpoints, but endpoint removal propagates asynchronously, so traffic can still arrive at a terminating pod. Add a preStop sleep (a few seconds) plus server.shutdown=graceful so the app drains in-flight requests before exiting, and set a sufficient terminationGracePeriodSeconds.`
+              },
+              {
+                q: `kubectl get endpoints for a Service shows none. What does that tell you?`,
+                a: `No pods are currently Ready behind the Service — either the readiness probe is failing, the pod selector doesn't match the pod labels, or no pods are scheduled. It's the number-one diagnostic for 'service unreachable', distinguishing app/readiness problems from networking ones.`
+              },
+              {
+                q: `How should secrets like the DB password reach the pod in production (not in Git)?`,
+                a: `Inject at runtime via Kubernetes Secrets sourced from an external store — External Secrets Operator syncing from Vault/AWS Secrets Manager, or Sealed Secrets for encrypted-at-rest-in-Git. The app reads them as env vars/files; the plaintext value never lives in the repo or the image.`
+              },
+              {
+                q: `Why use a startupProbe alongside liveness for a Spring Boot service?`,
+                a: `JVM + Spring boot can take tens of seconds; without a startupProbe, the livenessProbe might fail during boot and kill the pod in a crash loop. The startupProbe holds off liveness/readiness until boot completes (with a generous failureThreshold), then hands over to fast liveness/readiness checks.`
+              },
+              {
+                q: `What does envFrom with configMapRef and secretRef do, and why is it cleaner than individual env entries?`,
+                a: `It injects every key in the ConfigMap/Secret as environment variables in one declaration, keeping the Deployment terse and letting config evolve without editing the pod spec for each new key. Spring then reads them via \\\${VAR} placeholders, decoupling config from the manifest.`
+              }
+            ]
+          },
+          {
+            title: `5. Expose & Route (Ingress, TLS, Gateway, NetworkPolicy)`,
+            notes: `# Letting the world in — and locking the inside down
+
+Two concerns: **north-south** (get external clients to order-service securely through one entry point) and **east-west** (control which services may talk to which inside the cluster).
+
+\`\`\`mermaid
+flowchart TB
+  user([Client HTTPS])
+  subgraph cluster["Kubernetes"]
+    ing["Ingress Controller<br/>(NGINX) :443 TLS"]
+    subgraph prod["orders-prod"]
+      os["order-service"]
+      is["inventory-service"]
+      ps["payment-service"]
+      kafka[("Kafka")]
+      pg[("Postgres")]
+    end
+  end
+  user -->|api.acme.com/api/orders| ing
+  ing -->|north-south, TLS terminated| os
+  os -.->|east-west allowed| is
+  os -.->|east-west allowed| kafka
+  is -.->|east-west allowed| kafka
+  ps -.->|east-west allowed| kafka
+  os --> pg
+  is --> pg
+  ps --> pg
+  user x--x|BLOCKED by NetworkPolicy| ps
+  user x--x|BLOCKED| is
+\`\`\`
+
+## Ingress vs Service type — pick the right door
+
+| Approach | Use when |
+|---|---|
+| \`Service type: ClusterIP\` | Internal-only (all three services internally) |
+| \`Service type: LoadBalancer\` | One service needs a raw cloud L4 LB (rare for HTTP) |
+| **Ingress** (L7) | HTTP host/path routing, TLS termination, one IP for many services ← our choice |
+
+> [!TIP]
+> Use **one** Ingress (or a gateway) as the single north-south entry. Only \`order-service\` is exposed publicly; inventory and payment stay ClusterIP-only. Exposing payment-service to the internet "because it was easy" is a classic finding in security reviews.
+
+## The gateway concern
+
+The Ingress controller handles TLS + routing, but cross-cutting API concerns — **authN/authZ, rate limiting, request validation, canary splitting** — belong at a **gateway** (Spring Cloud Gateway, or the Ingress controller's annotations / an API gateway product). Don't scatter auth into every service; centralize it at the edge and pass a verified identity inward.
+
+## TLS
+
+> [!TIP]
+> Terminate TLS at the Ingress with a cert from **cert-manager** (automated Let's Encrypt / internal CA). The Ingress references a \`tls\` secret; cert-manager renews it. For payment data you may additionally want **mTLS east-west** via a service mesh (Istio/Linkerd) so even in-cluster traffic is encrypted and identity-verified.
+
+## NetworkPolicy: default-deny, then allow what's needed
+
+> [!DANGER]
+> By default, **every pod can reach every other pod** in the cluster — a flat network. If payment-service is compromised, it can scan and hit Postgres, Kafka, and every other service freely. The fix is a **default-deny** NetworkPolicy per namespace, then explicit allow rules for the real traffic edges (order→inventory, *→kafka, *→postgres). This is the east-west firewall.
+
+> [!WARNING]
+> NetworkPolicy is enforced by the **CNI plugin** (Calico, Cilium). On a cluster whose CNI doesn't support NetworkPolicy, the objects apply silently but enforce **nothing** — a dangerous false sense of security. Verify enforcement with a probe pod.
+
+> [!EU]
+> Default-deny east-west segmentation is exactly the control auditors look for around payment/PII flows: you can demonstrate that only payment-service reaches the payments DB and that lateral movement is denied by default — supporting PCI-DSS-style segmentation and GDPR data-minimization arguments.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Ingress — host/path routing + TLS (cert-manager) to order-service only`,
+                code: `apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orders-ingress
+  namespace: orders-prod
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    # Edge rate limit (gateway concern handled at ingress)
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [ api.acme.com ]
+      secretName: orders-tls   # cert-manager populates this
+  rules:
+    - host: api.acme.com
+      http:
+        paths:
+          - path: /api/orders
+            pathType: Prefix
+            backend:
+              service:
+                name: order-service
+                port: { number: 8080 }
+          # inventory & payment are NOT exposed here — internal only
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: platform@acme.com
+    privateKeySecretRef: { name: letsencrypt-prod-account-key }
+    solvers:
+      - http01:
+          ingress: { ingressClassName: nginx }`,
+                "note?": `Only /api/orders is routed publicly. inventory-service and payment-service have no Ingress path — they're reachable only east-west. cert-manager auto-issues and renews the TLS cert into the orders-tls secret.`
+              },
+              {
+                lang: `yaml`,
+                title: `NetworkPolicy — default-deny, then explicit allows (east-west firewall)`,
+                code: `# 1) Default-deny ALL ingress+egress in the namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: orders-prod
+spec:
+  podSelector: {}            # all pods
+  policyTypes: [Ingress, Egress]
+---
+# 2) Allow DNS egress (everything needs CoreDNS) — easy to forget!
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: orders-prod
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# 3) order-service may receive from the ingress controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-order
+  namespace: orders-prod
+spec:
+  podSelector:
+    matchLabels: { app: order-service }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# 4) order-service -> inventory-service (the only allowed sync E-W edge)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-order-to-inventory
+  namespace: orders-prod
+spec:
+  podSelector:
+    matchLabels: { app: inventory-service }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: order-service }
+      ports:
+        - { protocol: TCP, port: 8080 }`,
+                "note?": `The most-forgotten rule is DNS egress: a default-deny breaks name resolution and every service appears to 'lose' its dependencies. Add allow-dns-egress FIRST. Each service-to-service edge becomes an explicit, auditable policy.`
+              },
+              {
+                lang: `bash`,
+                title: `Verify TLS, routing, and that NetworkPolicy actually enforces`,
+                code: `# North-south: TLS + routing works
+curl -v https://api.acme.com/api/orders -X POST \\
+  -H 'Content-Type: application/json' -d '{"sku":"WIDGET-1","qty":1}'
+kubectl get certificate -n orders-prod          # Ready=True from cert-manager
+
+# Prove default-deny enforces: a throwaway pod should NOT reach payment-service
+kubectl run probe --rm -it --image=curlimages/curl -n orders-prod -- \\
+  curl -m 5 http://payment-service:8080/actuator/health
+# -> times out  (good: blocked by default-deny)
+
+# Prove the ALLOWED edge works from order-service
+kubectl exec deploy/order-service -n orders-prod -- \\
+  curl -m 5 -s http://inventory-service:8080/actuator/health
+# -> 200  (good: explicit allow rule)`,
+                "note?": `If the throwaway probe CAN reach payment-service, your CNI isn't enforcing NetworkPolicy (e.g. unsupported plugin) — the policies are cosmetic. Always test enforcement, never assume it.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why expose only order-service via Ingress and keep inventory/payment as ClusterIP?`,
+                a: `Only order-service is part of the public API surface; inventory and payment are internal collaborators. Exposing them externally needlessly enlarges the attack surface (e.g. an internet-reachable payment-service). Least exposure: one public entry point, everything else east-west only.`
+              },
+              {
+                q: `What's the default pod-to-pod network behavior in Kubernetes, and why is it a risk?`,
+                a: `By default the network is flat — every pod can reach every other pod across namespaces. If one service is compromised it can freely scan and connect to databases, Kafka, and peers (lateral movement). NetworkPolicy is needed to impose a default-deny east-west firewall.`
+              },
+              {
+                q: `You apply a default-deny NetworkPolicy and suddenly every service 'loses' its dependencies. What did you forget?`,
+                a: `DNS egress. Default-deny blocks egress to CoreDNS (UDP/TCP 53 in kube-system), so name resolution fails and every dependency lookup breaks. Add an explicit allow-dns-egress policy before/with the default-deny.`
+              },
+              {
+                q: `How do you confirm a NetworkPolicy is actually being enforced rather than silently ignored?`,
+                a: `Run a throwaway probe pod and attempt a connection that should be blocked (e.g. to payment-service); it must time out. If it succeeds, the CNI plugin doesn't enforce NetworkPolicy (objects apply but do nothing) — a dangerous false sense of security. Always test, never assume.`
+              },
+              {
+                q: `Where should cross-cutting API concerns like auth and rate limiting live, and why?`,
+                a: `At the edge — the Ingress/gateway — not scattered in each service. Centralizing authN/authZ, rate limiting, and request validation at the gateway avoids duplication and drift, lets you pass a verified identity inward, and keeps services focused on business logic.`
+              },
+              {
+                q: `How is TLS handled for north-south traffic in this design, and what automates cert renewal?`,
+                a: `TLS is terminated at the Ingress, which references a tls secret. cert-manager (with a ClusterIssuer like Let's Encrypt or an internal CA) issues and auto-renews the certificate into that secret, removing manual cert rotation.`
+              },
+              {
+                q: `When would you add mTLS east-west on top of NetworkPolicy?`,
+                a: `For sensitive flows (e.g. payment/PII), to encrypt and mutually authenticate in-cluster service-to-service traffic. A service mesh (Istio/Linkerd) provides mTLS and identity, complementing NetworkPolicy's allow/deny reachability with confidentiality and verified identity.`
+              },
+              {
+                q: `Contrast Ingress with a Service of type LoadBalancer for exposing HTTP services.`,
+                a: `A LoadBalancer Service provisions a cloud L4 LB per service (one IP each, no L7 routing). Ingress is L7: one entry point and IP can host/path-route to many services, terminate TLS, and apply HTTP policies — far more economical and feature-rich for HTTP APIs.`
+              },
+              {
+                q: `Write the conceptual shape of a NetworkPolicy that allows only order-service to reach inventory-service on 8080.`,
+                a: `A policy with podSelector matching app=inventory-service, policyTypes [Ingress], and an ingress rule whose from is a podSelector matching app=order-service, port TCP 8080. This is an ingress allow on the inventory pods, scoped to the order-service source — the single permitted sync east-west edge.`
+              },
+              {
+                q: `Why is a 'default-deny then explicit allow' model preferred over 'allow then deny specific'?`,
+                a: `Default-deny is fail-closed: anything not explicitly permitted is blocked, so new/forgotten edges are denied rather than silently open. Each allowed edge becomes an explicit, auditable rule, which is far safer and easier to reason about for security review than enumerating denials.`
+              },
+              {
+                q: `What compliance argument does default-deny east-west segmentation support for payment data?`,
+                a: `You can demonstrate that only payment-service reaches the payments datastore and that lateral movement is denied by default — supporting PCI-DSS-style network segmentation and GDPR data-minimization/least-access requirements with enforced, declarative controls rather than trust.`
+              }
+            ]
+          },
+          {
+            title: `6. Package with Helm & Ship with GitOps (CI/CD + ArgoCD)`,
+            notes: `# One chart, many environments, Git as the trigger
+
+Raw YAML doesn't scale across three services × multiple environments. **Helm** templates and parameterizes. **ArgoCD** continuously reconciles the cluster to what's declared in Git.
+
+## Umbrella chart with per-service subcharts
+
+\`\`\`mermaid
+flowchart TB
+  subgraph chart["orders-umbrella (Chart.yaml)"]
+    v["values.yaml (defaults)"]
+    vd["values-dev.yaml"]
+    vp["values-prod.yaml"]
+    subgraph sub["charts/ (subcharts)"]
+      a["order-service/"]
+      b["inventory-service/"]
+      c["payment-service/"]
+    end
+  end
+  v --> a
+  v --> b
+  v --> c
+  vd -. dev overrides .-> sub
+  vp -. prod overrides .-> sub
+\`\`\`
+
+The umbrella chart \`dependencies\` reference each per-service subchart. Common values (image registry, probes) live once in the umbrella's \`values.yaml\`; environment differences (replicas, resources, hostnames) live in \`values-dev.yaml\` / \`values-prod.yaml\`.
+
+> [!TIP]
+> Keep subcharts identical in shape — same template files, same value keys (\`image.repository\`, \`replicaCount\`, \`resources\`, \`env\`). A shared "library chart" can hold the common Deployment/Service templates so you don't copy-paste. Per-env files should be *small diffs*, not full copies — only what actually changes between dev and prod.
+
+## CI vs CD — the clean separation
+
+\`\`\`mermaid
+flowchart LR
+  subgraph ci["CI — GitHub Actions (push)"]
+    t["mvn verify"] --> img["docker build"] --> push["push image<br/>sha-abc123"] --> bump["commit: bump<br/>image tag in values-prod.yaml"]
+  end
+  subgraph cd["CD — ArgoCD (pull)"]
+    watch["watch manifests repo"] --> diff["detect drift"] --> sync["sync → cluster"]
+  end
+  bump -->|git commit| watch
+  sync --> dev["orders-dev"] --> gate{manual<br/>promote?}
+  gate -->|yes| prod["orders-prod"]
+\`\`\`
+
+> [!SUCCESS]
+> **The handoff is a Git commit.** CI's final act isn't a deploy — it's updating the image tag in \`values-<env>.yaml\` and committing. ArgoCD sees the commit and reconciles. This keeps cluster credentials out of CI and makes every deployment a reviewable, revertible Git change.
+
+## Progressive delivery: dev → prod
+
+Two ArgoCD \`Application\` objects point at the **same** chart with different value files: \`app-orders-dev\` (auto-sync, \`values-dev.yaml\`) and \`app-orders-prod\` (manual sync or gated, \`values-prod.yaml\`).
+
+> [!WARNING]
+> Auto-sync dev for fast feedback, but gate prod. A common pattern: ArgoCD \`syncPolicy.automated\` for dev; prod requires a manual sync or an approved PR that promotes the tested image tag. \`selfHeal: true\` reverts manual \`kubectl edit\` drift — great for prod integrity, but it means *the cluster is not the source of truth, Git is*. Don't \`kubectl edit\` prod and expect it to stick.
+
+> [!DANGER]
+> Never commit plaintext secrets into the values files in Git. Use **Sealed Secrets**, **External Secrets Operator**, or ArgoCD's Vault plugin. A GitOps repo is widely readable; a secret in \`values-prod.yaml\` is a breach.`,
+            code: [
+              {
+                lang: `yaml`,
+                title: `Umbrella Chart.yaml + per-service subchart dependencies`,
+                code: `# deploy/helm/orders-umbrella/Chart.yaml
+apiVersion: v2
+name: orders-umbrella
+description: Orders platform — order, inventory, payment services
+type: application
+version: 1.0.0
+appVersion: "1.4.2"
+dependencies:
+  - name: order-service
+    version: 1.0.0
+    repository: "file://charts/order-service"
+  - name: inventory-service
+    version: 1.0.0
+    repository: "file://charts/inventory-service"
+  - name: payment-service
+    version: 1.0.0
+    repository: "file://charts/payment-service"`,
+                "note?": `Subcharts referenced via file:// live under charts/. Each could also be a versioned chart pulled from a Helm repo. The umbrella ties them into one deployable unit so 'the whole Orders system' is one release.`
+              },
+              {
+                lang: `yaml`,
+                title: `values.yaml (defaults) + values-prod.yaml (env diff)`,
+                code: `# ---------- values.yaml (shared defaults) ----------
+global:
+  imageRegistry: ghcr.io/acme
+  imagePullSecrets: [ghcr-cred]
+
+order-service:
+  image:
+    repository: order-service
+    tag: sha-PLACEHOLDER     # overwritten by CI per env
+  replicaCount: 2
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { memory: 512Mi }
+  env:
+    INVENTORY_SERVICE_URL: http://inventory-service:8080
+
+inventory-service:
+  image: { repository: inventory-service, tag: sha-PLACEHOLDER }
+  replicaCount: 2
+
+payment-service:
+  image: { repository: payment-service, tag: sha-PLACEHOLDER }
+  replicaCount: 2
+
+# ---------- values-prod.yaml (ONLY the diffs) ----------
+order-service:
+  image: { tag: sha-abc123 }     # <- the line CI bumps
+  replicaCount: 3
+  resources:
+    requests: { cpu: 500m, memory: 512Mi }
+  ingress:
+    enabled: true
+    host: api.acme.com
+
+inventory-service:
+  image: { tag: sha-def456 }
+  replicaCount: 2
+
+payment-service:
+  image: { tag: sha-789abc }
+  replicaCount: 2`,
+                "note?": `values-prod.yaml is a SMALL diff over the defaults — only tags, replicas, resources, hostnames. CI rewrites the single \`tag:\` line and commits; that one-line diff is the entire deploy.`
+              },
+              {
+                lang: `bash`,
+                title: `Helm: lint, template-diff, dry-run, install/upgrade`,
+                code: `cd deploy/helm/orders-umbrella
+helm dependency update                 # pull subchart deps into charts/
+
+# Lint + render to inspect the actual YAML before anything hits a cluster
+helm lint . -f values.yaml -f values-prod.yaml
+helm template orders . -f values.yaml -f values-prod.yaml | less
+
+# Server-side dry run against the live API (catches schema/admission errors)
+helm upgrade --install orders . -n orders-prod \\
+  -f values.yaml -f values-prod.yaml --dry-run=server
+
+# Real install/upgrade (ArgoCD normally does this, but you can do it by hand)
+helm upgrade --install orders . -n orders-prod \\
+  -f values.yaml -f values-prod.yaml --atomic --timeout 5m
+
+helm history orders -n orders-prod     # see revisions for rollback
+helm rollback orders 3 -n orders-prod  # roll back to revision 3`,
+                "note?": `--atomic auto-rolls-back a failed upgrade so you never sit in a half-applied state. helm template + --dry-run=server are how you de-risk a change before it touches running pods.`
+              },
+              {
+                lang: `yaml`,
+                title: `.github/workflows/ci.yml — build → image → push → bump tag`,
+                code: `name: ci
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write          # to commit the tag bump
+  packages: write          # to push to GHCR
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: {java-version: '21', distribution: 'temurin'}
-      - uses: actions/cache@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - name: Build & test
+        run: mvn -B verify
+
+      - name: Compute tag
+        id: tag
+        run: echo "sha=sha-\${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
         with:
-          path: ~/.m2/repository
-          key: \${{ runner.os }}-maven-\${{ hashFiles('**/pom.xml') }}
-
-      - name: Build and test
-        run: mvn -B clean verify
-
-      - name: Build Docker image
-        run: |
-          docker build -t myapp:\${{ github.sha }} .
-          echo "IMAGE_TAG=\${{ github.sha }}" >> $GITHUB_ENV
-
-      - name: Push to registry
-        if: github.ref == 'refs/heads/main'
-        run: |
-          echo \${{ secrets.REGISTRY_PASSWORD }} | docker login registry.io -u \${{ secrets.REGISTRY_USER }} --password-stdin
-          docker push registry.io/myapp:\${{ github.sha }}
-          docker tag registry.io/myapp:\${{ github.sha }} registry.io/myapp:latest
-          docker push registry.io/myapp:latest
-
-  deploy-staging:
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy to staging
-        run: |
-          helm upgrade --install myapp ./helm/mychart             -f helm/values-staging.yaml             --set image.tag=\${{ github.sha }}             --namespace staging
-        env:
-          KUBECONFIG: \${{ secrets.STAGING_KUBECONFIG }}
-\`\`\`
-
-### GitOps with ArgoCD
-
-\`\`\`
-Traditional CD: CI pipeline SSHes into server or runs kubectl directly
-  Problem: cluster state diverges from repo; hard to audit; rollback = re-run pipeline
-
-GitOps: Git is the single source of truth for cluster state
-  ArgoCD (or Flux) watches a Git repo; cluster state ALWAYS matches repo
-
-  Developer pushes code → CI builds image → CI opens PR to update image tag in git
-  ArgoCD watches the git repo → sees new tag → deploys to cluster
-
-  Benefits:
-  - Full audit log (git history)
-  - Rollback = git revert (PR)
-  - Cluster drift detected and auto-corrected
-  - No CI pipeline has cluster credentials — only ArgoCD does
-
-# ArgoCD Application manifest (declarative)
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: myapp
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/org/k8s-configs
-    path: apps/myapp
-    targetRevision: HEAD
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: production
-  syncPolicy:
-    automated:
-      prune: true     # delete resources removed from git
-      selfHeal: true  # revert manual kubectl changes
-\`\`\``,
-            code: [
-              `# Complete GitHub Actions CI/CD pipeline for Spring Boot + Docker + Kubernetes
-
-name: CI/CD Pipeline
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: \${{ github.repository }}
-
-jobs:
-  # ─── Job 1: Test ───────────────────────────────────────────────
-  test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: testdb
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        ports: ["5432:5432"]
-        options: --health-cmd pg_isready --health-interval 10s --health-retries 5
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Run tests
-        run: mvn -B clean verify
-        env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/testdb
-          SPRING_DATASOURCE_USERNAME: test
-          SPRING_DATASOURCE_PASSWORD: test
-
-      - name: Upload test results
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports
-          path: target/surefire-reports/
-
-  # ─── Job 2: Build & push image (main branch only) ────────────
-  build-and-push:
-    needs: test
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      image-tag: \${{ steps.meta.outputs.tags }}
-      image-digest: \${{ steps.push.outputs.digest }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: \${{ env.REGISTRY }}
+          registry: ghcr.io
           username: \${{ github.actor }}
           password: \${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: \${{ env.REGISTRY }}/\${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=sha-
-            type=raw,value=latest
-
-      - name: Build and push
-        id: push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: \${{ steps.meta.outputs.tags }}
-          labels: \${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ─── Job 3: Deploy to production ──────────────────────────────
-  deploy:
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production  # requires manual approval if configured
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-
-      - name: Configure kubectl
+      - name: Build & push image
         run: |
-          mkdir -p ~/.kube
-          echo "\${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          IMG=ghcr.io/acme/order-service:\${{ steps.tag.outputs.sha }}
+          docker build -t "$IMG" ./order-service
+          trivy image --severity HIGH,CRITICAL --exit-code 1 "$IMG"
+          docker push "$IMG"
 
-      - name: Deploy via Helm
+      # GitOps handoff: bump the tag in the manifests repo, do NOT kubectl apply
+      - name: Bump image tag (GitOps)
         run: |
-          helm upgrade --install myapp ./helm/mychart             --namespace production             --create-namespace             -f helm/values-prod.yaml             --set image.tag=sha-\${{ github.sha }}             --wait             --timeout 5m
+          yq -i '."order-service".image.tag = "\${{ steps.tag.outputs.sha }}"' \\
+            deploy/helm/orders-umbrella/values-dev.yaml
+          git config user.name  ci-bot
+          git config user.email ci-bot@acme.com
+          git commit -am "deploy(dev): order-service \${{ steps.tag.outputs.sha }}"
+          git push`,
+                "note?": `The CI job never touches the cluster. Its last step commits a one-line tag bump to values-dev.yaml; ArgoCD picks it up. Note: GitHub Actions uses \${{ }} expressions and shell uses \${VAR} — different worlds, both shown here.`
+              },
+              {
+                lang: `yaml`,
+                title: `ArgoCD Application — dev (auto-sync) and prod (gated)`,
+                code: `# app-orders-dev.yaml — auto-sync + self-heal for fast feedback
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: orders-dev
+  namespace: argocd
+spec:
+  project: orders
+  source:
+    repoURL: https://github.com/acme/orders-platform.git
+    targetRevision: main
+    path: deploy/helm/orders-umbrella
+    helm:
+      valueFiles: [values.yaml, values-dev.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: orders-dev
+  syncPolicy:
+    automated:
+      prune: true          # delete resources removed from Git
+      selfHeal: true       # revert manual drift (kubectl edit) back to Git
+    syncOptions:
+      - CreateNamespace=true
+---
+# app-orders-prod.yaml — manual sync (promote a tested tag deliberately)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: orders-prod
+  namespace: argocd
+spec:
+  project: orders
+  source:
+    repoURL: https://github.com/acme/orders-platform.git
+    targetRevision: main
+    path: deploy/helm/orders-umbrella
+    helm:
+      valueFiles: [values.yaml, values-prod.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: orders-prod
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+    # No 'automated' block: prod requires an explicit, audited sync/promotion.`,
+                "note?": `Same chart, two Applications, different value files and sync policies. Dev auto-heals and prunes for speed; prod is deliberately manual so a human (or an approved PR) promotes the already-tested image tag.`
+              },
+              {
+                lang: `bash`,
+                title: `Drive ArgoCD: register, sync, diff, promote, rollback`,
+                code: `argocd app create -f deploy/argocd/app-orders-dev.yaml
+argocd app create -f deploy/argocd/app-orders-prod.yaml
 
-      - name: Smoke test
-        run: |
-          kubectl rollout status deployment/myapp -n production --timeout=5m
-          curl -f https://myapp.example.com/actuator/health || exit 1`
+argocd app list
+argocd app get orders-dev                 # Sync/Health status
+argocd app diff orders-prod               # what would change vs live cluster
+
+# Promote to prod: open a PR bumping values-prod.yaml's tag to the dev-tested
+# sha, merge it, then sync (gated). This is the audited promotion.
+argocd app sync orders-prod
+
+# Roll back prod by reverting the Git commit OR via history
+argocd app history orders-prod
+argocd app rollback orders-prod 12        # reconcile to a prior synced revision`,
+                "note?": `Rollback in GitOps is ideally a Git revert (keeps Git as truth). argocd app rollback is the break-glass path. argocd app diff before a sync is the 'measure twice' habit interviewers want to hear.`
+              }
             ],
             flashcards: [
               {
-                q: `What is the difference between CI, CD (Delivery), and CD (Deployment)?`,
-                a: `Continuous Integration: every push triggers automated build + tests — fast feedback on integration issues. Continuous Delivery: every green CI build produces a deployable artifact; deployment to production is triggered manually (one click). Suitable when production deployment needs human sign-off or change approval. Continuous Deployment: every green CI build is automatically deployed to production with no human gate. Requires high confidence in the test suite and feature flags for risky changes. Most enterprises use Continuous Delivery. SaaS/startups often use Continuous Deployment.`
+                q: `What problem does an umbrella Helm chart with per-service subcharts solve?`,
+                a: `It packages the whole multi-service system as one deployable unit while keeping each service's templates modular. Shared defaults live once in the umbrella values; per-service charts stay uniform; per-env value files express only the small diffs (tags, replicas, resources), avoiding copy-pasted YAML across services and environments.`
               },
               {
-                q: `What is GitOps and how is it different from traditional CI/CD deployment?`,
-                a: `Traditional CD: the CI pipeline pushes directly to the cluster (kubectl apply, SSH, or Helm from the CI runner). The cluster state diverges from what's in git — hard to audit, rollback = re-run pipeline. GitOps: Git is the single source of truth. Tools like ArgoCD or Flux watch the git repo and continuously sync cluster state to match. Developer pushes code → CI builds image → CI updates the image tag in the git config repo → ArgoCD sees the change and deploys. Rollback = git revert. Drift detection: ArgoCD can auto-correct manual kubectl changes (selfHeal). CI pipeline never has cluster credentials.`
+                q: `In a GitOps pipeline, what is the final step of CI, and why isn't it a deploy?`,
+                a: `CI's final step commits an updated image tag into the env's values file in Git — not a kubectl apply. This keeps cluster credentials out of CI, makes every deploy a reviewable/revertible Git change, and hands off to ArgoCD, which pulls and reconciles. Git is the integration point between CI and CD.`
               },
               {
-                q: `How do you pass secrets securely in GitHub Actions?`,
-                a: `Store in GitHub Secrets (repository or environment-level): Settings → Secrets and Variables → Actions. Reference in workflow as \${{ secrets.MY_SECRET }}. Secrets are masked in logs and never exposed to forks (PRs from forks don't get secrets by default). Environment secrets: attach to an environment (e.g. "production") and require manual approval gate before that job runs. Never: hardcode secrets in YAML, print them with echo, store in repo files. For external secret managers: Vault, AWS Secrets Manager, or Kubernetes External Secrets Operator pull secrets at deploy time rather than storing them in GitHub.`
+                q: `What do ArgoCD syncPolicy.automated prune and selfHeal each do?`,
+                a: `prune deletes cluster resources that were removed from Git (no orphans). selfHeal reverts manual drift (e.g. kubectl edit) back to the Git-declared state. Together they enforce Git as the single source of truth — handy in dev, and a deliberate integrity guarantee in prod.`
+              },
+              {
+                q: `Why gate prod sync while auto-syncing dev?`,
+                a: `Dev benefits from fast, automatic feedback. Prod changes should be deliberate and audited: a human or an approved PR promotes an already-tested image tag, preventing every dev commit from flowing straight to production. Same chart, different Application sync policy and value file.`
+              },
+              {
+                q: `selfHeal: true is on for prod. A colleague kubectl edits a Deployment to hotfix. What happens?`,
+                a: `ArgoCD detects the drift from Git and reverts the change back to the declared state. The hotfix vanishes. The correct path is to change Git (a commit/PR), not the live cluster — because with selfHeal, Git, not the cluster, is authoritative.`
+              },
+              {
+                q: `How do you promote a tested build from dev to prod in this GitOps model?`,
+                a: `Open a PR bumping values-prod.yaml's image tag to the exact sha that was validated in dev, get it reviewed/merged, then perform the gated ArgoCD sync. The same immutable image promotes upward; only the tag reference changes between environments.`
+              },
+              {
+                q: `How should rollback work in GitOps, and what's the break-glass alternative?`,
+                a: `Ideally roll back by reverting the offending Git commit so Git stays the source of truth and ArgoCD reconciles to the previous state. The break-glass alternative is argocd app rollback (or helm rollback) to a prior synced revision when you need speed, followed by reconciling Git.`
+              },
+              {
+                q: `Why never put plaintext secrets in Helm values files in a GitOps repo?`,
+                a: `The repo is broadly readable and permanently versioned, so a secret committed there is effectively leaked and hard to rotate. Use Sealed Secrets, External Secrets Operator, or an ArgoCD Vault plugin so only encrypted references live in Git and plaintext is injected at runtime.`
+              },
+              {
+                q: `What's the purpose of helm template and helm upgrade --dry-run=server before a real change?`,
+                a: `helm template renders the final YAML locally so you can read exactly what will be applied; --dry-run=server sends it to the API for validation/admission checks without persisting. Together they de-risk a change — catching templating, schema, and admission errors before pods are touched.`
+              },
+              {
+                q: `What does helm upgrade --atomic protect against?`,
+                a: `If the upgrade fails (e.g. a probe never goes ready within the timeout), --atomic automatically rolls the release back to the previous good revision, so you're never left in a half-applied, partially-broken state requiring manual cleanup.`
+              },
+              {
+                q: `Two ArgoCD Applications point at the same chart path. How do they deploy different environments?`,
+                a: `They differ in their helm valueFiles (values-dev.yaml vs values-prod.yaml), destination namespace, and syncPolicy. The chart is identical; environment behavior comes entirely from the value overlays and sync configuration — DRY, with env diffs isolated to small value files.`
+              },
+              {
+                q: `In the CI YAML, why do GitHub Actions \${{ }} and shell \${VAR} coexist, and what's the difference?`,
+                a: `\${{ }} is a GitHub Actions expression evaluated by the runner before the step's shell runs (e.g. secrets, contexts, step outputs). \${VAR} is ordinary shell variable expansion at runtime. They're separate substitution layers — mixing them up causes empty values or literal-text bugs.`
+              }
+            ]
+          },
+          {
+            title: `7. Operate It (Rollouts, HPA, Observability, Runbook)`,
+            notes: `# Day-2: keep it alive, scale it, see inside it, fix it fast
+
+The system ships. Now you must **update without downtime**, **scale to load**, **observe** behavior, and **debug** incidents methodically.
+
+## Rolling updates & rollback
+
+A RollingUpdate (\`maxUnavailable: 0, maxSurge: 1\`) spins up a new pod, waits for it to pass **readiness**, then retires an old one — repeat. Zero-downtime *only if* readiness is honest and shutdown is graceful (Section 4).
+
+\`\`\`mermaid
+flowchart LR
+  v1a["v1"] --- v1b["v1"] --- v1c["v1"]
+  step1["+ v2 (surge)"] --> ready{"v2 Ready?"}
+  ready -->|yes| retire["- v1"]
+  ready -->|no, timeout| rollback["rollout undo → all v1"]
+\`\`\`
+
+\`kubectl rollout undo deployment/order-service\` reverts to the previous ReplicaSet. In GitOps, prefer reverting the Git commit so the cluster and Git don't diverge.
+
+## HorizontalPodAutoscaler
+
+Scale replicas on observed load. CPU is the easy default; for JVM services, **custom metrics** (requests/sec, Kafka consumer lag, p99 latency) are often better signals.
+
+> [!WARNING]
+> HPA needs **resource requests** set to compute CPU utilization (% of request). No request → no CPU-based HPA. And HPA won't help a service bottlenecked on the DB connection pool or a slow downstream — more pods just pile more load onto the same Postgres. Scale the bottleneck, not the symptom.
+
+## Observability: the three pillars + correlation
+
+\`\`\`mermaid
+flowchart LR
+  pods["Spring pods<br/>/actuator/prometheus"] -->|scrape| prom["Prometheus"]
+  prom --> graf["Grafana<br/>dashboards + alerts"]
+  pods -->|OTLP spans| tempo["Tempo / Jaeger"]
+  pods -->|JSON logs w/ traceId| loki["Loki"]
+  graf -. trace-to-logs by traceId .-> tempo
+  tempo -. correlate .-> loki
+\`\`\`
+
+- **Metrics:** Micrometer → \`/actuator/prometheus\`; Prometheus scrapes (via the \`prometheus.io/scrape\` pod annotations or a ServiceMonitor). RED method: Rate, Errors, Duration.
+- **Tracing:** Micrometer Tracing + OpenTelemetry propagates a **traceId** across order→inventory→payment and into Kafka headers, so you can follow one order end-to-end.
+- **Logs:** structured JSON including the \`traceId\`/\`spanId\` (MDC) so a trace links straight to its logs.
+
+> [!TIP]
+> The **correlation ID** is the operational superpower. With \`traceId\` in every log line and span, "order 8842 failed" becomes a single filtered view spanning all three services + Kafka. Without it, you're grepping three log streams by timestamp and guessing. Spring Boot 3 + Micrometer Tracing wires this automatically — just include traceId in your log pattern.
+
+## Troubleshooting runbook (memorize these flows)
+
+| Symptom | First commands | Usual root cause |
+|---|---|---|
+| **CrashLoopBackOff** | \`kubectl logs <pod> --previous\`; \`describe pod\` | App throws on startup: bad config, missing secret/env, DB unreachable, port clash |
+| **ImagePullBackOff** | \`describe pod\` (Events) | Wrong tag, private registry w/o imagePullSecret, registry auth/typo |
+| **Pending pod** | \`describe pod\` (Events: FailedScheduling) | Insufficient CPU/mem on nodes, unsatisfiable nodeSelector/affinity, quota exhausted |
+| **OOMKilled** | \`describe pod\` (Last State: OOMKilled); metrics | Memory limit too low / heap > limit / leak |
+| **5xx between services** | endpoints, NetworkPolicy, downstream logs, traces | Readiness empty endpoints, NetworkPolicy block, downstream slow/timeout |
+
+> [!DANGER]
+> CrashLoopBackOff debugging mistake: reading \`kubectl logs <pod>\` shows the *current* (already-restarted, maybe empty) container. Use \`--previous\` to see the logs of the crashed instance that actually contains the stack trace. This single flag is the difference between solving it in 30 seconds and flailing for an hour.
+
+> [!SUCCESS]
+> Methodical incident flow: (1) \`describe pod\` → read **Events** and **Last State**, (2) \`logs --previous\` for the crash trace, (3) check **endpoints** + **NetworkPolicy** for connectivity, (4) follow the **traceId** across services, (5) check **resource** metrics for throttle/OOM. State the hypothesis, then the command that confirms it — that narration is what staff interviews score.`,
+            code: [
+              {
+                lang: `bash`,
+                title: `Rolling updates, status, and rollback`,
+                code: `# Trigger a rollout by setting a new image (or via GitOps tag bump)
+kubectl set image deployment/order-service \\
+  order-service=ghcr.io/acme/order-service:sha-def456 -n orders-prod
+
+kubectl rollout status deployment/order-service -n orders-prod   # waits for ready
+kubectl rollout history deployment/order-service -n orders-prod
+
+# Roll back to the previous ReplicaSet (break-glass; in GitOps, revert the commit)
+kubectl rollout undo deployment/order-service -n orders-prod
+kubectl rollout undo deployment/order-service --to-revision=4 -n orders-prod
+
+# Pause/resume to batch multiple changes into one rollout
+kubectl rollout pause deployment/order-service -n orders-prod
+kubectl rollout resume deployment/order-service -n orders-prod`,
+                "note?": `rollout status blocks until the new pods are Ready or the progressDeadline trips — script it in CD to fail fast. A healthy rollout depends entirely on honest readiness probes.`
+              },
+              {
+                lang: `yaml`,
+                title: `HorizontalPodAutoscaler — CPU + custom (Kafka lag) with sane behavior`,
+                code: `apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: order-service-hpa
+  namespace: orders-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order-service
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 65 }
+    # Custom metric (requires an adapter, e.g. Prometheus Adapter / KEDA)
+    - type: Pods
+      pods:
+        metric: { name: http_server_requests_seconds_count_rate }
+        target: { type: AverageValue, averageValue: "50" }
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies: [ { type: Pods, value: 4, periodSeconds: 30 } ]
+    scaleDown:
+      stabilizationWindowSeconds: 300   # scale DOWN slowly to avoid flapping
+      policies: [ { type: Pods, value: 1, periodSeconds: 60 } ]`,
+                "note?": `CPU target is % of the request (so requests MUST be set). The behavior block stops thrashing: scale up fast, scale down slow. For event-driven services, KEDA scaling on Kafka consumer lag is often the better signal than CPU.`
+              },
+              {
+                lang: `yaml`,
+                title: `Prometheus scrape — pod annotations (or ServiceMonitor)`,
+                code: `# Already on the Deployment template (Section 4): annotation-based scrape
+# template.metadata.annotations:
+#   prometheus.io/scrape: "true"
+#   prometheus.io/path: "/actuator/prometheus"
+#   prometheus.io/port: "8080"
+
+# Preferred with the Prometheus Operator: a ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: order-service
+  namespace: orders-prod
+  labels: { release: kube-prometheus-stack }
+spec:
+  selector:
+    matchLabels: { app: order-service }
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s
+---
+# A PrometheusRule: alert when error rate or latency breaches SLO
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: order-service-slo
+  namespace: orders-prod
+spec:
+  groups:
+    - name: order-service.rules
+      rules:
+        - alert: OrderServiceHighErrorRate
+          expr: |
+            sum(rate(http_server_requests_seconds_count{app="order-service",status=~"5.."}[5m]))
+            / sum(rate(http_server_requests_seconds_count{app="order-service"}[5m])) > 0.05
+          for: 5m
+          labels: { severity: page }
+          annotations:
+            summary: "order-service 5xx rate >5% for 5m"`,
+                "note?": `ServiceMonitor (Prometheus Operator) is cleaner than annotation scraping at scale. The PrometheusRule encodes an SLO (5xx ratio) as a paging alert — RED-method 'Errors'.`
+              },
+              {
+                lang: `properties`,
+                title: `Spring Boot observability config (metrics + tracing + correlated logs)`,
+                code: `# Actuator + Prometheus
+management.endpoints.web.exposure.include=health,info,prometheus,metrics
+management.endpoint.prometheus.enabled=true
+management.metrics.tags.application=order-service
+
+# Distributed tracing (Micrometer Tracing -> OpenTelemetry/OTLP)
+management.tracing.sampling.probability=0.1
+management.otlp.tracing.endpoint=http://tempo.observability:4318/v1/traces
+
+# Propagate W3C traceparent across order -> inventory -> payment (and Kafka)
+management.tracing.propagation.type=w3c
+
+# Correlated structured logs: put traceId/spanId on every line (MDC)
+logging.pattern.level=%5p [\${spring.application.name},%X{traceId:-},%X{spanId:-}]
+# (Use a JSON encoder like logstash-logback-encoder in production so logs are
+#  machine-parseable and traceId is a first-class field for Loki/ELK queries.)`,
+                "note?": `The %X{traceId} in the log pattern is the correlation glue: the same traceId appears in logs, spans, and propagates downstream, so one order is traceable across all three services and Kafka.`
+              },
+              {
+                lang: `bash`,
+                title: `Runbook commands — the incident decision tree`,
+                code: `# ---- CrashLoopBackOff: see WHY it crashed (the --previous flag is key) ----
+kubectl get pods -n orders-prod
+kubectl describe pod <pod> -n orders-prod          # Events + Last State + reason
+kubectl logs <pod> -n orders-prod --previous       # logs of the CRASHED instance
+
+# ---- ImagePullBackOff: registry/tag/credentials ----
+kubectl describe pod <pod> -n orders-prod | grep -A5 Events
+# Look for: 'manifest unknown' (bad tag), '401/403' (missing imagePullSecret)
+
+# ---- Pending: scheduling ----
+kubectl describe pod <pod> -n orders-prod          # Events: FailedScheduling
+kubectl get nodes -o wide
+kubectl describe nodes | grep -A6 'Allocated resources'   # node capacity left
+kubectl get resourcequota -n orders-prod           # quota exhausted?
+
+# ---- OOMKilled: memory ----
+kubectl describe pod <pod> -n orders-prod | grep -i -A2 'Last State'  # OOMKilled?
+kubectl top pod <pod> -n orders-prod               # current usage vs limit
+
+# ---- 5xx between services: connectivity + tracing ----
+kubectl get endpoints inventory-service -n orders-prod   # any ready backends?
+kubectl logs deploy/inventory-service -n orders-prod --tail=100
+kubectl exec deploy/order-service -n orders-prod -- \\
+  curl -s -o /dev/null -w '%{http_code}\\n' http://inventory-service:8080/actuator/health
+# Then open the trace by traceId in Grafana/Tempo to see which hop failed`,
+                "note?": `Memorize this tree. Each symptom -> one or two commands that confirm the hypothesis. Narrating 'I'd run describe to read Events, then logs --previous for the crash trace' is exactly the structured-debugging signal staff interviews reward.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `A pod is in CrashLoopBackOff. Walk through your debugging.`,
+                a: `kubectl describe pod to read Events and Last State (reason/exit code), then kubectl logs <pod> --previous to see the crashed instance's stack trace (current logs may be empty/restarted). Root causes are usually startup-time: bad/missing config or secret, unreachable DB, or a port conflict. Fix config or image and let it restart.`
+              },
+              {
+                q: `Why is the --previous flag critical when debugging CrashLoopBackOff?`,
+                a: `kubectl logs without --previous shows the current container, which after a restart may be freshly started or empty. --previous shows the logs of the prior, crashed instance — where the actual exception/stack trace lives. It's the difference between a 30-second fix and an hour of flailing.`
+              },
+              {
+                q: `A pod is ImagePullBackOff. What are the likely causes and how do you confirm?`,
+                a: `kubectl describe pod and read Events. Common causes: a wrong/nonexistent image tag ('manifest unknown'), a private registry with no imagePullSecret or bad credentials (401/403), or a registry hostname typo. The Events section names the exact pull error.`
+              },
+              {
+                q: `A pod is stuck Pending. How do you diagnose it?`,
+                a: `kubectl describe pod and look for FailedScheduling Events. Causes: insufficient allocatable CPU/memory across nodes, an unsatisfiable nodeSelector/affinity/taint, no matching PV, or an exhausted namespace ResourceQuota. Cross-check node capacity (describe nodes) and quota usage.`
+              },
+              {
+                q: `A pod was OOMKilled. What happened and what are your remediation options?`,
+                a: `The container exceeded its memory limit and the kernel killed it (memory is non-compressible). Confirm via describe pod Last State: OOMKilled and kubectl top. Remediate by raising the limit, lowering JVM heap (MaxRAMPercentage) with non-heap headroom, fixing a leak, or right-sizing — not just bumping the limit blindly.`
+              },
+              {
+                q: `order-service returns 5xx calling inventory-service. What's your checklist?`,
+                a: `Check inventory-service endpoints (any Ready backends? empty = readiness/selector issue); verify NetworkPolicy allows the edge; read inventory-service logs for downstream errors; curl inventory's health from inside order-service; then open the trace by traceId to see exactly which hop/timeout failed.`
+              },
+              {
+                q: `What's required for CPU-based HorizontalPodAutoscaler to work, and what's a key limitation?`,
+                a: `Every targeted container must declare CPU requests — HPA computes utilization as a percentage of request. Limitation: HPA scales pods on a metric but can't relieve a downstream bottleneck (e.g. DB connection pool); adding pods just loads the same Postgres harder. Scale the actual bottleneck.`
+              },
+              {
+                q: `Why configure HPA scaleDown with a longer stabilization window than scaleUp?`,
+                a: `To prevent flapping: scaling up quickly handles load spikes, but scaling down slowly (e.g. 300s stabilization) avoids prematurely removing capacity during brief dips and then thrashing back up. Asymmetric behavior gives responsive growth with stable, gradual shrink.`
+              },
+              {
+                q: `What makes a rolling update genuinely zero-downtime?`,
+                a: `Honest readiness probes (so traffic only goes to truly-ready new pods) plus graceful shutdown on old pods (preStop drain + server.shutdown=graceful) so in-flight requests complete. maxUnavailable: 0 keeps capacity up. Without honest readiness/graceful drain, rollouts drop requests despite the rolling strategy.`
+              },
+              {
+                q: `Why is a correlation/trace ID the operational superpower across these three services?`,
+                a: `A single traceId propagated across order→inventory→payment (and into Kafka headers) plus embedded in every log line turns 'order 8842 failed' into one filtered view spanning all services and the broker. Without it you're grepping three log streams by timestamp and guessing causality.`
+              },
+              {
+                q: `How does a Spring Boot service expose metrics to Prometheus, and what's the cleaner alternative to scrape annotations at scale?`,
+                a: `Micrometer exposes /actuator/prometheus; Prometheus scrapes it via prometheus.io/scrape pod annotations. At scale, a ServiceMonitor (Prometheus Operator) declaratively selects the Service by label and defines the scrape endpoint/interval — cleaner and more maintainable than per-pod annotations.`
+              },
+              {
+                q: `In a GitOps-managed system, what's the preferred way to roll back a bad release and why?`,
+                a: `Revert the offending Git commit (e.g. the tag bump) so the declared desired state returns to the previous good version and ArgoCD reconciles — keeping Git authoritative and the cluster non-divergent. kubectl rollout undo / argocd app rollback are break-glass options when speed trumps the Git round-trip.`
+              },
+              {
+                q: `Describe the methodical incident flow a staff engineer narrates for a pod/service failure.`,
+                a: `1) describe pod — read Events and Last State; 2) logs --previous for the crash trace; 3) check endpoints + NetworkPolicy for connectivity; 4) follow the traceId across services to find the failing hop; 5) check resource metrics for throttling/OOM. State each hypothesis and the exact command that confirms it.`
               }
             ]
           }
