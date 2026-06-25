@@ -260,13 +260,12 @@
 
   /* ===================== MARKDOWN + CALLOUTS ===================== */
   function renderMarkdown(md) {
-    // Transform > [!TYPE] blockquotes into callouts BEFORE marked runs.
     const calloutMap = {
-      TIP: { cls: 'callout-tip', icon: 'lightbulb', title: 'Tip' },
+      TIP:     { cls: 'callout-tip',     icon: 'lightbulb',     title: 'Tip' },
       WARNING: { cls: 'callout-warning', icon: 'alert-triangle', title: 'Watch out' },
-      DANGER: { cls: 'callout-danger', icon: 'octagon-alert', title: 'Danger' },
+      DANGER:  { cls: 'callout-danger',  icon: 'octagon-alert',  title: 'Danger' },
       SUCCESS: { cls: 'callout-success', icon: 'check-circle-2', title: 'Strong answer' },
-      EU: { cls: 'callout-eu', icon: 'star', title: 'EU interview tip' }
+      EU:      { cls: 'callout-eu',      icon: 'star',           title: 'EU interview tip' },
     };
 
     const lines = md.split('\n');
@@ -274,8 +273,62 @@
     let i = 0;
     while (i < lines.length) {
       const m = lines[i].match(/^>\s*\[!(\w+)\]\s*(.*)$/);
-      if (m && calloutMap[m[1].toUpperCase()]) {
-        const cfg = calloutMap[m[1].toUpperCase()];
+      const type = m ? m[1].toUpperCase() : null;
+
+      // ── JOURNEY: interactive step-through widget ──────────────────
+      if (type === 'JOURNEY') {
+        const titleMatch = m[2].match(/title="([^"]+)"/);
+        const widgetTitle = titleMatch ? titleMatch[1] : 'Interactive Journey';
+        const buf = [];
+        i++;
+        while (i < lines.length && lines[i].startsWith('>')) {
+          buf.push(lines[i].replace(/^>\s?/, ''));
+          i++;
+        }
+        // Parse steps: lines starting with "## " begin a new step
+        const steps = [];
+        let cur = null;
+        buf.forEach(line => {
+          if (line.startsWith('## ')) {
+            if (cur) steps.push(cur);
+            cur = { title: line.replace(/^##\s+/, ''), body: [] };
+          } else if (cur) {
+            cur.body.push(line);
+          }
+        });
+        if (cur) steps.push(cur);
+        // Build widget HTML
+        const dots = steps.map((s, idx) =>
+          `<button class="jdot${idx === 0 ? ' active' : ''}" data-jidx="${idx}" title="${esc(s.title)}">${idx + 1}</button>`
+        ).join('');
+        const panels = steps.map((s, idx) => {
+          const bodyHtml = marked.parse(s.body.join('\n'));
+          return `<div class="jpanel${idx === 0 ? ' active' : ''}" data-jidx="${idx}">
+            <div class="jpanel-header"><span class="jstep-num">${idx + 1}</span><strong>${esc(s.title)}</strong></div>
+            <div class="jpanel-body">${bodyHtml}</div>
+          </div>`;
+        }).join('');
+        out.push(`
+<div class="journey-widget" data-journey-id="${Date.now()}">
+  <div class="journey-title-bar">
+    <i data-lucide="route" class="w-4 h-4 text-brand"></i>
+    <span>${esc(widgetTitle)}</span>
+    <span class="journey-counter"><span class="jcur">1</span> / ${steps.length}</span>
+  </div>
+  <div class="journey-dots">${dots}</div>
+  <div class="journey-panels">${panels}</div>
+  <div class="journey-nav">
+    <button class="jbtn jprev" disabled>← Prev</button>
+    <div class="journey-progress-track"><div class="journey-progress-fill" style="width:${(1/steps.length*100).toFixed(1)}%"></div></div>
+    <button class="jbtn jnext">Next →</button>
+  </div>
+</div>`);
+        continue;
+      }
+
+      // ── Standard callouts ─────────────────────────────────────────
+      if (m && calloutMap[type]) {
+        const cfg = calloutMap[type];
         const buf = [];
         if (m[2]) buf.push(m[2]);
         i++;
@@ -290,12 +343,56 @@
         );
         continue;
       }
+
       out.push(lines[i]);
       i++;
     }
-    // Render the remaining markdown; callout HTML passes through.
-    const html = marked.parse(out.join('\n'));
-    return html;
+    return marked.parse(out.join('\n'));
+  }
+
+  /* ── Wire interactive journey widgets after DOM is set ───────────── */
+  function initJourneyWidgets(root) {
+    root.querySelectorAll('.journey-widget').forEach(widget => {
+      const dots   = widget.querySelectorAll('.jdot');
+      const panels = widget.querySelectorAll('.jpanel');
+      const prev   = widget.querySelector('.jprev');
+      const next   = widget.querySelector('.jnext');
+      const cur    = widget.querySelector('.jcur');
+      const fill   = widget.querySelector('.journey-progress-fill');
+      let idx = 0;
+
+      function go(n) {
+        dots[idx].classList.remove('active');
+        panels[idx].classList.remove('active');
+        idx = Math.max(0, Math.min(n, dots.length - 1));
+        dots[idx].classList.add('active');
+        panels[idx].classList.add('active');
+        cur.textContent = idx + 1;
+        fill.style.width = ((idx + 1) / dots.length * 100).toFixed(1) + '%';
+        prev.disabled = idx === 0;
+        next.disabled = idx === dots.length - 1;
+      }
+
+      dots.forEach((d, di) => d.addEventListener('click', () => go(di)));
+      prev.addEventListener('click', () => go(idx - 1));
+      next.addEventListener('click', () => go(idx + 1));
+    });
+  }
+
+  /* ── Mermaid diagram rendering after DOM is set ──────────────────── */
+  function renderMermaidIn(root) {
+    if (typeof mermaid === 'undefined') return;
+    const blocks = root.querySelectorAll('pre code.language-mermaid');
+    if (!blocks.length) return;
+    blocks.forEach((block, n) => {
+      const pre = block.parentElement;
+      const div = document.createElement('div');
+      div.className = 'mermaid';
+      div.id = 'mmd-' + Date.now() + '-' + n;
+      div.textContent = block.textContent;
+      pre.replaceWith(div);
+    });
+    try { mermaid.run({ nodes: root.querySelectorAll('.mermaid') }); } catch (e) {}
   }
 
   /* ===================== MODULE NOTEBOOK ===================== */
@@ -384,12 +481,19 @@
 
     // ---- helper: fill Study Guide / Code Sandbox / Flashcards from any src object ----
     function fillContent(src) {
+      const notesEl = $('#tab-notes');
       if (src.notes && src.notes.trim()) {
-        $('#tab-notes').innerHTML = renderMarkdown(src.notes);
+        notesEl.innerHTML = renderMarkdown(src.notes);
       } else {
-        $('#tab-notes').innerHTML = placeholderNotes(module, phase);
+        notesEl.innerHTML = placeholderNotes(module, phase);
       }
-      $('#tab-notes').querySelectorAll('pre code').forEach(b => { try { hljs.highlightElement(b); } catch (e) {} });
+      // Syntax-highlight code blocks (skip mermaid — those get diagram treatment)
+      notesEl.querySelectorAll('pre code:not(.language-mermaid)').forEach(b => {
+        try { hljs.highlightElement(b); } catch (e) {}
+      });
+      renderMermaidIn(notesEl);
+      initJourneyWidgets(notesEl);
+      icons(); // re-run lucide for icons inside callouts / journey
       renderSandbox(src);
       renderFlashcards(src);
     }
@@ -699,6 +803,28 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
   function init() {
     if (typeof marked !== 'undefined') {
       marked.setOptions({ breaks: false, gfm: true });
+    }
+    if (typeof mermaid !== 'undefined') {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'base',
+        themeVariables: {
+          background:          '#0f172a',
+          primaryColor:        '#1e293b',
+          primaryTextColor:    '#e2e8f0',
+          primaryBorderColor:  '#6366f1',
+          lineColor:           '#818cf8',
+          secondaryColor:      '#0f172a',
+          tertiaryColor:       '#0d1322',
+          nodeBorder:          '#6366f1',
+          clusterBkg:          '#1e293b',
+          clusterBorder:       '#334155',
+          titleColor:          '#c4b5fd',
+          edgeLabelBackground: '#1e293b',
+          fontFamily:          'Inter, ui-sans-serif, sans-serif',
+          fontSize:            '13px',
+        }
+      });
     }
     renderNav();
     renderGlobalProgress();

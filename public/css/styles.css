@@ -112,6 +112,78 @@ html, body { height: 100%; }
 /* Monaco container */
 .monaco-wrap { height: 340px; border-radius: 10px; overflow: hidden; border: 1px solid #1e293b; }
 
+/* ─── Mermaid diagrams ─────────────────────────────────────────────── */
+.prose-notes .mermaid {
+  background: #0d1322; border: 1px solid #1e293b; border-radius: 10px;
+  padding: 1.25rem; margin: 1.25rem 0; overflow-x: auto; text-align: center;
+}
+.prose-notes .mermaid svg { max-width: 100%; height: auto; }
+
+/* ─── Interactive Journey Widget ───────────────────────────────────── */
+.journey-widget {
+  background: #0d1322; border: 1px solid #334155; border-radius: 12px;
+  margin: 1.5rem 0; overflow: hidden;
+}
+.journey-title-bar {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .7rem 1rem; background: #1e293b; font-size: 13px;
+  font-weight: 600; color: #c4b5fd; border-bottom: 1px solid #334155;
+}
+.journey-counter { margin-left: auto; font-size: 12px; color: #64748b; font-weight: 400; }
+
+.journey-dots {
+  display: flex; gap: 6px; padding: .75rem 1rem; flex-wrap: wrap;
+  border-bottom: 1px solid #1e293b;
+}
+.jdot {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid #334155;
+  background: #1e293b; color: #64748b; font-size: 11px; font-weight: 700;
+  cursor: pointer; transition: all .2s; display: flex; align-items: center; justify-content: center;
+}
+.jdot:hover { border-color: #6366f1; color: #a5b4fc; }
+.jdot.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+
+.journey-panels { min-height: 160px; }
+.jpanel { display: none; padding: 1.1rem 1.25rem; animation: fadeInUp .25s ease; }
+.jpanel.active { display: block; }
+.jpanel-header {
+  display: flex; align-items: center; gap: .6rem; margin-bottom: .7rem;
+}
+.jstep-num {
+  width: 26px; height: 26px; border-radius: 50%; background: #6366f1;
+  color: #fff; font-size: 11px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.jpanel-header strong { color: #e2e8f0; font-size: 15px; }
+.jpanel-body { color: #cbd5e1; font-size: 14px; line-height: 1.7; }
+.jpanel-body p { margin: .5rem 0; }
+.jpanel-body code { background: #1e293b; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.jpanel-body pre { background: #1e293b; padding: .75rem; border-radius: 8px; overflow-x: auto; }
+
+.journey-nav {
+  display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem;
+  border-top: 1px solid #1e293b; background: #0f172a;
+}
+.jbtn {
+  padding: .3rem .85rem; border-radius: 6px; font-size: 13px; font-weight: 600;
+  background: #1e293b; border: 1px solid #334155; color: #a5b4fc;
+  cursor: pointer; transition: all .2s;
+}
+.jbtn:hover:not(:disabled) { background: #6366f1; border-color: #6366f1; color: #fff; }
+.jbtn:disabled { opacity: .35; cursor: default; }
+.journey-progress-track {
+  flex: 1; height: 4px; background: #1e293b; border-radius: 2px; overflow: hidden;
+}
+.journey-progress-fill {
+  height: 100%; background: linear-gradient(90deg, #6366f1, #818cf8);
+  border-radius: 2px; transition: width .3s ease;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Tabs */
 .tab-btn.active { color: #fff; border-color: var(--brand); }
 .tab-btn { border-bottom: 2px solid transparent; }
