@@ -898,7 +898,6 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
 
     $('#search').addEventListener('input', (e) => renderNav(e.target.value));
     $('#dashboard-btn').addEventListener('click', renderDashboard);
-    $('#dashboard-btn-bottom').addEventListener('click', renderDashboard);
     $('#reset-btn').addEventListener('click', () => {
       if (confirm('Reset ALL progress, notes, and statuses? This cannot be undone.')) {
         state = defaultState();
