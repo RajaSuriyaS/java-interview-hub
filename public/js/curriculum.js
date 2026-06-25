@@ -6261,14 +6261,809 @@ public class StringPatterns {
       ]
     },
 
-        {
+    {
       id: '0.7',
       title: 'Exception Handling & Custom Exceptions',
       hours: 3,
-      notes: `*[Module 0.7 — under construction. Will cover: try/catch/finally, checked vs unchecked, throw, custom exceptions, best practices. Roadmap: build after 0.6.]*`
+      sections: [
+        {
+          title: 'Exception Hierarchy & Checked vs Unchecked',
+          notes: `## Exception Hierarchy & Checked vs Unchecked
+
+### The Exception Class Hierarchy
+
+\`\`\`mermaid
+graph TD
+    T[Throwable]
+    T --> E[Exception]
+    T --> ER[Error]
+    E --> CE["Checked Exceptions\n(must handle or declare)"]
+    E --> RE[RuntimeException]
+    RE --> UC["Unchecked Exceptions\n(optional to handle)"]
+    CE --> IO[IOException]
+    CE --> SQL[SQLException]
+    CE --> CN[ClassNotFoundException]
+    UC --> NPE[NullPointerException]
+    UC --> IAE[IllegalArgumentException]
+    UC --> ISE[IllegalStateException]
+    UC --> IOOB[IndexOutOfBoundsException]
+    ER --> OOM[OutOfMemoryError]
+    ER --> SOE[StackOverflowError]
+    style CE fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style UC fill:#1e293b,stroke:#334155,color:#94a3b8
+    style ER fill:#1e0a0a,stroke:#ef4444,color:#fca5a5
+\`\`\`
+
+### Checked Exceptions
+
+**Checked exceptions** are subclasses of \`Exception\` (but not \`RuntimeException\`). The compiler **forces** you to handle them — either with \`try/catch\` or by declaring them with \`throws\`.
+
+Why they exist: they model **recoverable, foreseeable failures** — a file not found, a network timeout, a malformed URL. The compiler forces you to think about what to do.
+
+\`\`\`java
+// MUST handle — compiler error if you don't
+public void readFile(String path) throws IOException {   // option 1: declare
+    FileReader reader = new FileReader(path);            // throws FileNotFoundException
+    // ...
+}
+
+public void readFileSafe(String path) {
+    try {
+        FileReader reader = new FileReader(path);        // option 2: catch
+    } catch (FileNotFoundException e) {
+        System.err.println("File not found: " + path);
+    }
+}
+\`\`\`
+
+### Unchecked Exceptions (RuntimeException)
+
+**Unchecked exceptions** are subclasses of \`RuntimeException\`. The compiler does **not** require you to handle them. They typically indicate **programming errors**:
+
+| Exception | Typical Cause |
+|---|---|
+| \`NullPointerException\` | Calling method on null reference |
+| \`IllegalArgumentException\` | Caller passed an invalid argument |
+| \`IllegalStateException\` | Object is in wrong state for the operation |
+| \`IndexOutOfBoundsException\` | Array/list index out of range |
+| \`ClassCastException\` | Invalid downcast |
+| \`ArithmeticException\` | Division by zero |
+| \`UnsupportedOperationException\` | Operation not implemented (e.g. unmodifiable list) |
+
+### Errors
+
+\`Error\` subclasses signal **JVM-level failures** you generally cannot recover from:
+- \`OutOfMemoryError\` — heap exhausted
+- \`StackOverflowError\` — infinite recursion
+- \`VirtualMachineError\` — JVM internal failure
+
+**Do not catch \`Error\`** — you cannot meaningfully recover, and catching it suppresses the signal that the JVM is in a bad state.
+
+### The Checked vs Unchecked Debate
+
+The Java community has been debating this for 25 years. The pragmatic modern view:
+
+- **Throw checked** when the caller has a realistic path to recovery and the failure is external (file system, network, database)
+- **Throw unchecked** for programming errors (null, wrong argument, wrong state) — these should be fixed in code, not caught at runtime
+- **Modern frameworks** (Spring, Hibernate, most cloud-native libs) wrap checked exceptions in unchecked ones to avoid \`throws\` pollution`,
+          code: [
+            `import java.io.*;
+
+public class CheckedDemo {
+    // Method 1: propagate with throws
+    static String readFirst(String path) throws IOException {
+        try (BufferedReader br = new BufferedReader(new FileReader(path))) {
+            return br.readLine();
+        }
+    }
+
+    // Method 2: catch and handle locally
+    static String readFirstSafe(String path) {
+        try (BufferedReader br = new BufferedReader(new FileReader(path))) {
+            return br.readLine();
+        } catch (FileNotFoundException e) {
+            System.err.println("File missing: " + path);
+            return null;
+        } catch (IOException e) {
+            System.err.println("Read error: " + e.getMessage());
+            return null;
+        }
+    }
+
+    public static void main(String[] args) {
+        // Unchecked — no forced handling
+        String s = null;
+        try {
+            s.length();                   // NullPointerException
+        } catch (NullPointerException e) {
+            System.out.println("Caught NPE: " + e.getMessage());
+        }
+
+        // Checked — must handle
+        String line = readFirstSafe("/tmp/data.txt");
+        System.out.println("First line: " + line);
+    }
+}`,
+            `public class ExceptionHierarchyDemo {
+    // Demonstrate catching at different levels of hierarchy
+    static void riskyOp(int choice) throws Exception {
+        switch (choice) {
+            case 1 -> throw new NullPointerException("null ref");
+            case 2 -> throw new IllegalArgumentException("bad arg");
+            case 3 -> throw new IOException("io problem");
+            case 4 -> throw new RuntimeException("runtime");
+        }
+    }
+
+    public static void main(String[] args) {
+        for (int i = 1; i <= 4; i++) {
+            try {
+                riskyOp(i);
+            } catch (NullPointerException e) {
+                System.out.println("NPE: " + e.getMessage());     // caught most specific
+            } catch (IllegalArgumentException e) {
+                System.out.println("IAE: " + e.getMessage());
+            } catch (RuntimeException e) {
+                System.out.println("Runtime: " + e.getMessage()); // catches case 4
+            } catch (Exception e) {
+                System.out.println("Checked: " + e.getMessage()); // catches IOException
+            }
+        }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the difference between checked and unchecked exceptions?', a: 'Checked exceptions (subclasses of Exception but not RuntimeException) must be caught or declared with throws — the compiler enforces this. Unchecked exceptions (RuntimeException subclasses) do not require handling. Checked = recoverable external failures; Unchecked = programming bugs.' },
+            { q: 'Should you catch Error?', a: 'No. Errors (OutOfMemoryError, StackOverflowError) signal JVM-level failures you cannot meaningfully recover from. Catching them suppresses the signal that the JVM is in a bad state. Let them propagate to the top-level crash handler.' },
+            { q: 'If a method throws a checked exception, what are your two options as the caller?', a: '(1) Wrap in try/catch and handle it. (2) Declare it with throws in your own method signature, passing the responsibility up the call stack. You must choose one — the compiler will not compile if you do neither.' },
+            { q: 'What is NullPointerException and why is it unchecked?', a: 'NPE is thrown when you call a method or access a field on a null reference. It is unchecked because it represents a programming error (you should have checked for null) rather than a recoverable external failure. The compiler cannot predict which references might be null at runtime.' },
+            { q: 'What is the parent of all exceptions and errors in Java?', a: 'Throwable. It has two direct subclasses: Exception (for recoverable conditions) and Error (for JVM-level failures). Only Throwable subclasses can be thrown with throw or caught in catch blocks.' }
+          ]
+        },
+        {
+          title: 'try/catch/finally & try-with-resources',
+          notes: `## try/catch/finally & try-with-resources
+
+### Basic try/catch/finally
+
+\`\`\`java
+try {
+    // Code that might throw
+    int result = 10 / 0;
+} catch (ArithmeticException e) {
+    System.out.println("Caught: " + e.getMessage());  // / by zero
+} catch (Exception e) {
+    System.out.println("General: " + e.getMessage());
+} finally {
+    System.out.println("Always runs");  // even if catch re-throws
+}
+\`\`\`
+
+**Key \`finally\` facts:**
+- Runs whether or not an exception was thrown
+- Runs whether or not the exception was caught
+- Runs even if \`catch\` re-throws
+- Does **not** run if \`System.exit()\` is called or the JVM crashes
+- If \`finally\` itself throws, the original exception is **lost**
+
+### Multi-catch (Java 7+)
+
+When two exceptions need identical handling, avoid duplicate catch blocks:
+
+\`\`\`java
+try {
+    process(input);
+} catch (IOException | SQLException e) {   // pipe-separated
+    log.error("Storage failure: {}", e.getMessage());
+    throw new ServiceException("Storage error", e);
+}
+// Note: e is implicitly final in a multi-catch — you cannot reassign it
+\`\`\`
+
+### try-with-resources (Java 7+)
+
+Resources (anything implementing \`AutoCloseable\`) declared in the try header are **automatically closed** when the block exits — no finally needed:
+
+\`\`\`java
+// Before Java 7 — error-prone
+Connection conn = null;
+PreparedStatement stmt = null;
+try {
+    conn = dataSource.getConnection();
+    stmt = conn.prepareStatement(sql);
+    // ...
+} finally {
+    if (stmt != null) try { stmt.close(); } catch (SQLException ignored) {}
+    if (conn != null) try { conn.close(); } catch (SQLException ignored) {}
+}
+
+// Java 7+ try-with-resources — clean
+try (Connection conn = dataSource.getConnection();
+     PreparedStatement stmt = conn.prepareStatement(sql)) {
+    // ...
+}   // stmt.close() then conn.close() called automatically, in reverse order
+\`\`\`
+
+### Suppressed Exceptions
+
+When both the \`try\` body and \`close()\` throw, the exception from \`close()\` is added as a **suppressed exception** on the primary exception (rather than replacing it, which was the old finally problem):
+
+\`\`\`java
+try {
+    // ...
+} catch (Exception e) {
+    Throwable[] suppressed = e.getSuppressed();  // exceptions from close()
+    for (Throwable t : suppressed) {
+        log.warn("Suppressed: {}", t.getMessage());
+    }
+}
+\`\`\`
+
+### Visualising try-with-resources Flow
+
+\`\`\`mermaid
+flowchart TD
+    A[Open resources in try header] --> B[Execute try body]
+    B --> C{Exception thrown?}
+    C -->|No| D[Close resources in reverse order]
+    C -->|Yes| E[Close resources — exceptions suppressed]
+    E --> F{catch block matches?}
+    D --> G[Normal exit]
+    F -->|Yes| H[Handle in catch]
+    F -->|No| I[Propagate exception]
+    H --> J{finally block?}
+    I --> J
+    G --> J
+    J --> K[finally always runs]
+    style E fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style K fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+\`\`\`
+
+### Exception in finally — the silent killer
+
+\`\`\`java
+try {
+    throw new RuntimeException("original");
+} finally {
+    throw new RuntimeException("finally");  // swallows "original"!
+}
+// Only "finally" propagates — "original" is silently LOST
+\`\`\`
+
+This is why **never throw from finally** and **never return from finally** (a return in finally discards the exception in the same way). With try-with-resources, the framework uses suppressed exceptions to avoid this.`,
+          code: [
+            `import java.io.*;
+
+public class TryWithResourcesDemo {
+    // Custom AutoCloseable
+    static class DatabaseConnection implements AutoCloseable {
+        private final String url;
+        DatabaseConnection(String url) {
+            this.url = url;
+            System.out.println("  Opening connection to " + url);
+        }
+        public void query(String sql) throws Exception {
+            System.out.println("  Executing: " + sql);
+            if (sql.contains("BAD")) throw new Exception("Bad SQL: " + sql);
+        }
+        @Override
+        public void close() {
+            System.out.println("  Closing connection to " + url);
+        }
+    }
+
+    static class Statement implements AutoCloseable {
+        Statement() { System.out.println("  Creating statement"); }
+        @Override public void close() { System.out.println("  Closing statement"); }
+    }
+
+    public static void main(String[] args) {
+        System.out.println("=== Success path ===");
+        try (DatabaseConnection conn = new DatabaseConnection("jdbc:h2:mem");
+             Statement stmt = new Statement()) {
+            conn.query("SELECT * FROM users");
+        } catch (Exception e) {
+            System.out.println("Error: " + e.getMessage());
+        }
+
+        System.out.println("\n=== Exception path ===");
+        try (DatabaseConnection conn = new DatabaseConnection("jdbc:h2:mem")) {
+            conn.query("BAD SQL");                // throws
+        } catch (Exception e) {
+            System.out.println("Caught: " + e.getMessage());
+            // Connection still closed before catch runs
+        }
+    }
+}`,
+            `public class MultiCatchDemo {
+    static void process(String input) throws Exception {
+        if (input == null)       throw new NullPointerException("null input");
+        if (input.isEmpty())     throw new IllegalArgumentException("empty input");
+        if (input.equals("sql")) throw new java.sql.SQLException("DB error");
+        if (input.equals("io"))  throw new java.io.IOException("File error");
+        System.out.println("Processed: " + input);
+    }
+
+    public static void main(String[] args) {
+        String[] tests = { "hello", null, "", "sql", "io" };
+        for (String test : tests) {
+            try {
+                process(test);
+            } catch (NullPointerException | IllegalArgumentException e) {
+                // Multi-catch — same handling for both
+                System.out.println("Input error [" + test + "]: " + e.getMessage());
+            } catch (java.io.IOException | java.sql.SQLException e) {
+                // Multi-catch — storage failures
+                System.out.println("Storage error [" + test + "]: " + e.getMessage());
+            } catch (Exception e) {
+                System.out.println("Unknown [" + test + "]: " + e.getMessage());
+            } finally {
+                System.out.println("  -> finally for input: " + test);
+            }
+        }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'When does the finally block NOT run?', a: 'The finally block does not run when System.exit() is called, when the JVM crashes (e.g. kill -9 on the process), or when a daemon thread is killed as the JVM shuts down. In all other cases — including re-thrown exceptions — finally always runs.' },
+            { q: 'What is a suppressed exception in try-with-resources?', a: 'When both the try body and a resource\'s close() method throw, the exception from close() is attached to the primary exception as a suppressed exception (via Throwable.addSuppressed). Retrieve them with e.getSuppressed(). This prevents the original exception from being silently lost, which was a problem with manual finally blocks.' },
+            { q: 'In what order are try-with-resources resources closed?', a: 'Reverse order of declaration. If you declare (A, B, C), they close as C.close(), B.close(), A.close(). This mirrors stack-based resource acquisition: last acquired, first released.' },
+            { q: 'What is multi-catch and what restriction applies to the variable?', a: 'Multi-catch (Java 7+) lets one catch block handle multiple exception types: catch (IOException | SQLException e). The variable e is implicitly final — you cannot reassign it inside the block. This prevents the ambiguity of which type e is after reassignment.' },
+            { q: 'What happens if you throw from a finally block?', a: 'The exception being handled in the try/catch is silently lost and replaced by the finally exception. This is a common bug. Similarly, a return in finally discards any exception. Never throw or return from finally — use try-with-resources to avoid needing finally for cleanup.' }
+          ]
+        },
+        {
+          title: 'Custom Exceptions & Exception Chaining',
+          notes: `## Custom Exceptions & Exception Chaining
+
+### When to Create Custom Exceptions
+
+Create a custom exception when:
+1. The caller needs to distinguish this failure from all other failures (\`catch (PaymentDeclinedException e)\`)
+2. You need to carry domain-specific context (order ID, amount, error code)
+3. You are crossing a layer boundary and want to translate technical exceptions to domain language
+
+Do **not** create custom exceptions just to rename \`RuntimeException\` with no added context.
+
+### Checked or Unchecked Custom Exception?
+
+\`\`\`java
+// Checked — recoverable, caller MUST handle (e.g. network call that can retry)
+public class InsufficientFundsException extends Exception {
+    private final double amount;
+    private final double balance;
+
+    public InsufficientFundsException(double amount, double balance) {
+        super(String.format("Cannot withdraw %.2f — balance is %.2f", amount, balance));
+        this.amount = amount;
+        this.balance = balance;
+    }
+
+    // Constructor for exception chaining
+    public InsufficientFundsException(double amount, double balance, Throwable cause) {
+        super(String.format("Cannot withdraw %.2f — balance is %.2f", amount, balance), cause);
+        this.amount = amount;
+        this.balance = balance;
+    }
+
+    public double getAmount()  { return amount; }
+    public double getBalance() { return balance; }
+}
+
+// Unchecked — programming error or unrecoverable
+public class InvalidTradeException extends RuntimeException {
+    private final String symbol;
+    private final String reason;
+
+    public InvalidTradeException(String symbol, String reason) {
+        super("Invalid trade for " + symbol + ": " + reason);
+        this.symbol = symbol;
+        this.reason = reason;
+    }
+
+    public InvalidTradeException(String symbol, String reason, Throwable cause) {
+        super("Invalid trade for " + symbol + ": " + reason, cause);
+        this.symbol = symbol;
+        this.reason = reason;
+    }
+
+    public String getSymbol() { return symbol; }
+    public String getReason() { return reason; }
+}
+\`\`\`
+
+### Exception Chaining (Cause Chain)
+
+When you catch a low-level exception and throw a higher-level one, always **pass the original as the cause**. This preserves the full stack trace for debugging:
+
+\`\`\`java
+// BAD — swallows the cause, losing the original stack trace
+try {
+    stmt.executeQuery(sql);
+} catch (SQLException e) {
+    throw new DataAccessException("Query failed");   // e is lost!
+}
+
+// GOOD — cause is preserved
+try {
+    stmt.executeQuery(sql);
+} catch (SQLException e) {
+    throw new DataAccessException("Query failed: " + sql, e);  // e attached as cause
+}
+
+// Retrieve the chain
+try {
+    service.fetchUser(id);
+} catch (DataAccessException e) {
+    Throwable cause = e.getCause();                  // original SQLException
+    logger.error("Root cause: {}", cause.getMessage());
+}
+\`\`\`
+
+### Custom Exception Hierarchy
+
+For large applications, create a hierarchy rooted at your own base exception:
+
+\`\`\`mermaid
+graph TD
+    RE[RuntimeException]
+    RE --> AE[AppException]
+    AE --> SE[ServiceException]
+    AE --> DE[DataException]
+    SE --> PE[PaymentException]
+    SE --> NE[NotificationException]
+    DE --> FNF[EntityNotFoundException]
+    DE --> DAE[DataAccessException]
+    style AE fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style SE fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
+    style DE fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
+\`\`\`
+
+Benefits:
+- \`catch (AppException e)\` in your top-level handler catches all app exceptions
+- More specific \`catch (PaymentException e)\` still works in payment code
+- Logging and monitoring can filter by hierarchy
+
+### Exception Best Practices
+
+\`\`\`java
+// 1. Always log OR rethrow — never both (double logging)
+try { ... }
+catch (Exception e) {
+    log.error("Failed", e);     // log it
+    throw e;                    // OR rethrow it — pick one
+}
+
+// 2. Include context in the message
+throw new IllegalArgumentException(
+    "userId must be positive, got: " + userId);  // not just "invalid userId"
+
+// 3. Do not catch Exception/Throwable broadly unless you are a framework top-level handler
+// 4. Prefer specific catch over catching Exception
+// 5. Never swallow exceptions silently
+catch (Exception e) { }  // BAD — error disappears
+catch (Exception e) { log.warn("Ignoring expected: {}", e.getMessage()); }  // OK with reason
+\`\`\``,
+          code: [
+            `// Full custom exception example with hierarchy
+class AppException extends RuntimeException {
+    public AppException(String message)                  { super(message); }
+    public AppException(String message, Throwable cause) { super(message, cause); }
+}
+
+class InsufficientFundsException extends AppException {
+    private final double requested;
+    private final double available;
+
+    public InsufficientFundsException(double requested, double available) {
+        super(String.format("Requested %.2f but only %.2f available", requested, available));
+        this.requested = requested;
+        this.available = available;
+    }
+
+    public double getRequested() { return requested; }
+    public double getAvailable() { return available; }
+}
+
+class BankService {
+    private double balance = 100.0;
+
+    public void withdraw(double amount) {
+        if (amount <= 0) throw new IllegalArgumentException("Amount must be positive: " + amount);
+        if (amount > balance) throw new InsufficientFundsException(amount, balance);
+        balance -= amount;
+        System.out.printf("Withdrew %.2f, balance now %.2f%n", amount, balance);
+    }
+}
+
+class CustomExceptionDemo {
+    public static void main(String[] args) {
+        BankService bank = new BankService();
+        try {
+            bank.withdraw(50);    // ok
+            bank.withdraw(200);   // InsufficientFundsException
+        } catch (InsufficientFundsException e) {
+            System.out.printf("Declined: requested=%.2f available=%.2f%n",
+                e.getRequested(), e.getAvailable());
+        } catch (AppException e) {
+            System.out.println("App error: " + e.getMessage());
+        }
+    }
+}`,
+            `import java.sql.*;
+
+// Exception chaining demo — preserving the cause chain
+class DataAccessException extends RuntimeException {
+    public DataAccessException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
+
+class UserRepository {
+    // Wraps low-level SQLException in domain exception
+    public String findUser(int id) {
+        try {
+            simulateDbCall(id);   // throws SQLException
+            return "User-" + id;
+        } catch (SQLException e) {
+            // Chain: pass cause so stack trace is preserved
+            throw new DataAccessException("Failed to fetch user id=" + id, e);
+        }
+    }
+
+    private void simulateDbCall(int id) throws SQLException {
+        if (id < 0) throw new SQLException("Invalid id: " + id, "42000", 1064);
+    }
+}
+
+class ExceptionChainDemo {
+    public static void main(String[] args) {
+        UserRepository repo = new UserRepository();
+        try {
+            repo.findUser(-1);
+        } catch (DataAccessException e) {
+            System.out.println("Domain error: " + e.getMessage());
+            System.out.println("Root cause: " + e.getCause().getMessage());
+            // Full chain visible in e.printStackTrace()
+            // DataAccessException: Failed to fetch user id=-1
+            //   Caused by: SQLException: Invalid id: -1
+        }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'When should you create a custom exception vs use a standard one?', a: 'Create custom exceptions when: (1) the caller needs to distinguish this failure from others in a catch block, (2) you need to carry domain-specific data (amount, orderId), (3) crossing a layer boundary to translate technical to domain language. Do not create them just to rename RuntimeException.' },
+            { q: 'Why must you always pass the original exception as the cause when rethrowing?', a: 'Without the cause, the original stack trace is lost forever — you see only where the new exception was thrown, not what caused it. Always use throw new MyException("message", originalException) to preserve the full chain for debugging.' },
+            { q: 'What are the two constructors every custom exception should have?', a: '(1) (String message) — for new errors. (2) (String message, Throwable cause) — for wrapping an existing exception. Both delegate to the matching super() constructor. This makes the exception useful in all wrapping scenarios.' },
+            { q: 'What is the "log or rethrow" rule?', a: 'When you catch an exception, either log it (and handle it) OR rethrow it — not both. If every layer logs and rethrows, the same exception appears in the log multiple times, obscuring the actual flow. Log only at the point where you truly handle it and stop propagation.' },
+            { q: 'What is the benefit of rooting all custom exceptions in your own AppException base class?', a: 'A single catch (AppException e) at the top-level handler catches all app exceptions. More specific handlers still work at lower levels. Monitoring and logging can filter by the hierarchy. And you can add cross-cutting fields (correlationId, errorCode) to AppException once.' }
+          ]
+        },
+        {
+          title: 'Exception Patterns & Real-World Best Practices',
+          notes: `## Exception Patterns & Real-World Best Practices
+
+### Anti-Pattern Gallery
+
+Understanding what NOT to do is as important as knowing the patterns.
+
+**1. Swallowing exceptions silently**
+\`\`\`java
+// BAD — error disappears, debugging becomes a nightmare
+try {
+    processPayment(order);
+} catch (Exception e) { }  // empty catch block
+
+// GOOD — at minimum, log it
+try {
+    processPayment(order);
+} catch (Exception e) {
+    log.error("Payment failed for order {}", order.getId(), e);
+    // now decide: rethrow? return error response? set error state?
+}
+\`\`\`
+
+**2. Catching Exception too broadly**
+\`\`\`java
+// BAD — catches InterruptedException, OutOfMemoryError subtypes, everything
+try { riskyOp(); }
+catch (Exception e) { handle(e); }
+
+// GOOD — catch what you can actually handle
+try { riskyOp(); }
+catch (IOException e) { handleIoError(e); }
+catch (SQLException e) { handleDbError(e); }
+\`\`\`
+
+**3. Exception used as flow control**
+\`\`\`java
+// BAD — exceptions are expensive (stack trace capture); use if/else for normal flow
+try {
+    return map.get(key).toString();   // relies on NPE for missing key
+} catch (NullPointerException e) {
+    return "default";
+}
+
+// GOOD — check first
+String value = map.get(key);
+return value != null ? value.toString() : "default";
+// Even better: map.getOrDefault(key, "default")
+\`\`\`
+
+### Wrapping Checked as Unchecked (Common Framework Pattern)
+
+Libraries like Spring wrap checked exceptions in unchecked ones so callers don't litter code with \`throws\`:
+
+\`\`\`java
+// Utility: rethrow checked exception as unchecked
+public static <T> T call(Callable<T> callable) {
+    try {
+        return callable.call();
+    } catch (RuntimeException e) {
+        throw e;  // pass through unchecked
+    } catch (Exception e) {
+        throw new RuntimeException(e);  // wrap checked in unchecked
+    }
+}
+
+// Usage — no throws needed
+String content = call(() -> Files.readString(Path.of("config.txt")));
+\`\`\`
+
+### Exception and Lambdas — the Checked Problem
+
+Checked exceptions and lambdas don't mix well because functional interface methods don't declare \`throws\`:
+
+\`\`\`java
+// WON'T COMPILE — Function<String, String> doesn't declare throws IOException
+Function<String, String> reader = path -> Files.readString(Path.of(path));
+
+// Solution 1: wrap inline
+Function<String, String> reader = path -> {
+    try { return Files.readString(Path.of(path)); }
+    catch (IOException e) { throw new UncheckedIOException(e); }
+};
+
+// Solution 2: checked-friendly functional interface
+@FunctionalInterface
+interface ThrowingFunction<T, R> {
+    R apply(T t) throws Exception;
+}
+\`\`\`
+
+### Java 9+ — Stack Walking API
+
+\`\`\`java
+// Get caller information without new Exception().getStackTrace()
+StackWalker walker = StackWalker.getInstance();
+String caller = walker.walk(frames ->
+    frames.skip(1).findFirst().map(StackWalker.StackFrame::getMethodName).orElse("unknown")
+);
+\`\`\`
+
+### Interview Quick-Fire
+
+| Question | Answer |
+|---|---|
+| Can you catch multiple exceptions in one catch? | Yes — \`catch (A \\| B e)\` since Java 7 |
+| Is it safe to re-throw \`e\` after \`catch (Exception e)\`? | Yes since Java 7 — compiler tracks actual types |
+| What does \`throw e\` vs \`throw new RuntimeException(e)\` preserve? | \`throw e\` preserves original type and stack; wrapping adds a layer |
+| When is \`UncheckedIOException\` used? | Wrapping \`IOException\` for use in streams/lambdas |
+| Can a constructor throw? | Yes — any constructor can throw both checked and unchecked |
+| What is the \`throws\` clause on main? | Legal but useless in production — unhandled exceptions print to stderr and exit |`,
+          code: [
+            `import java.util.function.*;
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+
+public class ExceptionPatterns {
+    // Wrapping checked for lambda use
+    @FunctionalInterface
+    interface ThrowingSupplier<T> {
+        T get() throws Exception;
+    }
+
+    static <T> T quietly(ThrowingSupplier<T> supplier, T defaultValue) {
+        try { return supplier.get(); }
+        catch (Exception e) {
+            System.err.println("Suppressed: " + e.getMessage());
+            return defaultValue;
+        }
+    }
+
+    // Retry pattern with exception
+    static <T> T withRetry(ThrowingSupplier<T> op, int maxAttempts) throws Exception {
+        Exception last = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return op.get();
+            } catch (Exception e) {
+                last = e;
+                System.out.printf("Attempt %d/%d failed: %s%n", attempt, maxAttempts, e.getMessage());
+            }
+        }
+        throw new RuntimeException("All " + maxAttempts + " attempts failed", last);
+    }
+
+    public static void main(String[] args) throws Exception {
+        // quietly — use default on error
+        String content = quietly(() -> Files.readString(Path.of("/missing.txt")), "default");
+        System.out.println("Content: " + content);
+
+        // retry pattern
+        int[] attempt = {0};
+        try {
+            String result = withRetry(() -> {
+                if (++attempt[0] < 3) throw new IOException("network timeout");
+                return "success";
+            }, 3);
+            System.out.println("Result: " + result);
+        } catch (RuntimeException e) {
+            System.out.println("All retries failed: " + e.getCause().getMessage());
+        }
+    }
+}`,
+            `// Full real-world exception hierarchy example
+class AppException extends RuntimeException {
+    private final String errorCode;
+    public AppException(String errorCode, String message)                  {
+        super(message); this.errorCode = errorCode;
+    }
+    public AppException(String errorCode, String message, Throwable cause) {
+        super(message, cause); this.errorCode = errorCode;
+    }
+    public String getErrorCode() { return errorCode; }
+}
+
+class ValidationException extends AppException {
+    private final String field;
+    public ValidationException(String field, String message) {
+        super("VALIDATION_ERROR", field + ": " + message);
+        this.field = field;
+    }
+    public String getField() { return field; }
+}
+
+class OrderService {
+    public void placeOrder(String product, int qty) {
+        if (product == null || product.isBlank())
+            throw new ValidationException("product", "must not be blank");
+        if (qty <= 0)
+            throw new ValidationException("qty", "must be positive, got " + qty);
+        System.out.println("Order placed: " + qty + "x " + product);
+    }
+}
+
+class RealWorldDemo {
+    public static void main(String[] args) {
+        OrderService svc = new OrderService();
+        Object[][] orders = {{"Widget", 3}, {null, 1}, {"Gadget", -1}};
+        for (Object[] o : orders) {
+            try {
+                svc.placeOrder((String) o[0], (int) o[1]);
+            } catch (ValidationException e) {
+                System.out.printf("[%s] Field '%s': %s%n",
+                    e.getErrorCode(), e.getField(), e.getMessage());
+            } catch (AppException e) {
+                System.out.printf("[%s] %s%n", e.getErrorCode(), e.getMessage());
+            }
+        }
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'Why is using exceptions for flow control bad?', a: 'Two reasons: (1) Performance — constructing an exception captures the full stack trace, which is expensive (hundreds of microseconds). (2) Clarity — exceptions should signal unexpected failures, not expected branches. Use if/else or Optional for expected conditions.' },
+            { q: 'How do you handle checked exceptions inside a stream lambda?', a: 'Option 1: wrap inline in try/catch and throw UncheckedIOException (or RuntimeException). Option 2: define a ThrowingFunction functional interface that declares throws Exception and write a wrapper that converts it. Checked exceptions cannot propagate through standard functional interfaces like Function or Consumer.' },
+            { q: 'What is the difference between throw e and throw new RuntimeException(e)?', a: 'throw e re-throws the original exception with its original type and stack trace. throw new RuntimeException(e) wraps it — adds a new stack frame layer, changes the type, but preserves the original as the cause. Use throw e when you want to preserve the original; wrap when converting checked to unchecked.' },
+            { q: 'What is UncheckedIOException?', a: 'A RuntimeException (added in Java 8) specifically for wrapping IOException. It is the standard way to propagate IO errors through lambdas and streams without checked exception boilerplate. Always prefer it over generic RuntimeException(e) when the cause is IOException.' },
+            { q: 'What is the "retry pattern" and when do you use it?', a: 'Retry wraps an operation in a loop, catching transient failures (network timeouts, temporary unavailability) and retrying up to N times. After N failures, it throws with the last exception as the cause. Appropriate for network calls, file system operations on remote mounts, or any operation where transient failures are expected.' }
+          ]
+        }
+      ]
     },
 
-    {
+        {
       id: '0.8',
       title: 'Generics — Wildcards, Bounded Types, PECS',
       hours: 3,
