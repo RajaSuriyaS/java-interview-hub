@@ -14,7 +14,7 @@ A self-hosted, interactive **Senior Java Backend Engineer interview study hub** 
 - **300+ active-recall flashcards** — click to flip; "flip all" for rapid drills.
 - **Per-module progress** — cycle *Not Started → In Progress → Completed*; progress rings per phase and an overall readiness %.
 - **Personal notes** per module, auto-saved.
-- **Everything persists** in `localStorage` — no account, no database for your progress.
+- **Optional Google sign-in + cloud sync** — log in with Google to **save your progress and notes in a database** (SQLite) and pick up where you left off on any device. Without sign-in (or when unconfigured) everything still persists locally in `localStorage`.
 - **Fully responsive** dark "slate/enterprise" UI.
 
 ## 🗂️ Curriculum
@@ -57,16 +57,35 @@ Browser (vanilla JS SPA)
   ├─ Monaco editor (CDN)    — code editing
   ├─ marked + highlight.js  — markdown notes & syntax highlighting
   ├─ Lucide (CDN)           — icons
-  └─ localStorage           — progress / notes
-        │  fetch /api/execute
+  └─ localStorage           — progress / notes (offline copy)
+        │  fetch /api/execute   /auth/*   /api/state
         ▼
 Node + Express (server.js)
-  └─ /api/execute  ──proxy──▶  Wandbox public API (real JDK / Python runtime)
+  ├─ /api/execute  ──proxy──▶  Wandbox public API (real JDK / Python runtime)
+  ├─ /auth/google* ──OAuth2──▶ Google (sign-in)  →  HMAC-signed session cookie
+  └─ /api/state    ◀──sync──▶  SQLite (node:sqlite)  — per-user status + notes
 ```
 
 - `public/js/curriculum.js` — **all content** (phases, modules, notes, code, flashcards). This is the file to extend.
-- `public/js/app.js` — the rendering engine (nav, tabs, progress, flashcards, sandbox).
-- `server.js` — static hosting + the execution proxy.
+- `public/js/app.js` — the rendering engine (nav, tabs, progress, flashcards, sandbox) **+ login widget and cloud sync**.
+- `server.js` — static hosting, the execution proxy, auth routes, and the progress API.
+- `auth.js` — Google OAuth2 flow + signed-cookie sessions (no external auth libs).
+- `db.js` — SQLite persistence (`users`, `module_status`, `module_notes`) via built-in `node:sqlite`.
+
+### Accounts & cloud sync
+
+Sign-in is **optional and self-contained** — no third-party auth library, just `fetch` + `node:crypto`:
+
+- Without `GOOGLE_CLIENT_ID` set, the login button is hidden and progress stays in `localStorage` (current behaviour).
+- With Google OAuth configured, a user can **Sign in with Google**; their status + notes are saved to SQLite and merged back on any device. Sessions are an HMAC-signed, httpOnly cookie.
+- Requires **Node 22+** (built-in `node:sqlite`). The DB lives at `$DATA_DIR/jih.db` (default `./data/`) — mount a volume there in production.
+
+| Env var | Purpose |
+|---|---|
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | enable Google sign-in (omit → localStorage-only) |
+| `SESSION_SECRET` | signs session cookies — set a stable `openssl rand -hex 32` in prod |
+| `GOOGLE_CALLBACK_URL` | optional; auto-derived from the request otherwise |
+| `DATA_DIR` | where `jih.db` is stored (default `./data`) |
 
 ## ➕ Extending the content
 

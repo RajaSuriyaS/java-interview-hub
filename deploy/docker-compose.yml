@@ -28,6 +28,16 @@ services:
       - PORT=3030
       - EXEC_PROVIDER=${EXEC_PROVIDER:-wandbox}
       - PISTON_URL=${PISTON_URL:-http://piston:2000}
+      - DATA_DIR=/data
+      # Google login + progress sync (optional — app runs in localStorage-only
+      # mode if GOOGLE_CLIENT_ID is unset). See docs/VPS_DEPLOY.md.
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
+      - SESSION_SECRET=${SESSION_SECRET:-}
+    # Persist the SQLite progress DB across redeploys.
+    volumes:
+      - jih_data:/data
     # Published on loopback so a shared host-Caddy can reach it at 127.0.0.1:3030,
     # while inside this compose network other services reach it as http://app:3030.
     ports:
@@ -76,3 +86,4 @@ networks:
 volumes:
   caddy_data:
   caddy_config:
+  jih_data:        # SQLite progress database (users + per-module status/notes)

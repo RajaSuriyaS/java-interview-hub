@@ -136,9 +136,38 @@ docker logs -f jih-app
 ## 6. Verify
 
 ```bash
-curl -s https://javazerotoall.duckdns.org/health        # {"status":"ok","provider":"wandbox"}
+curl -s https://javazerotoall.duckdns.org/health
+# {"status":"ok","provider":"wandbox","db":true,"googleAuth":true}
 ```
 Open `https://javazerotoall.duckdns.org`, pick **2.4 Virtual Threads**, hit **Run** on the code sample — it compiles on a real JDK and prints output.
+
+---
+
+## 6b. (Optional) Google sign-in + cloud progress sync
+
+By default progress is saved in each visitor's browser (`localStorage`). To let
+users **sign in with Google** and have their status/notes saved server-side
+(SQLite) and synced across devices:
+
+1. **Create OAuth credentials** at <https://console.cloud.google.com/apis/credentials>:
+   - *Create Credentials → OAuth client ID → Web application*.
+   - **Authorised redirect URI:** `https://javazerotoall.duckdns.org/auth/google/callback`
+     (must match your domain exactly).
+   - Copy the **Client ID** and **Client secret**.
+2. **Add to `deploy/.env`:**
+   ```bash
+   GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=xxxxxxxx
+   SESSION_SECRET=$(openssl rand -hex 32)     # paste the generated value
+   ```
+3. **Redeploy.** Verify with `curl -s .../health` → `"googleAuth":true`. A
+   **Sign in with Google** button appears in the sidebar.
+
+Notes:
+- The SQLite DB persists in the `jih_data` Docker volume (survives redeploys).
+  Back it up with `docker run --rm -v jih_data:/d -v $PWD:/b alpine cp /d/jih.db /b/`.
+- Requires **Node 22+** (built-in `node:sqlite`) — the bundled Dockerfile uses `node:22-alpine`.
+- If you ever rotate `SESSION_SECRET`, existing sessions are invalidated (users re-login).
 
 ---
 

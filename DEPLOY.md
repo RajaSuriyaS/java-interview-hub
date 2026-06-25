@@ -1,6 +1,6 @@
 # Deploying Java Interview Hub to a VPS
 
-This app is a small Node/Express server that serves a static SPA and proxies code execution to the public Piston API. It's lightweight (~one container, no database).
+This app is a small Node/Express server that serves a static SPA and proxies code execution. It's lightweight (one container). Progress is saved in the browser by default; with optional **Google sign-in** it's also persisted to an embedded **SQLite** DB (built-in `node:sqlite`, **needs Node 22+** — the Dockerfile uses `node:22-alpine`).
 
 ## Prerequisites
 
@@ -19,11 +19,18 @@ docker run -d \
   --name jih \
   --restart unless-stopped \
   -p 3030:3030 \
+  -v jih_data:/data \
   java-interview-hub
 
 # verify
-curl -s http://localhost:3030/health      # {"status":"ok"}
+curl -s http://localhost:3030/health      # {"status":"ok","db":true,"googleAuth":false}
 ```
+
+> The `-v jih_data:/data` volume persists the SQLite progress DB across rebuilds.
+> To enable **Google sign-in + cloud sync**, also pass:
+> `-e GOOGLE_CLIENT_ID=… -e GOOGLE_CLIENT_SECRET=… -e SESSION_SECRET="$(openssl rand -hex 32)"`
+> and register `https://<your-domain>/auth/google/callback` as the OAuth redirect URI.
+> Without these, the app runs in localStorage-only mode (no accounts).
 
 Update after a `git pull`:
 
@@ -101,7 +108,7 @@ This app uses **port 3030**, which avoids the SafeStrike backend (8080) and the 
 
 - Memory: ~60–80 MB.
 - CPU: idle near-zero; brief spikes only while proxying a code run.
-- No persistent storage needed (user progress lives in the browser's `localStorage`).
+- Persistent storage: only the small SQLite file in the `jih_data` volume (used when Google sign-in is enabled). Without sign-in, progress lives in the browser's `localStorage` and no storage is needed.
 
 ## Notes
 

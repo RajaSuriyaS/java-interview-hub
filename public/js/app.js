@@ -15,6 +15,10 @@
   const defaultState = () => ({ status: {}, notes: {}, openPhases: {}, lastModule: null });
   let state = load();
 
+  // ---- auth / cloud sync state ----
+  let auth = { configured: false, user: null }; // populated from /auth/me
+  let _syncTimer = null;
+
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -28,6 +32,7 @@
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
     catch (e) { console.warn('Failed to save state', e); }
+    pushToServer(); // no-op unless signed in
   }
 
   // ---- lookups ----
@@ -973,6 +978,111 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
   function openSidebarMobile() { $('#sidebar').classList.add('open'); $('#backdrop').classList.remove('hidden'); }
   function closeSidebarMobile() { $('#sidebar').classList.remove('open'); $('#backdrop').classList.add('hidden'); }
 
+  /* ===================== AUTH + CLOUD SYNC ===================== */
+  // Ask the server who we are; drives the account widget and whether we sync.
+  async function refreshAuth() {
+    try {
+      const r = await fetch('/auth/me', { credentials: 'same-origin' });
+      auth = await r.json();
+    } catch { auth = { configured: false, user: null }; }
+    renderAccount();
+  }
+
+  // On login, pull the server's saved progress and merge it with whatever is in
+  // localStorage (server wins on conflicts; local-only entries are kept and then
+  // uploaded so nothing is lost on first sign-in from a device).
+  async function syncFromServer() {
+    if (!auth.user) return;
+    try {
+      const r = await fetch('/api/state', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const remote = await r.json();
+      state.status = { ...state.status, ...(remote.status || {}) };
+      state.notes  = { ...state.notes,  ...(remote.notes  || {}) };
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+      pushToServer(); // upload the merged result (captures any local-only progress)
+      // refresh the UI with merged data
+      renderNav($('#search') ? $('#search').value : '');
+      renderGlobalProgress();
+      if (state.lastModule && findModule(state.lastModule)) openModule(state.lastModule);
+      else renderDashboard();
+    } catch { /* offline / not signed in — stay on local copy */ }
+  }
+
+  // Debounced upload of the full progress state. No-op when signed out.
+  function pushToServer() {
+    if (!auth.user) return;
+    setSyncDot('saving');
+    clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/state', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: state.status, notes: state.notes }),
+        });
+        setSyncDot(r.ok ? 'ok' : 'err');
+      } catch { setSyncDot('err'); }
+    }, 600);
+  }
+
+  function setSyncDot(stateName) {
+    const dot = document.getElementById('sync-dot');
+    if (!dot) return;
+    const map = { ok: 'bg-success', saving: 'bg-amber-400', err: 'bg-red-400' };
+    dot.className = 'w-1.5 h-1.5 rounded-full ' + (map[stateName] || 'bg-success');
+    const label = document.getElementById('sync-label');
+    if (label) label.textContent = stateName === 'saving' ? 'Saving…' : stateName === 'err' ? 'Sync error' : 'Progress synced';
+  }
+
+  async function logout() {
+    try { await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+    auth = { configured: auth.configured, user: null };
+    renderAccount();
+  }
+
+  const GOOGLE_G = '<svg class="w-4 h-4 shrink-0" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>';
+
+  function renderAccount() {
+    const host = document.getElementById('account');
+    if (!host) return;
+    if (auth.user) {
+      const name = auth.user.name || auth.user.email || 'Account';
+      const initial = name.trim().charAt(0).toUpperCase() || '?';
+      const avatar = auth.user.picture
+        ? `<img src="${esc(auth.user.picture)}" referrerpolicy="no-referrer" class="w-7 h-7 rounded-full shrink-0 object-cover" alt="">`
+        : `<span class="grid place-items-center w-7 h-7 rounded-full bg-brand text-white text-xs font-bold shrink-0">${esc(initial)}</span>`;
+      host.innerHTML = `
+        <div class="flex items-center gap-2 min-w-0">
+          ${avatar}
+          <div class="min-w-0 leading-tight flex-1">
+            <div class="text-[12px] font-semibold text-slate-200 truncate">${esc(name)}</div>
+            <div class="text-[10px] text-slate-500 flex items-center gap-1">
+              <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-success"></span>
+              <span id="sync-label">Progress synced</span>
+            </div>
+          </div>
+          <button id="logout-btn" title="Sign out" class="shrink-0 grid place-items-center w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>`;
+      const lo = document.getElementById('logout-btn');
+      if (lo) lo.addEventListener('click', logout);
+    } else if (auth.configured) {
+      host.innerHTML = `
+        <a href="/auth/google" title="Sign in to save your progress across devices"
+           class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 text-[12px] font-semibold transition shadow-sm">
+          ${GOOGLE_G} Sign in with Google
+        </a>`;
+    } else {
+      host.innerHTML = `
+        <div class="text-[10px] text-slate-600 flex items-center gap-1.5" title="Sign-in is not configured on this server; progress is saved in this browser.">
+          <i data-lucide="hard-drive" class="w-3 h-3"></i> Saved on this device
+        </div>`;
+    }
+    icons();
+  }
+
   /* ===================== WIRING ===================== */
   function init() {
     if (typeof marked !== 'undefined') {
@@ -1052,6 +1162,10 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
     if (mobileThemeBtn) mobileThemeBtn.addEventListener('click', cycleTheme);
 
     icons();
+
+    // ---- account widget + cloud sync (no-op when sign-in isn't configured) ----
+    renderAccount();
+    refreshAuth().then(syncFromServer);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

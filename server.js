@@ -4,10 +4,24 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, statSync } from 'fs';
 import { execSync } from 'child_process';
+import { initDb, dbReady, upsertUser, getState, replaceState } from './db.js';
+import { mountAuth, requireAuth, authConfigured } from './auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3030;
+
+// ---- Database (progress persistence) — non-fatal: the study content still
+//      works without it (clients fall back to localStorage-only). ----
+let DB_OK = false;
+try {
+  const file = initDb();
+  DB_OK = true;
+  console.log(`[db] SQLite ready at ${file}`);
+} catch (e) {
+  console.error('[db] init failed — server-side progress sync disabled:', e.message);
+}
+console.log(`[auth] Google login ${authConfigured() ? 'enabled' : 'NOT configured (localStorage-only mode)'}`);
 
 // Cache-busting version: git short hash of THIS repo, else mtime of curriculum.js
 // cwd must be __dirname so git reads the right repo (not the shell's CWD)
@@ -25,8 +39,50 @@ const VERSION = buildVersion();
 const PROVIDER = (process.env.EXEC_PROVIDER || 'wandbox').toLowerCase();
 const PISTON_URL = process.env.PISTON_URL || 'http://localhost:2000';
 
+app.set('trust proxy', true); // honour X-Forwarded-* behind Caddy/nginx (correct cookie Secure flag)
 app.use(cors());
 app.use(express.json({ limit: '256kb' }));
+
+// ---- Auth (Google OAuth2) ----
+mountAuth(app, {
+  onLogin: (user) => { if (DB_OK) { try { upsertUser(user); } catch (e) { console.error('[db] upsertUser:', e.message); } } },
+});
+
+// ---- Progress sync API (requires a logged-in session) ----
+const VALID_STATUS = new Set(['not_started', 'in_progress', 'completed']);
+
+app.get('/api/state', requireAuth, (req, res) => {
+  if (!DB_OK) return res.status(503).json({ error: 'persistence unavailable' });
+  try {
+    res.json(getState(req.user.sub));
+  } catch (e) {
+    console.error('[db] getState:', e.message);
+    res.status(500).json({ error: 'load failed' });
+  }
+});
+
+app.post('/api/state', requireAuth, (req, res) => {
+  if (!DB_OK) return res.status(503).json({ error: 'persistence unavailable' });
+  const { status = {}, notes = {} } = req.body || {};
+  if (typeof status !== 'object' || typeof notes !== 'object') {
+    return res.status(400).json({ error: 'status and notes must be objects' });
+  }
+  if (Object.keys(status).length > 2000 || Object.keys(notes).length > 2000) {
+    return res.status(413).json({ error: 'too many entries' });
+  }
+  // Sanitise: only known statuses, cap note size.
+  const safeStatus = {};
+  for (const [k, v] of Object.entries(status)) if (VALID_STATUS.has(v)) safeStatus[k] = v;
+  const safeNotes = {};
+  for (const [k, v] of Object.entries(notes)) if (typeof v === 'string') safeNotes[k] = v.slice(0, 20000);
+  try {
+    replaceState(req.user.sub, { status: safeStatus, notes: safeNotes });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[db] replaceState:', e.message);
+    res.status(500).json({ error: 'save failed' });
+  }
+});
 
 // Serve index.html with ?v= cache-busting stamp injected into script tags
 const indexPath = join(__dirname, 'public', 'index.html');
@@ -123,7 +179,9 @@ app.post('/api/execute', async (req, res) => {
   }
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', provider: PROVIDER }));
+app.get('/health', (_req, res) => res.json({
+  status: 'ok', provider: PROVIDER, db: dbReady(), googleAuth: authConfigured(),
+}));
 
 // Debug: shows exactly what curriculum is loaded on this server instance
 app.get('/api/stats', (_req, res) => {
