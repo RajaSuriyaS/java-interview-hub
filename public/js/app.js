@@ -465,17 +465,8 @@
         <div id="tab-cards" class="tab-pane hidden"></div>
         <div id="tab-mynotes" class="tab-pane hidden"></div>
 
-        <!-- prev / next -->
-        <div class="flex items-center justify-between gap-3 mt-10 pt-6 border-t border-slate-800">
-          ${prev ? `<button id="nav-prev" class="flex-1 sm:flex-none text-left rounded-lg border border-slate-800 hover:border-brand/50 px-4 py-3 transition group">
-            <div class="text-[10px] text-slate-500">← Previous</div>
-            <div class="text-sm text-slate-300 group-hover:text-brand truncate">${esc(prev.module.id)} ${esc(prev.module.title)}</div>
-          </button>` : '<div></div>'}
-          ${next ? `<button id="nav-next" class="flex-1 sm:flex-none text-right rounded-lg border border-slate-800 hover:border-brand/50 px-4 py-3 transition group">
-            <div class="text-[10px] text-slate-500">Next →</div>
-            <div class="text-sm text-slate-300 group-hover:text-brand truncate">${esc(next.module.id)} ${esc(next.module.title)}</div>
-          </button>` : '<div></div>'}
-        </div>
+        <!-- bottom nav — filled dynamically by renderBottomNav() -->
+        <div id="bottom-nav-wrap"></div>
         <div class="h-8"></div>
       </div>`;
 
@@ -498,28 +489,89 @@
       renderFlashcards(src);
     }
 
+    // ---- section navigation helpers ----
+    const pills = hasSections ? content.querySelectorAll('.sec-pill') : [];
+    const activePillClass = 'sec-pill px-3 py-1.5 rounded-lg text-xs font-semibold border transition bg-brand border-brand text-white shadow-sm';
+    const idlePillClass   = 'sec-pill px-3 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:border-slate-600';
+
+    function goSec(i) {
+      pills.forEach(p => { p.className = idlePillClass; });
+      if (pills[i]) pills[i].className = activePillClass;
+      content.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
+      content.querySelectorAll('.tab-pane').forEach(x => x.classList.add('hidden'));
+      content.querySelector('[data-tab="notes"]').classList.add('active');
+      $('#tab-notes').classList.remove('hidden');
+      fillContent(module.sections[i]);
+      content.scrollTop = 0;
+      renderBottomNav(i);
+    }
+
+    function renderBottomNav(secIdx) {
+      const wrap = document.getElementById('bottom-nav-wrap');
+      if (!wrap) return;
+      const totalSecs = hasSections ? module.sections.length : 0;
+
+      // Left — prev section (primary) or prev module (subtle)
+      let leftHtml = '<div></div>';
+      if (hasSections && secIdx > 0) {
+        leftHtml = `<button id="bnav-sec-prev" class="flex-1 sm:flex-none text-left rounded-lg border border-slate-700 hover:border-brand/60 bg-slate-900/40 px-4 py-3 transition group">
+          <div class="text-[10px] text-slate-500 mb-0.5">← Prev section</div>
+          <div class="text-sm text-slate-300 group-hover:text-brand font-medium leading-snug">${esc(module.sections[secIdx - 1].title)}</div>
+        </button>`;
+      } else if (prev) {
+        leftHtml = `<button id="bnav-mod-prev" class="flex-1 sm:flex-none text-left rounded-lg border border-slate-800 hover:border-slate-600 px-4 py-3 transition group opacity-60 hover:opacity-100">
+          <div class="text-[10px] text-slate-500 mb-0.5">← Prev module</div>
+          <div class="text-xs text-slate-400 group-hover:text-slate-200 leading-snug"><span class="font-mono">${esc(prev.module.id)}</span> ${esc(prev.module.title)}</div>
+        </button>`;
+      }
+
+      // Right — next section (bold/brand) or next module (subtle)
+      let rightHtml = '<div></div>';
+      if (hasSections && secIdx < totalSecs - 1) {
+        rightHtml = `<button id="bnav-sec-next" class="flex-1 sm:flex-none text-right rounded-lg border border-brand bg-brand/10 hover:bg-brand/20 px-4 py-3 transition group">
+          <div class="text-[10px] text-brand/70 mb-0.5">Next section →</div>
+          <div class="text-sm text-white group-hover:text-brand font-semibold leading-snug">${esc(module.sections[secIdx + 1].title)}</div>
+        </button>`;
+      } else if (next) {
+        rightHtml = `<button id="bnav-mod-next" class="flex-1 sm:flex-none text-right rounded-lg border border-slate-700 hover:border-brand/60 bg-slate-900/40 px-4 py-3 transition group">
+          <div class="text-[10px] text-slate-500 mb-0.5">Next module →</div>
+          <div class="text-xs text-slate-300 group-hover:text-brand leading-snug"><span class="font-mono">${esc(next.module.id)}</span> ${esc(next.module.title)}</div>
+        </button>`;
+      }
+
+      // Skip-to-module link — shown mid-module so you can always escape
+      const skipHtml = (hasSections && secIdx < totalSecs - 1 && next)
+        ? `<div class="text-center mt-3">
+            <button id="bnav-skip" class="text-xs text-slate-600 hover:text-slate-400 transition">
+              Jump to next module: <span class="font-mono">${esc(next.module.id)}</span> ${esc(next.module.title)} →
+            </button>
+           </div>`
+        : '';
+
+      wrap.innerHTML = `
+        <div class="flex items-stretch justify-between gap-3 mt-10 pt-6 border-t border-slate-800">
+          ${leftHtml}
+          ${rightHtml}
+        </div>${skipHtml}`;
+
+      const el = id => document.getElementById(id);
+      if (el('bnav-sec-prev'))  el('bnav-sec-prev').addEventListener('click', () => goSec(secIdx - 1));
+      if (el('bnav-sec-next'))  el('bnav-sec-next').addEventListener('click', () => goSec(secIdx + 1));
+      if (el('bnav-mod-prev'))  el('bnav-mod-prev').addEventListener('click', () => openModule(prev.module.id));
+      if (el('bnav-mod-next'))  el('bnav-mod-next').addEventListener('click', () => openModule(next.module.id));
+      if (el('bnav-skip'))      el('bnav-skip').addEventListener('click', () => openModule(next.module.id));
+    }
+
     // ---- section pill wiring (only when module has sections) ----
     if (hasSections) {
-      const pills = content.querySelectorAll('.sec-pill');
-      const activePillClass = 'sec-pill px-3 py-1.5 rounded-lg text-xs font-semibold border transition bg-brand border-brand text-white shadow-sm';
-      const idlePillClass   = 'sec-pill px-3 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:border-slate-600';
       pills.forEach(pill => {
-        pill.addEventListener('click', () => {
-          const i = parseInt(pill.getAttribute('data-sec'));
-          pills.forEach(p => { p.className = idlePillClass; });
-          pill.className = activePillClass;
-          // reset tab to Study Guide when switching section
-          content.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
-          content.querySelectorAll('.tab-pane').forEach(x => x.classList.add('hidden'));
-          content.querySelector('[data-tab="notes"]').classList.add('active');
-          $('#tab-notes').classList.remove('hidden');
-          fillContent(module.sections[i]);
-          content.scrollTop = 0;
-        });
+        pill.addEventListener('click', () => goSec(parseInt(pill.getAttribute('data-sec'))));
       });
       fillContent(module.sections[0]);
+      renderBottomNav(0);
     } else {
       fillContent(module);
+      renderBottomNav(0);
     }
 
     renderMyNotes(module);
@@ -560,8 +612,6 @@
     });
 
     $('#bc-dash').addEventListener('click', renderDashboard);
-    if (prev) $('#nav-prev').addEventListener('click', () => openModule(prev.module.id));
-    if (next) $('#nav-next').addEventListener('click', () => openModule(next.module.id));
 
     // Keyboard navigation — ← → between modules (skip if focus is in textarea/input/Monaco)
     const _keyNav = (e) => {
