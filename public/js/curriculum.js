@@ -2140,7 +2140,1281 @@ public class BreakContinueDemo {
       id: '0.3',
       title: 'OOP I — Classes, Objects, Constructors',
       hours: 4,
-      notes: `*[Module 0.3 — under construction. Will cover: class definition, fields, methods, constructors, this, new, static. Roadmap: build after 0.2.]*`
+      sections: [
+
+        /* ── SECTION 1 ─────────────────────────────────────────────── */
+        {
+          title: 'Classes & Objects — Blueprints and Instances',
+          notes: `
+# Classes & Objects — Blueprints and Instances
+
+## The Core Idea: Blueprint vs Instance
+
+A **class** is a blueprint — it defines the shape of something: what data it holds and what it can do. An **object** is a concrete instance created from that blueprint, living on the heap with its own data.
+
+\`\`\`mermaid
+graph LR
+    subgraph BLUEPRINT["Class (Blueprint — in memory once)"]
+        CL["class BankAccount {\n  String owner\n  double balance\n  void deposit()\n  void withdraw()\n}"]
+    end
+    subgraph INSTANCES["Objects (Instances — each has own data)"]
+        O1["alice's account\nowner='Alice'\nbalance=1500.00"]
+        O2["bob's account\nowner='Bob'\nbalance=320.50"]
+        O3["carol's account\nowner='Carol'\nbalance=8200.00"]
+    end
+    BLUEPRINT -->|"new BankAccount()"| O1
+    BLUEPRINT -->|"new BankAccount()"| O2
+    BLUEPRINT -->|"new BankAccount()"| O3
+    style BLUEPRINT fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+    style O1 fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+    style O2 fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+    style O3 fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+\`\`\`
+
+One class definition. Unlimited instances. Each instance has its own copy of the data (fields) but shares the same methods (code).
+
+## Defining a Class
+
+\`\`\`java
+public class BankAccount {
+    // Fields — the data each instance holds
+    String owner;
+    double balance;
+
+    // Methods — the behaviour each instance can perform
+    void deposit(double amount) {
+        balance += amount;
+    }
+
+    void withdraw(double amount) {
+        balance -= amount;
+    }
+
+    double getBalance() {
+        return balance;
+    }
+}
+\`\`\`
+
+**Anatomy of a class:**
+- **Fields** (also called instance variables) — store the object's state
+- **Methods** — define the object's behaviour
+
+## Creating Objects with \`new\`
+
+The \`new\` keyword allocates memory on the heap and returns a reference:
+
+\`\`\`java
+// Declare a variable (reference) and create an object
+BankAccount alice = new BankAccount();
+
+// Access fields and call methods via the dot operator
+alice.owner = "Alice";
+alice.balance = 1000.0;
+alice.deposit(500.0);
+
+System.out.println(alice.owner + ": £" + alice.getBalance()); // Alice: £1500.0
+
+// Each object is completely independent
+BankAccount bob = new BankAccount();
+bob.owner = "Bob";
+bob.balance = 200.0;
+
+System.out.println(alice.balance); // 1500.0 — unchanged by bob's operations
+System.out.println(bob.balance);   // 200.0
+\`\`\`
+
+## Objects Are References
+
+A variable of a class type holds a **reference** (pointer), not the object itself. Two variables can point to the **same** object:
+
+\`\`\`java
+BankAccount alice = new BankAccount();
+alice.balance = 1000.0;
+
+BankAccount ref = alice;  // ref points to the SAME object as alice
+ref.balance = 9999.0;     // modifies the object both variables point to
+
+System.out.println(alice.balance); // 9999.0 — alice sees the change!
+System.out.println(ref == alice);  // true — same object in memory
+\`\`\`
+
+This is critical when passing objects to methods — you're passing the reference, not a copy of the object. The method can modify the object's fields.
+
+## null: A Reference to Nothing
+
+A reference variable that hasn't been assigned points to \`null\`:
+
+\`\`\`java
+BankAccount account = null; // no object created, just a null reference
+account.deposit(100);       // NullPointerException!
+\`\`\`
+
+Always initialise variables before using them. The JVM tracks uninitialised local variables and gives a compile error, but field defaults are 0/null/false.
+
+## The Object Class — Root of Everything
+
+Every class in Java implicitly extends \`java.lang.Object\`. This gives every object these methods:
+
+| Method | What it does |
+|---|---|
+| \`toString()\` | Text representation (default: classname@hashcode) |
+| \`equals(Object)\` | Equality check (default: reference equality, same as ==) |
+| \`hashCode()\` | Integer hash (default: memory address-based) |
+| \`getClass()\` | Returns the Class object at runtime |
+
+Override \`toString()\` and \`equals()\`/\`hashCode()\` in your own classes for meaningful behaviour.
+
+> [!TIP]
+> Think of a class as a custom data type you define. \`BankAccount\`, \`Order\`, \`Customer\` are types just as \`int\` and \`String\` are types — except you control their shape and behaviour.
+
+> [!EU]
+> Every Java framework (Spring, Hibernate, Kafka) works by creating and wiring objects. Understanding that your \`@Service\` annotation creates one shared instance (bean) and your \`new Order()\` creates a fresh instance on each call is foundational. Interviewers in Amsterdam, Berlin, and Dublin often test this distinction early.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Class definition, object creation, reference semantics',
+              code: `public class ClassObjectDemo {
+
+    // Class definition — the blueprint
+    static class BankAccount {
+        String owner;
+        double balance;
+
+        void deposit(double amount) {
+            if (amount <= 0) throw new IllegalArgumentException("Amount must be positive");
+            balance += amount;
+            System.out.println(owner + " deposited £" + amount + " → balance: £" + balance);
+        }
+
+        void withdraw(double amount) {
+            if (amount > balance) throw new IllegalStateException("Insufficient funds");
+            balance -= amount;
+            System.out.println(owner + " withdrew £" + amount + " → balance: £" + balance);
+        }
+
+        @Override
+        public String toString() {
+            return "BankAccount{owner='" + owner + "', balance=£" + balance + "}";
+        }
+    }
+
+    public static void main(String[] args) {
+        // Create two independent objects from the same class
+        BankAccount alice = new BankAccount();
+        alice.owner = "Alice";
+        alice.balance = 1000.0;
+
+        BankAccount bob = new BankAccount();
+        bob.owner = "Bob";
+        bob.balance = 500.0;
+
+        alice.deposit(250.0);
+        bob.withdraw(100.0);
+
+        System.out.println("\\n" + alice);
+        System.out.println(bob);
+
+        // Reference semantics: two variables, one object
+        System.out.println("\\n--- Reference semantics ---");
+        BankAccount ref = alice;           // ref and alice point to the SAME object
+        ref.deposit(1000.0);              // modifies the shared object
+        System.out.println("alice.balance = £" + alice.balance); // 2250.0 (same object!)
+        System.out.println("Same object? " + (ref == alice));     // true
+
+        // NullPointerException demonstration
+        System.out.println("\\n--- Null reference ---");
+        BankAccount missing = null;
+        try {
+            missing.deposit(100);          // NullPointerException!
+        } catch (NullPointerException e) {
+            System.out.println("NPE: cannot call methods on null reference");
+        }
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Multiple objects from one class, Object methods',
+              code: `import java.util.ArrayList;
+import java.util.List;
+
+public class MultipleInstancesDemo {
+
+    static class Product {
+        String name;
+        double price;
+        int stock;
+
+        // Override toString() for meaningful output
+        @Override
+        public String toString() {
+            return String.format("Product{name='%s', price=£%.2f, stock=%d}", name, price, stock);
+        }
+
+        // Override equals() for content comparison (not reference)
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;             // same reference
+            if (!(obj instanceof Product)) return false;
+            Product other = (Product) obj;
+            return this.name.equals(other.name);      // same name = same product
+        }
+
+        @Override
+        public int hashCode() {
+            return name.hashCode();
+        }
+    }
+
+    public static void main(String[] args) {
+        // Create many objects from the same class
+        List<Product> catalogue = new ArrayList<>();
+
+        Product laptop = new Product();
+        laptop.name = "Laptop"; laptop.price = 999.99; laptop.stock = 5;
+
+        Product phone = new Product();
+        phone.name = "Phone"; phone.price = 599.99; phone.stock = 12;
+
+        Product tablet = new Product();
+        tablet.name = "Tablet"; tablet.price = 449.99; tablet.stock = 8;
+
+        catalogue.add(laptop);
+        catalogue.add(phone);
+        catalogue.add(tablet);
+
+        // toString() makes printing readable
+        System.out.println("=== Catalogue ===");
+        for (Product p : catalogue) {
+            System.out.println(p);  // calls p.toString()
+        }
+
+        // equals() / hashCode() for content comparison
+        Product laptop2 = new Product();
+        laptop2.name = "Laptop"; laptop2.price = 1099.99; laptop2.stock = 2;
+
+        System.out.println("\\nSame reference? " + (laptop == laptop2));   // false
+        System.out.println("Same by equals? " + laptop.equals(laptop2));   // true (same name)
+        System.out.println("In list? " + catalogue.contains(laptop2));     // true (uses equals)
+
+        // getClass() at runtime
+        System.out.println("\\nRuntime type: " + laptop.getClass().getSimpleName()); // Product
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is the difference between a class and an object?', a: 'A class is a blueprint — it defines structure (fields) and behaviour (methods). An object is a concrete instance created from that blueprint with new. Many objects can be created from one class, each with its own field values.' },
+            { q: 'What does the new keyword do?', a: 'new allocates memory on the heap for a new object, calls the constructor to initialise it, and returns a reference to it. The reference is stored in a variable. Each call to new creates a completely independent object.' },
+            { q: 'What does it mean that Java objects are references?', a: 'A variable of a class type holds a reference (pointer) to the object on the heap, not the object itself. Two variables can hold the same reference (pointing to the same object). Modifying the object through one variable affects it when accessed through the other.' },
+            { q: 'What are the default Object methods every class inherits?', a: 'toString() (default: classname@hex), equals() (default: same as ==, reference equality), hashCode() (default: memory-based), getClass() (returns runtime type). Override toString/equals/hashCode for meaningful custom behaviour.' },
+            { q: 'What is the default value of an unassigned object field?', a: 'Reference fields default to null, numeric fields to 0 (or 0.0), boolean to false, char to \\u0000. Local variables inside methods have no default — the compiler forces you to assign before use.' }
+          ]
+        },
+
+        /* ── SECTION 2 ─────────────────────────────────────────────── */
+        {
+          title: 'Fields, Methods & the this Keyword',
+          notes: `
+# Fields, Methods & the this Keyword
+
+## Fields — Storing State
+
+**Fields** (also called instance variables) store the data an object carries. Each instance has its own copy:
+
+\`\`\`java
+public class Employee {
+    // Instance fields — each Employee object has its own copy
+    String name;
+    String department;
+    double salary;
+    int yearsOfExperience;
+}
+\`\`\`
+
+**Field defaults** when not explicitly set:
+- Numeric types: \`0\` (or \`0.0\`)
+- \`boolean\`: \`false\`
+- Reference types: \`null\`
+- \`char\`: \`\\u0000\` (the null character)
+
+## Methods — Defining Behaviour
+
+A **method** is a named block of code that performs an action. Methods operate on the object's fields:
+
+\`\`\`java
+public class Employee {
+    String name;
+    double salary;
+
+    // No-return method (void)
+    void giveRaise(double percent) {
+        salary = salary * (1 + percent / 100);
+    }
+
+    // Return-value method
+    double calculateBonus() {
+        return salary * 0.10;
+    }
+
+    // Boolean query method (convention: starts with "is" or "has")
+    boolean isEligibleForBonus() {
+        return yearsOfExperience >= 2 && salary > 30_000;
+    }
+}
+\`\`\`
+
+**Method signature** = method name + parameter types. Two methods can have the same name if their parameter types differ (**overloading** — covered next).
+
+## Method Parameters — Pass by Value
+
+Java is always **pass-by-value**. For primitives, a copy of the value is passed. For objects, a copy of the *reference* is passed — so the method can modify the object's fields, but cannot change which object the caller's variable points to:
+
+\`\`\`java
+void tryToReplace(Employee e) {
+    e.salary = 99999;          // changes the object — caller WILL see this
+    e = new Employee();        // changes local copy of reference only — caller WON'T see this
+}
+
+Employee emp = new Employee();
+emp.salary = 50000;
+tryToReplace(emp);
+System.out.println(emp.salary); // 99999 (field was changed via the reference)
+// emp still points to the original object — it was not replaced
+\`\`\`
+
+## The \`this\` Keyword
+
+\`this\` refers to **the current instance** — the object on which the method was called. Use it to:
+
+### 1. Disambiguate field names from parameter names
+
+\`\`\`java
+public class Employee {
+    String name;
+    double salary;
+
+    void setName(String name) {  // parameter shadows the field
+        this.name = name;        // this.name = field, name = parameter
+    }
+
+    void setSalary(double salary) {
+        this.salary = salary;
+    }
+}
+\`\`\`
+
+Without \`this\`, the assignment \`name = name\` would just assign the parameter to itself — the field would stay unchanged.
+
+### 2. Pass the current object to another method
+
+\`\`\`java
+void register() {
+    EmployeeRegistry.add(this); // pass this object to the registry
+}
+\`\`\`
+
+### 3. Chain method calls (fluent builder pattern)
+
+\`\`\`java
+public Employee withName(String name) {
+    this.name = name;
+    return this;  // return the current object to enable chaining
+}
+
+public Employee withSalary(double salary) {
+    this.salary = salary;
+    return this;
+}
+
+// Usage:
+Employee emp = new Employee()
+    .withName("Alice")
+    .withSalary(75000);
+\`\`\`
+
+## Method Overloading
+
+Multiple methods with the **same name but different parameter lists**:
+
+\`\`\`java
+public class Logger {
+    void log(String message) {
+        System.out.println("[INFO] " + message);
+    }
+
+    void log(String message, String level) {
+        System.out.println("[" + level + "] " + message);
+    }
+
+    void log(Exception e) {
+        System.out.println("[ERROR] " + e.getMessage());
+    }
+}
+
+Logger logger = new Logger();
+logger.log("Server started");              // calls first overload
+logger.log("Low disk space", "WARNING");   // calls second overload
+logger.log(new RuntimeException("oops"));  // calls third overload
+\`\`\`
+
+The compiler picks the correct overload at **compile time** based on the argument types — this is called **static dispatch** or **compile-time polymorphism**.
+
+## Access Modifiers Preview
+
+Fields and methods can have visibility modifiers. Full details in 0.5, but you need the basics now:
+
+| Modifier | Visible from |
+|---|---|
+| \`public\` | Anywhere |
+| \`private\` | This class only |
+| \`protected\` | This class, same package, subclasses |
+| *(none)* | Same package only |
+
+Best practice: make fields \`private\` and expose them via public methods (getters/setters). This is **encapsulation** — the core OOP principle.
+
+> [!TIP]
+> Name methods as verbs (\`calculateBonus()\`, \`sendEmail()\`), fields as nouns (\`salary\`, \`name\`), and boolean methods as questions (\`isActive()\`, \`hasPermission()\`). Good naming makes code self-documenting.
+
+> [!WARNING]
+> Never name a parameter the same as a field without using \`this\`. The most common bug is \`void setAge(int age) { age = age; }\` — this assigns the parameter to itself and the field is never set. Always write \`this.age = age\`.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Fields, methods, this keyword and method overloading',
+              code: `public class FieldsAndMethodsDemo {
+
+    static class Employee {
+        // Private fields (encapsulation — accessed via methods)
+        private String name;
+        private String department;
+        private double salary;
+        private int yearsOfExperience;
+
+        // Field access via setters — this.field disambiguates from parameter
+        void setName(String name) { this.name = name; }
+        void setDepartment(String department) { this.department = department; }
+        void setSalary(double salary) {
+            if (salary < 0) throw new IllegalArgumentException("Salary cannot be negative");
+            this.salary = salary;
+        }
+        void setYearsOfExperience(int years) { this.yearsOfExperience = years; }
+
+        // Getters
+        String getName() { return name; }
+        double getSalary() { return salary; }
+
+        // Behaviour methods
+        void giveRaise(double percent) {
+            this.salary *= (1 + percent / 100.0);
+        }
+
+        double calculateBonus() {
+            return isEligibleForBonus() ? salary * 0.10 : 0;
+        }
+
+        boolean isEligibleForBonus() {
+            return yearsOfExperience >= 2 && salary > 30_000;
+        }
+
+        // Fluent builder using 'this' return
+        Employee withName(String name) { this.name = name; return this; }
+        Employee withSalary(double salary) { this.salary = salary; return this; }
+        Employee withYears(int years) { this.yearsOfExperience = years; return this; }
+
+        @Override
+        public String toString() {
+            return String.format("Employee{name='%s', salary=£%.0f, bonus=£%.0f}",
+                name, salary, calculateBonus());
+        }
+    }
+
+    public static void main(String[] args) {
+        // Traditional creation
+        Employee alice = new Employee();
+        alice.setName("Alice");
+        alice.setSalary(65_000);
+        alice.setYearsOfExperience(5);
+        alice.giveRaise(10);
+        System.out.println(alice);
+
+        // Fluent builder (this-returning methods)
+        Employee bob = new Employee()
+            .withName("Bob")
+            .withSalary(45_000)
+            .withYears(1);
+        System.out.println(bob);
+        System.out.println("Bob eligible for bonus: " + bob.isEligibleForBonus()); // false (1 year)
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Method overloading and pass-by-value vs pass-by-reference',
+              code: `public class OverloadAndPassByValue {
+
+    static class Formatter {
+        // Overloaded format methods — same name, different parameters
+        String format(int value) {
+            return String.format("%d", value);
+        }
+
+        String format(double value) {
+            return String.format("%.2f", value);
+        }
+
+        String format(String value) {
+            return value.trim().toUpperCase();
+        }
+
+        String format(int value, String currency) {
+            return currency + String.format("%,d", value);
+        }
+    }
+
+    static class Counter {
+        int count = 0;
+        void increment() { count++; }
+    }
+
+    static void tryChangeInt(int x) {
+        x = 999; // changes LOCAL COPY only
+    }
+
+    static void tryChangeCounter(Counter c) {
+        c.increment(); // changes the OBJECT (via the reference)
+        c = new Counter(); // changes LOCAL COPY of reference only
+    }
+
+    public static void main(String[] args) {
+        // --- Overloading: compiler picks the right one by argument type ---
+        Formatter fmt = new Formatter();
+        System.out.println(fmt.format(42));           // calls format(int)
+        System.out.println(fmt.format(3.14159));      // calls format(double)
+        System.out.println(fmt.format("  hello  "));  // calls format(String) → "HELLO"
+        System.out.println(fmt.format(50000, "£"));   // calls format(int, String)
+
+        // --- Pass-by-value: primitives ---
+        System.out.println("\\n--- Pass by value (primitive) ---");
+        int n = 42;
+        tryChangeInt(n);
+        System.out.println("n after tryChangeInt: " + n); // still 42
+
+        // --- Pass-by-value: objects (reference copied, not object) ---
+        System.out.println("\\n--- Pass by value (object reference) ---");
+        Counter c = new Counter();
+        c.count = 10;
+        tryChangeCounter(c);
+        System.out.println("c.count after tryChangeCounter: " + c.count); // 11 (field changed)
+        System.out.println("c is still original object: " + (c.count != 0)); // true (not replaced)
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What does the this keyword refer to?', a: 'this refers to the current instance — the object on which the method was called. It\'s used to disambiguate field names from parameter names (this.name = name), to pass the current object to another method, and to return the current object for method chaining.' },
+            { q: 'What is method overloading?', a: 'Multiple methods in the same class with the same name but different parameter lists (type, count, or order). The compiler selects the correct overload at compile time based on argument types. Not to be confused with overriding (changing inherited behaviour in a subclass).' },
+            { q: 'Is Java pass-by-value or pass-by-reference?', a: 'Always pass-by-value. For primitives, the value is copied. For objects, the reference (pointer) is copied — so the method can modify the object\'s fields (visible to caller), but cannot replace which object the caller\'s variable points to.' },
+            { q: 'Why must you write this.name = name in a setter?', a: 'When a parameter has the same name as a field, the parameter shadows the field. Without this, "name = name" assigns the parameter to itself — the field stays unchanged. this.name explicitly refers to the instance field.' },
+            { q: 'What is the default value of fields in a Java class?', a: 'Numeric types default to 0 (int, long) or 0.0 (double), boolean to false, char to \\u0000, reference types to null. Unlike local variables (which must be initialised before use), fields are automatically given defaults.' }
+          ]
+        },
+
+        /* ── SECTION 3 ─────────────────────────────────────────────── */
+        {
+          title: 'Constructors — Creating Objects Properly',
+          notes: `
+# Constructors — Creating Objects Properly
+
+## What Is a Constructor?
+
+A **constructor** is a special method that runs when an object is created with \`new\`. Its job: initialise the object's fields to valid values so the object is ready to use immediately.
+
+\`\`\`java
+public class BankAccount {
+    private String owner;
+    private double balance;
+
+    // Constructor — same name as class, no return type
+    public BankAccount(String owner, double initialBalance) {
+        this.owner = owner;
+        this.balance = initialBalance;
+    }
+}
+
+// Using the constructor
+BankAccount account = new BankAccount("Alice", 1000.0);
+// account.owner = "Alice", account.balance = 1000.0
+\`\`\`
+
+Key rules:
+- Name must exactly match the class name
+- No return type (not even \`void\`)
+- Can have any number of parameters
+- Can be overloaded (multiple constructors with different parameters)
+
+## The Default Constructor
+
+If you define **no constructor**, Java automatically provides a **no-args default constructor** that initialises all fields to their defaults (0, null, false):
+
+\`\`\`java
+public class Point {
+    int x;
+    int y;
+    // No constructor defined → Java provides: public Point() {}
+}
+
+Point p = new Point(); // x=0, y=0
+\`\`\`
+
+**Important:** as soon as you define ANY constructor, the default no-args constructor is **removed**. You must explicitly add it back if you still want it:
+
+\`\`\`java
+public class BankAccount {
+    private String owner;
+    private double balance;
+
+    public BankAccount() {}  // explicitly added back
+
+    public BankAccount(String owner, double balance) {
+        this.owner = owner;
+        this.balance = balance;
+    }
+}
+
+BankAccount a = new BankAccount();           // works — explicit no-args
+BankAccount b = new BankAccount("Bob", 500); // works — parameterised
+\`\`\`
+
+## Constructor Overloading
+
+Like methods, constructors can be overloaded with different parameter lists:
+
+\`\`\`java
+public class Product {
+    private String name;
+    private double price;
+    private int stock;
+
+    // Minimal constructor
+    public Product(String name, double price) {
+        this.name = name;
+        this.price = price;
+        this.stock = 0;  // default stock
+    }
+
+    // Full constructor
+    public Product(String name, double price, int stock) {
+        this.name = name;
+        this.price = price;
+        this.stock = stock;
+    }
+}
+\`\`\`
+
+## Constructor Chaining with \`this(...)\`
+
+To avoid duplicating initialisation logic, constructors can call each other using \`this(...)\`. The call must be the **first statement**:
+
+\`\`\`java
+public class Product {
+    private String name;
+    private double price;
+    private int stock;
+    private String category;
+
+    // Most complete constructor — the "primary"
+    public Product(String name, double price, int stock, String category) {
+        this.name = name;
+        this.price = price;
+        this.stock = stock;
+        this.category = category;
+    }
+
+    // Delegates to the primary, supplies default values
+    public Product(String name, double price, int stock) {
+        this(name, price, stock, "GENERAL");  // must be first line
+    }
+
+    public Product(String name, double price) {
+        this(name, price, 0);  // delegates to 3-arg constructor
+    }
+}
+\`\`\`
+
+\`\`\`mermaid
+flowchart LR
+    A["new Product('Milk', 1.99)"] --> B["Product(name, price)\ncalls this(name, price, 0)"]
+    B --> C["Product(name, price, stock)\ncalls this(name, price, 0, 'GENERAL')"]
+    C --> D["Product(name, price, stock, category)\nactual initialisation"]
+    style A fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+    style D fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+\`\`\`
+
+This pattern keeps initialisation logic in one place and reduces duplication.
+
+## Validation in Constructors
+
+Constructors are the right place to validate input — if validation fails, no invalid object is ever created:
+
+\`\`\`java
+public class Temperature {
+    private final double celsius;
+
+    public Temperature(double celsius) {
+        if (celsius < -273.15) {
+            throw new IllegalArgumentException(
+                "Temperature cannot be below absolute zero: " + celsius
+            );
+        }
+        this.celsius = celsius;
+    }
+}
+
+// Valid:
+Temperature boiling = new Temperature(100.0);
+
+// Invalid — constructor throws, no object is created:
+Temperature impossible = new Temperature(-300.0); // throws IllegalArgumentException
+\`\`\`
+
+## Copy Constructors
+
+A constructor that takes an instance of the same class — creates a copy:
+
+\`\`\`java
+public class Config {
+    private String host;
+    private int port;
+    private List<String> tags;
+
+    // Copy constructor — deep copy of mutable fields
+    public Config(Config other) {
+        this.host = other.host;     // String is immutable — safe to share
+        this.port = other.port;     // primitive — copied by value
+        this.tags = new ArrayList<>(other.tags); // List is mutable — must copy!
+    }
+}
+\`\`\`
+
+## Constructor vs Factory Method
+
+Constructors always create a new object. **Static factory methods** give you more control — return cached instances, different subtypes, or null:
+
+\`\`\`java
+// Constructor — always creates new
+BankAccount account = new BankAccount("Alice", 1000);
+
+// Factory method — can validate, cache, or return subtype
+BankAccount account = BankAccount.open("Alice", 1000);
+\`\`\`
+
+> [!WARNING]
+> The moment you define any constructor, the default no-args constructor disappears. If you need both a parameterised constructor AND a no-args constructor (e.g. for serialisation or frameworks like JPA), you must explicitly add the no-args constructor back.
+
+> [!TIP]
+> Use constructor chaining (this(...)) to keep initialisation logic in one place. Each simpler constructor delegates to the most complete one with defaults for missing parameters. This avoids duplicating validation logic.
+
+> [!EU]
+> Spring and Hibernate both depend on constructors. Spring prefers constructor injection (one constructor with all dependencies listed explicitly). JPA entities need a no-args constructor. Knowing WHY these constraints exist — not just how to comply — impresses interviewers in Berlin and Amsterdam.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Constructor overloading, chaining and validation',
+              code: `import java.util.ArrayList;
+import java.util.List;
+
+public class ConstructorDemo {
+
+    static class Order {
+        private final String orderId;
+        private final String customerId;
+        private final List<String> items;
+        private final String currency;
+        private final double discountPct;
+
+        // PRIMARY constructor — all validation here
+        public Order(String orderId, String customerId, List<String> items,
+                     String currency, double discountPct) {
+            if (orderId == null || orderId.isBlank())
+                throw new IllegalArgumentException("orderId required");
+            if (customerId == null || customerId.isBlank())
+                throw new IllegalArgumentException("customerId required");
+            if (items == null || items.isEmpty())
+                throw new IllegalArgumentException("Order must have at least one item");
+            if (discountPct < 0 || discountPct > 100)
+                throw new IllegalArgumentException("Discount must be 0-100");
+
+            this.orderId = orderId;
+            this.customerId = customerId;
+            this.items = new ArrayList<>(items); // defensive copy
+            this.currency = currency;
+            this.discountPct = discountPct;
+        }
+
+        // Simpler constructor — delegates to primary with defaults
+        public Order(String orderId, String customerId, List<String> items) {
+            this(orderId, customerId, items, "GBP", 0.0); // default currency, no discount
+        }
+
+        // Copy constructor — creates an independent copy
+        public Order(Order other) {
+            this(other.orderId + "-COPY", other.customerId,
+                 new ArrayList<>(other.items), other.currency, other.discountPct);
+        }
+
+        @Override
+        public String toString() {
+            return String.format("Order{id='%s', customer='%s', items=%s, currency='%s', discount=%.0f%%}",
+                orderId, customerId, items, currency, discountPct);
+        }
+    }
+
+    public static void main(String[] args) {
+        // Full constructor
+        Order o1 = new Order("ORD-001", "CUST-42",
+            List.of("Laptop", "Mouse"), "EUR", 10.0);
+        System.out.println("Full:  " + o1);
+
+        // Simple constructor (defaults applied)
+        Order o2 = new Order("ORD-002", "CUST-43", List.of("Keyboard"));
+        System.out.println("Simple: " + o2);
+
+        // Copy constructor
+        Order o3 = new Order(o1);
+        System.out.println("Copy:  " + o3);
+
+        // Validation failure
+        try {
+            new Order("", "CUST-1", List.of("Item"));
+        } catch (IllegalArgumentException e) {
+            System.out.println("Validation caught: " + e.getMessage());
+        }
+
+        try {
+            new Order("ORD-003", "CUST-1", List.of());
+        } catch (IllegalArgumentException e) {
+            System.out.println("Validation caught: " + e.getMessage());
+        }
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Default constructor removal and JPA entity pattern',
+              code: `public class DefaultConstructorDemo {
+
+    // === Class WITH a constructor — default no-args is GONE ===
+    static class WithConstructor {
+        String name;
+
+        public WithConstructor(String name) {
+            this.name = name;
+        }
+        // Default no-args constructor is NOT present here!
+    }
+
+    // === Class WITH constructor AND explicit no-args (for frameworks) ===
+    static class JpaLikeEntity {
+        private Long id;
+        private String name;
+        private String email;
+
+        // Required by JPA/Hibernate to create entities via reflection
+        protected JpaLikeEntity() {}
+
+        // Public constructor for application code
+        public JpaLikeEntity(Long id, String name, String email) {
+            if (name == null || name.isBlank()) throw new IllegalArgumentException("Name required");
+            this.id = id;
+            this.name = name;
+            this.email = email;
+        }
+
+        @Override
+        public String toString() {
+            return "Entity{id=" + id + ", name='" + name + "', email='" + email + "'}";
+        }
+    }
+
+    public static void main(String[] args) {
+        // WithConstructor: no-args gone
+        // new WithConstructor(); // compile error!
+        WithConstructor obj = new WithConstructor("hello"); // works
+        System.out.println("name: " + obj.name);
+
+        // JpaLikeEntity: both constructors available
+        JpaLikeEntity e1 = new JpaLikeEntity(1L, "Alice", "alice@example.com");
+        JpaLikeEntity e2 = new JpaLikeEntity(); // no-args for framework use
+        System.out.println("App use: " + e1);
+
+        // Validation in constructor prevents invalid objects
+        try {
+            new JpaLikeEntity(2L, "", "bob@example.com");
+        } catch (IllegalArgumentException ex) {
+            System.out.println("Cannot create invalid entity: " + ex.getMessage());
+        }
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is a constructor and how does it differ from a regular method?', a: 'A constructor has the same name as the class, no return type (not even void), and runs automatically when new is called. Its purpose is to initialise the object to a valid state. A method has a return type and must be explicitly called.' },
+            { q: 'What happens to the default no-args constructor when you add your own?', a: 'It disappears. Java only provides a default no-args constructor when you define NO constructor at all. Once you add any constructor, you lose the default. If you need a no-args constructor alongside parameterised ones, add it explicitly.' },
+            { q: 'What does this(...) do inside a constructor?', a: 'this(...) calls another constructor in the same class — constructor chaining. It must be the very first statement. Use it so simpler constructors delegate to the most complete one with default values, keeping validation logic in one place.' },
+            { q: 'Why put validation in a constructor?', a: 'To ensure that every object of the class is in a valid state from the moment it\'s created. If construction fails (throws), no invalid object is created. This enforces class invariants — properties that must always be true about every instance.' },
+            { q: 'What is a copy constructor?', a: 'A constructor that takes an instance of the same class and creates an independent copy. For mutable fields (List, Date, arrays), you must create new copies — not copy the reference — otherwise both objects share the same mutable data.' }
+          ]
+        },
+
+        /* ── SECTION 4 ─────────────────────────────────────────────── */
+        {
+          title: 'static — Class-Level Fields, Methods & Blocks',
+          notes: `
+# static — Class-Level Fields, Methods & Blocks
+
+## What Does \`static\` Mean?
+
+\`static\` means **belongs to the class, not to any instance**. A static field or method exists once, shared across all instances. A non-static (instance) field exists once per object.
+
+\`\`\`mermaid
+graph TB
+    subgraph CLASS["Counter class (static — shared)"]
+        SC["static int totalCount = 0\none copy shared by ALL objects"]
+    end
+    subgraph OBJ1["counter1 object"]
+        F1["int id = 1"]
+    end
+    subgraph OBJ2["counter2 object"]
+        F2["int id = 2"]
+    end
+    subgraph OBJ3["counter3 object"]
+        F3["int id = 3"]
+    end
+    CLASS -.->|"all see same"| OBJ1
+    CLASS -.->|"totalCount"| OBJ2
+    CLASS -.->|"field"| OBJ3
+    style CLASS fill:#312e81,stroke:#818cf8,color:#c4b5fd
+\`\`\`
+
+## Static Fields — Shared State
+
+\`\`\`java
+public class Counter {
+    private static int totalCount = 0; // shared by ALL Counter instances
+    private int id;                    // unique per instance
+
+    public Counter() {
+        totalCount++;         // increment the shared counter
+        this.id = totalCount; // assign this instance's unique id
+    }
+
+    public static int getTotalCount() { return totalCount; }
+    public int getId() { return id; }
+}
+
+Counter c1 = new Counter(); // totalCount = 1
+Counter c2 = new Counter(); // totalCount = 2
+Counter c3 = new Counter(); // totalCount = 3
+
+System.out.println(Counter.getTotalCount()); // 3 (accessed via class name)
+System.out.println(c1.getId()); // 1 (unique per instance)
+System.out.println(c2.getId()); // 2
+\`\`\`
+
+**Access via class name, not instance:** always call static members as \`Counter.getTotalCount()\`, not \`c1.getTotalCount()\` (legal but misleading).
+
+## Static Methods — Utility & Factory
+
+Static methods don't have access to \`this\` — there is no instance. They work only with the arguments passed in and static fields:
+
+\`\`\`java
+public class MathUtils {
+    // Pure utility — no instance state needed
+    public static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    public static boolean isPrime(int n) {
+        if (n < 2) return false;
+        for (int i = 2; i * i <= n; i++) {
+            if (n % i == 0) return false;
+        }
+        return true;
+    }
+}
+
+// Call via class name, no new needed
+int clamped = MathUtils.clamp(150, 0, 100); // 100
+boolean prime = MathUtils.isPrime(17);       // true
+\`\`\`
+
+**When to use static methods:**
+- Pure utility functions that don't depend on instance state (\`Math.abs()\`, \`Arrays.sort()\`)
+- Factory methods that create and return objects (\`Integer.valueOf()\`, \`List.of()\`)
+- Entry points (\`public static void main(String[] args)\`)
+
+**What static methods CANNOT do:**
+- Access \`this\`
+- Access or call non-static (instance) fields or methods directly
+
+\`\`\`java
+public class Broken {
+    int value = 10;
+
+    public static void doSomething() {
+        System.out.println(value); // COMPILE ERROR — cannot access instance field from static method
+        System.out.println(this.value); // COMPILE ERROR — no this in static context
+    }
+}
+\`\`\`
+
+## Static Constants
+
+\`static final\` fields are constants — shared, immutable, and computed once:
+
+\`\`\`java
+public class Config {
+    public static final String VERSION = "2.1.0";
+    public static final int MAX_CONNECTIONS = 100;
+    public static final double PI = 3.14159265358979;
+}
+
+// Access anywhere via class name:
+System.out.println(Config.VERSION);
+\`\`\`
+
+Convention: static final constants use UPPER_SNAKE_CASE.
+
+## Static Initialiser Blocks
+
+Runs once when the class is first loaded — used for complex static field initialisation:
+
+\`\`\`java
+public class DatabaseConfig {
+    public static final Map<String, String> DEFAULTS;
+
+    static {
+        // static block runs once when class is loaded
+        DEFAULTS = new HashMap<>();
+        DEFAULTS.put("host", "localhost");
+        DEFAULTS.put("port", "5432");
+        DEFAULTS.put("database", "mydb");
+    }
+}
+\`\`\`
+
+## The Singleton Pattern (static + private constructor)
+
+A common use of static: ensure only one instance of a class exists:
+
+\`\`\`java
+public class AppConfig {
+    private static AppConfig instance; // single shared instance
+
+    private AppConfig() {} // private — prevents external new
+
+    public static AppConfig getInstance() {
+        if (instance == null) {
+            instance = new AppConfig(); // create once
+        }
+        return instance;
+    }
+}
+
+AppConfig cfg1 = AppConfig.getInstance();
+AppConfig cfg2 = AppConfig.getInstance();
+System.out.println(cfg1 == cfg2); // true — same object
+\`\`\`
+
+Note: the above is not thread-safe. For thread-safe singleton, use an enum or holder-class pattern (covered in 0.13 Design Patterns).
+
+## \`main\` Method — The Static Entry Point
+
+\`\`\`java
+public class App {
+    public static void main(String[] args) {
+        // This is static because the JVM calls it before creating ANY instance
+        // args = command-line arguments passed to the program
+        System.out.println("Hello, world!");
+    }
+}
+\`\`\`
+
+\`main\` must be \`static\` because the JVM needs to call it without creating an object first — there's no \`App\` instance before \`main\` runs.
+
+> [!WARNING]
+> Static fields are shared — they are NOT thread-safe by default. A static counter incremented by multiple threads requires synchronisation (AtomicInteger, synchronized, etc.) — covered in Phase 2 Concurrency.
+
+> [!TIP]
+> A good rule of thumb: if a method doesn't use any instance fields (no this), it can probably be static. Static utility methods are easier to test because they don't need an object set up first.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Static fields, methods, constants, and static blocks',
+              code: `import java.util.*;
+
+public class StaticDemo {
+
+    // === Static constant ===
+    static class AppVersion {
+        public static final String VERSION = "3.0.1";
+        public static final int BUILD = 2025;
+
+        // Static initialiser block
+        public static final Map<String, String> SUPPORTED_LOCALES;
+        static {
+            SUPPORTED_LOCALES = new LinkedHashMap<>();
+            SUPPORTED_LOCALES.put("en", "English");
+            SUPPORTED_LOCALES.put("de", "Deutsch");
+            SUPPORTED_LOCALES.put("nl", "Nederlands");
+        }
+    }
+
+    // === Static field as shared counter ===
+    static class Request {
+        private static int nextId = 1;     // shared across all requests
+        private final int id;              // unique per request
+        private final String path;
+
+        public Request(String path) {
+            this.id = nextId++;            // atomic in single thread
+            this.path = path;
+        }
+
+        public static int getTotalRequests() { return nextId - 1; }
+
+        @Override
+        public String toString() { return "Request{id=" + id + ", path='" + path + "'}"; }
+    }
+
+    // === Static utility methods ===
+    static class StringUtils {
+        // No instance state — static utility
+        public static String repeat(String s, int times) {
+            return s.repeat(times);
+        }
+
+        public static boolean isPalindrome(String s) {
+            String clean = s.toLowerCase().replaceAll("[^a-z0-9]", "");
+            return clean.equals(new StringBuilder(clean).reverse().toString());
+        }
+
+        public static String truncate(String s, int maxLen) {
+            return s.length() <= maxLen ? s : s.substring(0, maxLen) + "…";
+        }
+    }
+
+    public static void main(String[] args) {
+        // Constants
+        System.out.println("Version: " + AppVersion.VERSION);
+        System.out.println("Locales: " + AppVersion.SUPPORTED_LOCALES);
+
+        // Shared counter
+        Request r1 = new Request("/api/orders");
+        Request r2 = new Request("/api/users");
+        Request r3 = new Request("/health");
+        System.out.println(r1);
+        System.out.println(r2);
+        System.out.println(r3);
+        System.out.println("Total requests: " + Request.getTotalRequests()); // 3
+
+        // Utility methods (no instance needed)
+        System.out.println(StringUtils.repeat("*", 20));
+        System.out.println("racecar palindrome: " + StringUtils.isPalindrome("racecar")); // true
+        System.out.println("A man a plan a canal Panama: " + StringUtils.isPalindrome("A man a plan a canal Panama")); // true
+        System.out.println(StringUtils.truncate("Hello, this is a very long message", 15));
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Singleton pattern and static vs instance methods',
+              code: `public class SingletonAndStaticDemo {
+
+    // === Thread-unsafe Singleton (basic, for learning) ===
+    static class AppConfig {
+        private static AppConfig instance;
+
+        private String environment;
+        private String apiUrl;
+        private int maxRetries;
+
+        private AppConfig() {
+            // Simulate loading from environment
+            this.environment = System.getenv().getOrDefault("ENV", "development");
+            this.apiUrl = "https://api." + environment + ".example.com";
+            this.maxRetries = 3;
+        }
+
+        // Get or create the single instance
+        public static AppConfig getInstance() {
+            if (instance == null) {
+                instance = new AppConfig(); // created only once
+            }
+            return instance;
+        }
+
+        public String getApiUrl() { return apiUrl; }
+        public String getEnvironment() { return environment; }
+    }
+
+    // === Thread-safe Singleton via enum (preferred) ===
+    enum DatabasePool {
+        INSTANCE;
+
+        private final int maxConnections = 10;
+
+        public int getMaxConnections() { return maxConnections; }
+        public String toString() { return "DatabasePool(maxConn=" + maxConnections + ")"; }
+    }
+
+    public static void main(String[] args) {
+        // Singleton: same instance every time
+        AppConfig cfg1 = AppConfig.getInstance();
+        AppConfig cfg2 = AppConfig.getInstance();
+        System.out.println("Same config? " + (cfg1 == cfg2)); // true
+        System.out.println("API URL: " + cfg1.getApiUrl());
+
+        // Enum singleton: inherently thread-safe
+        DatabasePool pool1 = DatabasePool.INSTANCE;
+        DatabasePool pool2 = DatabasePool.INSTANCE;
+        System.out.println("Same pool? " + (pool1 == pool2)); // true
+        System.out.println(DatabasePool.INSTANCE);
+
+        // Cannot access instance fields from static method
+        // (uncomment to see compile error)
+        // System.out.println(cfg1.instance); // static field — use AppConfig.instance
+
+        System.out.println("\\n--- static vs instance ---");
+        // Static: called on class
+        System.out.println(Integer.parseInt("42"));     // Integer.parseInt is static
+        System.out.println(Integer.MAX_VALUE);          // static constant
+
+        // Instance: called on object
+        String s = "hello";
+        System.out.println(s.toUpperCase());            // toUpperCase is instance method
+        System.out.println(s.length());                 // length is instance method
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is the difference between a static field and an instance field?', a: 'A static field belongs to the class — one copy shared by all instances. An instance field belongs to each object — every instance has its own copy. Static fields are accessed via the class name; instance fields via object references.' },
+            { q: 'What can a static method NOT do?', a: 'A static method cannot access this, cannot call non-static (instance) methods directly, and cannot access instance fields directly. It only has access to its own parameters, local variables, and static fields/methods.' },
+            { q: 'When should you use a static method?', a: 'When the method doesn\'t need instance state: utility functions (Math.abs, Arrays.sort), factory methods (Integer.valueOf), and entry points (main). A quick check: if the method doesn\'t use any instance fields, it can likely be static.' },
+            { q: 'What does static final mean and what is the naming convention?', a: 'static final means the field is a constant — class-level (static, one copy) and immutable (final, cannot be reassigned). Convention: UPPER_SNAKE_CASE. Example: public static final int MAX_SIZE = 100.' },
+            { q: 'Why must the main method be static?', a: 'Because the JVM needs to call main before any object is created. Since no instance exists yet, main must be callable without an instance — which is exactly what static means.' },
+            { q: 'What is a static initialiser block?', a: 'A block of code: static { ... } that runs once when the class is first loaded by the JVM. Used to initialise complex static fields that require multiple statements — for example, populating a static Map or loading configuration.' }
+          ]
+        }
+
+      ]
     },
 
     {
