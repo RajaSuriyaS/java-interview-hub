@@ -187,7 +187,7 @@
       </div>`;
 
     content.innerHTML = `
-      <div class="max-w-6xl mx-auto px-5 sm:px-8 py-8 fade-up">
+      <div class="w-full px-4 sm:px-8 lg:px-12 xl:px-16 py-8 fade-up">
         <div class="flex items-start justify-between flex-wrap gap-4 mb-8">
           <div>
             <h1 class="text-3xl font-extrabold text-white tracking-tight">Senior Java Backend Study Hub</h1>
@@ -415,7 +415,7 @@
     const content = $('#content');
     content.scrollTop = 0;
     content.innerHTML = `
-      <div class="max-w-4xl mx-auto px-5 sm:px-8 py-7 fade-up">
+      <div class="w-full px-4 sm:px-8 lg:px-12 xl:px-16 py-7 fade-up">
         <!-- breadcrumb -->
         <div class="flex items-center gap-2 text-xs text-slate-500 mb-4">
           <button id="bc-dash" class="hover:text-brand transition">Dashboard</button>
