@@ -22734,216 +22734,289 @@ class AutoConfigTest {
     {
       id: '3.3',
       title: 'Transactions, AOP & @Transactional',
-      hours: 4,
-      notes: `
-# Transactions, AOP & @Transactional — From Zero to Senior Level
+      hours: 3,
+      sections: [
+        {
+          title: '@Transactional Internals — Proxy Mechanics & Pitfalls',
+          notes: `## @Transactional Internals — Proxy Mechanics & Pitfalls
 
-## What Is a Transaction?
+### How @Transactional Works
 
-A **database transaction** is a group of operations that execute as a single unit. Either ALL succeed (commit) or ALL fail (rollback). No partial state.
+Spring implements @Transactional using AOP proxies. When you annotate a class or method with @Transactional, Spring wraps your bean in a proxy that intercepts method calls to begin/commit/rollback the transaction.
 
-Classic example — transferring €100 from Alice to Bob:
-\`\`\`sql
-BEGIN;
-UPDATE account SET balance = balance - 100 WHERE id = 'alice';
-UPDATE account SET balance = balance + 100 WHERE id = 'bob';
-COMMIT;   -- both updates visible atomically
--- If anything fails between BEGIN and COMMIT → ROLLBACK → neither update happens
+\`\`\`mermaid
+sequenceDiagram
+    participant C as Caller
+    participant P as Proxy (Spring AOP)
+    participant T as TransactionManager
+    participant S as YourService
+    C->>P: orderService.createOrder(req)
+    P->>T: getTransaction(txDef)
+    T-->>P: txStatus (begin tx)
+    P->>S: createOrder(req)
+    S-->>P: result (or exception)
+    alt No exception
+        P->>T: commit(txStatus)
+    else RuntimeException
+        P->>T: rollback(txStatus)
+    end
+    P-->>C: result
 \`\`\`
 
-Without a transaction: if the process crashes after debiting Alice but before crediting Bob, €100 disappears. With a transaction: the rollback restores Alice's balance.
-
----
-
-## AOP: How Spring Applies @Transactional
-
-Spring's transactions use **AOP (Aspect-Oriented Programming)**. AOP lets you add cross-cutting behaviour (logging, security, transactions) to methods without modifying their code.
-
-### The Proxy Mechanism
-
-When Spring sees \`@Transactional\` on a bean, it doesn't modify your class. Instead it wraps it in a **proxy object**:
-
-\`\`\`
-Client code          Proxy (Spring-generated)        Your actual bean
-    │                        │                              │
-    │  orderService.place()  │                              │
-    ├───────────────────────►│                              │
-    │                        │  BEGIN TRANSACTION           │
-    │                        │  target.place()              │
-    │                        ├─────────────────────────────►│
-    │                        │                              │  business logic
-    │                        │◄─────────────────────────────┤
-    │                        │  COMMIT (or ROLLBACK)        │
-    │◄───────────────────────┤                              │
-\`\`\`
-
-Spring generates the proxy in two ways:
-- **JDK Dynamic Proxy**: if your bean implements an interface → proxy implements the same interface
-- **CGLIB**: if no interface → proxy subclasses your class (byte-code generation)
-
-This proxy mechanism has critical consequences — it explains ALL @Transactional gotchas.
-
----
-
-## The #1 Gotcha: Self-Invocation Bypasses the Proxy
+### The Self-Invocation Problem
 
 \`\`\`java
 @Service
 public class OrderService {
+
+    // BROKEN — self-invocation bypasses the proxy
+    public void processOrder(Order order) {
+        validateOrder(order);
+        this.saveOrder(order);  // calls this.saveOrder directly, NOT via proxy
+        // The @Transactional on saveOrder is IGNORED
+    }
 
     @Transactional
-    public void placeOrder(Order order) {
-        saveOrder(order);
-        chargePayment(order);   // ← calls chargePayment DIRECTLY on 'this'
+    public void saveOrder(Order order) {
+        repo.save(order);
+        auditLog.save(new AuditEntry(order.id()));
     }
+}
 
-    @Transactional(propagation = REQUIRES_NEW)  // ← IGNORED!
-    public void chargePayment(Order order) {
-        // This DOES NOT run in a new transaction
-        // because the call bypassed the proxy!
-        paymentGateway.charge(order.total());
+// WHY: 'this.saveOrder(order)' skips the proxy. The proxy wraps the BEAN, but
+// self-calls go directly to the object — Spring never sees them.
+
+// FIX 1: Extract to separate @Service (preferred)
+@Service public class OrderSaveService {
+    @Transactional
+    public void save(Order order) { ... }
+}
+// orderSaveService.save(order) — goes through the proxy
+
+// FIX 2: Self-inject (SpEP) — works but is a code smell
+@Service public class OrderService {
+    @Autowired @Lazy private OrderService self;  // inject own proxy
+    public void processOrder(Order order) { self.saveOrder(order); }
+    @Transactional public void saveOrder(Order o) { ... }
+}
+\`\`\`
+
+### Rollback Rules
+
+\`\`\`java
+// DEFAULT: rollback on RuntimeException and Error, commit on checked exceptions
+@Transactional
+public void createUser(String email) throws EmailAlreadyExists {
+    // Throws EmailAlreadyExists (checked) → COMMITS (no data changes)
+    if (repo.existsByEmail(email)) throw new EmailAlreadyExists(email);
+    repo.save(new User(email));
+}
+
+// Override rollback behaviour
+@Transactional(rollbackFor = Exception.class)  // rollback on checked too
+public void riskyOperation() throws IOException { ... }
+
+@Transactional(noRollbackFor = OptimisticLockException.class)  // don't rollback on this
+public void retryableUpdate(Entity e) { ... }
+
+// Best practice: use unchecked exceptions for domain errors
+// Spring's @Transactional rollback on RuntimeException is intentional
+public class BusinessException extends RuntimeException { ... }  // auto-rollback
+
+// WRONG: catching and swallowing exception inside @Transactional method
+@Transactional
+public void dangerousMethod() {
+    try {
+        repo.save(entity);
+        externalService.call();  // throws RuntimeException
+    } catch (Exception e) {
+        log.warn("Ignoring error: " + e.getMessage());
+        // Transaction will COMMIT even though something went wrong!
     }
 }
 \`\`\`
 
-When \`placeOrder\` calls \`chargePayment\` via \`this.chargePayment()\`, it goes directly to the real object — bypassing the proxy entirely. The \`@Transactional\` on \`chargePayment\` is never seen.
+### Transaction on Private/Protected Methods
 
-**Fixes:**
-
-**Fix 1: Extract to a separate bean (best — fixes the design too)**
 \`\`\`java
 @Service
-@RequiredArgsConstructor
-public class OrderService {
-    private final PaymentService paymentService;  // separate bean = goes through proxy
+public class MyService {
+    @Transactional
+    private void doWork() { ... }   // IGNORED — Spring can only proxy public methods
+                                     // (CGlib proxies can't override private methods)
 
     @Transactional
-    public void placeOrder(Order order) {
-        saveOrder(order);
-        paymentService.chargePayment(order);  // ← through proxy → works!
-    }
-}
-\`\`\`
+    protected void helper() { ... } // Works with JDK proxies only if interface declared
+                                     // CGlib proxies handle protected, but still self-invoke issue
 
-**Fix 2: Self-inject via ApplicationContext (hack — use only if refactoring is hard)**
-\`\`\`java
+    @Transactional
+    public void publicMethod() { ... }  // CORRECT — always public
+}
+\`\`\``,
+          code: [
+            `import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.*;
+import org.springframework.beans.factory.annotation.*;
+
+// Demonstrating @Transactional proxy mechanism and pitfalls
+@Service
+public class AccountService {
+    private final AccountRepository accountRepo;
+    private final AuditRepository auditRepo;
+    private final AccountService self; // self-injection workaround (code smell, for demo only)
+
+    public AccountService(AccountRepository accountRepo, AuditRepository auditRepo,
+                          @Lazy AccountService self) {
+        this.accountRepo = accountRepo;
+        this.auditRepo = auditRepo;
+        this.self = self;
+    }
+
+    // PUBLIC — @Transactional works here
+    @Transactional
+    public void transfer(String fromId, String toId, double amount) {
+        Account from = accountRepo.findById(fromId).orElseThrow();
+        Account to   = accountRepo.findById(toId).orElseThrow();
+
+        if (from.balance() < amount) throw new InsufficientFundsException(from.id());
+
+        accountRepo.save(from.debit(amount));
+        accountRepo.save(to.credit(amount));
+        auditRepo.save(new TransferAudit(fromId, toId, amount));
+        // If auditRepo.save() throws → ENTIRE transaction rolls back
+        // Both account updates are reverted — atomic by definition
+    }
+
+    // BAD: calling internal @Transactional via 'this' — proxy bypassed
+    public void processPaymentBad(Payment payment) {
+        validatePayment(payment);
+        this.recordPayment(payment); // BUG: 'this' bypasses proxy, no transaction!
+    }
+
+    // GOOD: delegate to self-injected proxy
+    public void processPaymentGood(Payment payment) {
+        validatePayment(payment);
+        self.recordPayment(payment); // goes through proxy — transaction active
+    }
+
+    @Transactional
+    public void recordPayment(Payment payment) {
+        accountRepo.debit(payment.accountId(), payment.amount());
+        auditRepo.record(payment);
+    }
+
+    private void validatePayment(Payment payment) {
+        if (payment.amount() <= 0) throw new IllegalArgumentException("Invalid amount");
+    }
+}`,
+            `// Rollback scenarios
 @Service
 public class OrderService {
-    @Autowired
-    private OrderService self;  // Spring injects the PROXY, not 'this'
+    private final OrderRepository orderRepo;
+    private final InventoryService inventoryService;
+    private final EmailService emailService;
 
-    public void placeOrder(Order order) {
-        self.chargePayment(order);  // goes through the proxy
+    @Transactional // rolls back on any RuntimeException
+    public Order createOrder(OrderRequest req) {
+        Order order = orderRepo.save(new Order(req));                 // 1. persist order
+        inventoryService.reserve(req.productId(), req.quantity());    // 2. reserve stock
+        // If inventoryService.reserve throws OutOfStockException (RuntimeException)
+        // → order.save() is ROLLED BACK automatically
+
+        // emailService.send is NOT critical — we don't want email failure to rollback order
+        // Pattern: do non-critical side-effects in a try-catch or separate async call
+        try { emailService.sendConfirmation(order); }
+        catch (EmailException e) { log.warn("Email failed: {}", e.getMessage()); }
+
+        return order;
     }
-}
-\`\`\`
 
----
+    // Checked exception — NO rollback by default
+    @Transactional
+    public void importOrders(List<OrderRequest> reqs) throws ImportException {
+        for (var req : reqs) orderRepo.save(new Order(req));
+        // If ImportException (checked) is thrown, transaction COMMITS the partial work
+        // FIX: add rollbackFor = ImportException.class
+    }
 
-## @Transactional Rules Every Senior Must Know
+    // CORRECT checked exception rollback
+    @Transactional(rollbackFor = ImportException.class)
+    public void importOrdersSafe(List<OrderRequest> reqs) throws ImportException {
+        for (var req : reqs) orderRepo.save(new Order(req));
+        // Now ImportException triggers rollback too
+    }
 
-### Rule 1: Only public methods work
-\`\`\`java
-@Transactional
-private void doSomething() { ... }   // ❌ IGNORED — proxy can't override private
+    // Timeout: rollback after 30 seconds
+    @Transactional(timeout = 30)
+    public void longRunningOperation() { /* ... */ }
+}`
+          ],
+          flashcards: [
+            { q: 'How does Spring\'s @Transactional work under the hood?', a: 'Spring creates a JDK proxy (if interface exists) or CGLib proxy around your bean. The proxy intercepts method calls: before calling the actual method, it gets a transaction from the TransactionManager (begins if needed per propagation rules). After the method returns normally, it commits. If a RuntimeException (or Error) escapes, it rolls back. The @Transactional annotation is read at proxy creation time — it is only effective on proxied method calls from OUTSIDE the bean.' },
+            { q: 'What is the self-invocation problem and how do you fix it?', a: 'When a method inside a @Service calls another @Transactional method on "this", it bypasses the proxy — the transaction on the inner method is ignored. Example: method A (non-transactional) calls this.methodB() where methodB is @Transactional — methodB runs WITHOUT a transaction. Fix (preferred): extract methodB into a separate @Service bean, so the call goes through a proxy. Fix (code smell): self-inject the bean via @Autowired @Lazy MyService self and call self.methodB().' },
+            { q: 'What exceptions trigger a rollback in @Transactional by default?', a: 'By default, @Transactional rolls back on RuntimeException and Error (unchecked exceptions). Checked exceptions (Exception subclasses that are not RuntimeException) do NOT trigger rollback by default — the transaction commits even if a checked exception is thrown. Override with: rollbackFor = Exception.class (rollback on all exceptions) or rollbackFor = MyCheckedException.class (specific). Best practice: use RuntimeException for domain errors to get automatic rollback.' },
+            { q: 'Why does @Transactional on private methods not work?', a: 'Spring AOP proxies (both JDK and CGLib) can only intercept public method calls from outside the bean. Private methods can\'t be overridden by proxies. Even with CGLib (which can technically intercept protected), the self-invocation issue means the proxy is never in the call path for internal calls. Rule: always put @Transactional on public methods. If you need a private method to be transactional, make it public and move it to a separate service.' },
+            { q: 'What happens if you swallow an exception inside a @Transactional method?', a: 'The transaction commits as if nothing went wrong. If method code catches a RuntimeException and logs it without rethrowing: the transaction sees a clean return, commits all database changes made before the exception. This is a dangerous pattern — partial writes can be committed even though the operation logically failed. Either rethrow the exception (ensuring rollback), or manually call TransactionAspectSupport.currentTransactionStatus().setRollbackOnly() to mark for rollback without rethrowing.' }
+          ]
+        },
+        {
+          title: 'Transaction Propagation & Isolation Levels',
+          notes: `## Transaction Propagation & Isolation Levels
 
-@Transactional
-public void doSomething() { ... }    // ✅ works
-\`\`\`
-CGLIB proxies can't override private/final methods. Spring simply ignores \`@Transactional\` on them with no warning.
+### Propagation Modes
 
-### Rule 2: Rollback behaviour — checked vs unchecked
-
-\`\`\`java
-// Default behaviour:
-@Transactional
-public void save(Entity e) throws IOException {
-    repo.save(e);
-    riskyOp();  // throws IOException (checked) → COMMITS! (surprise!)
-    riskyOp2(); // throws RuntimeException (unchecked) → ROLLBACK ✓
-}
-
-// Fix: explicitly declare what to rollback for
-@Transactional(rollbackFor = Exception.class)  // rollback for ANY exception
-public void save(Entity e) throws IOException { ... }
-
-@Transactional(noRollbackFor = OptimisticLockException.class)  // commit even if this
-public void save(Entity e) { ... }
-\`\`\`
-
-### Rule 3: Keep transactions SHORT
-
-Every second a transaction is open, it holds:
-- A database connection (from a limited pool — HikariCP default 10)
-- Row locks (for writes) — blocking other transactions
-- Potentially a whole table lock
+Propagation defines what happens when one @Transactional method calls another.
 
 \`\`\`java
-// ❌ DANGEROUS: external HTTP call inside a transaction
-@Transactional
-public void processOrder(Order order) {
-    repo.save(order);           // holds connection...
-    emailService.send(order);   // HTTP call — can take seconds!
-    // DB connection held for seconds → pool exhausted under load → timeouts
-}
+// REQUIRED (default): join existing tx if one exists, else create new
+@Transactional(propagation = Propagation.REQUIRED)
+public void orderSave(Order o) { repo.save(o); }
+// Called from within a tx → joins it. Called standalone → new tx.
 
-// ✅ CORRECT: do I/O outside the transaction
-public void processOrder(Order order) {
-    doInTransaction(order);         // short transaction: just DB work
-    emailService.send(order);       // I/O after transaction commits
-}
-
-@Transactional
-private void doInTransaction(Order order) {
-    repo.save(order);               // transaction commits here
-}
-\`\`\`
-
----
-
-## Transaction Propagation: What Happens When Transactional Methods Call Each Other
-
-\`\`\`java
-@Transactional(propagation = Propagation.REQUIRED)     // default
-// If caller has a tx → join it. If not → create a new one.
-// Most common — use for normal business operations.
-
+// REQUIRES_NEW: always suspend current tx and create a brand new one
 @Transactional(propagation = Propagation.REQUIRES_NEW)
-// ALWAYS create a new independent tx. Suspend caller's tx.
-// Use for: audit logging that must persist even if outer tx rolls back.
-// e.g. log "attempted to place order" even if order creation fails
+public void auditLog(String action) {
+    auditRepo.save(new AuditEntry(action));
+    // Even if the outer tx rolls back, this COMMITS independently
+}
 
-@Transactional(propagation = Propagation.NESTED)
-// Savepoint within the current tx. Can rollback to the savepoint.
-// Outer tx can still commit. Database must support savepoints.
-
+// MANDATORY: must be called within an existing tx, else throws exception
 @Transactional(propagation = Propagation.MANDATORY)
-// Must be called within an existing tx — throws if no tx active.
-// Use for internal methods that must only be called from @Transactional code.
+public void mustBeInTransaction() {
+    // IllegalTransactionStateException if no active tx when called
+}
 
+// NEVER: must NOT be called within an existing tx, else throws exception
 @Transactional(propagation = Propagation.NEVER)
-// Must NOT be called within a tx — throws if a tx is active.
+public void neverRunInTransaction() { /* read-only utility */ }
 
+// NOT_SUPPORTED: suspend current tx, run without tx
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-// Suspend current tx if any, run without tx.
+public void runOutsideTransaction() { /* ... */ }
+
+// SUPPORTS: run in tx if one exists, without tx if none
+@Transactional(propagation = Propagation.SUPPORTS)
+public List<User> listUsers() { return repo.findAll(); }
+
+// NESTED: savepoint in outer tx — partial rollback possible
+@Transactional(propagation = Propagation.NESTED)
+public void nestedOperation() { /* rollback to savepoint on failure */ }
 \`\`\`
 
-**Real-world REQUIRES_NEW example:**
+### REQUIRES_NEW Use Case — Audit Logging
+
 \`\`\`java
 @Service
-@RequiredArgsConstructor
-public class OrderService {
-    private final AuditService auditService;
+public class PaymentService {
+    private final AuditService audit;
 
-    @Transactional  // REQUIRED
-    public void placeOrder(Order order) {
+    @Transactional
+    public void processPayment(Payment payment) {
+        audit.log("PAYMENT_STARTED", payment.id());  // REQUIRES_NEW tx commits immediately
         try {
-            repo.save(order);
-            paymentGateway.charge(order);
-        } catch (Exception e) {
-            // outer transaction WILL roll back
-            // but we still want the audit log to persist!
-            auditService.logFailure(order, e);  // runs in its own tx
+            performPayment(payment);                  // may throw
+        } catch (PaymentException e) {
+            audit.log("PAYMENT_FAILED", payment.id()); // ALSO commits even though outer tx will rollback
             throw e;
         }
     }
@@ -22951,430 +23024,1112 @@ public class OrderService {
 
 @Service
 public class AuditService {
-    @Transactional(propagation = REQUIRES_NEW)  // independent tx
-    public void logFailure(Order order, Exception e) {
-        auditRepo.save(new AuditEntry(order.id(), "FAILED", e.getMessage()));
-        // this commits even when placeOrder rolls back
+    private final AuditRepository auditRepo;
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void log(String event, String entityId) {
+        auditRepo.save(new AuditEntry(event, entityId, Instant.now()));
+        // Commits in its own transaction — unaffected by outer tx rollback
     }
 }
+// Result: audit entries persist even when payment fails — exactly what you want
 \`\`\`
 
----
+### Isolation Levels
 
-## AOP Beyond Transactions: @Aspect
+Isolation controls what data a transaction can see from other concurrent transactions.
 
-Spring AOP lets you write cross-cutting concerns once and apply them everywhere:
+| Level | Dirty Read | Non-Repeatable Read | Phantom Read |
+|---|---|---|---|
+| READ_UNCOMMITTED | ✓ possible | ✓ possible | ✓ possible |
+| READ_COMMITTED (default in most DBs) | ✗ prevented | ✓ possible | ✓ possible |
+| REPEATABLE_READ | ✗ prevented | ✗ prevented | ✓ possible |
+| SERIALIZABLE | ✗ prevented | ✗ prevented | ✗ prevented |
+
+\`\`\`java
+// Dirty read: reading uncommitted data from another tx
+@Transactional(isolation = Isolation.READ_UNCOMMITTED)
+// Can see changes from other transactions that haven't committed yet
+// DANGEROUS — never use this
+
+// Non-repeatable read: same row returns different values in two reads within same tx
+@Transactional(isolation = Isolation.READ_COMMITTED)
+public double getBalanceTwice(String accountId) {
+    double first  = repo.findBalance(accountId);  // reads 100
+    // Another tx commits a withdrawal here
+    double second = repo.findBalance(accountId);  // reads 70 — non-repeatable read
+    return second; // inconsistency within same tx
+}
+
+// Phantom read: a range query returns different rows in two reads
+@Transactional(isolation = Isolation.REPEATABLE_READ)
+public List<Order> getNewOrders() {
+    List<Order> first  = repo.findByStatus("NEW");  // returns 5 orders
+    // Another tx inserts a new order here
+    List<Order> second = repo.findByStatus("NEW");  // returns 6 orders — phantom read
+    return second;
+}
+
+// Serializable: no anomalies, but worst performance
+@Transactional(isolation = Isolation.SERIALIZABLE)
+public void criticalFinancialOperation() { ... }
+\`\`\`
+
+### @Transactional(readOnly = true)
+
+\`\`\`java
+// Hint to Spring and the DB driver that this tx won't write
+@Transactional(readOnly = true)
+public List<Product> getAllProducts() {
+    return productRepo.findAll();
+}
+
+// Benefits:
+// 1. JPA/Hibernate disables dirty checking (no need to snapshot entities)
+// 2. Some databases/drivers optimise for read-only (e.g. MySQL routes to replica)
+// 3. Clearer code intent
+// 4. Throws exception if you accidentally try to write
+
+// Tip: add @Transactional(readOnly = true) at CLASS level, override specific methods
+@Service
+@Transactional(readOnly = true)   // default: all reads
+public class ProductService {
+    public List<Product> list() { return repo.findAll(); }
+    public Product findById(Long id) { return repo.findById(id).orElseThrow(); }
+
+    @Transactional  // overrides class-level readOnly=false for writes
+    public Product create(ProductRequest req) { return repo.save(new Product(req)); }
+}
+\`\`\``,
+          code: [
+            `import org.springframework.transaction.annotation.*;
+import org.springframework.stereotype.*;
+
+// Propagation in action: outer rollback doesn't affect REQUIRES_NEW
+@Service
+public class TransferService {
+    private final AccountRepository accounts;
+    private final AuditService audit;
+    private final NotificationService notifications;
+
+    @Transactional  // outer transaction
+    public TransferResult transfer(String from, String to, double amount) {
+        audit.recordEvent("TRANSFER_INITIATED", from, amount); // REQUIRES_NEW — always commits
+
+        try {
+            Account sender   = accounts.findById(from).orElseThrow();
+            Account receiver = accounts.findById(to).orElseThrow();
+
+            if (sender.balance() < amount)
+                throw new InsufficientFundsException("Balance: " + sender.balance());
+
+            accounts.save(sender.debit(amount));
+            accounts.save(receiver.credit(amount));
+
+            audit.recordEvent("TRANSFER_COMPLETE", from, amount); // REQUIRES_NEW
+            notifications.sendAsync(from, "Transfer of " + amount + " successful");
+            return TransferResult.success();
+
+        } catch (InsufficientFundsException e) {
+            audit.recordEvent("TRANSFER_FAILED", from, amount); // REQUIRES_NEW — commits despite outer rollback
+            throw e; // outer tx rolls back account changes, but audit records survive
+        }
+    }
+}
+
+@Service
+class AuditService {
+    private final AuditRepository auditRepo;
+    AuditService(AuditRepository r) { this.auditRepo = r; }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordEvent(String event, String accountId, double amount) {
+        auditRepo.save(new AuditEntry(event, accountId, amount, java.time.Instant.now()));
+    }
+}`,
+            `import org.springframework.transaction.annotation.*;
+import org.springframework.stereotype.*;
+import java.util.*;
+
+// readOnly optimisation + isolation demonstration
+@Service
+@Transactional(readOnly = true)  // default for all methods
+public class ReportService {
+    private final OrderRepository orderRepo;
+    private final ProductRepository productRepo;
+
+    ReportService(OrderRepository o, ProductRepository p) {
+        this.orderRepo = o; this.productRepo = p;
+    }
+
+    // Inherits readOnly=true — no dirty checking, faster
+    public List<Order> getRecentOrders() { return orderRepo.findTop100ByOrderByCreatedAtDesc(); }
+
+    // Higher isolation for financial reports — prevent phantom reads during report generation
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public FinancialReport generateMonthlyReport(int year, int month) {
+        // Both queries see a consistent snapshot — no phantom rows between the two calls
+        List<Order> orders = orderRepo.findByYearAndMonth(year, month);
+        Map<String,Double> byProduct = productRepo.sumRevenueByProduct(year, month);
+        return new FinancialReport(orders, byProduct);
+    }
+
+    // Serializable for audit — must see exactly what was there at start of tx
+    @Transactional(readOnly = true, isolation = Isolation.SERIALIZABLE)
+    public AuditSnapshot auditSnapshot() {
+        return new AuditSnapshot(orderRepo.count(), productRepo.count());
+    }
+
+    // Write operation overrides class-level readOnly
+    @Transactional  // readOnly defaults back to false
+    public void archiveOldOrders() {
+        List<Order> old = orderRepo.findOlderThan(java.time.Instant.now().minusSeconds(60*60*24*365));
+        old.forEach(o -> o.setStatus("ARCHIVED"));
+        orderRepo.saveAll(old);
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is transaction propagation and what does REQUIRED vs REQUIRES_NEW mean?', a: 'Propagation defines how a @Transactional method behaves when called within an existing transaction. REQUIRED (default): if a transaction already exists, join it; if not, create one. The inner method shares the outer transaction — if the inner throws, the outer also rolls back. REQUIRES_NEW: always suspend the current transaction and start a fresh one. The inner transaction commits or rolls back independently. Use REQUIRES_NEW for audit logging, where you want the audit record to persist even if the outer operation fails.' },
+            { q: 'What are dirty reads, non-repeatable reads, and phantom reads?', a: 'Dirty read: tx A reads data written by tx B before B commits — if B rolls back, A read data that never existed. Non-repeatable read: tx A reads a row twice; between the reads tx B commits an UPDATE — A sees different values for the same row. Phantom read: tx A executes a range query twice; between the reads tx B commits an INSERT — A sees a new "phantom" row. Default isolation (READ_COMMITTED) prevents dirty reads. REPEATABLE_READ also prevents non-repeatable reads. SERIALIZABLE prevents all three.' },
+            { q: 'What does @Transactional(readOnly = true) do and why use it?', a: 'Marks a transaction as read-only. Hibernate/JPA disables dirty checking (no entity snapshots needed — significant performance gain when loading many entities). Some DB drivers/routers use this hint to route queries to a read replica. The method will throw if it tries to flush writes. Best practice: annotate the @Service class with @Transactional(readOnly = true) as the default, then override individual write methods with @Transactional (which defaults readOnly to false).' },
+            { q: 'When would you use Propagation.MANDATORY vs NEVER?', a: 'MANDATORY: the method REQUIRES an active transaction — throws IllegalTransactionStateException if called outside one. Use when the method is a helper that must be part of the caller\'s unit of work (e.g. an internal repository helper that should never run standalone). NEVER: the method must NOT be called inside a transaction — throws if one is active. Use for operations that explicitly must not participate in a transaction (e.g. a utility that starts its own JDBC connection and would conflict with JPA transaction management).' },
+            { q: 'What is NESTED propagation and how does it differ from REQUIRES_NEW?', a: 'NESTED creates a savepoint within the outer transaction (using JDBC savepoints). If the nested method fails, it rolls back to the savepoint — the outer transaction continues with the changes made before the savepoint. If the outer tx fails, the entire tx including the nested work rolls back. REQUIRES_NEW is completely independent — it commits or rolls back separately. NESTED is supported by Spring with JdbcTransactionManager or when the underlying DB supports savepoints. Use NESTED when you want partial rollback within one overall transaction.' }
+          ]
+        },
+        {
+          title: 'AOP Concepts & Spring AOP',
+          notes: `## AOP Concepts & Spring AOP
+
+Aspect-Oriented Programming (AOP) separates cross-cutting concerns (logging, security, transactions, caching) from business logic.
+
+### Core Vocabulary
+
+\`\`\`
+Aspect      — the module encapsulating a cross-cutting concern (e.g. LoggingAspect)
+Join Point  — a point in execution where advice CAN be applied (Spring: always a method call)
+Pointcut    — an expression that matches join points (WHERE advice runs)
+Advice      — the code that runs at a matched join point (WHAT to do)
+Weaving     — linking aspects to the target (Spring: done at runtime via proxy)
+\`\`\`
+
+### Advice Types
 
 \`\`\`java
 @Aspect
 @Component
-public class PerformanceMonitor {
+public class LoggingAspect {
 
-    // Pointcut: match any public method in the service package
-    @Around("execution(public * com.myapp.service.*.*(..))")
-    public Object measureTime(ProceedingJoinPoint pjp) throws Throwable {
+    // @Before — runs before the method
+    @Before("execution(* com.example.service.*.*(..))")
+    public void logBefore(JoinPoint jp) {
+        log.info("Calling {}", jp.getSignature().getName());
+    }
+
+    // @AfterReturning — runs after method returns normally
+    @AfterReturning(pointcut = "execution(* com.example.service.*.*(..))", returning = "result")
+    public void logReturn(JoinPoint jp, Object result) {
+        log.info("{} returned: {}", jp.getSignature().getName(), result);
+    }
+
+    // @AfterThrowing — runs when method throws
+    @AfterThrowing(pointcut = "execution(* com.example.service.*.*(..))", throwing = "ex")
+    public void logException(JoinPoint jp, Exception ex) {
+        log.error("{} threw: {}", jp.getSignature().getName(), ex.getMessage());
+    }
+
+    // @After — runs after method, regardless of outcome (like finally)
+    @After("execution(* com.example.service.*.*(..))")
+    public void logFinally(JoinPoint jp) {
+        log.info("Method {} completed", jp.getSignature().getName());
+    }
+
+    // @Around — most powerful: surrounds the method call entirely
+    @Around("execution(* com.example.service.*.*(..))")
+    public Object logAround(ProceedingJoinPoint pjp) throws Throwable {
         long start = System.currentTimeMillis();
-        String method = pjp.getSignature().toShortString();
         try {
-            Object result = pjp.proceed();  // call the actual method
-            long ms = System.currentTimeMillis() - start;
-            if (ms > 500) log.warn("SLOW: {} took {}ms", method, ms);
+            Object result = pjp.proceed();  // MUST call proceed() to invoke the actual method
+            log.info("{} took {}ms", pjp.getSignature().getName(), System.currentTimeMillis() - start);
             return result;
-        } catch (Throwable t) {
-            log.error("FAILED: {} after {}ms", method, System.currentTimeMillis() - start);
-            throw t;
+        } catch (Exception e) {
+            log.error("{} failed: {}", pjp.getSignature().getName(), e.getMessage());
+            throw e;  // MUST rethrow unless you want to swallow the exception
         }
     }
 }
-
-// Advice types:
-// @Before    — runs before the method
-// @After     — runs after (always, like finally)
-// @AfterReturning — runs after successful return
-// @AfterThrowing  — runs if exception thrown
-// @Around    — wraps the method (most powerful — you control proceed())
 \`\`\`
 
-Common AOP use cases: logging, metrics, security checks, rate limiting, caching, retry logic.
+### Pointcut Expressions
 
-> [!EU]
-> The killer question: *"Why didn't my @Transactional work?"* Walk through the diagnostic checklist: (1) self-invocation? → no proxy involved; (2) method public? → private/final is ignored; (3) checked exception? → default only rolls back unchecked; (4) correct proxy type? → interface vs CGLIB. Showing this structured diagnosis is exactly what a senior engineer does. Then add: "And I always keep transactions short — no HTTP calls inside a @Transactional method."
-`,
-      code: [
-        {
-          lang: 'java',
-          title: 'The self-invocation proxy pitfall (illustrated)',
-          code: `// Demonstrates WHY self-invocation skips the transactional proxy.
-public class TxProxyDemo {
+\`\`\`java
+// execution: matches method execution
+execution(modifiers? return-type declaring-type? method-name(params) throws?)
 
-    interface OrderOps { void placeOrder(); void chargeCard(); }
+execution(* com.example.service.*.*(..))   // any method in any class in service package
+execution(public * *(..))                  // any public method
+execution(* save*(..))                     // any method starting with 'save'
+execution(* OrderService.createOrder(..))  // specific method
+execution(* *(.., String))                 // methods whose last param is String
 
-    // The 'real' bean
-    static class OrderService implements OrderOps {
-        public void placeOrder() {
-            System.out.println("  placeOrder(): business logic");
-            // BUG: direct self-call -> bypasses the proxy -> chargeCard runs WITHOUT a tx
-            chargeCard();
+// within: matches classes within a package
+within(com.example.service..*)  // any class in service package or subpackages
+
+// @annotation: matches methods annotated with a specific annotation
+@annotation(org.springframework.transaction.annotation.Transactional)
+@annotation(com.example.Audited)  // your custom annotation
+
+// @within: matches classes annotated with a specific annotation
+@within(org.springframework.stereotype.Service)
+
+// bean: matches by bean name
+bean(*Service)       // all beans ending with "Service"
+bean(orderService)   // specific bean name
+
+// Combining with && || !
+execution(* com.example.service.*.*(..)) && !execution(* get*(..))  // service methods, not getters
+\`\`\`
+
+### Custom Annotation-Based AOP
+
+\`\`\`java
+// Define the annotation
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Audited {
+    String action() default "";
+}
+
+// Apply it in business code
+@Service
+public class AccountService {
+    @Audited(action = "ACCOUNT_CREATED")
+    public Account createAccount(String owner) { ... }
+}
+
+// Intercept it in the aspect
+@Aspect @Component
+public class AuditAspect {
+    @Around("@annotation(audited)")
+    public Object audit(ProceedingJoinPoint pjp, Audited audited) throws Throwable {
+        String action = audited.action();
+        String user = SecurityContextHolder.getContext().getAuthentication().getName();
+        try {
+            Object result = pjp.proceed();
+            auditRepo.save(new AuditEntry(action, user, "SUCCESS"));
+            return result;
+        } catch (Exception e) {
+            auditRepo.save(new AuditEntry(action, user, "FAILURE: " + e.getMessage()));
+            throw e;
         }
-        public void chargeCard() {
-            System.out.println("  chargeCard(): should be @Transactional, but proxy was bypassed!");
+    }
+}
+\`\`\``,
+          code: [
+            `import org.aspectj.lang.annotation.*;
+import org.aspectj.lang.*;
+import org.springframework.stereotype.*;
+import java.lang.annotation.*;
+import java.util.concurrent.atomic.*;
+
+// Complete AOP example: @Timed custom annotation + performance aspect
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+@interface Timed { String value() default ""; }
+
+@Aspect
+@Component
+class PerformanceAspect {
+    private final AtomicLong totalCalls = new AtomicLong();
+    private final AtomicLong totalMs    = new AtomicLong();
+
+    @Around("@annotation(timed)")
+    public Object time(ProceedingJoinPoint pjp, Timed timed) throws Throwable {
+        long start = System.nanoTime();
+        String label = timed.value().isEmpty() ? pjp.getSignature().toShortString() : timed.value();
+        try {
+            Object result = pjp.proceed();   // invoke the actual method
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            totalCalls.incrementAndGet();
+            totalMs.addAndGet(ms);
+            System.out.printf("[PERF] %s: %dms (avg %.1fms over %d calls)%n",
+                label, ms, (double)totalMs.get()/totalCalls.get(), totalCalls.get());
+            return result;
+        } catch (Throwable t) {
+            System.err.printf("[PERF] %s: FAILED after %dms%n",
+                label, (System.nanoTime() - start) / 1_000_000);
+            throw t;
         }
     }
 
-    // A proxy that 'opens a transaction' around intercepted calls
-    static OrderOps transactionalProxy(OrderService target) {
-        return new OrderOps() {
-            public void placeOrder() { tx("placeOrder", target::placeOrder); }
-            public void chargeCard() { tx("chargeCard", target::chargeCard); }
-            private void tx(String name, Runnable r) {
-                System.out.println("[proxy] BEGIN tx for " + name);
-                r.run();
-                System.out.println("[proxy] COMMIT tx for " + name);
-            }
-        };
+    @Before("execution(* com.example.controller..*(..))")
+    public void logControllerCalls(JoinPoint jp) {
+        System.out.println("[AOP] → " + jp.getSignature().toShortString());
     }
 
-    public static void main(String[] args) {
-        OrderOps proxied = transactionalProxy(new OrderService());
-        System.out.println("Calling placeOrder() via proxy:");
-        proxied.placeOrder();
-        System.out.println("\\nNotice: chargeCard ran INSIDE placeOrder without its own BEGIN/COMMIT");
-        System.out.println("-> that is the self-invocation pitfall.");
+    @AfterThrowing(pointcut = "within(com.example.service..*)", throwing = "ex")
+    public void alertOnServiceException(JoinPoint jp, Exception ex) {
+        System.err.printf("[ALERT] Service exception in %s: %s%n",
+            jp.getSignature().getName(), ex.getMessage());
+    }
+}
+
+// Usage
+@Service
+class ProductService {
+    @Timed("product.search")
+    public java.util.List<String> search(String query) {
+        try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        return java.util.List.of("Product A", "Product B");
+    }
+
+    @Timed
+    public void refresh() {
+        try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+}`,
+            `import org.aspectj.lang.annotation.*;
+import org.aspectj.lang.*;
+import java.lang.annotation.*;
+
+// Caching aspect — manual cache with AOP (before Spring Cache existed)
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+@interface Cacheable { String key(); long ttlSeconds() default 60; }
+
+@Aspect
+@org.springframework.stereotype.Component
+class CachingAspect {
+    private final java.util.concurrent.ConcurrentHashMap<String, CacheEntry> cache
+        = new java.util.concurrent.ConcurrentHashMap<>();
+
+    record CacheEntry(Object value, long expiresAt) {}
+
+    @Around("@annotation(cacheable)")
+    public Object cache(ProceedingJoinPoint pjp, Cacheable cacheable) throws Throwable {
+        // Build cache key: annotation key + method args
+        String key = cacheable.key() + ":" + java.util.Arrays.toString(pjp.getArgs());
+
+        CacheEntry entry = cache.get(key);
+        if (entry != null && System.currentTimeMillis() < entry.expiresAt()) {
+            System.out.println("[CACHE] HIT: " + key);
+            return entry.value();
+        }
+
+        System.out.println("[CACHE] MISS: " + key + " — invoking method");
+        Object result = pjp.proceed();  // call actual method
+        long expiresAt = System.currentTimeMillis() + cacheable.ttlSeconds() * 1000;
+        cache.put(key, new CacheEntry(result, expiresAt));
+        return result;
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 60_000)
+    public void evictExpired() {
+        long now = System.currentTimeMillis();
+        cache.entrySet().removeIf(e -> e.getValue().expiresAt() < now);
+        System.out.println("[CACHE] Eviction ran, size=" + cache.size());
+    }
+}
+
+// Usage
+@org.springframework.stereotype.Service
+class UserService {
+    @Cacheable(key = "user", ttlSeconds = 300)
+    public String findUser(Long id) {
+        // Simulate DB call
+        return "User#" + id;
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What are the five core AOP concepts: Aspect, Joinpoint, Pointcut, Advice, Weaving?', a: 'Aspect: the module holding cross-cutting logic (e.g. LoggingAspect). Joinpoint: a specific moment during execution where advice can be applied — in Spring AOP this is always a method call. Pointcut: an expression that selects which joinpoints to intercept (e.g. execution(* com.example.service.*.*(..))). Advice: the actual code that runs at a matched joinpoint (@Before, @After, @Around). Weaving: the process of linking aspects to target objects — Spring does this at runtime via dynamic proxies (JDK or CGLib).' },
+            { q: 'What is the difference between @Before, @After, @Around, @AfterReturning, @AfterThrowing?', a: '@Before: runs before the method. @AfterReturning: runs after the method returns normally; can access the return value. @AfterThrowing: runs when the method throws an exception; can access the exception. @After: runs after the method regardless of outcome (like finally). @Around: surrounds the method call — must call pjp.proceed() to invoke the actual method; most powerful, can modify inputs/outputs, suppress exceptions. @Around can replace all others but is also most risky (forgetting proceed() silently skips the method).' },
+            { q: 'How does the execution() pointcut expression work?', a: 'execution(modifiers? return-type declaring-type? method-name(params) throws?) where * is a wildcard and .. means zero or more. Examples: execution(* com.example.service.*.*(..)) — any method in any class in service package; execution(public * save*(..)) — any public method starting with "save"; execution(* OrderService.*(..)) — any method on OrderService. Combine with &&, ||, !: execution(* service.*.*(..)) && !execution(* get*(..)) — service methods excluding getters.' },
+            { q: 'What is @annotation pointcut and how does it enable custom cross-cutting behaviour?', a: '@annotation(myAnnotation) matches methods annotated with that annotation. This pattern lets you define custom annotations (@Audited, @Timed, @RateLimited) that carry configuration data, then write aspects that intercept those annotations: @Around("@annotation(audited)") public Object audit(ProceedingJoinPoint pjp, Audited audited). Business code declares what it wants (@Audited(action="SAVE")) and the aspect provides the behaviour — clean separation.' },
+            { q: 'What are the limitations of Spring AOP vs AspectJ?', a: 'Spring AOP is proxy-based and has key limitations: (1) Only intercepts public method calls; (2) Self-invocation bypasses the proxy — this.method() inside the same class is not intercepted; (3) Only works on Spring-managed beans; (4) Only method-level join points (no field access, constructor interception). AspectJ does compile-time or load-time weaving with bytecode modification — intercepts any join point including field access, constructors, private methods. AspectJ is more powerful but adds build complexity. Spring AOP covers 90% of production needs.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'Why does calling a @Transactional method from the same class not start a transaction?', a: 'Spring transactions work via a proxy that wraps the bean. Self-invocation calls the target directly (this.method()), bypassing the proxy, so no transactional advice runs. Fix by moving the method to another bean or self-injecting the proxy.' },
-        { q: 'Default rollback behaviour of @Transactional?', a: 'Rolls back on unchecked exceptions (RuntimeException/Error), commits on checked exceptions. Use rollbackFor to roll back on checked exceptions too.' },
-        { q: 'When use REQUIRES_NEW propagation?', a: 'When a sub-operation must commit independently of the outer transaction — e.g. writing an audit/log record that should persist even if the surrounding business transaction rolls back. It suspends the current tx and runs in a new one.' },
-        { q: 'Why avoid remote calls inside a transaction?', a: 'The transaction holds a DB connection and locks for its entire duration; a slow HTTP/remote call extends lock/connection hold time, throttling throughput and risking pool exhaustion and deadlocks.' }
       ]
     },
 
     {
       id: '3.4',
-      title: 'Spring Data JPA in Practice',
-      hours: 3,
-      notes: `
-# Spring Data JPA in Practice — From Zero to Senior Level
+      title: 'Spring Data JPA — Repositories, JPQL & Performance',
+      hours: 4,
+      sections: [
+        {
+          title: 'Repository Pattern & JpaRepository',
+          notes: `## Repository Pattern & JpaRepository
 
-## What Is JPA and Why Use It?
+Spring Data JPA generates repository implementations at startup — no need to write boilerplate DAO code.
 
-Writing SQL by hand is tedious and error-prone. **JPA (Java Persistence API)** is a specification for mapping Java objects to database tables — no SQL needed for basic operations.
-
-**Hibernate** is the most popular JPA implementation. **Spring Data JPA** sits on top of Hibernate and eliminates even more boilerplate.
+### The Repository Hierarchy
 
 \`\`\`
-Your Java code
-      ↓
-Spring Data JPA (repository interfaces)
-      ↓
-JPA (EntityManager API)
-      ↓
-Hibernate (generates and runs SQL)
-      ↓
-JDBC (sends SQL to database)
-      ↓
-Database (PostgreSQL, MySQL, H2...)
+Repository (marker)
+  └─ CrudRepository<T, ID>           — CRUD operations
+       └─ PagingAndSortingRepository — + pagination & sorting
+            └─ JpaRepository<T, ID>  — + JPA-specific (flush, batch, getOne)
 \`\`\`
 
----
-
-## Entity Mapping: Java Class → Database Table
+### Declaring a Repository
 
 \`\`\`java
-@Entity
-@Table(name = "orders")       // maps to 'orders' table (default: class name)
+// Entity
+@Entity @Table(name = "orders")
 public class Order {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)  // auto-increment
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "total_cents", nullable = false)
-    private int totalCents;
+    @Column(nullable = false) private String customerId;
+    @Column(nullable = false) private Double total;
 
-    @Column(unique = true)
-    private String referenceCode;
-
-    @Enumerated(EnumType.STRING)   // store "PENDING" not "0"
+    @Enumerated(EnumType.STRING)
     private OrderStatus status;
 
-    @CreationTimestamp             // Hibernate sets on insert
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp               // Hibernate sets on update
-    private LocalDateTime updatedAt;
-
-    // Relationship: one order has many items
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("createdAt ASC")
-    private List<OrderItem> items = new ArrayList<>();
-
-    // Relationship: many orders belong to one customer
-    @ManyToOne(fetch = FetchType.LAZY)   // LAZY = don't load customer until accessed
-    @JoinColumn(name = "customer_id")
-    private Customer customer;
+    @CreationTimestamp private Instant createdAt;
+    @UpdateTimestamp  private Instant updatedAt;
 }
-\`\`\`
 
-### Key JPA Annotations
-| Annotation | Purpose |
-|-----------|---------|
-| \`@Entity\` | marks class as JPA-managed |
-| \`@Table(name)\` | override table name |
-| \`@Id\` | primary key field |
-| \`@GeneratedValue\` | auto-generate PK (IDENTITY, SEQUENCE, AUTO) |
-| \`@Column\` | column mapping, nullability, uniqueness |
-| \`@OneToMany\`, \`@ManyToOne\` | relationship mapping |
-| \`@Enumerated(STRING)\` | store enum as string (not ordinal!) |
-| \`@Transient\` | field not persisted to DB |
-| \`@Embedded\`, \`@Embeddable\` | embed value object as columns |
-
----
-
-## Spring Data Repositories
-
-Declare an interface — Spring generates the implementation:
-
-\`\`\`java
-// Repository hierarchy (choose the right level):
-Repository<T, ID>              // root interface — no methods
-CrudRepository<T, ID>          // save, findById, findAll, delete, count
-PagingAndSortingRepository     // + findAll(Pageable), findAll(Sort)
-JpaRepository<T, ID>           // + flush, saveAndFlush, deleteInBatch, getOne
-
-// Your repo:
-@Repository
+// Repository — Spring generates the implementation
 public interface OrderRepository extends JpaRepository<Order, Long> {
-
-    // 1. DERIVED QUERIES — Spring parses the method name into SQL
+    // Derived queries from method names — Spring parses these automatically
+    List<Order> findByCustomerId(String customerId);
     List<Order> findByStatus(OrderStatus status);
-    List<Order> findByCustomerIdAndStatusOrderByCreatedAtDesc(Long customerId, OrderStatus status);
-    Optional<Order> findByReferenceCode(String ref);
-    boolean existsByReferenceCode(String ref);
+    Optional<Order> findByIdAndCustomerId(Long id, String customerId);
+
+    // Compound conditions
+    List<Order> findByCustomerIdAndStatus(String customerId, OrderStatus status);
+    List<Order> findByTotalGreaterThan(Double amount);
+    List<Order> findByCreatedAtBetween(Instant from, Instant to);
+    List<Order> findByStatusOrderByCreatedAtDesc(OrderStatus status);
+
+    // Existence and count
+    boolean existsByCustomerIdAndStatus(String customerId, OrderStatus status);
     long countByStatus(OrderStatus status);
-    void deleteByStatusAndCreatedAtBefore(OrderStatus status, LocalDateTime cutoff);
 
-    // 2. @Query — JPQL for complex queries
-    @Query("SELECT o FROM Order o WHERE o.totalCents > :min AND o.status = :status")
-    List<Order> findHighValueOrders(@Param("min") int minCents, @Param("status") OrderStatus status);
-
-    // 3. Native SQL when JPQL can't express it
-    @Query(value = "SELECT * FROM orders WHERE total_cents > ? AND status = ?",
-           nativeQuery = true)
-    List<Order> findHighValueNative(int minCents, String status);
-
-    // 4. Modifying queries (UPDATE/DELETE)
-    @Modifying
-    @Transactional
-    @Query("UPDATE Order o SET o.status = :newStatus WHERE o.id IN :ids")
-    int bulkUpdateStatus(@Param("ids") List<Long> ids, @Param("newStatus") OrderStatus newStatus);
+    // Delete derived
+    void deleteByStatusAndCreatedAtBefore(OrderStatus status, Instant cutoff);
 }
 \`\`\`
 
-### Derived Query Keywords
+### Method Name Keywords
+
 \`\`\`
-findBy / getBy / readBy / queryBy / countBy / existsBy / deleteBy
+Find...By        → SELECT WHERE
+findTop10By      → SELECT TOP 10 WHERE
+findDistinctBy   → SELECT DISTINCT WHERE
+Exists...By      → SELECT COUNT(*) > 0
+Count...By       → SELECT COUNT(*)
+Delete...By      → DELETE WHERE
 
-Comparisons:   Equals, Not, LessThan, GreaterThan, Between, Like, In, NotIn
-Logical:       And, Or
-Null checks:   IsNull, IsNotNull
-Bool:          IsTrue, IsFalse
-String:        StartingWith, EndingWith, Containing, IgnoreCase
-Sorting:       OrderBy + Asc/Desc
+Conditions:
+And, Or                    → AND/OR
+Is, Equals                 → =
+Not                        → <>
+In, NotIn                  → IN (List<T>)
+LessThan, GreaterThan      → < >
+Between                    → BETWEEN
+Like, NotLike              → LIKE
+StartingWith, EndingWith   → LIKE 'x%' / LIKE '%x'
+Containing                 → LIKE '%x%'
+IsNull, IsNotNull          → IS NULL / IS NOT NULL
+True, False                → = true / = false
+
+Order:
+OrderBy...Asc / Desc       → ORDER BY
+
+Limiting:
+Top, First                 → LIMIT (findTop5By...)
 \`\`\`
 
----
-
-## The N+1 Problem — The #1 JPA Performance Bug
-
-This is virtually guaranteed to appear in every interview.
+### JpaRepository Methods
 
 \`\`\`java
-// Service code that looks innocent:
-List<Author> authors = authorRepo.findAll();  // Query 1: SELECT * FROM author
-for (Author a : authors) {
-    System.out.println(a.getBooks().size());  // Query 2,3,4...N: SELECT * FROM book WHERE author_id=?
+// Core methods (via CrudRepository)
+repository.save(entity);              // INSERT or UPDATE (merge if has id)
+repository.saveAll(List.of(a, b));   // batch save
+repository.findById(1L);             // Optional<T>
+repository.findAll();                // List<T> — careful: full table scan
+repository.findAllById(List.of(1,2)); // List<T> for multiple ids
+repository.deleteById(1L);
+repository.deleteAll(entities);
+repository.count();
+repository.existsById(1L);
+
+// JPA-specific (JpaRepository)
+repository.flush();                  // force write to DB in current tx
+repository.saveAndFlush(entity);     // save + flush immediately
+repository.getReferenceById(1L);     // lazy proxy — doesn't hit DB until accessed
+repository.findAll(Sort.by("name"));
+repository.findAll(PageRequest.of(0, 20, Sort.by("createdAt").descending()));
+\`\`\``,
+          code: [
+            `import jakarta.persistence.*;
+import org.springframework.data.jpa.repository.*;
+import org.springframework.data.repository.query.Param;
+import java.time.Instant;
+import java.util.*;
+
+// Complete entity + repository example
+@Entity
+@Table(name = "products", indexes = {
+    @Index(name = "idx_products_category", columnList = "category"),
+    @Index(name = "idx_products_active_price", columnList = "active, price")
+})
+class Product {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    Long id;
+
+    @Column(nullable = false, length = 200) String name;
+    @Column(nullable = false, length = 50)  String category;
+    @Column(nullable = false) double price;
+    @Column(nullable = false) boolean active = true;
+    @Column(nullable = false) int stock = 0;
+
+    @org.hibernate.annotations.CreationTimestamp Instant createdAt;
 }
-// If there are 100 authors: 1 + 100 = 101 queries!
-// If there are 1000 authors: 1001 queries!
-\`\`\`
 
-**Why does this happen?** Collections default to \`FetchType.LAZY\`. Hibernate loads them on first access, one by one.
+interface ProductRepository extends JpaRepository<Product, Long> {
+    // Derived queries
+    List<Product> findByCategory(String category);
+    List<Product> findByCategoryAndActiveTrue(String category);
+    List<Product> findByPriceBetween(double min, double max);
+    List<Product> findByNameContainingIgnoreCase(String keyword);
+    List<Product> findTop10ByCategoryOrderByPriceAsc(String category);
+    Optional<Product> findFirstByCategoryOrderByCreatedAtDesc(String category);
+    long countByCategoryAndActiveTrue(String category);
+    boolean existsByNameIgnoreCase(String name);
 
-### Fix 1: JOIN FETCH (best for most cases)
+    // Pagination
+    org.springframework.data.domain.Page<Product>
+        findByCategory(String category, org.springframework.data.domain.Pageable pageable);
+
+    // Derived delete
+    @org.springframework.transaction.annotation.Transactional
+    void deleteByActiveFalseAndCreatedAtBefore(Instant cutoff);
+}
+
+// Usage demo
+class ProductService {
+    private final ProductRepository repo;
+    ProductService(ProductRepository r) { this.repo = r; }
+
+    void demo() {
+        var p = new Product(); p.name = "Widget"; p.category = "Electronics"; p.price = 29.99;
+        var saved = repo.save(p);
+        System.out.println("Saved: id=" + saved.id);
+
+        repo.findByCategory("Electronics").forEach(pr -> System.out.println("  " + pr.name));
+
+        var page = repo.findByCategory("Electronics",
+            org.springframework.data.domain.PageRequest.of(0, 5,
+                org.springframework.data.domain.Sort.by("price").ascending()));
+        System.out.println("Total: " + page.getTotalElements() + " pages: " + page.getTotalPages());
+    }
+}`,
+            `import org.springframework.data.jpa.repository.*;
+import org.springframework.data.domain.*;
+import java.util.*;
+import java.time.Instant;
+
+// Projections and custom repository fragment
+interface OrderRepository extends JpaRepository<Object, Long> {
+    // Interface projection — only select needed columns
+    interface OrderSummary {
+        Long getId();
+        String getCustomerId();
+        Double getTotal();
+        String getStatus();
+    }
+    List<OrderSummary> findProjectedByCustomerId(String customerId);
+
+    // Class (DTO) projection
+    record OrderDto(Long id, String customerId, Double total) {}
+    // Requires @Query with constructor expression
+}
+
+// Custom repository fragment pattern
+interface CustomOrderRepository {
+    List<Object> findOrdersWithComplexCriteria(String customerId, Double minTotal, Instant from);
+}
+
+// Implementation — naming convention: {InterfaceName}Impl
+class CustomOrderRepositoryImpl implements CustomOrderRepository {
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager em;
+
+    @Override
+    public List<Object> findOrdersWithComplexCriteria(String customerId, Double minTotal, Instant from) {
+        var cb = em.getCriteriaBuilder();
+        var cq = cb.createQuery(Object.class);
+        var root = cq.from(Object.class);
+        // Build criteria dynamically
+        var predicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
+        if (customerId != null) predicates.add(cb.equal(root.get("customerId"), customerId));
+        if (minTotal != null) predicates.add(cb.ge(root.get("total"), minTotal));
+        if (from != null) predicates.add(cb.greaterThan(root.get("createdAt"), from));
+        cq.where(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        return em.createQuery(cq).getResultList();
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What are derived query methods and how does Spring Data parse them?', a: 'Spring Data parses the method name to generate a JPQL query automatically. Pattern: findBy{Criteria}(params). Subject keywords: find, count, exists, delete. Predicate keywords: And, Or, Between, LessThan, GreaterThan, Like, Containing, IsNull, OrderBy, etc. Examples: findByCustomerIdAndStatus(String id, Status s) → WHERE customer_id=? AND status=?; findTop5ByCategoryOrderByPriceAsc(String cat) → WHERE category=? ORDER BY price ASC LIMIT 5. Parsed at startup — method name errors are compile-safe thanks to Spring Data\'s parsing.' },
+            { q: 'What is the difference between findById and getReferenceById?', a: 'findById executes a SELECT immediately and returns Optional<T> — the entity is in memory with all fields populated. getReferenceById returns a Hibernate proxy (lazy reference) without hitting the database — useful when you only need the ID for a foreign key association (e.g. setting order.setCustomer(customerRepo.getReferenceById(id)) avoids a DB round-trip). getReferenceById throws EntityNotFoundException if you access a property on the proxy and the entity doesn\'t exist.' },
+            { q: 'How do you implement pagination with Spring Data JPA?', a: 'Accept a Pageable parameter in the repository method: Page<Order> findByStatus(OrderStatus status, Pageable pageable). Call with: PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending()). The return type Page<T> has: getContent() (the list), getTotalElements(), getTotalPages(), hasNext(), hasPrevious(). Spring Data executes two queries: one for the data (LIMIT/OFFSET) and one COUNT query for total elements. Use Slice<T> instead of Page<T> to skip the COUNT query when you only need hasNext().' },
+            { q: 'What is the repository fragment pattern and when do you use it?', a: 'When derived queries or @Query aren\'t enough (e.g. dynamic Criteria API queries, stored procedures, bulk operations), define a custom interface (CustomOrderRepository) with the methods you need. Create an implementation class named {InterfaceName}Impl. Make your main repository extend both JpaRepository AND your custom interface. Spring Data detects the Impl class automatically and delegates those methods. You get full EntityManager access while keeping Spring Data\'s generated methods.' },
+            { q: 'What is an interface projection in Spring Data JPA?', a: 'Instead of returning full entities, define an interface with getter methods matching entity field names: interface OrderSummary { Long getId(); String getCustomerId(); }. Spring Data generates a proxy that only SELECTs the requested columns — avoiding the overhead of loading the entire entity. Declare: List<OrderSummary> findByCustomerId(String id). Useful when you need only a subset of fields for DTOs or API responses. Class projections (records) require a @Query with a constructor expression: new com.example.OrderDto(o.id, o.customerId).' }
+          ]
+        },
+        {
+          title: 'JPQL, @Query & Native Queries',
+          notes: `## JPQL, @Query & Native Queries
+
+### JPQL — Java Persistence Query Language
+
+JPQL works on entity objects (not tables). It is portable across databases.
+
 \`\`\`java
-@Query("SELECT a FROM Author a JOIN FETCH a.books WHERE a.active = true")
-List<Author> findActiveAuthorsWithBooks();
-// Generates: SELECT a.*, b.* FROM author a JOIN book b ON b.author_id = a.id WHERE a.active = true
-// 1 query total
+// JPQL: entity names and field names, not table/column names
+@Query("SELECT o FROM Order o WHERE o.customerId = :customerId AND o.status = :status")
+List<Order> findByCustomerAndStatus(@Param("customerId") String cId,
+                                   @Param("status") OrderStatus status);
+
+// JOIN
+@Query("SELECT o FROM Order o JOIN o.items i WHERE i.productId = :productId")
+List<Order> findByProductId(@Param("productId") Long productId);
+
+// Constructor expression (DTO result)
+@Query("SELECT new com.example.dto.OrderSummary(o.id, o.customerId, SUM(i.price)) " +
+       "FROM Order o JOIN o.items i " +
+       "WHERE o.status = 'COMPLETED' " +
+       "GROUP BY o.id, o.customerId")
+List<OrderSummary> findCompletedOrderSummaries();
+
+// EXISTS subquery
+@Query("SELECT o FROM Order o WHERE NOT EXISTS " +
+       "(SELECT i FROM OrderItem i WHERE i.order = o AND i.shipped = false)")
+List<Order> findFullyShippedOrders();
+
+// Named parameters preferred over positional (?1, ?2)
+@Query("SELECT u FROM User u WHERE u.email = ?1 AND u.active = ?2")
+Optional<User> findActiveByEmail(String email, boolean active);
 \`\`\`
 
-### Fix 2: @EntityGraph (annotation-based, less SQL knowledge needed)
-\`\`\`java
-@EntityGraph(attributePaths = {"books", "books.reviews"})  // eager-load these associations
-List<Author> findByActive(boolean active);
-// Spring generates the JOIN FETCH automatically
-\`\`\`
-
-### Fix 3: Batch Fetching (global setting, works for nested loads)
-\`\`\`yaml
-spring:
-  jpa:
-    properties:
-      hibernate:
-        default_batch_fetch_size: 20   # load books in batches of 20
-\`\`\`
-Instead of N queries, Hibernate generates: \`SELECT * FROM book WHERE author_id IN (1,2,3,...,20)\`
-
-### Detecting N+1 in Development
-\`\`\`yaml
-spring:
-  jpa:
-    show-sql: true          # prints all SQL (noisy, dev only)
-    properties:
-      hibernate:
-        format_sql: true
-logging:
-  level:
-    org.hibernate.SQL: DEBUG
-    org.hibernate.orm.jdbc.bind: TRACE  # shows bind parameters
-\`\`\`
-
-Or use **datasource-proxy** / **p6spy** to count queries per request:
-\`\`\`
-Request /api/orders → 47 SQL queries executed   ← N+1 detected!
-Request /api/orders → 2 SQL queries executed    ← fixed!
-\`\`\`
-
----
-
-## LAZY vs EAGER Fetching
+### Modifying Queries
 
 \`\`\`java
-@ManyToOne(fetch = FetchType.EAGER)   // default for @ManyToOne, @OneToOne
-@ManyToOne(fetch = FetchType.LAZY)    // ✅ recommended
+// @Modifying for UPDATE/DELETE
+@Transactional
+@Modifying
+@Query("UPDATE Order o SET o.status = :newStatus WHERE o.customerId = :customerId AND o.status = :oldStatus")
+int updateOrderStatus(@Param("customerId") String customerId,
+                      @Param("oldStatus") OrderStatus old,
+                      @Param("newStatus") OrderStatus newStatus);
 
-@OneToMany(fetch = FetchType.LAZY)    // default for @OneToMany, @ManyToMany ✅
-@OneToMany(fetch = FetchType.EAGER)   // ❌ dangerous
+// Bulk delete
+@Transactional
+@Modifying
+@Query("DELETE FROM Order o WHERE o.status = 'CANCELLED' AND o.createdAt < :cutoff")
+int deleteOldCancelled(@Param("cutoff") Instant cutoff);
+
+// IMPORTANT: @Modifying clears the JPA first-level cache by default (clearAutomatically = true in Spring Data 3+)
+// If not cleared, stale entities may be served from L1 cache after the bulk update
+@Modifying(clearAutomatically = true, flushAutomatically = true)
+@Query("UPDATE Product p SET p.price = p.price * :factor WHERE p.category = :category")
+int bulkUpdatePrices(@Param("factor") double factor, @Param("category") String category);
 \`\`\`
 
-**The rule:** make EVERYTHING lazy, fetch explicitly where needed.
-
-EAGER means: every time you load an \`Order\`, it ALWAYS also loads the \`Customer\`, even if you only need the order's total. With 10 associations marked EAGER, one \`findById\` generates 10 joins.
-
-### LazyInitializationException — The Classic Pitfall
+### Native Queries
 
 \`\`\`java
-// Controller (outside the transaction):
-@GetMapping("/orders/{id}")
-OrderDto getOrder(@PathVariable Long id) {
-    Order order = orderService.findById(id);  // transaction ends here
-    return new OrderDto(
-        order.getId(),
-        order.getItems().size()   // ← LazyInitializationException!
-        // Hibernate session closed, can't load items lazily
+// nativeQuery = true: raw SQL, database-specific
+@Query(value = "SELECT * FROM orders WHERE customer_id = :customerId ORDER BY created_at DESC LIMIT :limit",
+       nativeQuery = true)
+List<Order> findRecentOrders(@Param("customerId") String cId, @Param("limit") int limit);
+
+// Native with pagination
+@Query(value = "SELECT * FROM orders WHERE status = :status",
+       countQuery = "SELECT count(*) FROM orders WHERE status = :status",
+       nativeQuery = true)
+Page<Order> findByStatusNative(@Param("status") String status, Pageable pageable);
+
+// Native with projection interface
+@Query(value = "SELECT id, customer_id, total FROM orders WHERE total > :min",
+       nativeQuery = true)
+List<OrderSummary> findHighValueOrders(@Param("min") double min);
+// OrderSummary interface fields must match SELECT column names (case-insensitive)
+\`\`\`
+
+### When to Use Each
+
+\`\`\`
+Derived method   → simple single-entity queries, no joins needed
+@Query JPQL      → complex filtering, joins, aggregations, portable SQL
+@Query native    → DB-specific features (window functions, CTEs, JSONB, full-text search)
+Criteria API     → fully dynamic queries (varies at runtime)
+Specifications   → composable query predicates (spring-data-jpa Specification<T>)
+\`\`\``,
+          code: [
+            `import org.springframework.data.jpa.repository.*;
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.*;
+import java.time.Instant;
+import java.util.*;
+
+interface AdvancedOrderRepository extends JpaRepository<Object, Long> {
+
+    // JPQL with constructor DTO result
+    @Query("SELECT new com.example.dto.CustomerStats(o.customerId, COUNT(o), SUM(o.total)) " +
+           "FROM Order o " +
+           "WHERE o.createdAt BETWEEN :from AND :to " +
+           "GROUP BY o.customerId " +
+           "HAVING SUM(o.total) > :minSpend " +
+           "ORDER BY SUM(o.total) DESC")
+    List<Object> findTopCustomers(
+        @Param("from") Instant from,
+        @Param("to") Instant to,
+        @Param("minSpend") double minSpend
     );
+
+    // JOIN FETCH to avoid N+1 (see next section)
+    @Query("SELECT DISTINCT o FROM Order o " +
+           "JOIN FETCH o.items " +
+           "JOIN FETCH o.customer " +
+           "WHERE o.status = :status")
+    List<Object> findWithItemsAndCustomer(@Param("status") Object status);
+
+    // Paginated JPQL — Spring Data adds pagination automatically
+    @Query("SELECT o FROM Order o WHERE o.customerId = :cId ORDER BY o.createdAt DESC")
+    Page<Object> findCustomerOrders(@Param("cId") String cId, Pageable pageable);
+
+    // Modifying — bulk status update
+    @org.springframework.transaction.annotation.Transactional
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Order o SET o.status = 'EXPIRED' " +
+           "WHERE o.status = 'PENDING' AND o.createdAt < :cutoff")
+    int expireOldPendingOrders(@Param("cutoff") Instant cutoff);
+
+    // Native SQL — PostgreSQL window function (not expressible in JPQL)
+    @Query(value = """
+        SELECT id, customer_id, total,
+               ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY total DESC) as rank_in_customer
+        FROM orders
+        WHERE status = 'COMPLETED'
+        HAVING ROW_NUMBER() OVER (...) <= 3
+        """,
+           nativeQuery = true)
+    List<Object> findTop3PerCustomer();
+
+    // Specification-style: accepts Specification<T> for composable predicates
+    // (extends JpaSpecificationExecutor<Order>)
 }
-\`\`\`
 
-**Wrong fix:** \`spring.jpa.open-in-view=true\` (default true in Boot!) — keeps the DB connection open for the entire HTTP request including the view layer. This is a huge anti-pattern: DB connections held open while rendering HTML/JSON.
+// Usage demo
+class QueryDemo {
+    void demonstrateQueries(AdvancedOrderRepository repo) {
+        // Bulk expire
+        int expired = repo.expireOldPendingOrders(Instant.now().minusSeconds(7 * 24 * 3600));
+        System.out.println("Expired " + expired + " orders");
 
-**Right fix:** fetch everything you need inside the \`@Transactional\` service method, and map to a DTO before returning:
-\`\`\`java
-@Service
-public class OrderService {
-    @Transactional(readOnly = true)   // read-only: performance hint to Hibernate
-    public OrderDto getOrder(Long id) {
-        Order order = repo.findByIdWithItems(id)  // JOIN FETCH items inside transaction
-            .orElseThrow(() -> new NotFoundException(id));
-        return toDto(order);   // map to DTO while session is still open
-        // transaction ends, session closes — but DTO has no lazy associations
+        // Paginated
+        var page = repo.findCustomerOrders("customer-123",
+            PageRequest.of(0, 10, Sort.by("createdAt").descending()));
+        System.out.println("Page 1 of " + page.getTotalPages());
+    }
+}`,
+            `import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.*;
+import jakarta.persistence.criteria.*;
+import java.util.*;
+
+// Specifications — composable, reusable query predicates
+// Repository must extend JpaSpecificationExecutor<T>
+interface ProductRepository2 extends JpaRepository<Object, Long>, JpaSpecificationExecutor<Object> {}
+
+// Specification factory — static helpers for reuse and composition
+class ProductSpecs {
+    static Specification<Object> hasCategory(String category) {
+        return (root, query, cb) -> category == null ? cb.conjunction()
+            : cb.equal(root.get("category"), category);
+    }
+
+    static Specification<Object> isActive() {
+        return (root, query, cb) -> cb.isTrue(root.get("active"));
+    }
+
+    static Specification<Object> priceBetween(Double min, Double max) {
+        return (root, query, cb) -> {
+            if (min != null && max != null) return cb.between(root.get("price"), min, max);
+            if (min != null) return cb.ge(root.get("price"), min);
+            if (max != null) return cb.le(root.get("price"), max);
+            return cb.conjunction(); // no-op predicate
+        };
+    }
+
+    static Specification<Object> nameContains(String keyword) {
+        return (root, query, cb) -> keyword == null ? cb.conjunction()
+            : cb.like(cb.lower(root.get("name")), "%" + keyword.toLowerCase() + "%");
     }
 }
-\`\`\`
 
----
+// Compose specs at runtime
+class ProductSearchService {
+    private final ProductRepository2 repo;
+    ProductSearchService(ProductRepository2 r) { this.repo = r; }
 
-## Pagination
+    List<Object> search(String category, Double minPrice, Double maxPrice,
+                        String keyword, boolean activeOnly) {
+        Specification<Object> spec = Specification.where(null);
 
-\`\`\`java
-@GetMapping("/orders")
-Page<OrderDto> getOrders(@RequestParam int page, @RequestParam int size) {
-    Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-    Page<Order> orderPage = repo.findByStatus(PENDING, pageable);
+        if (category != null) spec = spec.and(ProductSpecs.hasCategory(category));
+        if (minPrice != null || maxPrice != null) spec = spec.and(ProductSpecs.priceBetween(minPrice, maxPrice));
+        if (keyword != null) spec = spec.and(ProductSpecs.nameContains(keyword));
+        if (activeOnly) spec = spec.and(ProductSpecs.isActive());
 
-    return orderPage.map(this::toDto);  // Page.map() preserves pagination metadata
-}
-// Returns: { content: [...], totalElements: 450, totalPages: 45, number: 0, size: 10 }
-\`\`\`
+        return repo.findAll(spec, org.springframework.data.domain.Sort.by("name"));
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is JPQL and how does it differ from SQL?', a: 'JPQL (Java Persistence Query Language) operates on entity objects and their fields — not database tables and columns. Entity class names and Java field names are used (case-sensitive). JPQL is portable: the same query works across MySQL, PostgreSQL, H2, etc. Hibernate translates it to the target dialect. Key differences: FROM Order o (not FROM orders), o.customerId (not o.customer_id), JOIN o.items (navigation via entity association, not explicit FK). Cannot use DB-specific functions (window functions, CTEs) — use native queries for those.' },
+            { q: 'When do you need @Modifying and what does clearAutomatically do?', a: '@Modifying is required on any @Query that executes an UPDATE or DELETE (not a SELECT). Without it, Spring Data treats the query as a SELECT and throws an exception. clearAutomatically = true (default in Spring Data 3+) clears Hibernate\'s first-level (L1) cache after the bulk operation — preventing stale entity reads. flushAutomatically = true ensures pending changes are flushed before the bulk query runs. Always pair @Modifying with @Transactional.' },
+            { q: 'What is a Spring Data Specification and what problem does it solve?', a: 'Specification<T> is a predicate for composable dynamic queries. Implement: (root, query, cb) -> cb.equal(root.get("status"), status). Compose with .and(), .or(), .not(). Repository extends JpaSpecificationExecutor<T>, then call repo.findAll(spec). Solves the problem of building dynamic queries (optional filters at runtime) without string concatenation or dozens of derived query permutations. Each Specification is independently testable. Equivalent to builder pattern for WHERE clauses.' },
+            { q: 'When should you use @Query native SQL vs JPQL?', a: 'Use JPQL for: standard filtering, joins between mapped entities, aggregations, constructor projections — portable, type-checked at startup with spring.jpa.properties.hibernate.query.validation_mode. Use native SQL for: database-specific features (PostgreSQL window functions, JSONB operators, full-text search, CTEs), performance-critical queries that need a specific execution plan, or raw DML not expressible in JPQL. Native queries are not portable and column names must match the DB schema exactly.' },
+            { q: 'What is a constructor expression in JPQL and why use it?', a: 'new com.example.dto.OrderSummary(o.id, o.customerId, SUM(i.price)) in a SELECT clause. Spring creates DTO instances directly from the query results instead of loading full entities. Benefits: SELECT only needed columns (performance), get immutable DTO/record types back instead of managed entities, avoid memory overhead of loading associated collections. The DTO class must have a matching constructor. Works with records (Java 16+). For complex projections, interface projections are simpler (no constructor needed).' }
+          ]
+        },
+        {
+          title: 'N+1 Problem, EntityGraph & Performance',
+          notes: `## N+1 Problem, EntityGraph & Performance
 
-> [!WARNING]
-> Avoid \`findAll()\` on large tables — it loads everything into memory. Always use \`Pageable\` or stream the results.
+The N+1 query problem is the most common JPA performance issue. It occurs when fetching a collection triggers a separate query per element.
 
----
+### The N+1 Problem
 
-## Optimistic vs Pessimistic Locking
-
-**Optimistic locking** (no DB locks, conflict detected on commit):
 \`\`\`java
 @Entity
-public class Product {
-    @Version           // Hibernate manages this column
-    private int version;
-    private int stock;
+public class Order {
+    @Id Long id;
+    @ManyToOne(fetch = FetchType.LAZY)  // default: LAZY
+    @JoinColumn(name = "customer_id")
+    private Customer customer;
+
+    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY)  // default: LAZY
+    private List<OrderItem> items;
 }
 
-// Thread A reads product (version=5, stock=10)
-// Thread B reads product (version=5, stock=10)
-// Thread A updates: stock=9, version becomes 6 → OK
-// Thread B updates: WHERE version=5 → no rows matched! → OptimisticLockException
-// Thread B must retry
-\`\`\`
-Use for: low-contention scenarios (most web apps). No DB locks held between read and write.
+// N+1 scenario
+List<Order> orders = orderRepo.findAll();      // Query 1: SELECT * FROM orders (returns 100 rows)
+for (Order order : orders) {
+    System.out.println(order.getCustomer().getName()); // Queries 2-101: SELECT * FROM customers WHERE id=?
+}
+// Total: 1 + N = 101 queries for 100 orders — catastrophic at scale
 
-**Pessimistic locking** (holds a DB row lock):
+// Detect N+1: enable logging
+// spring.jpa.show-sql=true
+// logging.level.org.hibernate.stat=DEBUG
+// spring.jpa.properties.hibernate.generate_statistics=true
+\`\`\`
+
+### Fix 1: JOIN FETCH in JPQL
+
 \`\`\`java
-@Lock(LockModeType.PESSIMISTIC_WRITE)
-@Query("SELECT p FROM Product p WHERE p.id = :id")
-Optional<Product> findByIdForUpdate(@Param("id") Long id);
-// Generates: SELECT * FROM product WHERE id=? FOR UPDATE
-// Other transactions block until this transaction commits
+@Query("SELECT DISTINCT o FROM Order o JOIN FETCH o.customer JOIN FETCH o.items WHERE o.status = :status")
+List<Order> findWithCustomerAndItems(@Param("status") OrderStatus status);
+// 1 query: SELECT o.*, c.*, i.* FROM orders o JOIN customers c JOIN order_items i
+
+// CAUTION: cannot use JOIN FETCH with pagination (Pageable)
+// Hibernate fetches ALL rows in memory then paginates — OutOfMemoryError risk!
+// Use @EntityGraph instead for pagination + eager loading
 \`\`\`
-Use for: high-contention (inventory updates, financial transfers). Guaranteed no conflicts but reduces concurrency.
 
-> [!EU]
-> The near-certain questions: *"What is N+1 and how do you fix it?"* (JOIN FETCH / @EntityGraph / batch size — show you always check the SQL log); *"Why LAZY over EAGER?"* (avoid surprise joins, fetch explicitly where needed); *"What causes LazyInitializationException?"* (lazy load after session closed, fix by mapping to DTO inside @Transactional, not open-session-in-view). These three topics catch more candidates than any other Spring question.
-`,
-      code: [
-        {
-          lang: 'sql',
-          title: 'N+1 vs JOIN FETCH (SQL the ORM emits)',
-          code: `-- ❌ N+1: ORM first loads authors, then one query PER author for books
-SELECT * FROM author;                          -- 1 query
-SELECT * FROM book WHERE author_id = 1;        -- +1
-SELECT * FROM book WHERE author_id = 2;        -- +1
-SELECT * FROM book WHERE author_id = 3;        -- +1  ... (N queries)
+### Fix 2: @EntityGraph
 
--- ✅ One query with JOIN FETCH (JPQL: "select a from Author a join fetch a.books")
-SELECT a.*, b.*
-FROM   author a
-JOIN   book   b ON b.author_id = a.id;         -- 1 query total
+\`\`\`java
+// Named entity graph on the entity
+@Entity
+@NamedEntityGraph(name = "Order.withCustomerAndItems",
+    attributeNodes = {
+        @NamedAttributeNode("customer"),
+        @NamedAttributeNode(value = "items", subgraph = "items.product"),
+    },
+    subgraphs = @NamedSubgraph(name = "items.product",
+        attributeNodes = @NamedAttributeNode("product"))
+)
+public class Order { ... }
 
--- ✅ Or batch the children: hibernate.default_batch_fetch_size = 20
-SELECT * FROM author;                           -- 1
-SELECT * FROM book WHERE author_id IN (1,2,3);  -- 1 (IN clause)`
-        }
-      ],
-      flashcards: [
-        { q: 'What is the N+1 select problem and how do you fix it?', a: 'Loading N parent rows then firing one extra query per parent to fetch its association = 1+N queries. Fix with JOIN FETCH, @EntityGraph, or batch fetching (@BatchSize / default_batch_fetch_size). Always verify via SQL logs.' },
-        { q: 'What causes LazyInitializationException and the right fix?', a: 'Accessing a lazy association after the persistence context/session has closed (e.g. in the view layer). Fix by fetching the data within the transaction (JOIN FETCH/entity graph) or mapping to a DTO in the service — not by enabling open-session-in-view.' },
-        { q: 'Default fetch types and recommendation?', a: '@ManyToOne/@OneToOne default EAGER; collections default LAZY. Best practice: make everything LAZY and fetch explicitly where needed to avoid surprise joins and N+1.' },
-        { q: 'Optimistic vs pessimistic locking in JPA?', a: 'Optimistic uses a @Version column and fails on conflicting concurrent writes (no DB locks held) — good for low contention. Pessimistic (@Lock PESSIMISTIC_WRITE) takes a DB row lock for the transaction — for high-contention critical sections.' }
-      ]
+// Repository method referencing the named graph
+@EntityGraph("Order.withCustomerAndItems")
+Page<Order> findByStatus(OrderStatus status, Pageable pageable);  // safe with pagination!
+
+// Ad-hoc entity graph (no named graph needed)
+@EntityGraph(attributePaths = {"customer", "items", "items.product"})
+List<Order> findByCustomerId(String customerId);
+\`\`\`
+
+### Fix 3: DTO Projection
+
+\`\`\`java
+// Don't load entities at all — select only what you need
+@Query("SELECT new com.example.dto.OrderListItem(o.id, c.name, o.total, o.status) " +
+       "FROM Order o JOIN o.customer c WHERE o.status = :status")
+Page<OrderListItem> findOrderList(@Param("status") OrderStatus status, Pageable pageable);
+// No lazy loading possible on a DTO → no N+1
+\`\`\`
+
+### Hibernate Batch Fetching
+
+\`\`\`java
+// Hibernate collects lazy-loaded IDs and fetches in one IN(...) query
+// Global setting
+spring.jpa.properties.hibernate.default_batch_fetch_size=16
+
+// Per-collection / association
+@OneToMany
+@BatchSize(size = 25)
+private List<OrderItem> items;
+
+// Effect: loading 100 orders → 1 query + 4 IN queries (25 per batch) = 5 total
+// Vs N+1: 101 queries. Not perfect but much better without JOIN FETCH overhead
+\`\`\`
+
+### Other Performance Tips
+
+\`\`\`java
+// 1. Always use LAZY fetching (the default for @OneToMany / @ManyToMany)
+//    EAGER fetching on @OneToMany is almost always wrong
+
+// 2. For bulk inserts, disable dirty checking and flush regularly
+@Transactional
+public void bulkInsert(List<Product> products) {
+    for (int i = 0; i < products.size(); i++) {
+        em.persist(products.get(i));
+        if (i % 50 == 0) { em.flush(); em.clear(); }  // prevent L1 cache growth
     }
+}
+
+// 3. Use saveAll for batch operations in Spring Data
+repo.saveAll(products);  // Hibernate may batch these with spring.jpa.properties.hibernate.jdbc.batch_size=50
+
+// 4. Avoid Optional.get() after findById without checking — use orElseThrow()
+Order order = repo.findById(id).orElseThrow(() -> new OrderNotFoundException(id));
+
+// 5. Use Hibernate second-level cache for read-mostly entities
+@Entity @Cacheable
+@org.hibernate.annotations.Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
+public class Category { ... }
+\`\`\``,
+          code: [
+            `import org.springframework.data.jpa.repository.*;
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.*;
+import jakarta.persistence.*;
+
+// Entity with associations
+@Entity
+class BlogPost {
+    @Id @GeneratedValue Long id;
+    String title;
+    String content;
+
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "author_id")
+    User author;
+
+    @OneToMany(mappedBy = "post", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    List<Comment> comments = new ArrayList<>();
+}
+
+@Entity class User { @Id Long id; String name; String email; }
+@Entity class Comment { @Id @GeneratedValue Long id; String text; @ManyToOne BlogPost post; @ManyToOne User author; }
+
+@NamedEntityGraph(name = "BlogPost.withAuthorAndComments",
+    attributeNodes = {
+        @NamedAttributeNode("author"),
+        @NamedAttributeNode("comments")
+    })
+interface BlogPostRepository extends JpaRepository<BlogPost, Long> {
+
+    // BAD — causes N+1 when accessing author
+    List<BlogPost> findByTitleContaining(String keyword);
+
+    // GOOD — JOIN FETCH for non-paginated lists
+    @Query("SELECT DISTINCT p FROM BlogPost p JOIN FETCH p.author WHERE p.title LIKE %:kw%")
+    List<BlogPost> findWithAuthorByTitle(@Param("kw") String kw);
+
+    // GOOD — EntityGraph for paginated results
+    @EntityGraph("BlogPost.withAuthorAndComments")
+    Page<BlogPost> findAll(Pageable pageable);
+
+    // GOOD — ad-hoc EntityGraph
+    @EntityGraph(attributePaths = {"author", "comments", "comments.author"})
+    Optional<BlogPost> findWithEverythingById(Long id);
+
+    // BEST for lists — DTO projection avoids lazy loading entirely
+    @Query("SELECT new com.example.dto.PostSummary(p.id, p.title, u.name, COUNT(c)) " +
+           "FROM BlogPost p JOIN p.author u LEFT JOIN p.comments c " +
+           "GROUP BY p.id, p.title, u.name")
+    Page<Object> findSummaries(Pageable pageable);
+}`,
+            `import jakarta.persistence.*;
+import org.springframework.stereotype.*;
+import org.springframework.transaction.annotation.*;
+import java.util.*;
+
+// Bulk operations without N+1
+@Service
+@Transactional
+class InventoryBulkService {
+    @PersistenceContext private EntityManager em;
+
+    // Batch insert — flush and clear L1 cache every 50 records
+    public int bulkInsert(List<Object[]> csvRows) {
+        int count = 0;
+        for (var row : csvRows) {
+            Object product = createProduct(row);
+            em.persist(product);
+            if (++count % 50 == 0) {
+                em.flush();  // send to DB
+                em.clear();  // clear L1 cache — allows GC of persisted entities
+            }
+        }
+        return count;
+    }
+
+    // Bulk UPDATE via JPQL — no entity loading at all
+    public int deactivateCategoryProducts(String category) {
+        return em.createQuery(
+            "UPDATE Product p SET p.active = false, p.updatedAt = CURRENT_TIMESTAMP " +
+            "WHERE p.category = :cat AND p.stock = 0")
+            .setParameter("cat", category)
+            .executeUpdate();
+        // 1 SQL UPDATE — no entities loaded into memory
+    }
+
+    // Stateless session for read-only bulk processing (Hibernate-specific)
+    // For very large reads: use ScrollableResults or Stream<T>
+    @Query("SELECT p FROM Product p WHERE p.category = :cat") // in repository
+    // Then stream:
+    // try (Stream<Product> stream = repo.streamByCategory(cat)) {
+    //     stream.forEach(p -> process(p));
+    // }
+
+    private Object createProduct(Object[] row) { return new Object(); }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the N+1 query problem and how do you detect it?', a: 'N+1 occurs when loading N entities triggers N additional queries for a lazy-loaded association. Loading 100 orders then accessing order.getCustomer() triggers 100 more SELECT queries — 101 total instead of 1. Detect with: spring.jpa.show-sql=true and count the queries; spring.jpa.properties.hibernate.generate_statistics=true for query counts; Hibernate Hypersistence Optimizer (library) automatically detects N+1 in tests; p6spy library to intercept JDBC calls.' },
+            { q: 'What are the three main solutions to the N+1 problem?', a: '(1) JOIN FETCH in @Query: SELECT DISTINCT o FROM Order o JOIN FETCH o.customer — fetches associations in one SQL JOIN. Cannot be used with Pageable (causes in-memory pagination). (2) @EntityGraph: attribute paths specify which associations to eager-load. Works with pagination. Ad-hoc: @EntityGraph(attributePaths={"customer","items"}) on the repo method. (3) DTO projection: @Query with constructor expression returns only needed fields — no entity, no lazy loading, no N+1 possible.' },
+            { q: 'Why can\'t you use JOIN FETCH with Pageable (pagination)?', a: 'JOIN FETCH with a @OneToMany produces a result set with duplicate parent rows (one per child). SQL LIMIT/OFFSET would cut through the middle of a parent\'s children, returning wrong data. Hibernate detects this and issues a warning: "HHH90003004: firstResult/maxResults specified with collection fetch; applying in memory!" — it loads ALL rows into memory then paginates in Java. This can cause OutOfMemoryError on large datasets. Fix: use @EntityGraph instead of JOIN FETCH for paginated queries.' },
+            { q: 'What is hibernate.default_batch_fetch_size and how does it help?', a: 'Setting spring.jpa.properties.hibernate.default_batch_fetch_size=25 enables Hibernate batch fetching. Instead of issuing 1 SELECT per lazy-loaded association (N+1), Hibernate collects IDs and fetches them in batches using IN (...): SELECT * FROM customers WHERE id IN (1,2,3,...,25). For 100 orders: 1 order query + 4 batch queries = 5 total instead of 101. Not as fast as JOIN FETCH for a single large result, but very effective for mixed access patterns and works seamlessly with existing code.' },
+            { q: 'What is the difference between FetchType.EAGER and FetchType.LAZY and which should you default to?', a: 'EAGER: the association is loaded immediately when the parent entity is loaded — always. This causes joins even when the association is not needed. @ManyToOne defaults to EAGER which is often problematic. LAZY: the association is loaded only when first accessed (proxy is returned). Lazy loading requires an active Hibernate session — access outside a transaction causes LazyInitializationException. Default: use LAZY everywhere. Add JOIN FETCH or @EntityGraph on the specific repository methods that actually need the association. Never use @OneToMany(fetch=EAGER).' }
+          ]
+        }
+      ]
+    },
+
+
   ]
 },
 
