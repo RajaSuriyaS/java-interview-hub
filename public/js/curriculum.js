@@ -7880,14 +7880,885 @@ public class GenericStack<E> {
       ]
     },
 
-        {
+    {
       id: '0.9',
       title: 'Collections Deep Dive — List, Set, Map, Queue',
       hours: 4,
-      notes: `*[Module 0.9 — under construction. Will cover: ArrayList, LinkedList, HashSet, TreeSet, HashMap, TreeMap, Queue, iteration, equals/hashCode. Roadmap: build after 0.8.]*`
+      sections: [
+        {
+          title: 'List — ArrayList vs LinkedList vs CopyOnWrite',
+          notes: `## List — ArrayList vs LinkedList vs CopyOnWrite
+
+A \`List\` is an **ordered, index-addressable sequence** that allows duplicates. Three implementations cover 99% of real use cases.
+
+### The Collections Hierarchy (simplified)
+
+\`\`\`mermaid
+graph TD
+    I[Iterable] --> CO[Collection]
+    CO --> L[List]
+    CO --> S[Set]
+    CO --> Q[Queue]
+    L --> AL[ArrayList]
+    L --> LL[LinkedList]
+    L --> COW[CopyOnWriteArrayList]
+    Q --> PQ[PriorityQueue]
+    Q --> AD[ArrayDeque]
+    LL --> DE[Deque]
+    style AL fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style LL fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
+    style PQ fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+\`\`\`
+
+### ArrayList — The Default Choice
+
+Backed by a resizable \`Object[]\`. Capacity grows by ~50% when full (Java uses \`(oldCapacity * 3) / 2 + 1\`).
+
+| Operation | Complexity | Notes |
+|---|---|---|
+| \`get(i)\` / \`set(i,v)\` | O(1) | Direct array index |
+| \`add(e)\` (at end) | O(1) amortised | Occasional O(n) resize |
+| \`add(i,e)\` (middle) | O(n) | Shifts elements right |
+| \`remove(i)\` (middle) | O(n) | Shifts elements left |
+| \`contains(e)\` | O(n) | Linear scan |
+| \`size()\` | O(1) | Stored field |
+
+\`\`\`java
+List<String> list = new ArrayList<>(100);  // pre-size to avoid resizes
+list.add("a");
+list.add("b");
+list.add(0, "z");        // O(n) — shifts a, b right
+list.remove(1);          // O(n) — shifts back
+System.out.println(list); // [z, b]
+
+// Iteration — prefer for-each or iterator (not index loop for removal)
+Iterator<String> it = list.iterator();
+while (it.hasNext()) {
+    if (it.next().equals("z")) it.remove();  // safe removal during iteration
+}
+// list.remove() inside a for-each loop → ConcurrentModificationException!
+\`\`\`
+
+### LinkedList — When Is It Actually Better?
+
+Backed by a doubly-linked node chain. Widely misunderstood — usually **slower** than \`ArrayList\` in practice due to pointer chasing (cache misses).
+
+| Operation | Complexity | vs ArrayList |
+|---|---|---|
+| \`get(i)\` | O(n) | Much worse |
+| \`add(e)\` (at end) | O(1) | Same |
+| \`addFirst\` / \`addLast\` | O(1) | Better |
+| \`removeFirst\` / \`removeLast\` | O(1) | Better |
+| \`add(i,e)\` (middle after traversal) | O(1) + O(n) seek | Usually worse |
+| Memory | O(n) + node overhead | Worse (2 pointers per node) |
+
+**Use LinkedList only when:** you are building a queue/deque and need O(1) head/tail operations. Even then, \`ArrayDeque\` is usually faster.
+
+### CopyOnWriteArrayList — Thread-Safe Reads
+
+Every write (\`add\`, \`remove\`, \`set\`) creates a **fresh copy** of the underlying array. Reads are lock-free and see a consistent snapshot.
+
+\`\`\`java
+CopyOnWriteArrayList<String> cowList = new CopyOnWriteArrayList<>();
+cowList.add("a");
+cowList.add("b");
+
+// Safe to iterate while another thread modifies — you see the snapshot
+for (String s : cowList) {
+    cowList.add("c");  // no ConcurrentModificationException
+}
+System.out.println(cowList); // [a, b, c, c, ...]
+\`\`\`
+
+**Use when:** reads vastly outnumber writes (event listener lists, UI component lists). **Avoid when:** writes are frequent — each write copies the entire array.
+
+### Choosing Between List Implementations
+
+| Scenario | Choice |
+|---|---|
+| General purpose (default) | \`ArrayList\` |
+| Queue / deque operations | \`ArrayDeque\` (not LinkedList) |
+| Thread-safe, read-heavy | \`CopyOnWriteArrayList\` |
+| Thread-safe, write-heavy | \`Collections.synchronizedList\` or concurrent queue |
+| Immutable list | \`List.of(...)\` (Java 9+) |
+
+### List.of vs Arrays.asList vs new ArrayList
+
+\`\`\`java
+List<String> immutable = List.of("a", "b", "c");      // Java 9 — truly immutable
+List<String> fixedSize = Arrays.asList("a", "b", "c"); // fixed size, but set() works
+List<String> mutable   = new ArrayList<>(Arrays.asList("a", "b", "c")); // fully mutable
+
+immutable.add("d");   // UnsupportedOperationException
+fixedSize.add("d");   // UnsupportedOperationException (size fixed)
+fixedSize.set(0,"z"); // OK — replaces element
+mutable.add("d");     // OK
+\`\`\`
+
+> **Interview trap:** \`Arrays.asList()\` returns a fixed-size list backed by the original array — you can \`set()\` but not \`add()\` or \`remove()\`. \`List.of()\` is truly immutable and also does not permit null elements.`,
+          code: [
+            `import java.util.*;
+
+public class ListDemo {
+    public static void main(String[] args) {
+        // ArrayList — pre-size to avoid resizing
+        List<Integer> arr = new ArrayList<>(10);
+        for (int i = 1; i <= 5; i++) arr.add(i);
+        System.out.println("ArrayList: " + arr);         // [1,2,3,4,5]
+
+        arr.add(2, 99);   // insert at index 2 — O(n) shift
+        System.out.println("After insert: " + arr);      // [1,2,99,3,4,5]
+
+        // Safe removal during iteration
+        Iterator<Integer> it = arr.iterator();
+        while (it.hasNext()) {
+            if (it.next() % 2 == 0) it.remove();        // removes 2, 4 safely
+        }
+        System.out.println("Odds only: " + arr);         // [1,99,3,5]
+
+        // LinkedList as Deque — O(1) head/tail
+        Deque<String> deque = new LinkedList<>();
+        deque.addFirst("middle");
+        deque.addFirst("front");
+        deque.addLast("back");
+        System.out.println("Deque: " + deque);           // [front,middle,back]
+        System.out.println("Poll: " + deque.pollFirst()); // front
+
+        // Immutability variants
+        List<String> immutable = List.of("a","b","c");
+        List<String> fixedSize = Arrays.asList("x","y","z");
+        try { immutable.add("d"); } catch (UnsupportedOperationException e) {
+            System.out.println("List.of: immutable ✓");
+        }
+        fixedSize.set(0, "X");                           // OK — can set
+        System.out.println("Arrays.asList after set: " + fixedSize); // [X,y,z]
+    }
+}`,
+            `import java.util.*;
+import java.util.concurrent.*;
+
+public class ListPerformance {
+    static final int N = 100_000;
+
+    static long time(Runnable r) {
+        long s = System.nanoTime(); r.run(); return System.nanoTime() - s;
+    }
+
+    public static void main(String[] args) {
+        // ArrayList vs LinkedList: random access
+        List<Integer> array  = new ArrayList<>(N);
+        List<Integer> linked = new LinkedList<>();
+        for (int i = 0; i < N; i++) { array.add(i); linked.add(i); }
+
+        long tArr = time(() -> { for (int i=0;i<N;i++) array.get(i%N); });
+        long tLnk = time(() -> { for (int i=0;i<N;i++) linked.get(i%N); });
+        System.out.printf("Random get(i): ArrayList=%dms  LinkedList=%dms%n",
+            tArr/1_000_000, tLnk/1_000_000);
+        // ArrayList wins by 10-100x due to cache locality
+
+        // ArrayDeque vs LinkedList for queue operations
+        Deque<Integer> adq = new ArrayDeque<>(N);
+        Deque<Integer> llq = new LinkedList<>();
+        long tAdq = time(() -> { for(int i=0;i<N;i++){adq.addLast(i);adq.pollFirst();} });
+        long tLlq = time(() -> { for(int i=0;i<N;i++){llq.addLast(i);llq.pollFirst();} });
+        System.out.printf("Queue ops:     ArrayDeque=%dms  LinkedList=%dms%n",
+            tAdq/1_000_000, tLlq/1_000_000);
+
+        // CopyOnWriteArrayList — read-heavy scenario
+        CopyOnWriteArrayList<String> cow = new CopyOnWriteArrayList<>();
+        cow.addAll(Arrays.asList("a","b","c"));
+        for (String s : cow) {         // safe — iterates snapshot
+            // concurrent modifications won't cause CME
+        }
+        System.out.println("COW size: " + cow.size());
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'Why is ArrayList.get(i) O(1) but LinkedList.get(i) O(n)?', a: 'ArrayList is backed by a contiguous array — index i maps directly to memory offset. LinkedList is a doubly-linked chain — to reach index i you must traverse i nodes from the head (or from the tail if closer). This also means terrible cache performance for LinkedList.' },
+            { q: 'What is the difference between List.of() and Arrays.asList()?', a: 'List.of() (Java 9+) is truly immutable — no set, add, remove, and no null elements allowed. Arrays.asList() returns a fixed-size list backed by the original array — add/remove throw UnsupportedOperationException, but set() works and changes reflect in the backing array.' },
+            { q: 'When does ArrayList throw ConcurrentModificationException?', a: 'When the list is structurally modified (add/remove) while iterating with a for-each loop or explicit Iterator, and the modification is not done through the iterator\'s own remove() method. The iterator maintains a modCount; any external change increments it and the next hasNext()/next() detects the mismatch and throws.' },
+            { q: 'When should you use CopyOnWriteArrayList?', a: 'When reads vastly outnumber writes — e.g. event listener lists, plugin registries, UI observer lists. Every write copies the entire array, making it very expensive for write-heavy scenarios. Reads are completely lock-free and see a stable snapshot.' },
+            { q: 'Why is ArrayDeque usually preferred over LinkedList for queue operations?', a: 'ArrayDeque uses a resizable circular array — O(1) addFirst/addLast/pollFirst/pollLast with excellent cache locality. LinkedList allocates a new node object per element (GC pressure, pointer chasing). ArrayDeque is faster in practice for all queue/deque use cases.' }
+          ]
+        },
+        {
+          title: 'Set — HashSet, LinkedHashSet, TreeSet',
+          notes: `## Set — HashSet, LinkedHashSet, TreeSet
+
+A \`Set\` is a collection that **does not allow duplicates**. Membership testing is the primary operation — choose the implementation based on ordering needs.
+
+### The Three Main Set Implementations
+
+\`\`\`mermaid
+graph TD
+    S[Set Interface]
+    S --> HS["HashSet\n(no order, fastest)"]
+    S --> LHS["LinkedHashSet\n(insertion order)"]
+    S --> TS["TreeSet\n(sorted order, NavigableSet)"]
+    HS -. "backs" .-> HM[HashMap]
+    LHS -. "backs" .-> LHM[LinkedHashMap]
+    TS -. "backs" .-> TM[TreeMap]
+    style HS fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style LHS fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
+    style TS fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+\`\`\`
+
+Every Set is backed by a Map — elements are stored as keys with a dummy value.
+
+### HashSet — Fastest, No Order
+
+\`\`\`java
+Set<String> set = new HashSet<>();
+set.add("banana");
+set.add("apple");
+set.add("cherry");
+set.add("apple");         // duplicate — silently ignored, returns false
+System.out.println(set);  // [banana, cherry, apple] (order undefined)
+System.out.println(set.contains("apple")); // true — O(1)
+System.out.println(set.contains("mango")); // false — O(1)
+
+// Iteration order is NOT guaranteed
+for (String s : set) System.out.print(s + " ");
+\`\`\`
+
+| Operation | Complexity |
+|---|---|
+| \`add(e)\` | O(1) average, O(n) worst |
+| \`remove(e)\` | O(1) average |
+| \`contains(e)\` | O(1) average |
+| Iteration | O(capacity + n) |
+
+### LinkedHashSet — Insertion-Order Iteration
+
+Extends \`HashSet\` by adding a doubly-linked list through the entries. Same O(1) operations as \`HashSet\`, but iteration reflects insertion order:
+
+\`\`\`java
+Set<String> linked = new LinkedHashSet<>();
+linked.add("banana");
+linked.add("apple");
+linked.add("cherry");
+linked.add("apple");    // ignored
+System.out.println(linked); // [banana, apple, cherry] — insertion order preserved
+\`\`\`
+
+Use when you need **both** O(1) lookup and predictable iteration order (e.g. LRU cache keysets, deduplication preserving order).
+
+### TreeSet — Sorted, NavigableSet
+
+Backed by a Red-Black tree. Elements must implement \`Comparable\` or you must provide a \`Comparator\`. Provides powerful navigation methods:
+
+\`\`\`java
+TreeSet<Integer> ts = new TreeSet<>();
+ts.add(5); ts.add(2); ts.add(8); ts.add(1); ts.add(9);
+System.out.println(ts);             // [1, 2, 5, 8, 9] — always sorted
+
+System.out.println(ts.first());    // 1
+System.out.println(ts.last());     // 9
+System.out.println(ts.floor(6));   // 5 — largest element ≤ 6
+System.out.println(ts.ceiling(6)); // 8 — smallest element ≥ 6
+System.out.println(ts.lower(5));   // 2 — strictly less than 5
+System.out.println(ts.higher(5));  // 8 — strictly greater than 5
+
+// Range views — backed by the TreeSet (live)
+NavigableSet<Integer> range = ts.subSet(2, true, 8, true); // [2..8] inclusive
+System.out.println(range);          // [2, 5, 8]
+range.add(3);                       // adds to backing TreeSet too
+System.out.println(ts);             // [1, 2, 3, 5, 8, 9]
+\`\`\`
+
+| Operation | Complexity |
+|---|---|
+| \`add\` / \`remove\` / \`contains\` | O(log n) |
+| \`first\` / \`last\` | O(log n) |
+| \`floor\` / \`ceiling\` / \`lower\` / \`higher\` | O(log n) |
+| Iteration (in order) | O(n) |
+
+### The equals/hashCode Contract for Sets
+
+\`HashSet\` and \`LinkedHashSet\` rely on \`equals()\` and \`hashCode()\` to determine duplicates. **If you override one, you must override both:**
+
+\`\`\`java
+// Broken — equals overridden but not hashCode
+class Point {
+    int x, y;
+    @Override public boolean equals(Object o) { ... }
+    // No hashCode — two equal Points get different hash → both added to Set!
+}
+
+// Correct
+class Point {
+    int x, y;
+    @Override public boolean equals(Object o) {
+        if (!(o instanceof Point p)) return false;
+        return x == p.x && y == p.y;
+    }
+    @Override public int hashCode() {
+        return Objects.hash(x, y);
+    }
+}
+
+Set<Point> set = new HashSet<>();
+set.add(new Point(1, 2));
+set.add(new Point(1, 2));  // duplicate if equals+hashCode correct
+System.out.println(set.size()); // 1 (correct) or 2 (broken)
+\`\`\`
+
+\`TreeSet\` uses \`compareTo()\` (or \`Comparator\`) for equality — **not** \`equals()\`. If \`compareTo()\` returns 0, the element is considered a duplicate even if \`equals()\` returns false.
+
+### Practical Patterns
+
+\`\`\`java
+// Deduplication while preserving order
+List<String> deduped = new ArrayList<>(new LinkedHashSet<>(inputList));
+
+// Set operations
+Set<Integer> a = new HashSet<>(Set.of(1, 2, 3, 4));
+Set<Integer> b = new HashSet<>(Set.of(3, 4, 5, 6));
+
+a.retainAll(b);  // intersection: a = [3, 4]
+a.addAll(b);     // union (but a was modified above — on a fresh copy)
+a.removeAll(b);  // difference
+
+// Immutable set (Java 9+)
+Set<String> immutable = Set.of("a", "b", "c"); // no nulls, no duplicates
+\`\`\``,
+          code: [
+            `import java.util.*;
+
+public class SetDemo {
+    public static void main(String[] args) {
+        // HashSet — fastest, no ordering
+        Set<String> hash = new HashSet<>(Arrays.asList("banana","apple","cherry","apple"));
+        System.out.println("HashSet size: " + hash.size());     // 3 (duplicate removed)
+        System.out.println("Contains apple: " + hash.contains("apple")); // true
+
+        // LinkedHashSet — insertion-order iteration
+        Set<String> linked = new LinkedHashSet<>(Arrays.asList("banana","apple","cherry","apple"));
+        System.out.println("LinkedHashSet: " + linked); // [banana, apple, cherry]
+
+        // TreeSet — sorted, with navigation
+        TreeSet<Integer> tree = new TreeSet<>(Arrays.asList(5,2,8,1,9,3,7));
+        System.out.println("TreeSet: " + tree);           // [1,2,3,5,7,8,9]
+        System.out.println("floor(6): " + tree.floor(6)); // 5
+        System.out.println("ceiling(6): " + tree.ceiling(6)); // 7
+        System.out.println("subSet(3,8): " + tree.subSet(3, true, 8, false)); // [3,5,7]
+
+        // Set operations
+        Set<Integer> a = new HashSet<>(Arrays.asList(1,2,3,4,5));
+        Set<Integer> b = new HashSet<>(Arrays.asList(4,5,6,7,8));
+        Set<Integer> union = new HashSet<>(a); union.addAll(b);
+        Set<Integer> inter = new HashSet<>(a); inter.retainAll(b);
+        Set<Integer> diff  = new HashSet<>(a); diff.removeAll(b);
+        System.out.println("Union: " + new TreeSet<>(union));  // [1..8]
+        System.out.println("Inter: " + inter);  // [4, 5]
+        System.out.println("Diff:  " + diff);   // [1, 2, 3]
+    }
+}`,
+            `import java.util.*;
+
+// equals + hashCode contract for HashSet correctness
+class Point implements Comparable<Point> {
+    final int x, y;
+    Point(int x, int y) { this.x = x; this.y = y; }
+
+    @Override public boolean equals(Object o) {
+        if (!(o instanceof Point p)) return false;
+        return x == p.x && y == p.y;
+    }
+    @Override public int hashCode() { return Objects.hash(x, y); }
+    @Override public int compareTo(Point o) {
+        int cx = Integer.compare(x, o.x);
+        return cx != 0 ? cx : Integer.compare(y, o.y);
+    }
+    @Override public String toString() { return "(" + x + "," + y + ")"; }
+}
+
+public class SetEqualsHashCode {
+    public static void main(String[] args) {
+        Set<Point> hashSet = new HashSet<>();
+        hashSet.add(new Point(1, 2));
+        hashSet.add(new Point(3, 4));
+        hashSet.add(new Point(1, 2));   // duplicate — same equals+hashCode
+        System.out.println("HashSet: " + hashSet + " size=" + hashSet.size()); // size=2
+
+        TreeSet<Point> treeSet = new TreeSet<>();
+        treeSet.add(new Point(3, 4));
+        treeSet.add(new Point(1, 2));
+        treeSet.add(new Point(1, 2));   // duplicate — same compareTo result
+        System.out.println("TreeSet: " + treeSet + " size=" + treeSet.size()); // size=2
+
+        // Deduplication pattern
+        List<String> withDups = Arrays.asList("a","b","a","c","b","d");
+        List<String> deduped  = new ArrayList<>(new LinkedHashSet<>(withDups));
+        System.out.println("Deduped (order preserved): " + deduped); // [a,b,c,d]
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is every Set implementation backed by?', a: 'A Map — elements are stored as map keys with a dummy value (Boolean.TRUE or a shared PRESENT object). HashSet → HashMap, LinkedHashSet → LinkedHashMap, TreeSet → TreeMap. This is why Set operations have the same complexity as the corresponding Map operations.' },
+            { q: 'What happens if you add an object to a HashSet but forget to override hashCode?', a: 'Two logically equal objects will have different hash codes (from Object.hashCode which is identity-based), so they hash to different buckets — both get added. The set appears to contain duplicates. The contract: equal objects must have equal hash codes.' },
+            { q: 'Does TreeSet use equals() to check for duplicates?', a: 'No — TreeSet uses compareTo() (or the provided Comparator). If compareTo() returns 0, the element is considered a duplicate and is not added, even if equals() returns false. This means inconsistency between equals and compareTo can cause subtle bugs in TreeSets.' },
+            { q: 'When would you choose LinkedHashSet over HashSet?', a: 'When you need O(1) membership testing AND predictable iteration order (insertion order). Common use cases: deduplication while preserving order (new LinkedHashSet<>(list)), LRU cache key tracking, any scenario where you need "seen in the order first encountered".' },
+            { q: 'What does TreeSet.floor(e) return?', a: 'The greatest element in the set that is less than or equal to e. Returns null if no such element exists. Counterpart: ceiling(e) returns the smallest element ≥ e. lower(e) is strictly less than e; higher(e) is strictly greater. All O(log n).' }
+          ]
+        },
+        {
+          title: 'Map — HashMap, LinkedHashMap, TreeMap, internals',
+          notes: `## Map — HashMap, LinkedHashMap, TreeMap, internals
+
+A \`Map\` stores **key-value pairs** with unique keys. It is the most-used non-list data structure in Java — almost every real application relies on it.
+
+### HashMap Internals (Java 8+)
+
+HashMap uses an **array of buckets**. The key's \`hashCode()\` determines which bucket. Within a bucket:
+- **< 8 entries** → linked list (O(n) worst case)
+- **≥ 8 entries** → Red-Black tree (O(log n) worst case) — "treeification"
+- Tree reverts to list when entries drop below 6
+
+\`\`\`mermaid
+graph LR
+    K[Key] --> HC["hashCode()"]
+    HC --> IDX["index = (n-1) & hash"]
+    IDX --> B0["Bucket 0: [Entry→Entry]"]
+    IDX --> B3["Bucket 3: [Entry→Entry→Entry...8 → RB-Tree]"]
+    IDX --> BN["Bucket n-1: []"]
+    style B3 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+\`\`\`
+
+**Default initial capacity:** 16 buckets. **Load factor:** 0.75 — rehash when 75% full. After rehash, capacity doubles and all entries are redistributed.
+
+\`\`\`java
+// Pre-size to avoid rehashing: capacity = expected / 0.75 + 1
+Map<String, Integer> map = new HashMap<>(expectedEntries * 4 / 3 + 1);
+\`\`\`
+
+### Core Map Operations
+
+\`\`\`java
+Map<String, Integer> scores = new HashMap<>();
+scores.put("Alice", 95);
+scores.put("Bob", 87);
+scores.put("Alice", 100);         // replaces 95, returns old value 95
+
+scores.get("Alice");              // 100
+scores.getOrDefault("Charlie", 0); // 0 — no NPE for missing key
+scores.containsKey("Bob");        // true — O(1)
+scores.containsValue(87);         // true — O(n)
+
+// Java 8 compute methods — the modern way
+scores.putIfAbsent("Charlie", 70);           // only puts if absent
+scores.merge("Bob", 10, Integer::sum);       // Bob: 87 + 10 = 97
+scores.compute("Alice", (k, v) -> v == null ? 1 : v + 1); // 101
+
+// Word frequency — classic Map pattern
+Map<String, Integer> freq = new HashMap<>();
+for (String word : "the quick brown fox the quick".split(" ")) {
+    freq.merge(word, 1, Integer::sum);
+}
+// {the=2, quick=2, brown=1, fox=1}
+\`\`\`
+
+### Iteration
+
+\`\`\`java
+// Most efficient — iterate entrySet()
+for (Map.Entry<String, Integer> e : scores.entrySet()) {
+    System.out.println(e.getKey() + " → " + e.getValue());
+}
+
+// Java 8+
+scores.forEach((k, v) -> System.out.println(k + " → " + v));
+
+// Keys only, values only
+for (String key : scores.keySet()) { ... }
+for (int val : scores.values())    { ... }
+\`\`\`
+
+### LinkedHashMap — Insertion-Order or Access-Order
+
+\`LinkedHashMap\` maintains a doubly-linked list through all entries:
+- **Insertion-order** (default) — entries come back in the order they were put
+- **Access-order** (\`new LinkedHashMap<>(16, 0.75f, true)\`) — most-recently-used entry moves to the end, enabling LRU cache:
+
+\`\`\`java
+// LRU Cache pattern — O(1) get and put
+class LruCache<K, V> extends LinkedHashMap<K, V> {
+    private final int capacity;
+    LruCache(int capacity) {
+        super(capacity, 0.75f, true);   // access-order = true
+        this.capacity = capacity;
+    }
+    @Override
+    protected boolean removeEldestEntry(Map.Entry<K,V> eldest) {
+        return size() > capacity;        // evict when over limit
+    }
+}
+
+LruCache<Integer, String> cache = new LruCache<>(3);
+cache.put(1, "one"); cache.put(2, "two"); cache.put(3, "three");
+cache.get(1);                  // access 1 — moves to most-recent
+cache.put(4, "four");          // evicts 2 (least recently used)
+System.out.println(cache);     // {3=three, 1=one, 4=four}
+\`\`\`
+
+### TreeMap — Sorted, NavigableMap
+
+Backed by a Red-Black tree. Same navigation API as TreeSet:
+
+\`\`\`java
+TreeMap<String, Integer> tm = new TreeMap<>();
+tm.put("banana", 2); tm.put("apple", 5); tm.put("cherry", 1);
+System.out.println(tm);             // {apple=5, banana=2, cherry=1} — sorted by key
+
+tm.firstKey(); tm.lastKey();        // apple, cherry
+tm.floorKey("b");                   // apple  (greatest key ≤ "b")
+tm.ceilingKey("b");                 // banana (smallest key ≥ "b")
+
+// Range views
+SortedMap<String, Integer> sub = tm.subMap("apple", "cherry"); // [apple, cherry)
+tm.headMap("cherry");               // keys strictly before "cherry"
+tm.tailMap("banana");               // keys from "banana" onwards (inclusive)
+\`\`\`
+
+### Map Complexity Comparison
+
+| Operation | HashMap | LinkedHashMap | TreeMap |
+|---|---|---|---|
+| \`put\` / \`get\` / \`remove\` | O(1) avg | O(1) avg | O(log n) |
+| \`containsKey\` | O(1) avg | O(1) avg | O(log n) |
+| Iteration | O(capacity + n) | O(n) | O(n) |
+| Ordered iteration | ✗ | Insertion order | Sorted |
+| \`floor\` / \`ceiling\` | ✗ | ✗ | O(log n) |`,
+          code: [
+            `import java.util.*;
+import java.util.stream.*;
+
+public class MapDemo {
+    public static void main(String[] args) {
+        // Core operations
+        Map<String, Integer> scores = new HashMap<>();
+        scores.put("Alice", 95);
+        scores.put("Bob", 87);
+        scores.put("Charlie", 72);
+
+        // Java 8 compute methods
+        scores.merge("Bob", 10, Integer::sum);          // 97
+        scores.putIfAbsent("Dave", 80);
+        scores.computeIfPresent("Alice", (k, v) -> v + 5); // 100
+
+        System.out.println("Scores: " + scores);
+
+        // Word frequency — merge pattern
+        String text = "the quick brown fox jumps over the lazy dog the fox";
+        Map<String, Long> freq = Arrays.stream(text.split(" "))
+            .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
+        freq.entrySet().stream()
+            .sorted(Map.Entry.<String,Long>comparingByValue().reversed())
+            .limit(3)
+            .forEach(e -> System.out.println(e.getKey() + "=" + e.getValue()));
+
+        // Iteration
+        scores.forEach((k, v) -> System.out.printf("%-8s %d%n", k, v));
+
+        // getOrDefault — safer than containsKey + get
+        System.out.println(scores.getOrDefault("Eve", -1)); // -1
+    }
+}`,
+            `import java.util.*;
+
+// LRU Cache using LinkedHashMap access-order
+class LruCache<K, V> extends LinkedHashMap<K, V> {
+    private final int capacity;
+
+    LruCache(int capacity) {
+        super(capacity, 0.75f, true);   // true = access-order
+        this.capacity = capacity;
+    }
+
+    @Override
+    protected boolean removeEldestEntry(Map.Entry<K,V> eldest) {
+        return size() > capacity;
+    }
+}
+
+public class MapAdvanced {
+    public static void main(String[] args) {
+        // LRU Cache demo
+        LruCache<Integer, String> cache = new LruCache<>(3);
+        cache.put(1, "one");
+        cache.put(2, "two");
+        cache.put(3, "three");
+        System.out.println("Initial: " + cache);   // {1=one, 2=two, 3=three}
+
+        cache.get(1);           // access 1 — moves to most-recent end
+        cache.put(4, "four");   // evicts LRU (2, since 1 was just accessed)
+        System.out.println("After eviction: " + cache); // {3=three, 1=one, 4=four}
+
+        // TreeMap navigation
+        TreeMap<String, Integer> prices = new TreeMap<>();
+        prices.put("apple", 120); prices.put("banana", 45);
+        prices.put("cherry", 300); prices.put("date", 800);
+
+        System.out.println("Sorted: " + prices);
+        System.out.println("Floor of 'c': " + prices.floorKey("c")); // banana
+        System.out.println("Ceil  of 'c': " + prices.ceilingKey("c")); // cherry
+        System.out.println("Sub [a..c): " + prices.subMap("apple","cherry")); // {apple, banana}
+
+        // Grouping with computeIfAbsent
+        Map<Integer, List<String>> byLength = new HashMap<>();
+        for (String word : new String[]{"hi","hey","hello","world","java"}) {
+            byLength.computeIfAbsent(word.length(), k -> new ArrayList<>()).add(word);
+        }
+        System.out.println("By length: " + byLength);
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'How does HashMap resolve hash collisions in Java 8+?', a: 'Collisions land in the same bucket. With < 8 entries the bucket is a linked list (O(n) worst case). When a bucket reaches 8 entries it is treeified into a Red-Black tree (O(log n) worst case). The tree reverts to a list when it shrinks below 6 entries.' },
+            { q: 'What is the default load factor of HashMap and what does it mean?', a: '0.75 (75%). When the map is 75% full (size > capacity * 0.75), it rehashes — creates a new array of double the capacity and redistributes all entries. Lower load factor → fewer collisions, more memory. Higher → more collisions, less memory. 0.75 is the empirically optimal balance.' },
+            { q: 'What is the difference between HashMap.get(k) and getOrDefault(k, def)?', a: 'get(k) returns null for missing keys AND for keys explicitly mapped to null — you cannot distinguish the two cases. getOrDefault(k, def) returns def only when the key is absent. Also avoids a NullPointerException if you chain methods on the result.' },
+            { q: 'How does LinkedHashMap implement an LRU cache?', a: 'Use the access-order constructor: new LinkedHashMap<>(capacity, 0.75f, true). In access-order mode, every get() moves the accessed entry to the tail. Override removeEldestEntry() to return true when size() > capacity — this evicts the head (least recently accessed) automatically on each put().' },
+            { q: 'What is the difference between HashMap.merge() and compute()?', a: 'merge(key, value, remappingFn) — if key is absent, puts value; if present, applies remappingFn(oldValue, value) and puts the result (or removes if null). compute(key, fn) — always calls fn(key, currentValue) regardless, where currentValue is null if absent. merge is for the "upsert with accumulator" pattern (word count); compute for general transformation.' }
+          ]
+        },
+        {
+          title: 'Queue, Deque, PriorityQueue & Concurrent Collections',
+          notes: `## Queue, Deque, PriorityQueue & Concurrent Collections
+
+### Queue and Deque API
+
+\`Queue\` models a FIFO (first-in, first-out) buffer. \`Deque\` (double-ended queue) supports O(1) operations at both ends — it is both a queue and a stack.
+
+**Two method flavours for the same operations:**
+
+| Operation | Throws exception | Returns null/false |
+|---|---|---|
+| Insert | \`add(e)\` | \`offer(e)\` |
+| Remove head | \`remove()\` | \`poll()\` |
+| Inspect head | \`element()\` | \`peek()\` |
+
+Prefer the null-returning variants (\`offer\`, \`poll\`, \`peek\`) — they work correctly for bounded queues without exception-driven flow control.
+
+\`\`\`java
+Queue<String> queue = new ArrayDeque<>();
+queue.offer("first");
+queue.offer("second");
+queue.offer("third");
+System.out.println(queue.peek());   // first (doesn't remove)
+System.out.println(queue.poll());   // first (removes)
+System.out.println(queue.poll());   // second
+System.out.println(queue.size());   // 1
+
+// As a stack (Deque interface)
+Deque<Integer> stack = new ArrayDeque<>();
+stack.push(1); stack.push(2); stack.push(3);  // LIFO
+System.out.println(stack.pop());   // 3
+System.out.println(stack.pop());   // 2
+\`\`\`
+
+> **Never use \`java.util.Stack\` in new code** — it extends \`Vector\` (synchronised, slow) and has confusing API. Use \`ArrayDeque\` as a stack instead.
+
+### PriorityQueue — Heap-Based Priority
+
+Elements are served in **natural order** (or comparator order) — the smallest element is always at the head:
+
+\`\`\`java
+PriorityQueue<Integer> minHeap = new PriorityQueue<>();
+minHeap.offer(5); minHeap.offer(2); minHeap.offer(8); minHeap.offer(1);
+
+while (!minHeap.isEmpty()) {
+    System.out.print(minHeap.poll() + " ");  // 1 2 5 8
+}
+
+// Max-heap — reverse order
+PriorityQueue<Integer> maxHeap = new PriorityQueue<>(Comparator.reverseOrder());
+maxHeap.offer(5); maxHeap.offer(2); maxHeap.offer(8);
+System.out.println(maxHeap.poll());  // 8
+
+// Custom priority — by task urgency
+record Task(String name, int priority) {}
+PriorityQueue<Task> tasks = new PriorityQueue<>(
+    Comparator.comparingInt(Task::priority).reversed()
+);
+tasks.offer(new Task("Low", 1));
+tasks.offer(new Task("High", 10));
+tasks.offer(new Task("Medium", 5));
+System.out.println(tasks.poll().name()); // High
+\`\`\`
+
+| Operation | Complexity |
+|---|---|
+| \`offer(e)\` | O(log n) |
+| \`poll()\` | O(log n) |
+| \`peek()\` | O(1) |
+| \`contains(e)\` | O(n) — no index |
+
+### Concurrent Collections
+
+For multi-threaded code, never wrap a non-thread-safe collection with \`Collections.synchronizedXxx\` unless you iterate under an explicit lock. Instead, use purpose-built concurrent collections:
+
+\`\`\`mermaid
+graph LR
+    subgraph "Thread-safe Collections"
+        CHM["ConcurrentHashMap\n(segment locking, O(1))"]
+        CLinkedQ["ConcurrentLinkedQueue\n(lock-free FIFO)"]
+        ABQ["ArrayBlockingQueue\n(bounded, blocking)"]
+        LBQ["LinkedBlockingQueue\n(unbounded, blocking)"]
+        PBQ["PriorityBlockingQueue\n(priority, blocking)"]
+        COW["CopyOnWriteArrayList\n(read-heavy)"]
+    end
+    style CHM fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style ABQ fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+\`\`\`
+
+**ConcurrentHashMap (Java 8+):**
+- Segment-level locking (CAS operations at node level) — no full-table lock
+- \`putIfAbsent\`, \`computeIfAbsent\`, \`merge\` are atomic
+- \`size()\` is approximate (use \`mappingCount()\` for accuracy)
+- Does not allow null keys or values (unlike HashMap)
+
+**BlockingQueue — the Producer-Consumer backbone:**
+\`\`\`java
+BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);  // capacity 10
+
+// Producer thread
+new Thread(() -> {
+    try {
+        queue.put("item");   // blocks if full
+    } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+}).start();
+
+// Consumer thread
+new Thread(() -> {
+    try {
+        String item = queue.take();  // blocks if empty
+        System.out.println("Consumed: " + item);
+    } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+}).start();
+\`\`\`
+
+### Choosing the Right Collection — Quick Guide
+
+\`\`\`mermaid
+flowchart TD
+    Q1{Key-value pairs?}
+    Q1 -->|Yes| Q2{Need ordering?}
+    Q1 -->|No| Q3{Allow duplicates?}
+    Q2 -->|Sorted by key| TM[TreeMap]
+    Q2 -->|Insertion order| LHM[LinkedHashMap]
+    Q2 -->|Fastest| HM[HashMap]
+    Q3 -->|Yes| Q4{FIFO / priority?}
+    Q3 -->|No| Q5{Sorted?}
+    Q4 -->|Priority| PQ[PriorityQueue]
+    Q4 -->|FIFO| AD[ArrayDeque]
+    Q5 -->|Yes| TS[TreeSet]
+    Q5 -->|No| HS[HashSet]
+    style HM fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style HS fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
+    style PQ fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+\`\`\``,
+          code: [
+            `import java.util.*;
+
+public class QueueDequeDemo {
+    public static void main(String[] args) {
+        // ArrayDeque as FIFO queue
+        Deque<String> queue = new ArrayDeque<>();
+        queue.offer("first"); queue.offer("second"); queue.offer("third");
+        System.out.println("Queue: " + queue);
+        System.out.println("Peek: " + queue.peek());  // first (no remove)
+        System.out.println("Poll: " + queue.poll());  // first (removed)
+        System.out.println("Queue after poll: " + queue);
+
+        // ArrayDeque as LIFO stack (replaces java.util.Stack)
+        Deque<Integer> stack = new ArrayDeque<>();
+        stack.push(10); stack.push(20); stack.push(30);
+        System.out.println("Stack: " + stack);       // [30, 20, 10]
+        System.out.println("Pop: " + stack.pop());   // 30
+
+        // PriorityQueue — min-heap by default
+        PriorityQueue<Integer> minHeap = new PriorityQueue<>();
+        minHeap.addAll(Arrays.asList(5, 1, 3, 2, 4));
+        System.out.print("Min-heap poll order: ");
+        while (!minHeap.isEmpty()) System.out.print(minHeap.poll() + " "); // 1 2 3 4 5
+        System.out.println();
+
+        // Max-heap
+        PriorityQueue<Integer> maxHeap = new PriorityQueue<>(Comparator.reverseOrder());
+        maxHeap.addAll(Arrays.asList(5, 1, 3, 2, 4));
+        System.out.print("Max-heap poll order: ");
+        while (!maxHeap.isEmpty()) System.out.print(maxHeap.poll() + " "); // 5 4 3 2 1
+        System.out.println();
+
+        // K largest elements using min-heap of size k
+        int[] nums = {3, 1, 4, 1, 5, 9, 2, 6, 5, 3};
+        int k = 3;
+        PriorityQueue<Integer> kLargest = new PriorityQueue<>(k);
+        for (int n : nums) {
+            kLargest.offer(n);
+            if (kLargest.size() > k) kLargest.poll(); // evict smallest
+        }
+        System.out.println("Top " + k + " largest: " + kLargest); // [5, 6, 9] or similar
+    }
+}`,
+            `import java.util.concurrent.*;
+import java.util.*;
+
+public class ConcurrentCollectionsDemo {
+    public static void main(String[] args) throws InterruptedException {
+        // ConcurrentHashMap — thread-safe, no null keys/values
+        ConcurrentHashMap<String, Integer> chm = new ConcurrentHashMap<>();
+        chm.put("a", 1); chm.put("b", 2);
+
+        // Atomic compute — safe across threads
+        chm.merge("a", 10, Integer::sum);           // a: 1+10=11
+        chm.computeIfAbsent("c", k -> k.length());  // c: 1
+        System.out.println("CHM: " + chm);
+
+        // BlockingQueue — producer-consumer
+        BlockingQueue<String> bq = new ArrayBlockingQueue<>(5);
+        List<String> results = Collections.synchronizedList(new ArrayList<>());
+
+        Thread producer = new Thread(() -> {
+            try {
+                for (int i = 1; i <= 3; i++) {
+                    bq.put("item-" + i);
+                    System.out.println("Produced: item-" + i);
+                }
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+
+        Thread consumer = new Thread(() -> {
+            try {
+                for (int i = 0; i < 3; i++) {
+                    String item = bq.poll(2, TimeUnit.SECONDS);
+                    if (item != null) {
+                        results.add(item);
+                        System.out.println("Consumed: " + item);
+                    }
+                }
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+
+        producer.start(); consumer.start();
+        producer.join(); consumer.join();
+        System.out.println("Results: " + results);
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'Why should you never use java.util.Stack in new code?', a: 'Stack extends Vector, which is a legacy class with all methods synchronised (unnecessary overhead in single-threaded use). It also has push/pop/peek plus inherited Vector methods that make no sense for a stack (like elementAt). Use ArrayDeque instead — it implements Deque with push/pop/peek and is much faster.' },
+            { q: 'What is the difference between Queue.poll() and Queue.remove()?', a: 'poll() returns null if the queue is empty. remove() throws NoSuchElementException if the queue is empty. Prefer poll() to avoid exception-driven flow control. The same pattern applies to offer() vs add() (offer returns false vs add throws) and peek() vs element().' },
+            { q: 'What is the time complexity of PriorityQueue.poll() and why?', a: 'O(log n). PriorityQueue is a binary heap — poll() removes the root (min/max element) and re-heapifies by sifting down the replacement element. The heap height is log n, so at most log n comparisons and swaps.' },
+            { q: 'Why does ConcurrentHashMap not allow null keys or values?', a: 'In a concurrent context, null creates ambiguity: you cannot tell if map.get(key) returned null because the key is absent or because it maps to null. HashMap allows null because containsKey() clarifies the ambiguity, but that two-call check is not atomic in ConcurrentHashMap. Disallowing null makes the single-call operations unambiguous.' },
+            { q: 'What is the difference between ArrayBlockingQueue and LinkedBlockingQueue?', a: 'ArrayBlockingQueue is bounded (fixed capacity specified at creation) and backed by an array — lower memory overhead, all elements pre-allocated. LinkedBlockingQueue is optionally bounded (defaults to Integer.MAX_VALUE) and backed by linked nodes — slightly higher overhead but no pre-allocation. Use ArrayBlockingQueue for bounded producer-consumer scenarios to limit memory.' }
+          ]
+        }
+      ]
     },
 
-    {
+        {
       id: '0.10',
       title: 'Java 8 — Optional, Date/Time API, Method Refs',
       hours: 3,
