@@ -8783,7 +8783,1089 @@ public class ConcurrentCollectionsDemo {
       id: '0.13',
       title: 'Design Patterns — Creational, Structural, Behavioral',
       hours: 5,
-      notes: `*[Module 0.13 — under construction. Will cover: Singleton, Factory, Builder, Adapter, Decorator, Strategy, Observer, Template Method. Roadmap: build after 0.12.]*`
+      sections: [
+        {
+          title: 'Creational Patterns — Singleton, Factory, Builder',
+          notes: `## Creational Patterns — Singleton, Factory, Builder
+
+Creational patterns deal with **object creation** — abstracting the instantiation process so the system is independent of how objects are created, composed, and represented.
+
+### Pattern Landscape
+
+\`\`\`mermaid
+graph TD
+    DP[Design Patterns]
+    DP --> CR[Creational]
+    DP --> ST[Structural]
+    DP --> BH[Behavioral]
+    CR --> SG[Singleton]
+    CR --> FM[Factory Method]
+    CR --> AF[Abstract Factory]
+    CR --> BL[Builder]
+    CR --> PR[Prototype]
+    ST --> AD[Adapter]
+    ST --> DC[Decorator]
+    ST --> PR2[Proxy]
+    ST --> FA[Facade]
+    BH --> STR[Strategy]
+    BH --> OB[Observer]
+    BH --> TM[Template Method]
+    BH --> CM[Command]
+    BH --> IT[Iterator]
+    style CR fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style ST fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style BH fill:#1e0a0a,stroke:#f59e0b,color:#fde68a
+\`\`\`
+
+### Singleton — One Instance, Global Access
+
+Ensures a class has exactly one instance and provides a global access point.
+
+\`\`\`java
+// Thread-safe lazy singleton — the correct modern approach
+public class AppConfig {
+    // Volatile ensures visibility across threads (Java 5+ memory model)
+    private static volatile AppConfig instance;
+    private final Map<String, String> props;
+
+    private AppConfig() {
+        props = new HashMap<>();
+        props.put("host", "localhost");
+        props.put("port", "8080");
+    }
+
+    // Double-checked locking — only synchronises on first creation
+    public static AppConfig getInstance() {
+        if (instance == null) {
+            synchronized (AppConfig.class) {
+                if (instance == null) {
+                    instance = new AppConfig();
+                }
+            }
+        }
+        return instance;
+    }
+
+    public String get(String key) { return props.getOrDefault(key, ""); }
+}
+\`\`\`
+
+**Better modern approach — Enum Singleton** (Bloch Item 3):
+\`\`\`java
+public enum AppConfig {
+    INSTANCE;
+    private final Map<String, String> props = new HashMap<>();
+
+    AppConfig() { props.put("host", "localhost"); }
+    public String get(String key) { return props.getOrDefault(key, ""); }
+}
+
+AppConfig.INSTANCE.get("host"); // thread-safe, serialisation-safe, reflection-safe
+\`\`\`
+
+**When NOT to use Singleton:** when you need testability (hard to mock), multiple environments (test vs prod need different instances), or when the "global state" it represents leads to hidden coupling.
+
+### Factory Method — Delegate Creation to Subclasses
+
+Defines an interface for creating an object, but lets subclasses decide which class to instantiate. The creator class works with the product through an interface:
+
+\`\`\`java
+// Product interface
+interface Notification {
+    void send(String message);
+}
+
+// Concrete products
+class EmailNotification implements Notification {
+    private final String email;
+    EmailNotification(String email) { this.email = email; }
+    public void send(String msg) { System.out.println("Email to " + email + ": " + msg); }
+}
+
+class SmsNotification implements Notification {
+    private final String phone;
+    SmsNotification(String phone) { this.phone = phone; }
+    public void send(String msg) { System.out.println("SMS to " + phone + ": " + msg); }
+}
+
+// Factory — centralises creation logic
+class NotificationFactory {
+    public static Notification create(String type, String target) {
+        return switch (type.toLowerCase()) {
+            case "email" -> new EmailNotification(target);
+            case "sms"   -> new SmsNotification(target);
+            default -> throw new IllegalArgumentException("Unknown type: " + type);
+        };
+    }
+}
+
+// Client — works through the interface, unaware of concrete class
+Notification n = NotificationFactory.create("email", "alice@example.com");
+n.send("Your order shipped!");
+\`\`\`
+
+### Builder — Construct Complex Objects Step by Step
+
+Useful when a constructor would need many parameters, several of which are optional:
+
+\`\`\`java
+public class HttpRequest {
+    private final String method;    // required
+    private final String url;       // required
+    private final Map<String, String> headers;  // optional
+    private final String body;      // optional
+    private final int timeoutMs;    // optional, default 5000
+
+    private HttpRequest(Builder b) {
+        this.method    = b.method;
+        this.url       = b.url;
+        this.headers   = Collections.unmodifiableMap(b.headers);
+        this.body      = b.body;
+        this.timeoutMs = b.timeoutMs;
+    }
+
+    public static class Builder {
+        private final String method;
+        private final String url;
+        private Map<String, String> headers = new HashMap<>();
+        private String body;
+        private int timeoutMs = 5000;
+
+        public Builder(String method, String url) {
+            this.method = Objects.requireNonNull(method);
+            this.url    = Objects.requireNonNull(url);
+        }
+        public Builder header(String key, String value) { headers.put(key, value); return this; }
+        public Builder body(String body)                { this.body = body; return this; }
+        public Builder timeout(int ms)                  { this.timeoutMs = ms; return this; }
+        public HttpRequest build()                      { return new HttpRequest(this); }
+    }
+
+    @Override public String toString() {
+        return method + " " + url + " (timeout=" + timeoutMs + "ms, headers=" + headers + ")";
+    }
+}
+
+HttpRequest req = new HttpRequest.Builder("POST", "https://api.example.com/orders")
+    .header("Content-Type", "application/json")
+    .header("Authorization", "Bearer token123")
+    .body("{\"item\":\"widget\",\"qty\":3}")
+    .timeout(10_000)
+    .build();
+\`\`\`
+
+**Builder benefits:** immutable result, readable construction, optional parameters without constructor overload explosion, validation in \`build()\`.`,
+          code: [
+            `import java.util.*;
+
+// Enum Singleton — safest Singleton in Java
+enum AppConfig {
+    INSTANCE;
+    private final Map<String, String> config = new LinkedHashMap<>();
+
+    AppConfig() {
+        config.put("db.host", "localhost");
+        config.put("db.port", "5432");
+        config.put("app.env", "production");
+    }
+
+    public String get(String key) { return config.getOrDefault(key, ""); }
+    public String get(String key, String def) { return config.getOrDefault(key, def); }
+}
+
+// Factory Method
+interface Parser { Object parse(String input); }
+
+class JsonParser implements Parser {
+    public Object parse(String input) { return "JSON: " + input.trim(); }
+}
+class CsvParser implements Parser {
+    public Object parse(String input) { return Arrays.asList(input.split(",")); }
+}
+
+class ParserFactory {
+    public static Parser of(String format) {
+        return switch (format.toLowerCase()) {
+            case "json" -> new JsonParser();
+            case "csv"  -> new CsvParser();
+            default -> throw new IllegalArgumentException("Unsupported: " + format);
+        };
+    }
+}
+
+public class CreationalDemo {
+    public static void main(String[] args) {
+        // Singleton
+        System.out.println(AppConfig.INSTANCE.get("db.host")); // localhost
+        System.out.println(AppConfig.INSTANCE == AppConfig.INSTANCE); // true
+
+        // Factory
+        Parser json = ParserFactory.of("json");
+        Parser csv  = ParserFactory.of("csv");
+        System.out.println(json.parse(" { } "));   // JSON: { }
+        System.out.println(csv.parse("a,b,c,d")); // [a, b, c, d]
+    }
+}`,
+            `import java.util.*;
+
+// Builder pattern — complex immutable object
+public class HttpRequest {
+    private final String method, url, body;
+    private final Map<String, String> headers;
+    private final int timeoutMs;
+
+    private HttpRequest(Builder b) {
+        this.method    = b.method;
+        this.url       = b.url;
+        this.body      = b.body;
+        this.headers   = Collections.unmodifiableMap(new LinkedHashMap<>(b.headers));
+        this.timeoutMs = b.timeoutMs;
+    }
+
+    @Override
+    public String toString() {
+        return method + " " + url + "\n  headers=" + headers
+             + "\n  body=" + body + "\n  timeout=" + timeoutMs + "ms";
+    }
+
+    public static class Builder {
+        private final String method, url;
+        private final Map<String, String> headers = new LinkedHashMap<>();
+        private String body = null;
+        private int timeoutMs = 5_000;
+
+        public Builder(String method, String url) {
+            this.method = Objects.requireNonNull(method, "method");
+            this.url    = Objects.requireNonNull(url, "url");
+        }
+        public Builder header(String k, String v) { headers.put(k, v); return this; }
+        public Builder body(String body)           { this.body = body;  return this; }
+        public Builder timeout(int ms)             { this.timeoutMs = ms; return this; }
+        public HttpRequest build() {
+            if (List.of("POST","PUT","PATCH").contains(method) && body == null)
+                throw new IllegalStateException(method + " requires a body");
+            return new HttpRequest(this);
+        }
+    }
+
+    public static void main(String[] args) {
+        HttpRequest req = new HttpRequest.Builder("POST", "https://api.example.com/v1/orders")
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer abc123")
+            .body("{\"item\":\"widget\",\"qty\":2}")
+            .timeout(10_000)
+            .build();
+        System.out.println(req);
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'Why is the Enum Singleton preferred over double-checked locking?', a: 'Enum Singleton (Bloch Item 3) is thread-safe by JVM class loading guarantee, immune to serialisation attacks (enum deserialization always returns the same instance), and immune to reflection attacks (enums cannot be instantiated via reflection). Double-checked locking requires volatile and is easy to get wrong.' },
+            { q: 'What problem does Factory Method solve that a constructor cannot?', a: 'A constructor must return an instance of exactly that class. A factory method can return any subtype, return a cached instance, perform complex initialisation, choose between implementations based on configuration, or return null/Optional. It decouples the caller from the concrete class.' },
+            { q: 'What is the main advantage of Builder over a constructor with many parameters?', a: 'Readability — Builder.method("POST").url("...").timeout(5000).build() is clear about what each value means. Constructors with many same-type parameters (String, String, String) are error-prone (swap two and no compile error). Builder also handles optional parameters without overload explosion and enables validation in build().' },
+            { q: 'What is double-checked locking and why does it need volatile?', a: 'DCL checks the instance is null twice — once without locking (fast path), then again inside synchronized (to handle the race between the two checks). volatile is required to prevent the JVM from reordering the write to instance before the constructor completes — without it, another thread could see a partially-constructed object.' },
+            { q: 'When should you NOT use Singleton?', a: 'When you need testability (hard to inject a mock), when different environments need different instances (test db vs prod db), or when the global state creates hidden coupling between components. Prefer dependency injection — pass the shared object as a constructor argument rather than using static access.' }
+          ]
+        },
+        {
+          title: 'Structural Patterns — Adapter, Decorator, Proxy, Facade',
+          notes: `## Structural Patterns — Adapter, Decorator, Proxy, Facade
+
+Structural patterns deal with how classes and objects are **composed** to form larger structures — making independent interfaces work together, adding responsibilities dynamically, or simplifying complex subsystems.
+
+### Adapter — Make Incompatible Interfaces Work Together
+
+Converts the interface of a class into another interface that clients expect. Like a power plug adapter — same power, different socket.
+
+\`\`\`java
+// Target interface — what the client expects
+interface TemperatureSource {
+    double getCelsius();
+}
+
+// Adaptee — existing class with a different interface
+class LegacyThermometer {
+    public double getFahrenheit() { return 98.6; }
+}
+
+// Adapter — wraps the adaptee, implements the target
+class ThermometerAdapter implements TemperatureSource {
+    private final LegacyThermometer thermometer;
+    ThermometerAdapter(LegacyThermometer t) { this.thermometer = t; }
+
+    @Override
+    public double getCelsius() {
+        return (thermometer.getFahrenheit() - 32) * 5.0 / 9.0;
+    }
+}
+
+// Client works with TemperatureSource, unaware of LegacyThermometer
+TemperatureSource source = new ThermometerAdapter(new LegacyThermometer());
+System.out.println(source.getCelsius() + "°C");  // 37.0°C
+\`\`\`
+
+**Real-world examples:** \`Arrays.asList()\` adapts an array to a \`List\`, \`InputStreamReader\` adapts \`InputStream\` to \`Reader\`, JDBC drivers adapt database protocols to the JDBC interface.
+
+### Decorator — Add Responsibilities Without Subclassing
+
+Wraps an object to add behaviour dynamically. A chain of decorators can compose multiple behaviours. Java I/O is the canonical example:
+
+\`\`\`java
+// Component interface
+interface TextProcessor {
+    String process(String text);
+}
+
+// Base implementation
+class PlainText implements TextProcessor {
+    public String process(String text) { return text; }
+}
+
+// Abstract decorator
+abstract class TextDecorator implements TextProcessor {
+    protected final TextProcessor wrapped;
+    TextDecorator(TextProcessor wrapped) { this.wrapped = wrapped; }
+}
+
+// Concrete decorators
+class TrimDecorator extends TextDecorator {
+    TrimDecorator(TextProcessor w) { super(w); }
+    public String process(String text) { return wrapped.process(text).strip(); }
+}
+
+class UpperCaseDecorator extends TextDecorator {
+    UpperCaseDecorator(TextProcessor w) { super(w); }
+    public String process(String text) { return wrapped.process(text).toUpperCase(); }
+}
+
+class PrefixDecorator extends TextDecorator {
+    private final String prefix;
+    PrefixDecorator(TextProcessor w, String prefix) { super(w); this.prefix = prefix; }
+    public String process(String text) { return prefix + wrapped.process(text); }
+}
+
+// Compose decorators
+TextProcessor pipeline = new PrefixDecorator(
+    new UpperCaseDecorator(
+        new TrimDecorator(new PlainText())
+    ), ">>> "
+);
+System.out.println(pipeline.process("  hello world  "));
+// >>> HELLO WORLD
+\`\`\`
+
+**Java I/O chain:** \`new BufferedReader(new InputStreamReader(new FileInputStream("file.txt")))\` — each wrapper adds buffering / charset decoding.
+
+### Proxy — Control Access to an Object
+
+Provides a surrogate or placeholder for another object. Three main flavours:
+
+\`\`\`java
+// Virtual Proxy — lazy initialisation of expensive object
+interface Image { void display(); }
+
+class RealImage implements Image {
+    private final String file;
+    RealImage(String file) {
+        this.file = file;
+        System.out.println("Loading from disk: " + file);  // expensive
+    }
+    public void display() { System.out.println("Displaying: " + file); }
+}
+
+class ImageProxy implements Image {
+    private final String file;
+    private RealImage real;  // null until first use
+
+    ImageProxy(String file) { this.file = file; }
+
+    public void display() {
+        if (real == null) real = new RealImage(file);  // lazy load
+        real.display();
+    }
+}
+
+Image img = new ImageProxy("photo.jpg");
+// File NOT loaded yet
+img.display(); // loads now: "Loading... Displaying..."
+img.display(); // cached:    "Displaying..." (no reload)
+\`\`\`
+
+**Other proxy types:**
+- **Remote proxy** — represents an object in another JVM (RMI, gRPC stubs)
+- **Protection proxy** — checks permissions before delegating (Spring Security)
+- **Caching proxy** — memoizes expensive results
+- **Dynamic proxy** — \`java.lang.reflect.Proxy\` creates proxies at runtime (Spring AOP, Mockito)
+
+### Facade — Simplify a Complex Subsystem
+
+Provides a simple interface to a complex subsystem. Clients use the facade; the subsystem classes remain available for direct use when needed.
+
+\`\`\`java
+// Complex subsystem classes
+class VideoEncoder   { String encode(String path)       { return "encoded:" + path; } }
+class AudioExtractor { String extract(String path)      { return "audio:" + path; } }
+class Thumbnail      { String generate(String encoded)  { return "thumb:" + encoded; } }
+class CloudUploader  { String upload(String file)       { return "url://" + file; } }
+
+// Facade — single simple interface
+class VideoProcessingFacade {
+    private final VideoEncoder   encoder   = new VideoEncoder();
+    private final AudioExtractor extractor = new AudioExtractor();
+    private final Thumbnail      thumbGen  = new Thumbnail();
+    private final CloudUploader  uploader  = new CloudUploader();
+
+    public String processVideo(String path) {
+        String encoded  = encoder.encode(path);
+        String audio    = extractor.extract(path);
+        String thumb    = thumbGen.generate(encoded);
+        String videoUrl = uploader.upload(encoded);
+        String audioUrl = uploader.upload(audio);
+        System.out.println("Thumbnail: " + thumb);
+        return videoUrl + " | audio=" + audioUrl;
+    }
+}
+
+// Client only interacts with the facade
+VideoProcessingFacade facade = new VideoProcessingFacade();
+System.out.println(facade.processVideo("interview.mp4"));
+\`\`\``,
+          code: [
+            `import java.util.*;
+
+// Adapter + Decorator combined example
+interface Logger {
+    void log(String level, String message);
+}
+
+// Legacy system with incompatible interface
+class LegacyAuditSystem {
+    public void audit(String msg) { System.out.println("[AUDIT] " + msg); }
+}
+
+// Adapter: makes LegacyAuditSystem work as a Logger
+class LegacyLoggerAdapter implements Logger {
+    private final LegacyAuditSystem legacy;
+    LegacyLoggerAdapter(LegacyAuditSystem legacy) { this.legacy = legacy; }
+    public void log(String level, String message) {
+        if ("ERROR".equals(level) || "WARN".equals(level)) {
+            legacy.audit(level + ": " + message);
+        }
+    }
+}
+
+// Decorator: adds timestamp to any Logger
+class TimestampLogger implements Logger {
+    private final Logger delegate;
+    TimestampLogger(Logger delegate) { this.delegate = delegate; }
+    public void log(String level, String message) {
+        delegate.log(level, "[" + java.time.Instant.now() + "] " + message);
+    }
+}
+
+// Decorator: adds caller class info
+class CallerLogger implements Logger {
+    private final Logger delegate;
+    CallerLogger(Logger delegate) { this.delegate = delegate; }
+    public void log(String level, String message) {
+        String caller = Thread.currentThread().getStackTrace()[2].getClassName();
+        delegate.log(level, "[" + caller.substring(caller.lastIndexOf('.')+1) + "] " + message);
+    }
+}
+
+public class StructuralDemo {
+    public static void main(String[] args) {
+        // Compose adapter + decorators
+        Logger logger = new TimestampLogger(
+            new CallerLogger(
+                new LegacyLoggerAdapter(new LegacyAuditSystem())
+            )
+        );
+        logger.log("ERROR", "Connection timeout");
+        logger.log("INFO", "Request processed");   // filtered by adapter (not ERROR/WARN)
+    }
+}`,
+            `import java.lang.reflect.*;
+import java.util.*;
+
+// Dynamic Proxy — the foundation of Spring AOP and Mockito
+interface OrderService {
+    String createOrder(String item, int qty);
+    String cancelOrder(String orderId);
+}
+
+class RealOrderService implements OrderService {
+    public String createOrder(String item, int qty) {
+        return "ORDER-" + item.toUpperCase() + "-" + qty;
+    }
+    public String cancelOrder(String orderId) {
+        return "CANCELLED-" + orderId;
+    }
+}
+
+// InvocationHandler — intercepts all method calls
+class LoggingProxy implements InvocationHandler {
+    private final Object target;
+    LoggingProxy(Object target) { this.target = target; }
+
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+        System.out.printf(">> Calling %s(%s)%n",
+            method.getName(), args == null ? "" : Arrays.toString(args));
+        long start = System.nanoTime();
+        Object result = method.invoke(target, args);
+        long ms = (System.nanoTime() - start) / 1_000_000;
+        System.out.printf("<< %s returned: %s (%dms)%n", method.getName(), result, ms);
+        return result;
+    }
+}
+
+public class DynamicProxyDemo {
+    @SuppressWarnings("unchecked")
+    static <T> T proxy(T target, Class<T> iface) {
+        return (T) Proxy.newProxyInstance(
+            iface.getClassLoader(),
+            new Class[]{iface},
+            new LoggingProxy(target)
+        );
+    }
+
+    public static void main(String[] args) {
+        OrderService service = proxy(new RealOrderService(), OrderService.class);
+        service.createOrder("Widget", 5);
+        service.cancelOrder("ORDER-WIDGET-5");
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is the difference between Adapter and Decorator?', a: 'Adapter changes the interface — it makes an incompatible interface work as a different one (LegacyThermometer → TemperatureSource). Decorator keeps the same interface but adds behaviour — it wraps an object implementing interface X and itself implements X, adding logic before/after delegation.' },
+            { q: 'How does java.io use the Decorator pattern?', a: 'InputStream is the component. FileInputStream is the concrete component. FilterInputStream is the abstract decorator. BufferedInputStream adds buffering; DataInputStream adds typed reads. You compose them: new BufferedInputStream(new FileInputStream("file")) — each layer adds behaviour without modifying the underlying class.' },
+            { q: 'What are the three common types of Proxy?', a: 'Virtual proxy (lazy loads an expensive object on first use), Remote proxy (represents an object in another process/JVM — gRPC stubs, RMI), Protection proxy (checks access rights before delegating — Spring Security). Dynamic proxy (java.lang.reflect.Proxy) can act as any of these at runtime.' },
+            { q: 'What is java.lang.reflect.Proxy and what is it used for?', a: 'A JDK class that creates a proxy object at runtime for one or more interfaces. You provide an InvocationHandler whose invoke() method intercepts every method call. Used by: Spring AOP (add transactions, logging, security to any bean), Mockito (mock any interface), JPA lazy loading.' },
+            { q: 'When would you use Facade vs Adapter?', a: 'Facade simplifies a complex subsystem — it wraps multiple classes behind one simple interface. Adapter makes one incompatible interface look like another. Facade is about simplification; Adapter is about compatibility. A payment gateway SDK wrapper is a Facade; an JDBC driver adapting a DB protocol to the JDBC API is an Adapter.' }
+          ]
+        },
+        {
+          title: 'Behavioral Patterns — Strategy, Observer, Template Method, Command',
+          notes: `## Behavioral Patterns — Strategy, Observer, Template Method, Command
+
+Behavioral patterns concern **communication and responsibility** between objects — how they interact, collaborate, and divide work.
+
+### Strategy — Encapsulate Algorithms
+
+Define a family of algorithms, encapsulate each one, and make them interchangeable. The client selects the algorithm at runtime without knowing its implementation.
+
+\`\`\`java
+// Strategy interface
+@FunctionalInterface
+interface SortStrategy<T> {
+    void sort(List<T> list);
+}
+
+// Context — uses a strategy
+class DataProcessor<T> {
+    private SortStrategy<T> sortStrategy;
+
+    public DataProcessor(SortStrategy<T> strategy) { this.sortStrategy = strategy; }
+    public void setStrategy(SortStrategy<T> s)     { this.sortStrategy = s; }
+
+    public void process(List<T> data) {
+        sortStrategy.sort(data);
+        System.out.println("Processed: " + data);
+    }
+}
+
+// Lambda strategies — no concrete class needed
+SortStrategy<Integer> ascending  = list -> Collections.sort(list);
+SortStrategy<Integer> descending = list -> list.sort(Comparator.reverseOrder());
+SortStrategy<Integer> shuffle    = list -> Collections.shuffle(list);
+
+DataProcessor<Integer> proc = new DataProcessor<>(ascending);
+proc.process(new ArrayList<>(Arrays.asList(3, 1, 4, 1, 5, 9)));
+proc.setStrategy(descending);
+proc.process(new ArrayList<>(Arrays.asList(3, 1, 4, 1, 5, 9)));
+\`\`\`
+
+> **Modern Java insight:** Since Strategy is a single-method interface, it's a functional interface — you can use lambdas instead of concrete strategy classes. \`Comparator\`, \`Predicate\`, \`Function\` are all Strategy patterns in the JDK.
+
+### Observer — Event Notification
+
+Defines a one-to-many dependency: when one object (subject/publisher) changes state, all its dependents (observers/subscribers) are notified automatically.
+
+\`\`\`java
+// Observer (subscriber)
+interface StockObserver {
+    void onPriceChange(String symbol, double price);
+}
+
+// Subject (publisher)
+class StockTicker {
+    private final Map<String, List<StockObserver>> subscribers = new HashMap<>();
+
+    public void subscribe(String symbol, StockObserver observer) {
+        subscribers.computeIfAbsent(symbol, k -> new ArrayList<>()).add(observer);
+    }
+
+    public void unsubscribe(String symbol, StockObserver observer) {
+        subscribers.getOrDefault(symbol, List.of()).remove(observer);
+    }
+
+    public void setPrice(String symbol, double price) {
+        subscribers.getOrDefault(symbol, List.of())
+                   .forEach(obs -> obs.onPriceChange(symbol, price));
+    }
+}
+
+StockTicker ticker = new StockTicker();
+
+// Lambda observers — concise functional style
+ticker.subscribe("NIFTY", (sym, price) -> System.out.println("Dashboard: " + sym + "=" + price));
+ticker.subscribe("NIFTY", (sym, price) -> { if (price > 24000) System.out.println("ALERT: NIFTY above 24k"); });
+
+ticker.setPrice("NIFTY", 23500); // Dashboard: NIFTY=23500.0
+ticker.setPrice("NIFTY", 24200); // Dashboard + ALERT
+\`\`\`
+
+**Real-world Observer:** Java's \`java.util.Observer\` (deprecated), Spring's \`ApplicationEvent\`/\`ApplicationListener\`, React's state management, RxJava Observables.
+
+### Template Method — Define a Skeleton, Vary the Steps
+
+Defines the skeleton of an algorithm in a base class, deferring some steps to subclasses. Subclasses can override specific steps without changing the overall structure.
+
+\`\`\`java
+abstract class ReportGenerator {
+    // Template method — the fixed skeleton
+    public final String generate(String data) {
+        String parsed   = parseData(data);      // step 1 — abstract
+        String filtered = filterData(parsed);   // step 2 — with default
+        String rendered = renderReport(filtered); // step 3 — abstract
+        return addHeader() + rendered + addFooter(); // step 4 — with default
+    }
+
+    protected abstract String parseData(String raw);
+    protected abstract String renderReport(String data);
+
+    // Hook methods — optional override
+    protected String filterData(String data) { return data; }
+    protected String addHeader()  { return "=== Report ===\n"; }
+    protected String addFooter()  { return "\n=== End ==="; }
+}
+
+class CsvReportGenerator extends ReportGenerator {
+    @Override protected String parseData(String raw) {
+        return Arrays.stream(raw.split(",")).map(String::trim).collect(Collectors.joining("|"));
+    }
+    @Override protected String renderReport(String data) {
+        return "CSV Output:\n" + data;
+    }
+}
+
+class JsonReportGenerator extends ReportGenerator {
+    @Override protected String parseData(String raw) { return raw.replaceAll(",", "\n"); }
+    @Override protected String renderReport(String data) { return "JSON Output:\n" + data; }
+    @Override protected String addHeader() { return "{\n"; }
+    @Override protected String addFooter() { return "\n}"; }
+}
+
+System.out.println(new CsvReportGenerator().generate("Alice, 30, Engineer"));
+\`\`\`
+
+### Command — Encapsulate Requests as Objects
+
+Encapsulates a request as an object, letting you parameterize clients with different requests, queue operations, log changes, or support undo/redo.
+
+\`\`\`java
+// Command interface
+interface Command {
+    void execute();
+    void undo();
+}
+
+// Receiver
+class TextEditor {
+    private final StringBuilder text = new StringBuilder();
+    public void append(String s)   { text.append(s); }
+    public void deleteLast(int n)  { text.delete(text.length()-n, text.length()); }
+    public String getText()        { return text.toString(); }
+}
+
+// Concrete command
+class AppendCommand implements Command {
+    private final TextEditor editor;
+    private final String text;
+
+    AppendCommand(TextEditor e, String text) { this.editor = e; this.text = text; }
+    public void execute() { editor.append(text); }
+    public void undo()    { editor.deleteLast(text.length()); }
+}
+
+// Invoker — maintains command history
+class CommandHistory {
+    private final Deque<Command> history = new ArrayDeque<>();
+
+    public void execute(Command cmd) { cmd.execute(); history.push(cmd); }
+    public void undo() { if (!history.isEmpty()) history.pop().undo(); }
+}
+
+TextEditor editor = new TextEditor();
+CommandHistory history = new CommandHistory();
+history.execute(new AppendCommand(editor, "Hello"));
+history.execute(new AppendCommand(editor, ", World"));
+System.out.println(editor.getText()); // Hello, World
+history.undo();
+System.out.println(editor.getText()); // Hello
+history.undo();
+System.out.println(editor.getText()); // (empty)
+\`\`\``,
+          code: [
+            `import java.util.*;
+import java.util.function.*;
+
+// Strategy via functional interface — no concrete strategy classes
+public class StrategyDemo {
+    record Product(String name, double price, int stock) {}
+
+    static List<Product> filter(List<Product> products, Predicate<Product> strategy) {
+        return products.stream().filter(strategy).toList();
+    }
+
+    static List<Product> sort(List<Product> products, Comparator<Product> strategy) {
+        return products.stream().sorted(strategy).toList();
+    }
+
+    public static void main(String[] args) {
+        List<Product> catalog = List.of(
+            new Product("Widget",  9.99, 50),
+            new Product("Gadget", 29.99,  5),
+            new Product("Doohickey", 4.99, 200),
+            new Product("Thingamajig", 49.99, 0)
+        );
+
+        // Filter strategies as lambdas
+        Predicate<Product> inStock     = p -> p.stock() > 0;
+        Predicate<Product> affordable  = p -> p.price() < 15.0;
+        Predicate<Product> highlighted = inStock.and(affordable);
+
+        System.out.println("In stock & affordable:");
+        filter(catalog, highlighted).forEach(p ->
+            System.out.printf("  %-15s $%.2f (qty: %d)%n", p.name(), p.price(), p.stock()));
+
+        // Sort strategies as method references / lambdas
+        System.out.println("By price ascending:");
+        sort(catalog, Comparator.comparingDouble(Product::price))
+            .forEach(p -> System.out.printf("  %-15s $%.2f%n", p.name(), p.price()));
+    }
+}`,
+            `import java.util.*;
+
+// Observer pattern — stock alert system
+interface PriceObserver {
+    void onPriceChange(String symbol, double newPrice, double oldPrice);
+}
+
+class StockTicker {
+    private final Map<String, Double> prices = new HashMap<>();
+    private final Map<String, List<PriceObserver>> observers = new HashMap<>();
+
+    public void subscribe(String symbol, PriceObserver obs) {
+        observers.computeIfAbsent(symbol, k -> new ArrayList<>()).add(obs);
+    }
+
+    public void updatePrice(String symbol, double price) {
+        double old = prices.getOrDefault(symbol, price);
+        prices.put(symbol, price);
+        observers.getOrDefault(symbol, List.of())
+                 .forEach(obs -> obs.onPriceChange(symbol, price, old));
+    }
+}
+
+// Command pattern — undo-able price updates
+interface PriceCommand { void execute(); void undo(); }
+
+class PriceUpdateCommand implements PriceCommand {
+    private final StockTicker ticker;
+    private final String symbol;
+    private final double newPrice, oldPrice;
+
+    PriceUpdateCommand(StockTicker t, String sym, double newP, double oldP) {
+        this.ticker = t; this.symbol = sym; this.newPrice = newP; this.oldPrice = oldP;
+    }
+    public void execute() { ticker.updatePrice(symbol, newPrice); }
+    public void undo()    { ticker.updatePrice(symbol, oldPrice); }
+}
+
+public class BehavioralDemo {
+    public static void main(String[] args) {
+        StockTicker ticker = new StockTicker();
+
+        // Observer — alert if price moves > 5%
+        ticker.subscribe("NIFTY", (sym, now, prev) -> {
+            System.out.printf("%s: %.0f → %.0f%n", sym, prev, now);
+            double pct = Math.abs(now - prev) / prev * 100;
+            if (pct > 5) System.out.printf("  ⚠ Alert: %.1f%% move!%n", pct);
+        });
+
+        // Command — undo-able updates
+        Deque<PriceCommand> history = new ArrayDeque<>();
+        for (double[] update : new double[][]{{23500,0},{24500,23500},{22000,24500}}) {
+            PriceCommand cmd = new PriceUpdateCommand(ticker, "NIFTY", update[0], update[1]);
+            cmd.execute();
+            history.push(cmd);
+        }
+
+        System.out.println("\nUndoing last 2 updates:");
+        history.pop().undo();
+        history.pop().undo();
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'How does Java 8\'s functional interface support replace Strategy classes?', a: 'Strategy is a single-method interface (functional interface). In Java 8+, any lambda or method reference implements it directly — no concrete strategy class needed. Comparator, Predicate, Function, Consumer are all Strategy patterns. This eliminates boilerplate while preserving the pattern\'s benefits.' },
+            { q: 'What is the difference between Template Method and Strategy?', a: 'Template Method uses inheritance — the algorithm skeleton is in the base class and subclasses override specific steps. Strategy uses composition — the context holds a strategy reference and delegates to it. Template Method is compile-time (inheritance); Strategy is runtime (you can swap the strategy). Prefer Strategy for testability and flexibility.' },
+            { q: 'What problem does the Command pattern solve?', a: 'It encapsulates a request as an object, enabling: (1) undo/redo — store executed commands in a history stack; (2) queuing — commands can be scheduled, delayed, or serialised; (3) macro recording — record a sequence of commands and replay; (4) remote operations — send command objects over the network.' },
+            { q: 'What is the Observer pattern called in modern Java frameworks?', a: 'Event-driven architecture / publish-subscribe. Spring uses ApplicationEvent + ApplicationListener or @EventListener. Reactive frameworks use Observable/Publisher (RxJava, Project Reactor). In the JDK, Flow.Publisher/Flow.Subscriber (Java 9) is the reactive streams observer. java.util.Observer was deprecated in Java 9.' },
+            { q: 'What is a "hook method" in the Template Method pattern?', a: 'A method in the base class with a default (often empty) implementation that subclasses can optionally override to "hook" into the algorithm at specific points. Unlike abstract steps (which must be overridden), hooks are optional customisation points. Example: addHeader() and addFooter() in a report generator — subclasses can override only what they need.' }
+          ]
+        },
+        {
+          title: 'Pattern Selection Guide & Real-World Applications',
+          notes: `## Pattern Selection Guide & Real-World Applications
+
+### Quick-Reference — When to Use Which Pattern
+
+\`\`\`mermaid
+flowchart TD
+    Q1{What is the\\nproblem?}
+    Q1 --> C1[Object creation\\nis complex]
+    Q1 --> C2[Interface\\nmismatch]
+    Q1 --> C3[Add behaviour\\nwithout subclassing]
+    Q1 --> C4[Choose algorithm\\nat runtime]
+    Q1 --> C5[Notify many\\nobjects of change]
+    Q1 --> C6[Undo/redo\\nor queue requests]
+    C1 --> P1[Builder / Factory]
+    C2 --> P2[Adapter]
+    C3 --> P3[Decorator / Proxy]
+    C4 --> P4[Strategy]
+    C5 --> P5[Observer]
+    C6 --> P6[Command]
+    style P1 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style P2 fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
+    style P3 fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style P4 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
+    style P5 fill:#0f1e12,stroke:#10b981,color:#e2e8f0
+    style P6 fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
+\`\`\`
+
+### Patterns in the JDK — Recognise Them in the Wild
+
+| Pattern | JDK Examples |
+|---|---|
+| Singleton | \`Runtime.getRuntime()\`, \`System.console()\`, \`Collections.emptyList()\` |
+| Factory Method | \`Calendar.getInstance()\`, \`NumberFormat.getInstance()\`, \`Optional.of()\` |
+| Builder | \`StringBuilder\`, \`Stream.builder()\`, \`ProcessBuilder\`, \`HttpClient.newBuilder()\` |
+| Adapter | \`Arrays.asList()\`, \`InputStreamReader\`, \`Collections.enumeration()\` |
+| Decorator | \`BufferedInputStream\`, \`Collections.unmodifiableList()\`, \`Collections.synchronizedList()\` |
+| Proxy | \`java.lang.reflect.Proxy\`, Spring AOP proxies, Hibernate lazy-loading proxies |
+| Facade | \`javax.faces.context.FacesContext\`, \`java.net.URL\` |
+| Strategy | \`Comparator\`, \`Predicate\`, \`ExecutorService\` (strategy for task execution) |
+| Observer | \`java.util.EventListener\`, \`Flow.Subscriber\` (Java 9), Spring \`ApplicationListener\` |
+| Template Method | \`AbstractList\`, \`AbstractMap\`, \`HttpServlet.service()\` |
+| Command | \`Runnable\`, \`Callable\`, \`javax.swing.Action\` |
+| Iterator | \`java.util.Iterator\`, \`java.util.Spliterator\` |
+
+### Patterns in Spring Framework
+
+\`\`\`
+Singleton     — every Spring bean is singleton by default
+Factory       — BeanFactory / ApplicationContext
+Proxy         — @Transactional, @Cacheable, @Async, @Secured (Spring AOP)
+Template      — JdbcTemplate, RestTemplate, KafkaTemplate
+Observer      — ApplicationEvent + @EventListener
+Strategy      — HandlerMapping, ViewResolver (Spring MVC)
+Decorator     — BeanPostProcessor, HandlerInterceptor
+Command       — @Async methods return Future/CompletableFuture
+\`\`\`
+
+### Anti-Patterns to Avoid
+
+**1. Singleton overuse** — creates hidden global state, kills testability. Prefer Spring's IoC container to manage shared instances.
+
+**2. God Object** — one class that knows and does too much. Break it up using SRP (Single Responsibility Principle).
+
+**3. Lava Flow** — dead code left in the codebase "just in case" because nobody dares delete it. Delete confidently; version control has the history.
+
+**4. Magic Numbers / Strings** — \`if (status == 3)\` vs \`if (status == OrderStatus.SHIPPED)\`. Use enums and named constants.
+
+**5. Premature Pattern Injection** — adding an abstract factory + strategy + observer to a 50-line CRUD app. Patterns solve real complexity — don't introduce them speculatively.
+
+### The SOLID Principles Behind the Patterns
+
+Each GoF pattern embodies one or more SOLID principles:
+
+| Principle | Abbreviation | Patterns that embody it |
+|---|---|---|
+| Single Responsibility | S | Command, Factory, Facade |
+| Open/Closed | O | Strategy, Decorator, Observer |
+| Liskov Substitution | L | Template Method, Decorator, Adapter |
+| Interface Segregation | I | Facade, Strategy (small interfaces) |
+| Dependency Inversion | D | Factory, Abstract Factory, all dependency injection |
+
+> **Interview key insight:** Interviewers don't want you to recite pattern definitions — they want you to recognise when a pattern solves a real problem, name it correctly, and explain the trade-offs. "We used Strategy here because we needed to switch the pricing algorithm at runtime without if-else chains" is a perfect answer.
+
+### Pattern Composition — Real Scenario
+
+A real payment processing pipeline often composes several patterns:
+
+\`\`\`java
+// Factory creates the right payment strategy
+PaymentStrategy strategy = PaymentFactory.create(paymentMethod);
+
+// Decorator adds logging + retry
+PaymentStrategy withLogging = new LoggingPaymentDecorator(strategy);
+PaymentStrategy withRetry   = new RetryDecorator(withLogging, 3);
+
+// Command wraps the payment for undo/audit
+PaymentCommand cmd = new PaymentCommand(withRetry, order);
+
+// Observer notifies downstream on success/failure
+cmd.onSuccess(event -> emailService.sendReceipt(event));
+cmd.onSuccess(event -> inventoryService.reserve(event));
+cmd.onFailure(event -> alertService.notify(event));
+
+// Execute
+commandBus.execute(cmd);
+\`\`\``,
+          code: [
+            `import java.util.*;
+import java.util.function.*;
+
+// Pattern composition: Factory + Strategy + Decorator + Observer
+interface PaymentStrategy {
+    String pay(double amount, String currency);
+}
+
+// Concrete strategies
+class CreditCardPayment implements PaymentStrategy {
+    private final String card;
+    CreditCardPayment(String card) { this.card = card; }
+    public String pay(double amount, String currency) {
+        return String.format("CC[%s] charged %.2f %s", card.substring(card.length()-4), amount, currency);
+    }
+}
+
+class UpiPayment implements PaymentStrategy {
+    private final String upiId;
+    UpiPayment(String upiId) { this.upiId = upiId; }
+    public String pay(double amount, String currency) {
+        return String.format("UPI[%s] sent %.2f %s", upiId, amount, currency);
+    }
+}
+
+// Factory
+class PaymentFactory {
+    public static PaymentStrategy create(String method, String token) {
+        return switch (method) {
+            case "CC"  -> new CreditCardPayment(token);
+            case "UPI" -> new UpiPayment(token);
+            default -> throw new IllegalArgumentException("Unknown: " + method);
+        };
+    }
+}
+
+// Decorator: adds logging to any strategy
+class LoggingPayment implements PaymentStrategy {
+    private final PaymentStrategy delegate;
+    LoggingPayment(PaymentStrategy d) { this.delegate = d; }
+    public String pay(double amount, String currency) {
+        System.out.println("[LOG] Initiating payment: " + amount + " " + currency);
+        String result = delegate.pay(amount, currency);
+        System.out.println("[LOG] Result: " + result);
+        return result;
+    }
+}
+
+public class PatternComposition {
+    private final List<Consumer<String>> successListeners = new ArrayList<>();
+
+    public void onSuccess(Consumer<String> listener) { successListeners.add(listener); }
+
+    public void processPayment(String method, String token, double amount) {
+        PaymentStrategy strategy = new LoggingPayment(PaymentFactory.create(method, token));
+        String result = strategy.pay(amount, "INR");
+        successListeners.forEach(l -> l.accept(result));
+    }
+
+    public static void main(String[] args) {
+        PatternComposition processor = new PatternComposition();
+        processor.onSuccess(r -> System.out.println("[EMAIL] Receipt: " + r));
+        processor.onSuccess(r -> System.out.println("[AUDIT] Logged: " + r));
+
+        processor.processPayment("CC",  "4532...1234", 2999.00);
+        processor.processPayment("UPI", "user@okaxis",  499.00);
+    }
+}`,
+            `import java.util.*;
+
+// Template Method for data pipeline — extensible ETL
+abstract class DataPipeline<T, R> {
+    // Template method — fixed skeleton
+    public final List<R> run(List<T> input) {
+        List<T> validated = validate(input);
+        List<T> filtered  = filter(validated);
+        List<R> transformed = transform(filtered);
+        return postProcess(transformed);
+    }
+
+    // Abstract steps — must implement
+    protected abstract List<T> validate(List<T> data);
+    protected abstract List<R> transform(List<T> data);
+
+    // Hook steps — optional override
+    protected List<T> filter(List<T> data) { return data; }
+    protected List<R> postProcess(List<R> data) { return data; }
+}
+
+// Concrete pipeline: String → Integer (word length)
+class WordLengthPipeline extends DataPipeline<String, Integer> {
+    @Override
+    protected List<String> validate(List<String> data) {
+        Objects.requireNonNull(data, "data must not be null");
+        return data;
+    }
+    @Override
+    protected List<String> filter(List<String> data) {
+        return data.stream().filter(s -> s != null && !s.isBlank()).toList();
+    }
+    @Override
+    protected List<Integer> transform(List<String> data) {
+        return data.stream().map(String::length).toList();
+    }
+    @Override
+    protected List<Integer> postProcess(List<Integer> data) {
+        List<Integer> sorted = new ArrayList<>(data);
+        Collections.sort(sorted);
+        return sorted;
+    }
+}
+
+public class TemplateMethodDemo {
+    public static void main(String[] args) {
+        DataPipeline<String, Integer> pipeline = new WordLengthPipeline();
+        List<String> input = Arrays.asList("hello", "", "world", null, "java", "  ", "design");
+        List<Integer> result = pipeline.run(input);
+        System.out.println("Word lengths (sorted): " + result);  // [4, 5, 5, 6]
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'Name three places the Template Method pattern appears in the JDK.', a: 'AbstractList (implements get-by-iterator from abstract get(i)), AbstractMap (implements entrySet-based operations from abstract entrySet()), HttpServlet.service() (dispatches to doGet/doPost). Any abstract class with a concrete method calling abstract methods is Template Method.' },
+            { q: 'Which SOLID principle does Strategy most directly embody?', a: 'Open/Closed Principle — the context class is open for extension (new strategies) without modification (the context code doesn\'t change). Also Dependency Inversion — the context depends on the Strategy abstraction, not concrete implementations.' },
+            { q: 'How is Runnable a Command pattern?', a: 'Runnable encapsulates an operation (execute = run()) as an object. It can be queued in an ExecutorService, scheduled via ScheduledExecutorService, passed around, stored, and executed later. This is exactly the Command pattern intent: decouple the request\'s creation from its execution.' },
+            { q: 'What is the Decorator pattern equivalent in the Collections framework?', a: 'Collections.unmodifiableList(), synchronizedList(), checkedList() — they all wrap an existing List and add behaviour (immutability, thread-safety, type checking) while implementing the same List interface. They are decorators that add cross-cutting behaviour without subclassing.' },
+            { q: 'What is the key difference between Proxy and Decorator?', a: 'Intent and transparency. Decorator adds behaviour and is typically composed by the client. Proxy controls access and is usually transparent — the client doesn\'t know it\'s talking to a proxy (e.g. Spring\'s @Transactional creates a proxy silently). Decorator is for enrichment; Proxy is for access control, lazy loading, or remoting.' }
+          ]
+        }
+      ]
     }
 
   ]
