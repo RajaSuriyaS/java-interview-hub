@@ -7,23 +7,20 @@
    ============================================================ */
 
 const CURRICULUM = [
-/* ===================== PHASE 0: FOUNDATIONS ===================== */
-{
-  id: 'p0',
-  title: 'Java Foundations — Zero to Basics',
-  icon: 'zap',
-  blurb: 'Master variables, data types, operators, and the memory model that everything else rests on.',
-  modules: [
-    {
-      id: '0.1',
-      title: 'Variables, Data Types & Operators',
-      hours: 3,
-      sections: [
-
-        /* ── SECTION 1 ─────────────────────────────────────────────── */
-        {
-          title: 'Variables & Memory: Stack vs Heap',
-          notes: `
+  {
+    id: `p0`,
+    title: `Java Foundations — Zero to Basics`,
+    icon: `zap`,
+    blurb: `Master variables, data types, operators, and the memory model that everything else rests on.`,
+    modules: [
+      {
+        id: `0.1`,
+        title: `Variables, Data Types & Operators`,
+        hours: 3,
+        sections: [
+          {
+            title: `Variables & Memory: Stack vs Heap`,
+            notes: `
 # Variables & Memory: Stack vs Heap
 
 ## What Is a Variable?
@@ -57,9 +54,12 @@ public void example() {
 \`\`\`mermaid
 graph TB
     subgraph STACK["JVM Stack (method frame)"]
-        AGE["age: 25\n(4 bytes)"]
-        SAL["salary: 50000.0\n(8 bytes)"]
-        ACT["isActive: true\n(1 byte)"]
+        AGE["age: 25
+(4 bytes)"]
+        SAL["salary: 50000.0
+(8 bytes)"]
+        ACT["isActive: true
+(1 byte)"]
     end
     subgraph HEAP["Heap"]
         EMPTY["(empty — no objects here)"]
@@ -89,12 +89,18 @@ Here's what actually happens:
 \`\`\`mermaid
 graph LR
     subgraph STACK["JVM Stack (method frame)"]
-        NAMEREF["name: 0x7f2a01\n(reference/pointer)"]
-        SCORESREF["scores: 0x7f2b10\n(reference/pointer)"]
+        NAMEREF["name: 0x7f2a01
+(reference/pointer)"]
+        SCORESREF["scores: 0x7f2b10
+(reference/pointer)"]
     end
     subgraph HEAP["Heap"]
-        NAMEOBJ["String object\n'Alice'\nat 0x7f2a01"]
-        SCORESOBJ["int array\n[90, 85, 92]\nat 0x7f2b10"]
+        NAMEOBJ["String object
+'Alice'
+at 0x7f2a01"]
+        SCORESOBJ["int array
+[90, 85, 92]
+at 0x7f2b10"]
     end
     NAMEREF -->|"points to"| NAMEOBJ
     SCORESREF -->|"points to"| SCORESOBJ
@@ -135,11 +141,11 @@ When a method returns or a block closes, its local variables are **popped off th
 > [!EU]
 > At a fintech company: "Our trading engine was running low on memory under high load. We profiled and found millions of reference types being created in hot loops, flooding the heap. We switched to primitives and primitive arrays (int[], long[]) where possible. Memory footprint dropped 70%, GC pauses dropped from 500ms to 5ms, and throughput doubled." That's a real impact of understanding stack vs heap.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Stack vs Heap: visibility and memory lifetime',
-              code: `public class StackVsHeapDemo {
+            code: [
+              {
+                lang: `java`,
+                title: `Stack vs Heap: visibility and memory lifetime`,
+                code: `public class StackVsHeapDemo {
     static class Person {
         String name;
         int age;
@@ -174,11 +180,11 @@ When a method returns or a block closes, its local variables are **popped off th
         // might still exist if methodA returned a reference to it
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Null reference pitfall and defensive checks',
-              code: `public class NullReferencePitfall {
+              },
+              {
+                lang: `java`,
+                title: `Null reference pitfall and defensive checks`,
+                code: `public class NullReferencePitfall {
     static class Config {
         String apiUrl;
         Config(String url) { this.apiUrl = url; }
@@ -223,21 +229,34 @@ When a method returns or a block closes, its local variables are **popped off th
         System.out.println(getSafeApiUrl(nullConfig)); // returns "DEFAULT_URL"
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is the difference between a primitive type and a reference type in Java?', a: 'Primitive types (int, double, boolean, etc.) store their VALUE directly on the stack. Reference types (objects, arrays, strings) store a REFERENCE (pointer) on the stack that points to the actual object on the heap. Primitives are fast; references add one indirection level.' },
-            { q: 'Where do variables live in memory?', a: 'Primitive values live on the JVM stack (fast, reclaimed when scope ends). Reference type objects live on the heap (slower, reclaimed by garbage collector when no references point to them). The reference itself (the pointer) lives on the stack.' },
-            { q: 'What is null and why does it cause NullPointerException?', a: 'null is a reference that does not point to any object. Calling a method on a null reference (e.g., null.length()) causes NullPointerException because there is no actual object to invoke the method on. Always check for null before dereferencing.' },
-            { q: 'What happens to a variable when it goes out of scope?', a: 'Stack variables (primitives and references) are popped off the stack and their memory is reclaimed immediately. Objects on the heap are NOT immediately reclaimed — they are garbage collected only when no references point to them anymore.' },
-            { q: 'Can a primitive type variable be null?', a: 'No. Primitive types (int, double, boolean) always have a default value (0, 0.0, false). Only reference types can be null. If you need a nullable integer, use the wrapper class Integer or Optional<Integer>.' }
-          ]
-        },
-
-        /* ── SECTION 2 ─────────────────────────────────────────────── */
-        {
-          title: 'Primitive Data Types: Sizes, Ranges & Casting',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between a primitive type and a reference type in Java?`,
+                a: `Primitive types (int, double, boolean, etc.) store their VALUE directly on the stack. Reference types (objects, arrays, strings) store a REFERENCE (pointer) on the stack that points to the actual object on the heap. Primitives are fast; references add one indirection level.`
+              },
+              {
+                q: `Where do variables live in memory?`,
+                a: `Primitive values live on the JVM stack (fast, reclaimed when scope ends). Reference type objects live on the heap (slower, reclaimed by garbage collector when no references point to them). The reference itself (the pointer) lives on the stack.`
+              },
+              {
+                q: `What is null and why does it cause NullPointerException?`,
+                a: `null is a reference that does not point to any object. Calling a method on a null reference (e.g., null.length()) causes NullPointerException because there is no actual object to invoke the method on. Always check for null before dereferencing.`
+              },
+              {
+                q: `What happens to a variable when it goes out of scope?`,
+                a: `Stack variables (primitives and references) are popped off the stack and their memory is reclaimed immediately. Objects on the heap are NOT immediately reclaimed — they are garbage collected only when no references point to them anymore.`
+              },
+              {
+                q: `Can a primitive type variable be null?`,
+                a: `No. Primitive types (int, double, boolean) always have a default value (0, 0.0, false). Only reference types can be null. If you need a nullable integer, use the wrapper class Integer or Optional<Integer>.`
+              }
+            ]
+          },
+          {
+            title: `Primitive Data Types: Sizes, Ranges & Casting`,
+            notes: `
 # Primitive Data Types: Sizes, Ranges & Casting
 
 ## The Eight Primitives
@@ -247,18 +266,34 @@ Java defines exactly eight primitive types. Each has a fixed size and range:
 \`\`\`mermaid
 graph LR
     subgraph INT["Integer Types"]
-        B["byte\n1 byte\n-128 to 127"]
-        S["short\n2 bytes\n-32768 to 32767"]
-        I["int\n4 bytes\n-2B to 2B"]
-        L["long\n8 bytes\n-9.2Q to 9.2Q"]
+        B["byte
+1 byte
+-128 to 127"]
+        S["short
+2 bytes
+-32768 to 32767"]
+        I["int
+4 bytes
+-2B to 2B"]
+        L["long
+8 bytes
+-9.2Q to 9.2Q"]
     end
     subgraph FLOAT["Floating Point"]
-        F["float\n4 bytes\n~6 decimal digits"]
-        D["double\n8 bytes\n~15 decimal digits"]
+        F["float
+4 bytes
+~6 decimal digits"]
+        D["double
+8 bytes
+~15 decimal digits"]
     end
     subgraph BOOL["Boolean & Character"]
-        BO["boolean\n1 byte (or bit)\ntrue or false"]
-        C["char\n2 bytes\n0 to 65535 (Unicode)"]
+        BO["boolean
+1 byte (or bit)
+true or false"]
+        C["char
+2 bytes
+0 to 65535 (Unicode)"]
     end
     style INT fill:#1e293b,stroke:#6366f1
     style FLOAT fill:#1e293b,stroke:#818cf8
@@ -382,11 +417,11 @@ int overflow = max + 1;      // wraps to -2147483648 (no error!)
 > [!EU]
 > At a trading firm, one engineer lost money because they used \`float\` for prices instead of \`BigDecimal\`. Another quietly lost precision on a high-frequency tick counter by using \`int\` and not checking for overflow. Always use the right type from the start — the cost of refactoring is high.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Primitive types, ranges, and casting pitfalls',
-              code: `public class PrimitiveTypesPitfalls {
+            code: [
+              {
+                lang: `java`,
+                title: `Primitive types, ranges, and casting pitfalls`,
+                code: `public class PrimitiveTypesPitfalls {
     public static void main(String[] args) {
         // --- Sizes and ranges ---
         System.out.println("Byte range: " + Byte.MIN_VALUE + " to " + Byte.MAX_VALUE);
@@ -431,11 +466,11 @@ int overflow = max + 1;      // wraps to -2147483648 (no error!)
         System.out.println("0.1 + 0.2 = " + price1.add(price2)); // 0.3 exactly
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Widening vs narrowing casts, and safe conversions',
-              code: `public class CastingExamples {
+              },
+              {
+                lang: `java`,
+                title: `Widening vs narrowing casts, and safe conversions`,
+                code: `public class CastingExamples {
     public static void main(String[] args) {
         // --- Widening casts (safe, implicit) ---
         byte b = 10;
@@ -478,22 +513,38 @@ int overflow = max + 1;      // wraps to -2147483648 (no error!)
         }
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What are the eight primitive types in Java?', a: 'byte, short, int, long (integers); float, double (floating-point); boolean (true/false); char (Unicode character).' },
-            { q: 'What is the range of int and long?', a: 'int: -2,147,483,648 to 2,147,483,647 (2^31 range). long: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807 (2^63 range).' },
-            { q: 'Why should you never use float or double for money?', a: 'Floating-point numbers are binary approximations and cannot represent decimal fractions exactly. 0.1 + 0.2 ≠ 0.3 in binary. Use BigDecimal for exact decimal arithmetic.' },
-            { q: 'What is auto-boxing and auto-unboxing?', a: 'Auto-boxing automatically converts a primitive to its wrapper class (int → Integer). Auto-unboxing converts the wrapper back to the primitive (Integer → int). Unboxing a null value causes NullPointerException.' },
-            { q: 'What happens when you add 1 to Integer.MAX_VALUE?', a: 'It wraps silently to Integer.MIN_VALUE (negative). No exception is thrown. This is called integer overflow and is a common source of bugs. Use Math.addExact() if you need overflow detection.' },
-            { q: 'What is the difference between widening and narrowing casts?', a: 'Widening (e.g., int → long) is always safe and can be implicit. Narrowing (e.g., double → int) can lose data and requires an explicit cast operator. Narrowing may overflow or truncate.' }
-          ]
-        },
-
-        /* ── SECTION 3 ─────────────────────────────────────────────── */
-        {
-          title: 'Operators & Operator Precedence',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What are the eight primitive types in Java?`,
+                a: `byte, short, int, long (integers); float, double (floating-point); boolean (true/false); char (Unicode character).`
+              },
+              {
+                q: `What is the range of int and long?`,
+                a: `int: -2,147,483,648 to 2,147,483,647 (2^31 range). long: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807 (2^63 range).`
+              },
+              {
+                q: `Why should you never use float or double for money?`,
+                a: `Floating-point numbers are binary approximations and cannot represent decimal fractions exactly. 0.1 + 0.2 ≠ 0.3 in binary. Use BigDecimal for exact decimal arithmetic.`
+              },
+              {
+                q: `What is auto-boxing and auto-unboxing?`,
+                a: `Auto-boxing automatically converts a primitive to its wrapper class (int → Integer). Auto-unboxing converts the wrapper back to the primitive (Integer → int). Unboxing a null value causes NullPointerException.`
+              },
+              {
+                q: `What happens when you add 1 to Integer.MAX_VALUE?`,
+                a: `It wraps silently to Integer.MIN_VALUE (negative). No exception is thrown. This is called integer overflow and is a common source of bugs. Use Math.addExact() if you need overflow detection.`
+              },
+              {
+                q: `What is the difference between widening and narrowing casts?`,
+                a: `Widening (e.g., int → long) is always safe and can be implicit. Narrowing (e.g., double → int) can lose data and requires an explicit cast operator. Narrowing may overflow or truncate.`
+              }
+            ]
+          },
+          {
+            title: `Operators & Operator Precedence`,
+            notes: `
 # Operators & Operator Precedence
 
 ## Categories of Operators
@@ -647,11 +698,11 @@ int result = ((5 + (2 * 3)) - (1 / 2)) & 6;
 > [!EU]
 > A team at a high-frequency trading firm spent days debugging an issue where bitwise operators were used incorrectly to pack flags. A simple misunderstanding of precedence (\`~flag | OTHER\` vs \`~(flag | OTHER)\`) silently corrupted the state. In interviews, being precise about operator precedence shows you understand the language deeply.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Operator precedence and common pitfalls',
-              code: `public class OperatorPrecedencePitfalls {
+            code: [
+              {
+                lang: `java`,
+                title: `Operator precedence and common pitfalls`,
+                code: `public class OperatorPrecedencePitfalls {
     public static void main(String[] args) {
         // --- Arithmetic precedence ---
         int result1 = 2 + 3 * 4;  // 2 + (3 * 4) = 14, NOT (2 + 3) * 4 = 20
@@ -696,11 +747,11 @@ int result = ((5 + (2 * 3)) - (1 / 2)) & 6;
         System.out.println("Post-increment: x++ = " + postIncrement + ", x = " + x);
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Relational, logical, and bitwise operators in action',
-              code: `public class OperatorExamples {
+              },
+              {
+                lang: `java`,
+                title: `Relational, logical, and bitwise operators in action`,
+                code: `public class OperatorExamples {
     public static void main(String[] args) {
         // --- Relational operators ---
         int age = 25;
@@ -736,22 +787,38 @@ int result = ((5 + (2 * 3)) - (1 / 2)) & 6;
         boolean isAdmin() { return false; }
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is the difference between == and .equals() for objects?', a: '== checks if two variables point to the SAME object in memory (reference equality). .equals() checks if two objects have the SAME CONTENT (value equality). For strings and most objects, use .equals().' },
-            { q: 'What is operator precedence and why does it matter?', a: 'Operator precedence determines which operators are evaluated first in an expression. For example, * has higher precedence than +, so 2 + 3 * 4 = 14 (not 20). Always use parentheses when precedence is unclear to avoid bugs.' },
-            { q: 'What is short-circuit evaluation and when does it happen?', a: 'Short-circuit evaluation means && and || don\'t evaluate the right side if the result is already determined. If the left side of && is false, the right side is not evaluated (because the result is already false). Critical for avoiding NullPointerException.' },
-            { q: 'What is the difference between & and &&?', a: '& is bitwise AND (operates on bits); && is logical AND (operates on booleans). & always evaluates both sides; && short-circuits (doesn\'t evaluate the right side if the left is false). For boolean logic, always use &&.' },
-            { q: 'What is the ternary operator and how is it used?', a: 'The ternary operator: condition ? valueIfTrue : valueIfFalse. Example: String status = (age >= 18) ? "adult" : "minor";. Use it for simple inline conditionals; avoid nesting for clarity.' },
-            { q: 'What does the % (modulo) operator do with negative numbers?', a: 'The % operator returns the remainder with the sign of the dividend. -7 % 3 = -1 (not 2). For positive remainders, use ((a % b) + b) % b.' }
-          ]
-        },
-
-        /* ── SECTION 4 ─────────────────────────────────────────────── */
-        {
-          title: 'String Basics & Reference vs Value',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between == and .equals() for objects?`,
+                a: `== checks if two variables point to the SAME object in memory (reference equality). .equals() checks if two objects have the SAME CONTENT (value equality). For strings and most objects, use .equals().`
+              },
+              {
+                q: `What is operator precedence and why does it matter?`,
+                a: `Operator precedence determines which operators are evaluated first in an expression. For example, * has higher precedence than +, so 2 + 3 * 4 = 14 (not 20). Always use parentheses when precedence is unclear to avoid bugs.`
+              },
+              {
+                q: `What is short-circuit evaluation and when does it happen?`,
+                a: `Short-circuit evaluation means && and || don't evaluate the right side if the result is already determined. If the left side of && is false, the right side is not evaluated (because the result is already false). Critical for avoiding NullPointerException.`
+              },
+              {
+                q: `What is the difference between & and &&?`,
+                a: `& is bitwise AND (operates on bits); && is logical AND (operates on booleans). & always evaluates both sides; && short-circuits (doesn't evaluate the right side if the left is false). For boolean logic, always use &&.`
+              },
+              {
+                q: `What is the ternary operator and how is it used?`,
+                a: `The ternary operator: condition ? valueIfTrue : valueIfFalse. Example: String status = (age >= 18) ? "adult" : "minor";. Use it for simple inline conditionals; avoid nesting for clarity.`
+              },
+              {
+                q: `What does the % (modulo) operator do with negative numbers?`,
+                a: `The % operator returns the remainder with the sign of the dividend. -7 % 3 = -1 (not 2). For positive remainders, use ((a % b) + b) % b.`
+              }
+            ]
+          },
+          {
+            title: `String Basics & Reference vs Value`,
+            notes: `
 # String Basics & Reference vs Value
 
 ## Strings Are Reference Types
@@ -782,7 +849,8 @@ graph LR
         VB["b: ref→0x101"]
     end
     subgraph POOL["String Pool (Heap)"]
-        OBJ["String 'hello'\nat 0x101"]
+        OBJ["String 'hello'
+at 0x101"]
     end
     VA -->|"both point to"| OBJ
     VB -->|"same object"| OBJ
@@ -808,10 +876,12 @@ graph LR
         VB["b: ref→0x200"]
     end
     subgraph POOL["String Pool"]
-        OBJ1["'hello'\nat 0x101"]
+        OBJ1["'hello'
+at 0x101"]
     end
     subgraph HEAP["Heap (non-pooled)"]
-        OBJ2["'hello'\nat 0x200"]
+        OBJ2["'hello'
+at 0x200"]
     end
     VA --> OBJ1
     VB --> OBJ2
@@ -887,11 +957,11 @@ Common methods:
 > [!EU]
 > At a trading firm, a junior engineer concatenated strings in a hot loop (thousands of times per second), creating millions of temporary objects and causing GC pauses. Switching to StringBuilder fixed the latency spike instantly. Understanding immutability and the String pool is not just academic — it's production-critical.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'String pool, immutability, and the == vs .equals() pitfall',
-              code: `public class StringPoolPitfall {
+            code: [
+              {
+                lang: `java`,
+                title: `String pool, immutability, and the == vs .equals() pitfall`,
+                code: `public class StringPoolPitfall {
     public static void main(String[] args) {
         // --- String pool behavior ---
         String a = "hello";
@@ -924,11 +994,11 @@ Common methods:
         System.out.println(user1.equalsIgnoreCase(user2));     // true (ignores case)
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'String concatenation: slow += vs fast StringBuilder',
-              code: `public class StringConcatenationPerformance {
+              },
+              {
+                lang: `java`,
+                title: `String concatenation: slow += vs fast StringBuilder`,
+                code: `public class StringConcatenationPerformance {
     public static void main(String[] args) {
         int iterations = 10_000;
 
@@ -962,31 +1032,45 @@ Common methods:
         System.out.println("Each method creates new String objects (original: " + original + ")");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is the String pool and how does it affect == comparisons?', a: 'The String pool is a memory region where string literals are stored. If two literals are identical, they point to the SAME object. Therefore, "hello" == "hello" is true. But new String("hello") == "hello" is false because the new one is not pooled.' },
-            { q: 'Why should you use .equals() instead of == for strings?', a: '== compares whether two variables point to the SAME object in memory (reference equality). .equals() compares whether two strings have the SAME CONTENT (value equality). For string content, always use .equals().' },
-            { q: 'What is String immutability and why does it matter?', a: 'Strings are immutable — once created, their content cannot be changed. Methods like .toUpperCase() return a NEW String; they don\'t modify the original. This makes strings safe to share but means string concatenation with += in loops is slow.' },
-            { q: 'When should you use StringBuilder instead of string concatenation?', a: 'Use StringBuilder when building strings in loops or with many concatenations. StringBuilder is mutable and fast (modifies a buffer in-place). String += creates a new object each time, which is slow and wasteful. StringBuilder is orders of magnitude faster for large concatenations.' },
-            { q: 'What does String.intern() do?', a: 'String.intern() returns a reference to the pooled version of the string. If the string is not already in the pool, it is added. This forces a string to be interned, making it comparable with == to other pooled strings.' },
-            { q: 'What is the difference between .equals() and .equalsIgnoreCase()?', a: '.equals() performs case-sensitive comparison ("Hello" ≠ "hello"). .equalsIgnoreCase() performs case-insensitive comparison ("Hello" = "hello"). Use equalsIgnoreCase() for user input or case-insensitive matching.' }
-          ]
-        }
-
-      ]
-    },
-
-    {
-      id: '0.2',
-      title: 'Control Flow — Loops, Conditionals & Switch',
-      hours: 3,
-      sections: [
-
-        /* ── SECTION 1 ─────────────────────────────────────────────── */
-        {
-          title: 'if / else — Conditionals & Decision Trees',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the String pool and how does it affect == comparisons?`,
+                a: `The String pool is a memory region where string literals are stored. If two literals are identical, they point to the SAME object. Therefore, "hello" == "hello" is true. But new String("hello") == "hello" is false because the new one is not pooled.`
+              },
+              {
+                q: `Why should you use .equals() instead of == for strings?`,
+                a: `== compares whether two variables point to the SAME object in memory (reference equality). .equals() compares whether two strings have the SAME CONTENT (value equality). For string content, always use .equals().`
+              },
+              {
+                q: `What is String immutability and why does it matter?`,
+                a: `Strings are immutable — once created, their content cannot be changed. Methods like .toUpperCase() return a NEW String; they don't modify the original. This makes strings safe to share but means string concatenation with += in loops is slow.`
+              },
+              {
+                q: `When should you use StringBuilder instead of string concatenation?`,
+                a: `Use StringBuilder when building strings in loops or with many concatenations. StringBuilder is mutable and fast (modifies a buffer in-place). String += creates a new object each time, which is slow and wasteful. StringBuilder is orders of magnitude faster for large concatenations.`
+              },
+              {
+                q: `What does String.intern() do?`,
+                a: `String.intern() returns a reference to the pooled version of the string. If the string is not already in the pool, it is added. This forces a string to be interned, making it comparable with == to other pooled strings.`
+              },
+              {
+                q: `What is the difference between .equals() and .equalsIgnoreCase()?`,
+                a: `.equals() performs case-sensitive comparison ("Hello" ≠ "hello"). .equalsIgnoreCase() performs case-insensitive comparison ("Hello" = "hello"). Use equalsIgnoreCase() for user input or case-insensitive matching.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.2`,
+        title: `Control Flow — Loops, Conditionals & Switch`,
+        hours: 3,
+        sections: [
+          {
+            title: `if / else — Conditionals & Decision Trees`,
+            notes: `
 # if / else — Conditionals & Decision Trees
 
 ## What Is Control Flow?
@@ -1148,11 +1232,11 @@ if (Objects.equals(status, "ACTIVE")) { ... }
 > [!EU]
 > At Goldman Sachs or Booking.com, interviewers often ask to refactor deeply nested conditionals. Knowing the guard clause pattern and early return shows you write maintainable code — a key EU software engineering value.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Guard clauses vs deep nesting — refactoring for clarity',
-              code: `import java.util.Objects;
+            code: [
+              {
+                lang: `java`,
+                title: `Guard clauses vs deep nesting — refactoring for clarity`,
+                code: `import java.util.Objects;
 
 public class GuardClauseDemo {
 
@@ -1208,11 +1292,11 @@ public class GuardClauseDemo {
         processOrderFlat(null);
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Null-safe comparisons and common if/else pitfalls',
-              code: `import java.util.Objects;
+              },
+              {
+                lang: `java`,
+                title: `Null-safe comparisons and common if/else pitfalls`,
+                code: `import java.util.Objects;
 
 public class ConditionalPitfalls {
     public static void main(String[] args) {
@@ -1255,21 +1339,34 @@ public class ConditionalPitfalls {
         }
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is a guard clause and why is it better than deep nesting?', a: 'A guard clause is an early return or throw at the top of a method to handle invalid/edge-case inputs. Instead of nesting valid logic inside many ifs, you "guard" against invalid state early and keep the happy path flat. Flat code is easier to read and maintain.' },
-            { q: 'Why do we write "ACTIVE".equals(status) instead of status.equals("ACTIVE")?', a: 'When "ACTIVE" is on the left, calling .equals() on a string literal can never throw NullPointerException — string literals are never null. If status is null, status.equals() would throw NPE. The null-safe alternative is Objects.equals(status, "ACTIVE").' },
-            { q: 'How many branches can an if/else chain have?', a: 'Unlimited. You can chain as many else if blocks as needed. But the JVM evaluates from top to bottom and stops at the first true condition. After 4–5 branches, consider switch expressions or a Map lookup instead for clarity.' },
-            { q: 'What is the dangling else problem?', a: 'When an else is ambiguous about which if it belongs to, because braces are missing. In Java, else always matches the nearest unmatched if. Fix: always use braces {} even for single-line bodies.' },
-            { q: 'Can you use an integer as a condition in Java?', a: 'No. Java requires the condition to be a boolean expression. Unlike C, you cannot write if (1) or if (x). The compiler enforces this. Only boolean expressions (true/false) are accepted.' }
-          ]
-        },
-
-        /* ── SECTION 2 ─────────────────────────────────────────────── */
-        {
-          title: 'switch Statement & switch Expression (Java 14+)',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is a guard clause and why is it better than deep nesting?`,
+                a: `A guard clause is an early return or throw at the top of a method to handle invalid/edge-case inputs. Instead of nesting valid logic inside many ifs, you "guard" against invalid state early and keep the happy path flat. Flat code is easier to read and maintain.`
+              },
+              {
+                q: `Why do we write "ACTIVE".equals(status) instead of status.equals("ACTIVE")?`,
+                a: `When "ACTIVE" is on the left, calling .equals() on a string literal can never throw NullPointerException — string literals are never null. If status is null, status.equals() would throw NPE. The null-safe alternative is Objects.equals(status, "ACTIVE").`
+              },
+              {
+                q: `How many branches can an if/else chain have?`,
+                a: `Unlimited. You can chain as many else if blocks as needed. But the JVM evaluates from top to bottom and stops at the first true condition. After 4–5 branches, consider switch expressions or a Map lookup instead for clarity.`
+              },
+              {
+                q: `What is the dangling else problem?`,
+                a: `When an else is ambiguous about which if it belongs to, because braces are missing. In Java, else always matches the nearest unmatched if. Fix: always use braces {} even for single-line bodies.`
+              },
+              {
+                q: `Can you use an integer as a condition in Java?`,
+                a: `No. Java requires the condition to be a boolean expression. Unlike C, you cannot write if (1) or if (x). The compiler enforces this. Only boolean expressions (true/false) are accepted.`
+              }
+            ]
+          },
+          {
+            title: `switch Statement & switch Expression (Java 14+)`,
+            notes: `
 # switch Statement & switch Expression (Java 14+)
 
 ## The Classic switch Statement
@@ -1338,10 +1435,15 @@ System.out.println(type); // "Weekend"
 \`\`\`mermaid
 flowchart LR
     subgraph OLD["Old switch (statement)"]
-        O1["case → code\n+ break to exit\nfall-through if no break"]
+        O1["case → code
++ break to exit
+fall-through if no break"]
     end
     subgraph NEW["New switch (expression, Java 14+)"]
-        N1["case → value\nno fall-through\nno break needed\nreturns a value"]
+        N1["case → value
+no fall-through
+no break needed
+returns a value"]
     end
     OLD -->|"Java 14+ upgrade"| NEW
     style OLD fill:#2d1515,stroke:#ef4444,color:#fca5a5
@@ -1418,11 +1520,11 @@ System.out.println(desc); // "Integer: 42"
 > [!EU]
 > Interviewers at Adyen or Booking.com may ask "what changed in switch between Java 11 and Java 17?". Knowing the evolution — from statement (fall-through risk) to expression (arrow syntax, yield, pattern matching) — shows you stay current with the language.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Old switch statement vs new switch expression comparison',
-              code: `public class SwitchEvolution {
+            code: [
+              {
+                lang: `java`,
+                title: `Old switch statement vs new switch expression comparison`,
+                code: `public class SwitchEvolution {
 
     enum OrderStatus { PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED }
 
@@ -1486,11 +1588,11 @@ System.out.println(desc); // "Integer: 42"
         System.out.println("\\nDetailed: " + getDetailedMessage(OrderStatus.SHIPPED, "ORD-999"));
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Fall-through bug and pattern matching switch (Java 21)',
-              code: `public class SwitchPatterns {
+              },
+              {
+                lang: `java`,
+                title: `Fall-through bug and pattern matching switch (Java 21)`,
+                code: `public class SwitchPatterns {
 
     // === FALL-THROUGH BUG (classic mistake) ===
     static void fallThroughBug(int x) {
@@ -1550,21 +1652,34 @@ System.out.println(desc); // "Integer: 42"
         System.out.println(describe(null));
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is fall-through in a switch statement and how do you prevent it?', a: 'Without a break at the end of a case, execution continues into the next case — this is fall-through. It\'s usually a bug. Prevent it by adding break, or better, use the modern switch expression with arrow syntax (->), which has no fall-through.' },
-            { q: 'What is the difference between a switch statement and a switch expression?', a: 'A switch statement executes code (side effects, needs break). A switch expression (Java 14+) returns a value, uses -> arrow syntax, has no fall-through, and no break needed. The expression form is safer and more concise.' },
-            { q: 'What does yield do in a switch expression?', a: 'yield is used in a switch expression block to return a value, similar to return in a method. If the case body has multiple statements, end it with yield <value>. Arrow syntax cases that are single expressions don\'t need yield.' },
-            { q: 'Which types can be used with switch?', a: 'Traditional switch: byte, short, int, char, String (Java 7+), enums. NOT long, float, double, boolean. Java 21 pattern matching switch adds: any Object, with type patterns (case String s, case Integer i), null, and guarded patterns (when).' },
-            { q: 'What is the advantage of using switch with enums?', a: 'The compiler checks exhaustiveness — if you add a new enum constant and forget to handle it in a switch expression, you get a compile error. This prevents a whole class of runtime bugs. Switch statements do not provide this guarantee (they have a default escape).' }
-          ]
-        },
-
-        /* ── SECTION 3 ─────────────────────────────────────────────── */
-        {
-          title: 'for, while & do-while Loops',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is fall-through in a switch statement and how do you prevent it?`,
+                a: `Without a break at the end of a case, execution continues into the next case — this is fall-through. It's usually a bug. Prevent it by adding break, or better, use the modern switch expression with arrow syntax (->), which has no fall-through.`
+              },
+              {
+                q: `What is the difference between a switch statement and a switch expression?`,
+                a: `A switch statement executes code (side effects, needs break). A switch expression (Java 14+) returns a value, uses -> arrow syntax, has no fall-through, and no break needed. The expression form is safer and more concise.`
+              },
+              {
+                q: `What does yield do in a switch expression?`,
+                a: `yield is used in a switch expression block to return a value, similar to return in a method. If the case body has multiple statements, end it with yield <value>. Arrow syntax cases that are single expressions don't need yield.`
+              },
+              {
+                q: `Which types can be used with switch?`,
+                a: `Traditional switch: byte, short, int, char, String (Java 7+), enums. NOT long, float, double, boolean. Java 21 pattern matching switch adds: any Object, with type patterns (case String s, case Integer i), null, and guarded patterns (when).`
+              },
+              {
+                q: `What is the advantage of using switch with enums?`,
+                a: `The compiler checks exhaustiveness — if you add a new enum constant and forget to handle it in a switch expression, you get a compile error. This prevents a whole class of runtime bugs. Switch statements do not provide this guarantee (they have a default escape).`
+              }
+            ]
+          },
+          {
+            title: `for, while & do-while Loops`,
+            notes: `
 # for, while & do-while Loops
 
 ## The Three Loop Types
@@ -1574,10 +1689,18 @@ Java has three loop constructs, each suited to different scenarios:
 \`\`\`mermaid
 graph TB
     LOOPS["Java Loops"]
-    LOOPS --> FOR["for loop\nKnow how many iterations\nfor (int i=0; i<n; i++)"]
-    LOOPS --> WHILE["while loop\nRepeat while condition is true\nwhile (condition) {...}"]
-    LOOPS --> DOWHILE["do-while loop\nRun at least once\ndo {...} while (condition)"]
-    LOOPS --> FOREACH["for-each loop\nIterate over collections\nfor (Item x : list) {...}"]
+    LOOPS --> FOR["for loop
+Know how many iterations
+for (int i=0; i<n; i++)"]
+    LOOPS --> WHILE["while loop
+Repeat while condition is true
+while (condition) {...}"]
+    LOOPS --> DOWHILE["do-while loop
+Run at least once
+do {...} while (condition)"]
+    LOOPS --> FOREACH["for-each loop
+Iterate over collections
+for (Item x : list) {...}"]
     style FOR fill:#1e293b,stroke:#6366f1,color:#e2e8f0
     style WHILE fill:#1e293b,stroke:#818cf8,color:#e2e8f0
     style DOWHILE fill:#1e293b,stroke:#f59e0b,color:#fde68a
@@ -1716,11 +1839,11 @@ while (i < 10) {
 > [!TIP]
 > In modern Java, prefer Streams or for-each over indexed for loops. They're more readable and less error-prone. Use indexed for loops when you genuinely need the index.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'All loop types with practical examples',
-              code: `import java.util.List;
+            code: [
+              {
+                lang: `java`,
+                title: `All loop types with practical examples`,
+                code: `import java.util.List;
 import java.util.ArrayList;
 
 public class LoopExamples {
@@ -1777,11 +1900,11 @@ public class LoopExamples {
         }
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Off-by-one errors and safe array iteration patterns',
-              code: `public class OffByOneDemo {
+              },
+              {
+                lang: `java`,
+                title: `Off-by-one errors and safe array iteration patterns`,
+                code: `public class OffByOneDemo {
     public static void main(String[] args) {
         int[] arr = {10, 20, 30, 40, 50}; // length = 5, valid indices 0-4
 
@@ -1821,21 +1944,34 @@ public class LoopExamples {
         System.out.println();
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What are the three components of a for loop?', a: 'initializer (int i=0, runs once before loop), condition (i<n, checked before each iteration — false stops the loop), update (i++, runs after each iteration). Any of the three can be empty: for(;;) is an infinite loop.' },
-            { q: 'What is the difference between while and do-while?', a: 'while checks the condition BEFORE the body runs — the body may never execute. do-while checks the condition AFTER the body runs — the body always runs at least once. Use do-while for "try once then validate" patterns like user input.' },
-            { q: 'What causes ArrayIndexOutOfBoundsException in a loop?', a: 'Accessing an array with an index that is negative or >= array.length. The most common cause is off-by-one: using <= instead of < in the loop condition. An array of length 5 has valid indices 0–4. arr[5] throws this exception.' },
-            { q: 'When should you use a for-each loop vs an indexed for loop?', a: 'Use for-each when: you want every element, you don\'t need the index, and you\'re not modifying the collection. Use indexed for when: you need the index, you need to compare adjacent elements, or you need to iterate backwards.' },
-            { q: 'What is an infinite loop and when is it intentional?', a: 'A loop that never exits because its condition is always true. Intentional: server polling (while(true)), event loops. Accidental: missing update step, condition never becomes false. Exit with break, return, or an exception.' }
-          ]
-        },
-
-        /* ── SECTION 4 ─────────────────────────────────────────────── */
-        {
-          title: 'break, continue & Nested Loop Patterns',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What are the three components of a for loop?`,
+                a: `initializer (int i=0, runs once before loop), condition (i<n, checked before each iteration — false stops the loop), update (i++, runs after each iteration). Any of the three can be empty: for(;;) is an infinite loop.`
+              },
+              {
+                q: `What is the difference between while and do-while?`,
+                a: `while checks the condition BEFORE the body runs — the body may never execute. do-while checks the condition AFTER the body runs — the body always runs at least once. Use do-while for "try once then validate" patterns like user input.`
+              },
+              {
+                q: `What causes ArrayIndexOutOfBoundsException in a loop?`,
+                a: `Accessing an array with an index that is negative or >= array.length. The most common cause is off-by-one: using <= instead of < in the loop condition. An array of length 5 has valid indices 0–4. arr[5] throws this exception.`
+              },
+              {
+                q: `When should you use a for-each loop vs an indexed for loop?`,
+                a: `Use for-each when: you want every element, you don't need the index, and you're not modifying the collection. Use indexed for when: you need the index, you need to compare adjacent elements, or you need to iterate backwards.`
+              },
+              {
+                q: `What is an infinite loop and when is it intentional?`,
+                a: `A loop that never exits because its condition is always true. Intentional: server polling (while(true)), event loops. Accidental: missing update step, condition never becomes false. Exit with break, return, or an exception.`
+              }
+            ]
+          },
+          {
+            title: `break, continue & Nested Loop Patterns`,
+            notes: `
 # break, continue & Nested Loop Patterns
 
 ## break — Exiting a Loop Early
@@ -1998,11 +2134,11 @@ for (int i = 0; i < arr.length - 1; i++) {
 > [!EU]
 > A common interview exercise: "Search a sorted 2D matrix for a target value in O(n+m) time." The solution uses a nested loop with a specific traversal pattern and break/return. Knowing break vs labeled break vs extract-to-method shows you understand Java control flow deeply.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'break, continue, labeled loops — practical search patterns',
-              code: `import java.util.List;
+            code: [
+              {
+                lang: `java`,
+                title: `break, continue, labeled loops — practical search patterns`,
+                code: `import java.util.List;
 
 public class BreakContinueDemo {
     public static void main(String[] args) {
@@ -2059,11 +2195,11 @@ public class BreakContinueDemo {
         }
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Nested loop patterns: triangles, matrix, bubble sort',
-              code: `public class NestedLoopPatterns {
+              },
+              {
+                lang: `java`,
+                title: `Nested loop patterns: triangles, matrix, bubble sort`,
+                code: `public class NestedLoopPatterns {
     public static void main(String[] args) {
         // --- Triangle pattern ---
         System.out.println("=== Right triangle ===");
@@ -2122,30 +2258,41 @@ public class BreakContinueDemo {
         return null;
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is the difference between break and continue?', a: 'break immediately exits the entire loop (no more iterations). continue skips the rest of the current iteration and moves to the next one (loop continues). Both only affect the innermost enclosing loop.' },
-            { q: 'What is a labeled break and when should you use it?', a: 'A labeled break exits a specific named outer loop from inside a nested loop. Syntax: label: for(...) { for(...) { break label; } }. Use sparingly — prefer extracting to a method with return, which is cleaner.' },
-            { q: 'What happens if you forget to update a while loop variable?', a: 'The loop runs forever (infinite loop). The condition never becomes false. Always ensure the loop variable is modified in the loop body or that some other mechanism eventually makes the condition false.' },
-            { q: 'Can you use break inside a for-each loop?', a: 'Yes. break works in all loop types including for-each. continue also works in for-each — it skips to the next element.' },
-            { q: 'What is the time complexity of a typical nested loop?', a: 'Two nested loops each running n times is O(n²). This is why nested loops are avoided for large data sets. Algorithms like bubble sort (nested loops) are O(n²) — too slow for millions of elements.' }
-          ]
-        }
-
-      ]
-    },
-
-    {
-      id: '0.3',
-      title: 'OOP I — Classes, Objects, Constructors',
-      hours: 4,
-      sections: [
-
-        /* ── SECTION 1 ─────────────────────────────────────────────── */
-        {
-          title: 'Classes & Objects — Blueprints and Instances',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between break and continue?`,
+                a: `break immediately exits the entire loop (no more iterations). continue skips the rest of the current iteration and moves to the next one (loop continues). Both only affect the innermost enclosing loop.`
+              },
+              {
+                q: `What is a labeled break and when should you use it?`,
+                a: `A labeled break exits a specific named outer loop from inside a nested loop. Syntax: label: for(...) { for(...) { break label; } }. Use sparingly — prefer extracting to a method with return, which is cleaner.`
+              },
+              {
+                q: `What happens if you forget to update a while loop variable?`,
+                a: `The loop runs forever (infinite loop). The condition never becomes false. Always ensure the loop variable is modified in the loop body or that some other mechanism eventually makes the condition false.`
+              },
+              {
+                q: `Can you use break inside a for-each loop?`,
+                a: `Yes. break works in all loop types including for-each. continue also works in for-each — it skips to the next element.`
+              },
+              {
+                q: `What is the time complexity of a typical nested loop?`,
+                a: `Two nested loops each running n times is O(n²). This is why nested loops are avoided for large data sets. Algorithms like bubble sort (nested loops) are O(n²) — too slow for millions of elements.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.3`,
+        title: `OOP I — Classes, Objects, Constructors`,
+        hours: 4,
+        sections: [
+          {
+            title: `Classes & Objects — Blueprints and Instances`,
+            notes: `
 # Classes & Objects — Blueprints and Instances
 
 ## The Core Idea: Blueprint vs Instance
@@ -2155,12 +2302,23 @@ A **class** is a blueprint — it defines the shape of something: what data it h
 \`\`\`mermaid
 graph LR
     subgraph BLUEPRINT["Class (Blueprint — in memory once)"]
-        CL["class BankAccount {\n  String owner\n  double balance\n  void deposit()\n  void withdraw()\n}"]
+        CL["class BankAccount {
+  String owner
+  double balance
+  void deposit()
+  void withdraw()
+}"]
     end
     subgraph INSTANCES["Objects (Instances — each has own data)"]
-        O1["alice's account\nowner='Alice'\nbalance=1500.00"]
-        O2["bob's account\nowner='Bob'\nbalance=320.50"]
-        O3["carol's account\nowner='Carol'\nbalance=8200.00"]
+        O1["alice's account
+owner='Alice'
+balance=1500.00"]
+        O2["bob's account
+owner='Bob'
+balance=320.50"]
+        O3["carol's account
+owner='Carol'
+balance=8200.00"]
     end
     BLUEPRINT -->|"new BankAccount()"| O1
     BLUEPRINT -->|"new BankAccount()"| O2
@@ -2271,11 +2429,11 @@ Override \`toString()\` and \`equals()\`/\`hashCode()\` in your own classes for 
 > [!EU]
 > Every Java framework (Spring, Hibernate, Kafka) works by creating and wiring objects. Understanding that your \`@Service\` annotation creates one shared instance (bean) and your \`new Order()\` creates a fresh instance on each call is foundational. Interviewers in Amsterdam, Berlin, and Dublin often test this distinction early.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Class definition, object creation, reference semantics',
-              code: `public class ClassObjectDemo {
+            code: [
+              {
+                lang: `java`,
+                title: `Class definition, object creation, reference semantics`,
+                code: `public class ClassObjectDemo {
 
     // Class definition — the blueprint
     static class BankAccount {
@@ -2333,11 +2491,11 @@ Override \`toString()\` and \`equals()\`/\`hashCode()\` in your own classes for 
         }
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Multiple objects from one class, Object methods',
-              code: `import java.util.ArrayList;
+              },
+              {
+                lang: `java`,
+                title: `Multiple objects from one class, Object methods`,
+                code: `import java.util.ArrayList;
 import java.util.List;
 
 public class MultipleInstancesDemo {
@@ -2403,21 +2561,34 @@ public class MultipleInstancesDemo {
         System.out.println("\\nRuntime type: " + laptop.getClass().getSimpleName()); // Product
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is the difference between a class and an object?', a: 'A class is a blueprint — it defines structure (fields) and behaviour (methods). An object is a concrete instance created from that blueprint with new. Many objects can be created from one class, each with its own field values.' },
-            { q: 'What does the new keyword do?', a: 'new allocates memory on the heap for a new object, calls the constructor to initialise it, and returns a reference to it. The reference is stored in a variable. Each call to new creates a completely independent object.' },
-            { q: 'What does it mean that Java objects are references?', a: 'A variable of a class type holds a reference (pointer) to the object on the heap, not the object itself. Two variables can hold the same reference (pointing to the same object). Modifying the object through one variable affects it when accessed through the other.' },
-            { q: 'What are the default Object methods every class inherits?', a: 'toString() (default: classname@hex), equals() (default: same as ==, reference equality), hashCode() (default: memory-based), getClass() (returns runtime type). Override toString/equals/hashCode for meaningful custom behaviour.' },
-            { q: 'What is the default value of an unassigned object field?', a: 'Reference fields default to null, numeric fields to 0 (or 0.0), boolean to false, char to \\u0000. Local variables inside methods have no default — the compiler forces you to assign before use.' }
-          ]
-        },
-
-        /* ── SECTION 2 ─────────────────────────────────────────────── */
-        {
-          title: 'Fields, Methods & the this Keyword',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between a class and an object?`,
+                a: `A class is a blueprint — it defines structure (fields) and behaviour (methods). An object is a concrete instance created from that blueprint with new. Many objects can be created from one class, each with its own field values.`
+              },
+              {
+                q: `What does the new keyword do?`,
+                a: `new allocates memory on the heap for a new object, calls the constructor to initialise it, and returns a reference to it. The reference is stored in a variable. Each call to new creates a completely independent object.`
+              },
+              {
+                q: `What does it mean that Java objects are references?`,
+                a: `A variable of a class type holds a reference (pointer) to the object on the heap, not the object itself. Two variables can hold the same reference (pointing to the same object). Modifying the object through one variable affects it when accessed through the other.`
+              },
+              {
+                q: `What are the default Object methods every class inherits?`,
+                a: `toString() (default: classname@hex), equals() (default: same as ==, reference equality), hashCode() (default: memory-based), getClass() (returns runtime type). Override toString/equals/hashCode for meaningful custom behaviour.`
+              },
+              {
+                q: `What is the default value of an unassigned object field?`,
+                a: `Reference fields default to null, numeric fields to 0 (or 0.0), boolean to false, char to \\u0000. Local variables inside methods have no default — the compiler forces you to assign before use.`
+              }
+            ]
+          },
+          {
+            title: `Fields, Methods & the this Keyword`,
+            notes: `
 # Fields, Methods & the this Keyword
 
 ## Fields — Storing State
@@ -2581,11 +2752,11 @@ Best practice: make fields \`private\` and expose them via public methods (gette
 > [!WARNING]
 > Never name a parameter the same as a field without using \`this\`. The most common bug is \`void setAge(int age) { age = age; }\` — this assigns the parameter to itself and the field is never set. Always write \`this.age = age\`.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Fields, methods, this keyword and method overloading',
-              code: `public class FieldsAndMethodsDemo {
+            code: [
+              {
+                lang: `java`,
+                title: `Fields, methods, this keyword and method overloading`,
+                code: `public class FieldsAndMethodsDemo {
 
     static class Employee {
         // Private fields (encapsulation — accessed via methods)
@@ -2650,11 +2821,11 @@ Best practice: make fields \`private\` and expose them via public methods (gette
         System.out.println("Bob eligible for bonus: " + bob.isEligibleForBonus()); // false (1 year)
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Method overloading and pass-by-value vs pass-by-reference',
-              code: `public class OverloadAndPassByValue {
+              },
+              {
+                lang: `java`,
+                title: `Method overloading and pass-by-value vs pass-by-reference`,
+                code: `public class OverloadAndPassByValue {
 
     static class Formatter {
         // Overloaded format methods — same name, different parameters
@@ -2712,21 +2883,34 @@ Best practice: make fields \`private\` and expose them via public methods (gette
         System.out.println("c is still original object: " + (c.count != 0)); // true (not replaced)
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What does the this keyword refer to?', a: 'this refers to the current instance — the object on which the method was called. It\'s used to disambiguate field names from parameter names (this.name = name), to pass the current object to another method, and to return the current object for method chaining.' },
-            { q: 'What is method overloading?', a: 'Multiple methods in the same class with the same name but different parameter lists (type, count, or order). The compiler selects the correct overload at compile time based on argument types. Not to be confused with overriding (changing inherited behaviour in a subclass).' },
-            { q: 'Is Java pass-by-value or pass-by-reference?', a: 'Always pass-by-value. For primitives, the value is copied. For objects, the reference (pointer) is copied — so the method can modify the object\'s fields (visible to caller), but cannot replace which object the caller\'s variable points to.' },
-            { q: 'Why must you write this.name = name in a setter?', a: 'When a parameter has the same name as a field, the parameter shadows the field. Without this, "name = name" assigns the parameter to itself — the field stays unchanged. this.name explicitly refers to the instance field.' },
-            { q: 'What is the default value of fields in a Java class?', a: 'Numeric types default to 0 (int, long) or 0.0 (double), boolean to false, char to \\u0000, reference types to null. Unlike local variables (which must be initialised before use), fields are automatically given defaults.' }
-          ]
-        },
-
-        /* ── SECTION 3 ─────────────────────────────────────────────── */
-        {
-          title: 'Constructors — Creating Objects Properly',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does the this keyword refer to?`,
+                a: `this refers to the current instance — the object on which the method was called. It's used to disambiguate field names from parameter names (this.name = name), to pass the current object to another method, and to return the current object for method chaining.`
+              },
+              {
+                q: `What is method overloading?`,
+                a: `Multiple methods in the same class with the same name but different parameter lists (type, count, or order). The compiler selects the correct overload at compile time based on argument types. Not to be confused with overriding (changing inherited behaviour in a subclass).`
+              },
+              {
+                q: `Is Java pass-by-value or pass-by-reference?`,
+                a: `Always pass-by-value. For primitives, the value is copied. For objects, the reference (pointer) is copied — so the method can modify the object's fields (visible to caller), but cannot replace which object the caller's variable points to.`
+              },
+              {
+                q: `Why must you write this.name = name in a setter?`,
+                a: `When a parameter has the same name as a field, the parameter shadows the field. Without this, "name = name" assigns the parameter to itself — the field stays unchanged. this.name explicitly refers to the instance field.`
+              },
+              {
+                q: `What is the default value of fields in a Java class?`,
+                a: `Numeric types default to 0 (int, long) or 0.0 (double), boolean to false, char to \\u0000, reference types to null. Unlike local variables (which must be initialised before use), fields are automatically given defaults.`
+              }
+            ]
+          },
+          {
+            title: `Constructors — Creating Objects Properly`,
+            notes: `
 # Constructors — Creating Objects Properly
 
 ## What Is a Constructor?
@@ -2847,9 +3031,12 @@ public class Product {
 
 \`\`\`mermaid
 flowchart LR
-    A["new Product('Milk', 1.99)"] --> B["Product(name, price)\ncalls this(name, price, 0)"]
-    B --> C["Product(name, price, stock)\ncalls this(name, price, 0, 'GENERAL')"]
-    C --> D["Product(name, price, stock, category)\nactual initialisation"]
+    A["new Product('Milk', 1.99)"] --> B["Product(name, price)
+calls this(name, price, 0)"]
+    B --> C["Product(name, price, stock)
+calls this(name, price, 0, 'GENERAL')"]
+    C --> D["Product(name, price, stock, category)
+actual initialisation"]
     style A fill:#1e293b,stroke:#6366f1,color:#e2e8f0
     style D fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
 \`\`\`
@@ -2921,11 +3108,11 @@ BankAccount account = BankAccount.open("Alice", 1000);
 > [!EU]
 > Spring and Hibernate both depend on constructors. Spring prefers constructor injection (one constructor with all dependencies listed explicitly). JPA entities need a no-args constructor. Knowing WHY these constraints exist — not just how to comply — impresses interviewers in Berlin and Amsterdam.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Constructor overloading, chaining and validation',
-              code: `import java.util.ArrayList;
+            code: [
+              {
+                lang: `java`,
+                title: `Constructor overloading, chaining and validation`,
+                code: `import java.util.ArrayList;
 import java.util.List;
 
 public class ConstructorDemo {
@@ -3002,11 +3189,11 @@ public class ConstructorDemo {
         }
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Default constructor removal and JPA entity pattern',
-              code: `public class DefaultConstructorDemo {
+              },
+              {
+                lang: `java`,
+                title: `Default constructor removal and JPA entity pattern`,
+                code: `public class DefaultConstructorDemo {
 
     // === Class WITH a constructor — default no-args is GONE ===
     static class WithConstructor {
@@ -3060,21 +3247,34 @@ public class ConstructorDemo {
         }
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is a constructor and how does it differ from a regular method?', a: 'A constructor has the same name as the class, no return type (not even void), and runs automatically when new is called. Its purpose is to initialise the object to a valid state. A method has a return type and must be explicitly called.' },
-            { q: 'What happens to the default no-args constructor when you add your own?', a: 'It disappears. Java only provides a default no-args constructor when you define NO constructor at all. Once you add any constructor, you lose the default. If you need a no-args constructor alongside parameterised ones, add it explicitly.' },
-            { q: 'What does this(...) do inside a constructor?', a: 'this(...) calls another constructor in the same class — constructor chaining. It must be the very first statement. Use it so simpler constructors delegate to the most complete one with default values, keeping validation logic in one place.' },
-            { q: 'Why put validation in a constructor?', a: 'To ensure that every object of the class is in a valid state from the moment it\'s created. If construction fails (throws), no invalid object is created. This enforces class invariants — properties that must always be true about every instance.' },
-            { q: 'What is a copy constructor?', a: 'A constructor that takes an instance of the same class and creates an independent copy. For mutable fields (List, Date, arrays), you must create new copies — not copy the reference — otherwise both objects share the same mutable data.' }
-          ]
-        },
-
-        /* ── SECTION 4 ─────────────────────────────────────────────── */
-        {
-          title: 'static — Class-Level Fields, Methods & Blocks',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is a constructor and how does it differ from a regular method?`,
+                a: `A constructor has the same name as the class, no return type (not even void), and runs automatically when new is called. Its purpose is to initialise the object to a valid state. A method has a return type and must be explicitly called.`
+              },
+              {
+                q: `What happens to the default no-args constructor when you add your own?`,
+                a: `It disappears. Java only provides a default no-args constructor when you define NO constructor at all. Once you add any constructor, you lose the default. If you need a no-args constructor alongside parameterised ones, add it explicitly.`
+              },
+              {
+                q: `What does this(...) do inside a constructor?`,
+                a: `this(...) calls another constructor in the same class — constructor chaining. It must be the very first statement. Use it so simpler constructors delegate to the most complete one with default values, keeping validation logic in one place.`
+              },
+              {
+                q: `Why put validation in a constructor?`,
+                a: `To ensure that every object of the class is in a valid state from the moment it's created. If construction fails (throws), no invalid object is created. This enforces class invariants — properties that must always be true about every instance.`
+              },
+              {
+                q: `What is a copy constructor?`,
+                a: `A constructor that takes an instance of the same class and creates an independent copy. For mutable fields (List, Date, arrays), you must create new copies — not copy the reference — otherwise both objects share the same mutable data.`
+              }
+            ]
+          },
+          {
+            title: `static — Class-Level Fields, Methods & Blocks`,
+            notes: `
 # static — Class-Level Fields, Methods & Blocks
 
 ## What Does \`static\` Mean?
@@ -3084,7 +3284,8 @@ public class ConstructorDemo {
 \`\`\`mermaid
 graph TB
     subgraph CLASS["Counter class (static — shared)"]
-        SC["static int totalCount = 0\none copy shared by ALL objects"]
+        SC["static int totalCount = 0
+one copy shared by ALL objects"]
     end
     subgraph OBJ1["counter1 object"]
         F1["int id = 1"]
@@ -3253,11 +3454,11 @@ public class App {
 > [!TIP]
 > A good rule of thumb: if a method doesn't use any instance fields (no this), it can probably be static. Static utility methods are easier to test because they don't need an object set up first.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Static fields, methods, constants, and static blocks',
-              code: `import java.util.*;
+            code: [
+              {
+                lang: `java`,
+                title: `Static fields, methods, constants, and static blocks`,
+                code: `import java.util.*;
 
 public class StaticDemo {
 
@@ -3331,11 +3532,11 @@ public class StaticDemo {
         System.out.println(StringUtils.truncate("Hello, this is a very long message", 15));
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Singleton pattern and static vs instance methods',
-              code: `public class SingletonAndStaticDemo {
+              },
+              {
+                lang: `java`,
+                title: `Singleton pattern and static vs instance methods`,
+                code: `public class SingletonAndStaticDemo {
 
     // === Thread-unsafe Singleton (basic, for learning) ===
     static class AppConfig {
@@ -3402,31 +3603,45 @@ public class StaticDemo {
         System.out.println(s.length());                 // length is instance method
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is the difference between a static field and an instance field?', a: 'A static field belongs to the class — one copy shared by all instances. An instance field belongs to each object — every instance has its own copy. Static fields are accessed via the class name; instance fields via object references.' },
-            { q: 'What can a static method NOT do?', a: 'A static method cannot access this, cannot call non-static (instance) methods directly, and cannot access instance fields directly. It only has access to its own parameters, local variables, and static fields/methods.' },
-            { q: 'When should you use a static method?', a: 'When the method doesn\'t need instance state: utility functions (Math.abs, Arrays.sort), factory methods (Integer.valueOf), and entry points (main). A quick check: if the method doesn\'t use any instance fields, it can likely be static.' },
-            { q: 'What does static final mean and what is the naming convention?', a: 'static final means the field is a constant — class-level (static, one copy) and immutable (final, cannot be reassigned). Convention: UPPER_SNAKE_CASE. Example: public static final int MAX_SIZE = 100.' },
-            { q: 'Why must the main method be static?', a: 'Because the JVM needs to call main before any object is created. Since no instance exists yet, main must be callable without an instance — which is exactly what static means.' },
-            { q: 'What is a static initialiser block?', a: 'A block of code: static { ... } that runs once when the class is first loaded by the JVM. Used to initialise complex static fields that require multiple statements — for example, populating a static Map or loading configuration.' }
-          ]
-        }
-
-      ]
-    },
-
-    {
-      id: '0.4',
-      title: 'OOP II — Inheritance, Polymorphism, Interfaces',
-      hours: 4,
-      sections: [
-
-        /* ── SECTION 1 ─────────────────────────────────────────────── */
-        {
-          title: 'Inheritance — extends, super & Method Overriding',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between a static field and an instance field?`,
+                a: `A static field belongs to the class — one copy shared by all instances. An instance field belongs to each object — every instance has its own copy. Static fields are accessed via the class name; instance fields via object references.`
+              },
+              {
+                q: `What can a static method NOT do?`,
+                a: `A static method cannot access this, cannot call non-static (instance) methods directly, and cannot access instance fields directly. It only has access to its own parameters, local variables, and static fields/methods.`
+              },
+              {
+                q: `When should you use a static method?`,
+                a: `When the method doesn't need instance state: utility functions (Math.abs, Arrays.sort), factory methods (Integer.valueOf), and entry points (main). A quick check: if the method doesn't use any instance fields, it can likely be static.`
+              },
+              {
+                q: `What does static final mean and what is the naming convention?`,
+                a: `static final means the field is a constant — class-level (static, one copy) and immutable (final, cannot be reassigned). Convention: UPPER_SNAKE_CASE. Example: public static final int MAX_SIZE = 100.`
+              },
+              {
+                q: `Why must the main method be static?`,
+                a: `Because the JVM needs to call main before any object is created. Since no instance exists yet, main must be callable without an instance — which is exactly what static means.`
+              },
+              {
+                q: `What is a static initialiser block?`,
+                a: `A block of code: static { ... } that runs once when the class is first loaded by the JVM. Used to initialise complex static fields that require multiple statements — for example, populating a static Map or loading configuration.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.4`,
+        title: `OOP II — Inheritance, Polymorphism, Interfaces`,
+        hours: 4,
+        sections: [
+          {
+            title: `Inheritance — extends, super & Method Overriding`,
+            notes: `
 # Inheritance — extends, super & Method Overriding
 
 ## What Is Inheritance?
@@ -3435,9 +3650,18 @@ Inheritance lets one class **reuse** the fields and methods of another. The **su
 
 \`\`\`mermaid
 graph TD
-    Animal["Animal\n+ name: String\n+ sound(): String\n+ describe(): void"]
-    Dog["Dog extends Animal\n+ breed: String\n+ fetch(): void\n+ sound() — overrides"]
-    Cat["Cat extends Animal\n+ indoor: boolean\n+ purr(): void\n+ sound() — overrides"]
+    Animal["Animal
++ name: String
++ sound(): String
++ describe(): void"]
+    Dog["Dog extends Animal
++ breed: String
++ fetch(): void
++ sound() — overrides"]
+    Cat["Cat extends Animal
++ indoor: boolean
++ purr(): void
++ sound() — overrides"]
     Animal --> Dog
     Animal --> Cat
     style Animal fill:#312e81,stroke:#818cf8,color:#c4b5fd
@@ -3570,11 +3794,11 @@ public class Animal {
 > [!EU]
 > Interviewers at ING, ABN AMRO, or Adyen often ask: "When would you use inheritance vs composition?" The answer: inheritance for true IS-A relationships (Dog IS-A Animal), composition for HAS-A (Car HAS-A Engine). Favour composition over inheritance when in doubt — it produces more flexible, testable code.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Inheritance hierarchy with super, @Override and method chaining',
-              code: `public class InheritanceDemo {
+            code: [
+              {
+                lang: `java`,
+                title: `Inheritance hierarchy with super, @Override and method chaining`,
+                code: `public class InheritanceDemo {
 
     static class Shape {
         protected String colour;
@@ -3646,11 +3870,11 @@ public class Animal {
         System.out.println("\\nParent area for Square: " + shapes[2].area()); // uses Rectangle.area()
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Override vs overload, and the constructor super() rule',
-              code: `public class OverrideVsOverload {
+              },
+              {
+                lang: `java`,
+                title: `Override vs overload, and the constructor super() rule`,
+                code: `public class OverrideVsOverload {
 
     static class Vehicle {
         protected int speed;
@@ -3717,21 +3941,34 @@ public class Animal {
         public String initValue() { return value; } // value is null when parent ctor runs!
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is the difference between method overriding and method overloading?', a: 'Overriding: subclass redefines a parent method with the same signature — resolved at RUNTIME (dynamic dispatch). Overloading: same class has multiple methods with the same name but different parameters — resolved at COMPILE TIME. @Override only applies to overriding.' },
-            { q: 'What does super do and what are its two uses?', a: 'super refers to the parent class. Use 1: super(...) calls the parent constructor — must be the first statement. Use 2: super.method() calls the parent\'s version of an overridden method from inside the overriding method.' },
-            { q: 'What does @Override do and why should you always use it?', a: '@Override tells the compiler to verify you are actually overriding a parent method. Without it, a typo silently creates a new method instead of overriding — the parent method keeps running. @Override catches this at compile time.' },
-            { q: 'What does a subclass inherit and what does it not inherit?', a: 'Inherits: public and protected fields, methods, nested classes. Does NOT inherit: private members (hidden), constructors (must call super() explicitly or define new ones). Constructors are never inherited.' },
-            { q: 'Why does Java only support single inheritance for classes?', a: 'To avoid the "diamond problem" — if class C extends both A and B, and both define method foo(), which version does C get? Java avoids this by allowing only one parent class. Multiple inheritance of behaviour is handled by interfaces (which support multiple implements).' }
-          ]
-        },
-
-        /* ── SECTION 2 ─────────────────────────────────────────────── */
-        {
-          title: 'Abstract Classes — Partial Blueprints',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between method overriding and method overloading?`,
+                a: `Overriding: subclass redefines a parent method with the same signature — resolved at RUNTIME (dynamic dispatch). Overloading: same class has multiple methods with the same name but different parameters — resolved at COMPILE TIME. @Override only applies to overriding.`
+              },
+              {
+                q: `What does super do and what are its two uses?`,
+                a: `super refers to the parent class. Use 1: super(...) calls the parent constructor — must be the first statement. Use 2: super.method() calls the parent's version of an overridden method from inside the overriding method.`
+              },
+              {
+                q: `What does @Override do and why should you always use it?`,
+                a: `@Override tells the compiler to verify you are actually overriding a parent method. Without it, a typo silently creates a new method instead of overriding — the parent method keeps running. @Override catches this at compile time.`
+              },
+              {
+                q: `What does a subclass inherit and what does it not inherit?`,
+                a: `Inherits: public and protected fields, methods, nested classes. Does NOT inherit: private members (hidden), constructors (must call super() explicitly or define new ones). Constructors are never inherited.`
+              },
+              {
+                q: `Why does Java only support single inheritance for classes?`,
+                a: `To avoid the "diamond problem" — if class C extends both A and B, and both define method foo(), which version does C get? Java avoids this by allowing only one parent class. Multiple inheritance of behaviour is handled by interfaces (which support multiple implements).`
+              }
+            ]
+          },
+          {
+            title: `Abstract Classes — Partial Blueprints`,
+            notes: `
 # Abstract Classes — Partial Blueprints
 
 ## What Is an Abstract Class?
@@ -3787,10 +4024,19 @@ public class Circle extends Shape {
 
 \`\`\`mermaid
 graph TD
-    ABS["abstract Shape\n+ area(): abstract\n+ perimeter(): abstract\n+ describe(): concrete"]
-    C["Circle\n✓ area() — PI*r²\n✓ perimeter() — 2*PI*r"]
-    R["Rectangle\n✓ area() — w*h\n✓ perimeter() — 2*(w+h)"]
-    TR["Triangle\n✓ area() — 0.5*b*h\n✓ perimeter() — a+b+c"]
+    ABS["abstract Shape
++ area(): abstract
++ perimeter(): abstract
++ describe(): concrete"]
+    C["Circle
+✓ area() — PI*r²
+✓ perimeter() — 2*PI*r"]
+    R["Rectangle
+✓ area() — w*h
+✓ perimeter() — 2*(w+h)"]
+    TR["Triangle
+✓ area() — 0.5*b*h
+✓ perimeter() — a+b+c"]
     ABS --> C
     ABS --> R
     ABS --> TR
@@ -3888,11 +4134,11 @@ public class CsvReport extends ReportGenerator {
 > [!WARNING]
 > If you extend an abstract class but don't implement all abstract methods, your class must also be declared abstract — otherwise the compiler rejects it. Only fully concrete subclasses can be instantiated.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Abstract class with template method pattern',
-              code: `import java.util.List;
+            code: [
+              {
+                lang: `java`,
+                title: `Abstract class with template method pattern`,
+                code: `import java.util.List;
 
 public class AbstractClassDemo {
 
@@ -3990,11 +4236,11 @@ public class AbstractClassDemo {
         processors.get(1).pay("NL91ABNA0417164300", 250.0);
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Abstract class with state, concrete methods and partial implementation',
-              code: `public class AbstractStateDemo {
+              },
+              {
+                lang: `java`,
+                title: `Abstract class with state, concrete methods and partial implementation`,
+                code: `public class AbstractStateDemo {
 
     // Abstract class with shared STATE
     abstract static class Employee {
@@ -4080,21 +4326,34 @@ public class AbstractClassDemo {
         }
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is an abstract class and what can it contain?', a: 'An abstract class is a class that cannot be instantiated directly. It can contain: fields (including instance state), constructors, concrete methods (with implementation), and abstract methods (no body — subclasses must implement). Declared with the abstract keyword.' },
-            { q: 'What is an abstract method?', a: 'A method declared with abstract and no body. Any concrete (non-abstract) subclass must provide an implementation, or the compiler throws an error. Abstract methods define a contract: "all subclasses must be able to do this, each in their own way."' },
-            { q: 'What is the Template Method pattern?', a: 'An abstract class defines an algorithm\'s skeleton in a concrete method (often final), calling abstract methods for specific steps. Subclasses fill in the steps without changing the overall structure. Example: pay() calls validatePayment() + processTransaction() + logResult() — steps are abstract.' },
-            { q: 'What is the key difference between abstract class and interface?', a: 'Abstract class: can have instance state (fields), constructors, any access modifier, but single inheritance only. Interface: no instance state, no constructors, public only, but a class can implement many interfaces. Use abstract class for shared state/partial impl; interface for contracts.' },
-            { q: 'Can an abstract class have a constructor?', a: 'Yes. Even though abstract classes cannot be instantiated directly, their constructors are called via super() when a subclass is created. This is how abstract classes initialise their own fields.' }
-          ]
-        },
-
-        /* ── SECTION 3 ─────────────────────────────────────────────── */
-        {
-          title: 'Interfaces — Contracts & Multiple Implementation',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is an abstract class and what can it contain?`,
+                a: `An abstract class is a class that cannot be instantiated directly. It can contain: fields (including instance state), constructors, concrete methods (with implementation), and abstract methods (no body — subclasses must implement). Declared with the abstract keyword.`
+              },
+              {
+                q: `What is an abstract method?`,
+                a: `A method declared with abstract and no body. Any concrete (non-abstract) subclass must provide an implementation, or the compiler throws an error. Abstract methods define a contract: "all subclasses must be able to do this, each in their own way."`
+              },
+              {
+                q: `What is the Template Method pattern?`,
+                a: `An abstract class defines an algorithm's skeleton in a concrete method (often final), calling abstract methods for specific steps. Subclasses fill in the steps without changing the overall structure. Example: pay() calls validatePayment() + processTransaction() + logResult() — steps are abstract.`
+              },
+              {
+                q: `What is the key difference between abstract class and interface?`,
+                a: `Abstract class: can have instance state (fields), constructors, any access modifier, but single inheritance only. Interface: no instance state, no constructors, public only, but a class can implement many interfaces. Use abstract class for shared state/partial impl; interface for contracts.`
+              },
+              {
+                q: `Can an abstract class have a constructor?`,
+                a: `Yes. Even though abstract classes cannot be instantiated directly, their constructors are called via super() when a subclass is created. This is how abstract classes initialise their own fields.`
+              }
+            ]
+          },
+          {
+            title: `Interfaces — Contracts & Multiple Implementation`,
+            notes: `
 # Interfaces — Contracts & Multiple Implementation
 
 ## What Is an Interface?
@@ -4116,10 +4375,16 @@ public interface Saveable {
 \`\`\`mermaid
 graph LR
     subgraph INTERFACES["Interfaces (contracts)"]
-        P["Printable\n+ print()\n+ printToPdf()"]
-        S["Saveable\n+ save()\n+ load()"]
+        P["Printable
++ print()
++ printToPdf()"]
+        S["Saveable
++ save()
++ load()"]
     end
-    DOC["Document\nimplements Printable, Saveable\n— provides all 4 methods"]
+    DOC["Document
+implements Printable, Saveable
+— provides all 4 methods"]
     P --> DOC
     S --> DOC
     style P fill:#312e81,stroke:#818cf8,color:#c4b5fd
@@ -4265,11 +4530,11 @@ Speakable s = new Robot();
 > [!EU]
 > Spring's entire dependency injection system is built on interfaces. \`@Autowired UserService userService\` — the field type is the interface; Spring injects whichever implementation is active. This is why interfaces are everywhere in real Spring codebases. Explaining this connection impresses interviewers at Booking.com or Adyen.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Multiple interface implementation and default methods',
-              code: `import java.util.List;
+            code: [
+              {
+                lang: `java`,
+                title: `Multiple interface implementation and default methods`,
+                code: `import java.util.List;
 
 public class InterfaceDemo {
 
@@ -4311,7 +4576,7 @@ public class InterfaceDemo {
         public String exportAs(String format) {
             return switch (format.toUpperCase()) {
                 case "CSV"  -> title + "\\n" + String.join("\\n", rows);
-                case "JSON" -> "{\"title\":\"" + title + "\",\"rows\":" + rows + "}";
+                case "JSON" -> "{"title":"" + title + "","rows":" + rows + "}";
                 default     -> throw new IllegalArgumentException("Unknown format: " + format);
             };
         }
@@ -4352,11 +4617,11 @@ public class InterfaceDemo {
         auditables.forEach(a -> System.out.println("  " + a.getAuditLog()));
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Interface vs abstract class — choosing the right tool',
-              code: `import java.util.*;
+              },
+              {
+                lang: `java`,
+                title: `Interface vs abstract class — choosing the right tool`,
+                code: `import java.util.*;
 
 public class InterfaceVsAbstract {
 
@@ -4420,21 +4685,34 @@ public class InterfaceVsAbstract {
         // delivery.climb(...)  // compile error — Drone has no climb()
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is an interface and what can it contain?', a: 'An interface is a pure contract — it defines capabilities a class promises to provide. It can contain: abstract methods (implicit), constants (implicit public static final), default methods (Java 8+, have a body), static methods (Java 8+), private methods (Java 9+). No instance fields, no constructors.' },
-            { q: 'Can a class implement multiple interfaces?', a: 'Yes — a class can implement any number of interfaces. This is Java\'s multiple inheritance of type. Example: class Robot implements Movable, Speakable, Chargeable. It must implement all abstract methods from all interfaces.' },
-            { q: 'What is a default method and why was it added?', a: 'A default method in an interface has a body and is optional to override. Added in Java 8 to allow adding new methods to existing interfaces without breaking all existing implementations. Any class that already implements the interface inherits the default behaviour.' },
-            { q: 'What is a functional interface?', a: 'An interface with exactly one abstract method. It can be annotated @FunctionalInterface (optional but recommended for documentation and compiler checking). Functional interfaces can be implemented inline with a lambda expression instead of a full class.' },
-            { q: 'When should you use an interface vs an abstract class?', a: 'Interface: for capabilities that unrelated classes share (Flyable, Serializable), multiple inheritance of type, Spring/plugin extension points. Abstract class: for closely related classes that share instance state and partial implementation, when you need constructors or non-public methods.' }
-          ]
-        },
-
-        /* ── SECTION 4 ─────────────────────────────────────────────── */
-        {
-          title: 'Polymorphism — Runtime Dispatch & instanceof',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is an interface and what can it contain?`,
+                a: `An interface is a pure contract — it defines capabilities a class promises to provide. It can contain: abstract methods (implicit), constants (implicit public static final), default methods (Java 8+, have a body), static methods (Java 8+), private methods (Java 9+). No instance fields, no constructors.`
+              },
+              {
+                q: `Can a class implement multiple interfaces?`,
+                a: `Yes — a class can implement any number of interfaces. This is Java's multiple inheritance of type. Example: class Robot implements Movable, Speakable, Chargeable. It must implement all abstract methods from all interfaces.`
+              },
+              {
+                q: `What is a default method and why was it added?`,
+                a: `A default method in an interface has a body and is optional to override. Added in Java 8 to allow adding new methods to existing interfaces without breaking all existing implementations. Any class that already implements the interface inherits the default behaviour.`
+              },
+              {
+                q: `What is a functional interface?`,
+                a: `An interface with exactly one abstract method. It can be annotated @FunctionalInterface (optional but recommended for documentation and compiler checking). Functional interfaces can be implemented inline with a lambda expression instead of a full class.`
+              },
+              {
+                q: `When should you use an interface vs an abstract class?`,
+                a: `Interface: for capabilities that unrelated classes share (Flyable, Serializable), multiple inheritance of type, Spring/plugin extension points. Abstract class: for closely related classes that share instance state and partial implementation, when you need constructors or non-public methods.`
+              }
+            ]
+          },
+          {
+            title: `Polymorphism — Runtime Dispatch & instanceof`,
+            notes: `
 # Polymorphism — Runtime Dispatch & instanceof
 
 ## What Is Polymorphism?
@@ -4496,8 +4774,10 @@ Dog dog2 = (Dog) animal2; // compiles, but throws ClassCastException at runtime!
 
 \`\`\`mermaid
 flowchart LR
-    DOG["Dog object\non heap"] -->|"upcast (safe, implicit)"| AREF["Animal variable"]
-    AREF -->|"downcast (explicit)\nmust check type first"| DREF["Dog variable"]
+    DOG["Dog object
+on heap"] -->|"upcast (safe, implicit)"| AREF["Animal variable"]
+    AREF -->|"downcast (explicit)
+must check type first"| DREF["Dog variable"]
     WRONG["Cat object"] -->|"(Dog) cast"| CRASH["💥 ClassCastException"]
     style DOG fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
     style CRASH fill:#2d1515,stroke:#ef4444,color:#fca5a5
@@ -4588,11 +4868,11 @@ class Dog extends Animal {
 > [!EU]
 > "Explain polymorphism with a real example from your work" is one of the most common OOP questions at EU fintech interviews. A great answer: "We had different payment providers (Stripe, Adyen, PayPal) all implementing a PaymentGateway interface. Our checkout service takes a PaymentGateway reference — it doesn't know which provider it is at compile time. At runtime, the right processPayment() runs. Adding a new provider required zero changes to checkout."
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Runtime polymorphism, upcasting, downcasting and instanceof',
-              code: `import java.util.*;
+            code: [
+              {
+                lang: `java`,
+                title: `Runtime polymorphism, upcasting, downcasting and instanceof`,
+                code: `import java.util.*;
 
 public class PolymorphismDemo {
 
@@ -4692,11 +4972,11 @@ public class PolymorphismDemo {
         }
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Static method hiding vs instance method overriding',
-              code: `public class StaticVsInstanceDispatch {
+              },
+              {
+                lang: `java`,
+                title: `Static method hiding vs instance method overriding`,
+                code: `public class StaticVsInstanceDispatch {
 
     static class Vehicle {
         // Instance method — OVERRIDABLE (polymorphic)
@@ -4741,28 +5021,41 @@ public class PolymorphismDemo {
         System.out.println("Described via Vehicle ref: " + creator.describe()); // still "Car"
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is polymorphism and how does it work in Java?', a: 'Polymorphism means one variable type can hold objects of many subtypes, and method calls are dispatched to the correct implementation at runtime (dynamic dispatch). The variable type (compile time) controls which methods are accessible; the object type (runtime) controls which body runs.' },
-            { q: 'What is the difference between upcasting and downcasting?', a: 'Upcasting: assigning a subtype to a parent-type variable (always safe, implicit). Downcasting: casting a parent-type variable back to a subtype (explicit, can throw ClassCastException if the object is not actually of that type). Always use instanceof before downcasting.' },
-            { q: 'What does pattern-matching instanceof do (Java 16+)?', a: 'It combines the type check and cast in one statement: if (obj instanceof Dog d) { d.fetch(); }. The variable d is only in scope inside the if block and is automatically the correct type — no separate cast needed.' },
-            { q: 'Are static methods polymorphic?', a: 'No. Static methods are hidden, not overridden. The version that runs depends on the type of the VARIABLE (compile-time type), not the object. Instance methods are polymorphic — the version that runs depends on the OBJECT\'s runtime type.' },
-            { q: 'What is the Open/Closed Principle and how does polymorphism enable it?', a: 'Open for extension (you can add new subtypes), closed for modification (you don\'t change existing code). Polymorphism enables this: code that takes an Animal/PaymentGateway reference works with any future subtype without modification.' }
-          ]
-        }
-
-      ]
-    },
-
-    {
-      id: '0.5',
-      title: 'OOP III — Encapsulation, Abstraction, Enums',
-      hours: 3,
-      sections: [
-        {
-          title: 'Access Modifiers & Encapsulation',
-          notes: `## Access Modifiers & Encapsulation
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is polymorphism and how does it work in Java?`,
+                a: `Polymorphism means one variable type can hold objects of many subtypes, and method calls are dispatched to the correct implementation at runtime (dynamic dispatch). The variable type (compile time) controls which methods are accessible; the object type (runtime) controls which body runs.`
+              },
+              {
+                q: `What is the difference between upcasting and downcasting?`,
+                a: `Upcasting: assigning a subtype to a parent-type variable (always safe, implicit). Downcasting: casting a parent-type variable back to a subtype (explicit, can throw ClassCastException if the object is not actually of that type). Always use instanceof before downcasting.`
+              },
+              {
+                q: `What does pattern-matching instanceof do (Java 16+)?`,
+                a: `It combines the type check and cast in one statement: if (obj instanceof Dog d) { d.fetch(); }. The variable d is only in scope inside the if block and is automatically the correct type — no separate cast needed.`
+              },
+              {
+                q: `Are static methods polymorphic?`,
+                a: `No. Static methods are hidden, not overridden. The version that runs depends on the type of the VARIABLE (compile-time type), not the object. Instance methods are polymorphic — the version that runs depends on the OBJECT's runtime type.`
+              },
+              {
+                q: `What is the Open/Closed Principle and how does polymorphism enable it?`,
+                a: `Open for extension (you can add new subtypes), closed for modification (you don't change existing code). Polymorphism enables this: code that takes an Animal/PaymentGateway reference works with any future subtype without modification.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.5`,
+        title: `OOP III — Encapsulation, Abstraction, Enums`,
+        hours: 3,
+        sections: [
+          {
+            title: `Access Modifiers & Encapsulation`,
+            notes: `## Access Modifiers & Encapsulation
 
 Encapsulation is the practice of **hiding internal state** and requiring all interaction to go through well-defined methods. It is the "E" in OOP's four pillars and the foundation of maintainable code.
 
@@ -4887,8 +5180,8 @@ System.out.println(p1.equals(new Point(0,0))); // true (value equality built in)
 \`\`\`
 
 Records are perfect for DTOs, response payloads, value types, and Map keys.`,
-          code: [
-            `public class BankAccount {
+            code: [
+              `public class BankAccount {
     private String owner;
     private double balance;
 
@@ -4924,7 +5217,7 @@ Records are perfect for DTOs, response payloads, value types, and Map keys.`,
         System.out.println(acc.getBalance()); // 600.0
     }
 }`,
-            `// Java 16+ record — auto-generates constructor, getters, equals, hashCode, toString
+              `// Java 16+ record — auto-generates constructor, getters, equals, hashCode, toString
 public record Point(double x, double y) {
     // Compact constructor for validation
     public Point {
@@ -4948,18 +5241,33 @@ class RecordDemo {
         System.out.println(p1);                         // Point[x=0.0, y=0.0]
     }
 }`
-          ],
-          flashcards: [
-            { q: 'Which access modifier makes a member visible only within the same package?', a: 'Package-private (no modifier). Just declare the member without any access keyword — it\'s visible to all classes in the same package but invisible outside.' },
-            { q: 'Can a subclass in a DIFFERENT package access a protected member?', a: 'Yes, but only through inheritance — overriding the method or accessing it via super. It cannot access the protected member through an object reference of the parent type from outside the package.' },
-            { q: 'Why should fields be private?', a: 'Three reasons: (1) Validation — setters can enforce constraints before assignment. (2) Computed properties — getters can calculate on the fly. (3) Future-proofing — internal representation can change without breaking callers.' },
-            { q: 'What does a Java record auto-generate?', a: 'A canonical constructor (all fields), accessors (x(), y() — no "get" prefix), equals(), hashCode(), and toString(). All fields are implicitly private final — the record is immutable.' },
-            { q: 'What is the risk of returning a mutable internal List from a getter?', a: 'The caller can mutate the internal list directly (add, remove, clear), breaking encapsulation. Fix: return Collections.unmodifiableList(list) or a defensive copy new ArrayList<>(list).' }
-          ]
-        },
-        {
-          title: 'Abstract Classes vs Interfaces — The Real Distinction',
-          notes: `## Abstract Classes vs Interfaces — The Real Distinction
+            ],
+            flashcards: [
+              {
+                q: `Which access modifier makes a member visible only within the same package?`,
+                a: `Package-private (no modifier). Just declare the member without any access keyword — it's visible to all classes in the same package but invisible outside.`
+              },
+              {
+                q: `Can a subclass in a DIFFERENT package access a protected member?`,
+                a: `Yes, but only through inheritance — overriding the method or accessing it via super. It cannot access the protected member through an object reference of the parent type from outside the package.`
+              },
+              {
+                q: `Why should fields be private?`,
+                a: `Three reasons: (1) Validation — setters can enforce constraints before assignment. (2) Computed properties — getters can calculate on the fly. (3) Future-proofing — internal representation can change without breaking callers.`
+              },
+              {
+                q: `What does a Java record auto-generate?`,
+                a: `A canonical constructor (all fields), accessors (x(), y() — no "get" prefix), equals(), hashCode(), and toString(). All fields are implicitly private final — the record is immutable.`
+              },
+              {
+                q: `What is the risk of returning a mutable internal List from a getter?`,
+                a: `The caller can mutate the internal list directly (add, remove, clear), breaking encapsulation. Fix: return Collections.unmodifiableList(list) or a defensive copy new ArrayList<>(list).`
+              }
+            ]
+          },
+          {
+            title: `Abstract Classes vs Interfaces — The Real Distinction`,
+            notes: `## Abstract Classes vs Interfaces — The Real Distinction
 
 You saw abstract classes and interfaces individually in Module 0.4. Here we go deeper on **when to choose which** — a favourite senior interview question.
 
@@ -5072,8 +5380,8 @@ class C implements A, B {
     }
 }
 \`\`\``,
-          code: [
-            `// Abstract class with Template Method Pattern
+            code: [
+              `// Abstract class with Template Method Pattern
 abstract class Report {
     private final String title;
 
@@ -5113,7 +5421,7 @@ class SalesReport extends Report implements Exportable {
         r.print();
     }
 }`,
-            `// Default method diamond conflict resolution
+              `// Default method diamond conflict resolution
 interface Flyable  { default String describe() { return "I can fly"; } }
 interface Swimmable { default String describe() { return "I can swim"; } }
 
@@ -5135,18 +5443,33 @@ class DiamondDemo {
         System.out.println(f.describe()); // I can fly and I can swim
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the key distinction between abstract class and interface in terms of STATE?', a: 'Abstract classes can have instance fields (state) and constructors. Interfaces cannot — they have only constants (implicitly public static final). This is the primary reason to choose abstract class over interface.' },
-            { q: 'When two interfaces both provide a default method with the same signature, what happens?', a: 'Compile error: the implementing class must override the method and explicitly resolve which version to use with InterfaceName.super.method() syntax.' },
-            { q: 'What is a marker interface? Give an example.', a: 'An interface with no methods, used to "tag" a class for runtime inspection. Examples: Serializable (safe to serialize), Cloneable (safe to clone). Modern Java prefers annotations for this purpose.' },
-            { q: 'When should you choose abstract class over interface?', a: 'When (1) the IS-A relationship is genuine (Dog IS-A Animal, not just CAN-DO tricks), (2) subclasses need shared instance state (fields), (3) you want a template method with a fixed skeleton and abstract steps.' },
-            { q: 'Can a class implement multiple interfaces AND extend an abstract class?', a: 'Yes. Java allows: class X extends AbstractBase implements Interface1, Interface2, Interface3. Single inheritance for classes, multiple for interfaces.' }
-          ]
-        },
-        {
-          title: 'Enums — Type-Safe Constants with Superpowers',
-          notes: `## Enums — Type-Safe Constants with Superpowers
+            ],
+            flashcards: [
+              {
+                q: `What is the key distinction between abstract class and interface in terms of STATE?`,
+                a: `Abstract classes can have instance fields (state) and constructors. Interfaces cannot — they have only constants (implicitly public static final). This is the primary reason to choose abstract class over interface.`
+              },
+              {
+                q: `When two interfaces both provide a default method with the same signature, what happens?`,
+                a: `Compile error: the implementing class must override the method and explicitly resolve which version to use with InterfaceName.super.method() syntax.`
+              },
+              {
+                q: `What is a marker interface? Give an example.`,
+                a: `An interface with no methods, used to "tag" a class for runtime inspection. Examples: Serializable (safe to serialize), Cloneable (safe to clone). Modern Java prefers annotations for this purpose.`
+              },
+              {
+                q: `When should you choose abstract class over interface?`,
+                a: `When (1) the IS-A relationship is genuine (Dog IS-A Animal, not just CAN-DO tricks), (2) subclasses need shared instance state (fields), (3) you want a template method with a fixed skeleton and abstract steps.`
+              },
+              {
+                q: `Can a class implement multiple interfaces AND extend an abstract class?`,
+                a: `Yes. Java allows: class X extends AbstractBase implements Interface1, Interface2, Interface3. Single inheritance for classes, multiple for interfaces.`
+              }
+            ]
+          },
+          {
+            title: `Enums — Type-Safe Constants with Superpowers`,
+            notes: `## Enums — Type-Safe Constants with Superpowers
 
 Before \`enum\` (pre-Java 5), constants were static \`int\` fields (\`public static final int RED = 0\`). The problems: no type safety, no namespace, no methods, no iteration. Enums solve all of this.
 
@@ -5265,8 +5588,8 @@ String type = switch (today) {
 - \`values()\` returns a new array each call — cache it if iterating in a hot path
 - \`ordinal()\` is fragile (insertion-order dependent) — never persist it to a database; use \`name()\` or a dedicated field
 - Enum constants are singletons — safe to compare with \`==\``,
-          code: [
-            `public enum Planet {
+            code: [
+              `public enum Planet {
     MERCURY(3.303e+23, 2.4397e6),
     EARTH  (5.976e+24, 6.37814e6),
     MARS   (6.421e+23, 3.3972e6);
@@ -5295,7 +5618,7 @@ String type = switch (today) {
         }
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 public enum Operation {
     PLUS("+")  { @Override public double apply(double x, double y) { return x + y; } },
@@ -5325,18 +5648,33 @@ public enum Operation {
         System.out.println("Basic ops: " + basic);
     }
 }`
-          ],
-          flashcards: [
-            { q: 'Why should you NEVER persist an enum\'s ordinal() to a database?', a: 'ordinal() is the 0-based insertion order in the source file. If you add a new constant in the middle, all ordinals shift, corrupting stored data. Always persist name() or a dedicated stable field.' },
-            { q: 'Can an enum extend another class?', a: 'No. All enums implicitly extend java.lang.Enum, and Java has single inheritance, so no further extension is possible. However, enums CAN implement one or more interfaces.' },
-            { q: 'Why are EnumSet and EnumMap preferred over HashSet/HashMap for enum collections?', a: 'EnumSet is implemented as a bit-vector (one long per 64 constants) — O(1) operations with zero boxing. EnumMap uses a plain array indexed by ordinal. Both are faster and more memory-efficient than general-purpose hash collections.' },
-            { q: 'Are enum constants singletons? Can you compare them with ==?', a: 'Yes. Each enum constant is a single JVM instance. == comparison is always safe (and preferred over equals()) for enums. The JVM guarantees no two references to the same constant are different objects.' },
-            { q: 'What is an enum with abstract methods useful for?', a: 'The Strategy pattern built into the type — each constant carries its own implementation of the algorithm. No if-else or switch needed. Example: Operation enum where each constant (PLUS, MINUS, TIMES) implements apply(x, y) differently.' }
-          ]
-        },
-        {
-          title: 'Sealed Classes & the instanceof Pattern',
-          notes: `## Sealed Classes & the instanceof Pattern
+            ],
+            flashcards: [
+              {
+                q: `Why should you NEVER persist an enum's ordinal() to a database?`,
+                a: `ordinal() is the 0-based insertion order in the source file. If you add a new constant in the middle, all ordinals shift, corrupting stored data. Always persist name() or a dedicated stable field.`
+              },
+              {
+                q: `Can an enum extend another class?`,
+                a: `No. All enums implicitly extend java.lang.Enum, and Java has single inheritance, so no further extension is possible. However, enums CAN implement one or more interfaces.`
+              },
+              {
+                q: `Why are EnumSet and EnumMap preferred over HashSet/HashMap for enum collections?`,
+                a: `EnumSet is implemented as a bit-vector (one long per 64 constants) — O(1) operations with zero boxing. EnumMap uses a plain array indexed by ordinal. Both are faster and more memory-efficient than general-purpose hash collections.`
+              },
+              {
+                q: `Are enum constants singletons? Can you compare them with ==?`,
+                a: `Yes. Each enum constant is a single JVM instance. == comparison is always safe (and preferred over equals()) for enums. The JVM guarantees no two references to the same constant are different objects.`
+              },
+              {
+                q: `What is an enum with abstract methods useful for?`,
+                a: `The Strategy pattern built into the type — each constant carries its own implementation of the algorithm. No if-else or switch needed. Example: Operation enum where each constant (PLUS, MINUS, TIMES) implements apply(x, y) differently.`
+              }
+            ]
+          },
+          {
+            title: `Sealed Classes & the instanceof Pattern`,
+            notes: `## Sealed Classes & the instanceof Pattern
 
 Java 17 introduced **sealed classes** — a way to declare an exhaustive, closed class hierarchy. Combined with Java 16's \`instanceof\` pattern matching and Java 21's pattern \`switch\`, this transforms how you model algebraic data types.
 
@@ -5454,8 +5792,8 @@ String output = switch (result) {
 | Complex shared logic with state | Sealed abstract class |
 
 > **Interview insight:** Sealed classes + pattern switch replaces the Visitor pattern. Visitor was needed because you could not do exhaustive dispatch without it. Now you can.`,
-          code: [
-            `// Sealed class hierarchy — compiler-enforced exhaustiveness
+            code: [
+              `// Sealed class hierarchy — compiler-enforced exhaustiveness
 public sealed class Shape permits Circle, Rectangle, Triangle {}
 
 final class Circle    extends Shape {
@@ -5489,7 +5827,7 @@ class SealedDemo {
         for (Shape shape : shapes) System.out.println(describe(shape));
     }
 }`,
-            `// Sealed interface as Result type (Railway-Oriented Programming)
+              `// Sealed interface as Result type (Railway-Oriented Programming)
 sealed interface Result<T> permits Result.Ok, Result.Err {
     record Ok<T>(T value)         implements Result<T> {}
     record Err<T>(String message) implements Result<T> {}
@@ -5525,26 +5863,40 @@ class ResultDemo {
         }
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What three modifiers can a permitted subclass of a sealed class use?', a: 'final (no further subclassing), sealed (further restricted hierarchy), or non-sealed (reopened for unlimited extension by anyone). Every permitted class must choose one.' },
-            { q: 'Why does a pattern switch over a sealed class not need a default branch?', a: 'The compiler knows every possible subtype from the permits clause. If all permitted subtypes are covered, exhaustiveness is guaranteed at compile time — no default needed and the compiler will warn you if a subtype is missing.' },
-            { q: 'What is the Java 16+ instanceof pattern matching syntax?', a: 'if (obj instanceof Type varName) { /* varName is typed as Type here */ }. The binding variable is scoped to the true branch. Eliminates the manual cast after the instanceof check.' },
-            { q: 'How do sealed classes replace the Visitor pattern?', a: 'Visitor was invented to add exhaustive dispatch over a class hierarchy without modifying the classes. Pattern switch over sealed types does this natively with compiler-enforced exhaustiveness — no visitor interface, no accept() methods, no double dispatch boilerplate.' },
-            { q: 'What is a sealed interface + records combination good for?', a: 'Modelling algebraic data types (sum types) — e.g. Result<T> with Ok(value) and Err(message), or AST nodes, HTTP response states, event types. Records provide the immutable data; sealed ensures no unexpected subtypes; pattern switch handles them exhaustively.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '0.6',
-      title: 'Strings, StringBuilder & String Pool',
-      hours: 3,
-      sections: [
-        {
-          title: 'String Immutability & the String Pool',
-          notes: `## String Immutability & the String Pool
+            ],
+            flashcards: [
+              {
+                q: `What three modifiers can a permitted subclass of a sealed class use?`,
+                a: `final (no further subclassing), sealed (further restricted hierarchy), or non-sealed (reopened for unlimited extension by anyone). Every permitted class must choose one.`
+              },
+              {
+                q: `Why does a pattern switch over a sealed class not need a default branch?`,
+                a: `The compiler knows every possible subtype from the permits clause. If all permitted subtypes are covered, exhaustiveness is guaranteed at compile time — no default needed and the compiler will warn you if a subtype is missing.`
+              },
+              {
+                q: `What is the Java 16+ instanceof pattern matching syntax?`,
+                a: `if (obj instanceof Type varName) { /* varName is typed as Type here */ }. The binding variable is scoped to the true branch. Eliminates the manual cast after the instanceof check.`
+              },
+              {
+                q: `How do sealed classes replace the Visitor pattern?`,
+                a: `Visitor was invented to add exhaustive dispatch over a class hierarchy without modifying the classes. Pattern switch over sealed types does this natively with compiler-enforced exhaustiveness — no visitor interface, no accept() methods, no double dispatch boilerplate.`
+              },
+              {
+                q: `What is a sealed interface + records combination good for?`,
+                a: `Modelling algebraic data types (sum types) — e.g. Result<T> with Ok(value) and Err(message), or AST nodes, HTTP response states, event types. Records provide the immutable data; sealed ensures no unexpected subtypes; pattern switch handles them exhaustively.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.6`,
+        title: `Strings, StringBuilder & String Pool`,
+        hours: 3,
+        sections: [
+          {
+            title: `String Immutability & the String Pool`,
+            notes: `## String Immutability & the String Pool
 
 \`String\` is the most-used class in Java and also the most misunderstood in interviews. Two facts underpin everything else:
 
@@ -5627,8 +5979,8 @@ String result = sb.toString();
 \`intern()\` is rarely called manually in modern code. The JVM automatically interns all string literals. Use cases:
 - Reducing memory when you have millions of repeated strings (e.g. city names from a CSV)
 - Enabling \`==\` comparison for performance-critical code (almost never worth it)`,
-          code: [
-            `public class StringPoolDemo {
+            code: [
+              `public class StringPoolDemo {
     public static void main(String[] args) {
         // Literals — pooled
         String a = "java";
@@ -5657,7 +6009,7 @@ String result = sb.toString();
         System.out.println("x == a: " + (x == "hello")); // true (pool)
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 public class StringConcatPerf {
     public static void main(String[] args) {
@@ -5682,18 +6034,33 @@ public class StringConcatPerf {
         System.out.println("StringBuilder: " + (t4-t3) + "ns");
     }
 }`
-          ],
-          flashcards: [
-            { q: 'Why is String immutable in Java?', a: 'Three reasons: (1) Thread safety — multiple threads share strings without synchronisation. (2) Hashcode caching — String caches its hash, making it a safe HashMap key. (3) Security — class names, file paths, and network addresses cannot be changed after validation.' },
-            { q: 'What does == compare for Strings? What should you use instead?', a: '== compares object identity (memory address). Two String variables with identical content but created separately will return false with ==. Always use equals() to compare content.' },
-            { q: 'What is the String pool?', a: 'A section of the JVM heap where string literals are cached. When you write "hello" in source code, the JVM checks the pool first — if that string already exists, it returns the same object. This saves memory for repeated literals.' },
-            { q: 'What does String.intern() do?', a: 'Places the string into the pool (or returns the existing pool object with the same content). After interning, == comparison is safe. Rarely needed manually — useful only when you have millions of repeated string values and want to deduplicate memory.' },
-            { q: 'Why is + concatenation inside a loop bad?', a: 'Each + creates a new String object (strings are immutable). In a loop of n iterations, this creates O(n) objects and copies O(n²) characters total. Use StringBuilder.append() instead — it maintains a resizable buffer and calls toString() once at the end.' }
-          ]
-        },
-        {
-          title: 'StringBuilder, StringBuffer & Common String Methods',
-          notes: `## StringBuilder, StringBuffer & Common String Methods
+            ],
+            flashcards: [
+              {
+                q: `Why is String immutable in Java?`,
+                a: `Three reasons: (1) Thread safety — multiple threads share strings without synchronisation. (2) Hashcode caching — String caches its hash, making it a safe HashMap key. (3) Security — class names, file paths, and network addresses cannot be changed after validation.`
+              },
+              {
+                q: `What does == compare for Strings? What should you use instead?`,
+                a: `== compares object identity (memory address). Two String variables with identical content but created separately will return false with ==. Always use equals() to compare content.`
+              },
+              {
+                q: `What is the String pool?`,
+                a: `A section of the JVM heap where string literals are cached. When you write "hello" in source code, the JVM checks the pool first — if that string already exists, it returns the same object. This saves memory for repeated literals.`
+              },
+              {
+                q: `What does String.intern() do?`,
+                a: `Places the string into the pool (or returns the existing pool object with the same content). After interning, == comparison is safe. Rarely needed manually — useful only when you have millions of repeated string values and want to deduplicate memory.`
+              },
+              {
+                q: `Why is + concatenation inside a loop bad?`,
+                a: `Each + creates a new String object (strings are immutable). In a loop of n iterations, this creates O(n) objects and copies O(n²) characters total. Use StringBuilder.append() instead — it maintains a resizable buffer and calls toString() once at the end.`
+              }
+            ]
+          },
+          {
+            title: `StringBuilder, StringBuffer & Common String Methods`,
+            notes: `## StringBuilder, StringBuffer & Common String Methods
 
 ### StringBuilder — Your Go-To for Dynamic Strings
 
@@ -5805,8 +6172,8 @@ a.compareToIgnoreCase(b)   // 0 (equal ignoring case)
 Objects.equals(a, null)    // false (no NPE)
 Objects.equals(null, null) // true
 \`\`\``,
-          code: [
-            `public class StringBuilderDemo {
+            code: [
+              `public class StringBuilderDemo {
     public static void main(String[] args) {
         // Core StringBuilder operations
         StringBuilder sb = new StringBuilder("Hello");
@@ -5832,7 +6199,7 @@ Objects.equals(null, null) // true
         System.out.println("Result class: " + result.getClass().getSimpleName());
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 public class StringMethodsDemo {
     public static void main(String[] args) {
@@ -5866,18 +6233,33 @@ public class StringMethodsDemo {
         System.out.println(Objects.equals(nullStr, "hi")); // false, no NPE
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between StringBuilder and StringBuffer?', a: 'StringBuffer is thread-safe (all methods are synchronised); StringBuilder is not. StringBuilder is ~20% faster. Use StringBuilder by default in single-threaded code (which is almost always). Only use StringBuffer when multiple threads mutate the same instance.' },
-            { q: 'What does StringBuilder.append() return?', a: 'It returns this — the same StringBuilder instance. This enables method chaining: sb.append("a").append("b").append("c"). Each call appends to the same internal buffer.' },
-            { q: 'What is the difference between trim() and strip() in Java 11+?', a: 'trim() removes only ASCII whitespace (\\u0000–\\u0020). strip() removes Unicode whitespace as defined by Character.isWhitespace(), which includes non-breaking spaces and other Unicode space characters. strip() is the modern replacement.' },
-            { q: 'How do you safely compare a String that might be null?', a: 'Use Objects.equals(a, b) — it handles null on either side without NullPointerException. Or put the known non-null string first: "literal".equals(variable). Never call variable.equals("literal") when variable might be null.' },
-            { q: 'What does String.format("%-10s %5d", "Alice", 42) produce?', a: '"Alice      42" — %-10s left-aligns "Alice" in a 10-char field (padded right with spaces), %5d right-aligns 42 in a 5-char field.' }
-          ]
-        },
-        {
-          title: 'Text Blocks, Regex & String Internals',
-          notes: `## Text Blocks, Regex & String Internals
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between StringBuilder and StringBuffer?`,
+                a: `StringBuffer is thread-safe (all methods are synchronised); StringBuilder is not. StringBuilder is ~20% faster. Use StringBuilder by default in single-threaded code (which is almost always). Only use StringBuffer when multiple threads mutate the same instance.`
+              },
+              {
+                q: `What does StringBuilder.append() return?`,
+                a: `It returns this — the same StringBuilder instance. This enables method chaining: sb.append("a").append("b").append("c"). Each call appends to the same internal buffer.`
+              },
+              {
+                q: `What is the difference between trim() and strip() in Java 11+?`,
+                a: `trim() removes only ASCII whitespace (\\u0000–\\u0020). strip() removes Unicode whitespace as defined by Character.isWhitespace(), which includes non-breaking spaces and other Unicode space characters. strip() is the modern replacement.`
+              },
+              {
+                q: `How do you safely compare a String that might be null?`,
+                a: `Use Objects.equals(a, b) — it handles null on either side without NullPointerException. Or put the known non-null string first: "literal".equals(variable). Never call variable.equals("literal") when variable might be null.`
+              },
+              {
+                q: `What does String.format("%-10s %5d", "Alice", 42) produce?`,
+                a: `"Alice      42" — %-10s left-aligns "Alice" in a 10-char field (padded right with spaces), %5d right-aligns 42 in a 5-char field.`
+              }
+            ]
+          },
+          {
+            title: `Text Blocks, Regex & String Internals`,
+            notes: `## Text Blocks, Regex & String Internals
 
 ### Text Blocks (Java 13 preview → Java 15 standard)
 
@@ -5904,19 +6286,19 @@ String json = """
 **Escape sequences in text blocks:**
 \`\`\`java
 String noNewline = """
-        first line \
-        second line
+        first line         second line
         """;
-// "first line second line\n"  — \\ at end of line suppresses the newline
+// "first line second line
+"  — \\ at end of line suppresses the newline
 
 String escaped = """
-        tab\there
+        tab	here
         """;
 // literal tab character
 
-// \s at end of a line preserves trailing space (otherwise stripped)
+// s at end of a line preserves trailing space (otherwise stripped)
 String aligned = """
-        left   \s
+        left   s
         right
         """;
 \`\`\`
@@ -5979,8 +6361,8 @@ graph LR
 ### String Deduplication (G1 GC)
 
 When using the G1 garbage collector, you can enable \`-XX:+UseStringDeduplication\`. The GC identifies \`String\` objects with the same content and makes them share the same underlying \`byte[]\` array. This operates outside the string pool — it deduplicates \`new String(...)\` objects too.`,
-          code: [
-            `public class TextBlockDemo {
+            code: [
+              `public class TextBlockDemo {
     public static void main(String[] args) {
         // Text block — indentation stripped to match closing """
         String html = """
@@ -6004,13 +6386,12 @@ When using the G1 garbage collector, you can enable \`-XX:+UseStringDeduplicatio
 
         // Line continuation with backslash
         String sentence = """
-                The quick brown fox \
-                jumps over the lazy dog.
+                The quick brown fox                 jumps over the lazy dog.
                 """;
         System.out.println(sentence); // single line, no break
     }
 }`,
-            `import java.util.regex.*;
+              `import java.util.regex.*;
 
 public class RegexDemo {
     public static void main(String[] args) {
@@ -6043,18 +6424,33 @@ public class RegexDemo {
         }
     }
 }`
-          ],
-          flashcards: [
-            { q: 'How does indentation stripping work in text blocks?', a: 'The compiler determines the common leading whitespace by looking at the position of the closing """. All lines have that many characters of leading whitespace removed. Moving the closing """ to the left increases what remains; moving it right to column 0 removes all leading whitespace.' },
-            { q: 'What is the Compact Strings optimisation introduced in Java 9?', a: 'If all characters in a String fit in Latin-1 (single byte), Java stores the string as byte[] with 1 byte per character instead of char[] (2 bytes per character). Halves memory for ASCII strings. Completely transparent to Java code.' },
-            { q: 'Why does String.hashCode() use the multiplier 31?', a: 'Two reasons: (1) 31 is an odd prime, which gives good hash distribution. (2) 31 * x == (x << 5) - x, which the JIT can optimise to a shift + subtract instead of a multiply — historically faster on many CPUs.' },
-            { q: 'What is the difference between String.matches() and Pattern.matcher().find()?', a: 'matches() requires the entire string to match the pattern (anchored). find() searches for the pattern anywhere within the string. Also, Pattern.compile() + Matcher is reusable and much faster for repeated matching — compile once, use many times.' },
-            { q: 'What does -XX:+UseStringDeduplication do?', a: 'Enables the G1 GC to detect String objects with identical content and make them share the same underlying byte[] array. This reduces heap memory without changing code. Different from the String pool — it works on all String objects, including those created with new String(...).' }
-          ]
-        },
-        {
-          title: 'String Performance Patterns & Interview Traps',
-          notes: `## String Performance Patterns & Interview Traps
+            ],
+            flashcards: [
+              {
+                q: `How does indentation stripping work in text blocks?`,
+                a: `The compiler determines the common leading whitespace by looking at the position of the closing """. All lines have that many characters of leading whitespace removed. Moving the closing """ to the left increases what remains; moving it right to column 0 removes all leading whitespace.`
+              },
+              {
+                q: `What is the Compact Strings optimisation introduced in Java 9?`,
+                a: `If all characters in a String fit in Latin-1 (single byte), Java stores the string as byte[] with 1 byte per character instead of char[] (2 bytes per character). Halves memory for ASCII strings. Completely transparent to Java code.`
+              },
+              {
+                q: `Why does String.hashCode() use the multiplier 31?`,
+                a: `Two reasons: (1) 31 is an odd prime, which gives good hash distribution. (2) 31 * x == (x << 5) - x, which the JIT can optimise to a shift + subtract instead of a multiply — historically faster on many CPUs.`
+              },
+              {
+                q: `What is the difference between String.matches() and Pattern.matcher().find()?`,
+                a: `matches() requires the entire string to match the pattern (anchored). find() searches for the pattern anywhere within the string. Also, Pattern.compile() + Matcher is reusable and much faster for repeated matching — compile once, use many times.`
+              },
+              {
+                q: `What does -XX:+UseStringDeduplication do?`,
+                a: `Enables the G1 GC to detect String objects with identical content and make them share the same underlying byte[] array. This reduces heap memory without changing code. Different from the String pool — it works on all String objects, including those created with new String(...).`
+              }
+            ]
+          },
+          {
+            title: `String Performance Patterns & Interview Traps`,
+            notes: `## String Performance Patterns & Interview Traps
 
 ### The Classic Interview Trap: How Many Objects?
 
@@ -6173,8 +6569,8 @@ String sorted = new String(arr);  // "ehllo"
 | Does \`s.equals(null)\` throw? | No — returns \`false\` |
 | Does \`null.equals(s)\` throw? | Yes — NullPointerException |
 | When was text blocks added? | Java 15 (preview in 13 and 14) |`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.stream.*;
 
 public class StringPatterns {
@@ -6210,7 +6606,7 @@ public class StringPatterns {
         System.out.println("Case-insensitive: " + words);
     }
 }`,
-            `public class CharOperations {
+              `public class CharOperations {
     // Reverse a string using StringBuilder
     static String reverse(String s) {
         return new StringBuilder(s).reverse().toString();
@@ -6249,26 +6645,40 @@ public class StringPatterns {
         System.out.println(sortChars("hello"));       // ehllo
     }
 }`
-          ],
-          flashcards: [
-            { q: 'How many String objects does `new String("World")` create if "World" is not yet in the pool?', a: 'Two: one String literal "World" placed in the pool, and one heap object created by new String(). If "World" was already in the pool, only the heap copy is new.' },
-            { q: 'What is the most concise way to join a List<String> with a comma separator?', a: 'String.join(",", list) — introduced in Java 8. Or list.stream().collect(Collectors.joining(",")) for stream pipelines. Both are O(n) and far better than += in a loop.' },
-            { q: 'Can String be subclassed?', a: 'No — String is declared final, preventing subclassing. This is part of what guarantees immutability: no subclass can override methods and sneak in mutable behaviour.' },
-            { q: 'What is the difference between s.equals(null) and null.equals(s)?', a: 's.equals(null) returns false safely (String.equals() checks for null first). null.equals(s) throws NullPointerException because you are calling a method on a null reference. Always put the non-null side first.' },
-            { q: 'How do you sort an array of characters in a String?', a: 'char[] arr = s.toCharArray(); Arrays.sort(arr); String sorted = new String(arr); — toCharArray() gives a copy (not a view), sort it in place, then construct a new String from the sorted array.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '0.7',
-      title: 'Exception Handling & Custom Exceptions',
-      hours: 3,
-      sections: [
-        {
-          title: 'Exception Hierarchy & Checked vs Unchecked',
-          notes: `## Exception Hierarchy & Checked vs Unchecked
+            ],
+            flashcards: [
+              {
+                q: `How many String objects does \`new String("World")\` create if "World" is not yet in the pool?`,
+                a: `Two: one String literal "World" placed in the pool, and one heap object created by new String(). If "World" was already in the pool, only the heap copy is new.`
+              },
+              {
+                q: `What is the most concise way to join a List<String> with a comma separator?`,
+                a: `String.join(",", list) — introduced in Java 8. Or list.stream().collect(Collectors.joining(",")) for stream pipelines. Both are O(n) and far better than += in a loop.`
+              },
+              {
+                q: `Can String be subclassed?`,
+                a: `No — String is declared final, preventing subclassing. This is part of what guarantees immutability: no subclass can override methods and sneak in mutable behaviour.`
+              },
+              {
+                q: `What is the difference between s.equals(null) and null.equals(s)?`,
+                a: `s.equals(null) returns false safely (String.equals() checks for null first). null.equals(s) throws NullPointerException because you are calling a method on a null reference. Always put the non-null side first.`
+              },
+              {
+                q: `How do you sort an array of characters in a String?`,
+                a: `char[] arr = s.toCharArray(); Arrays.sort(arr); String sorted = new String(arr); — toCharArray() gives a copy (not a view), sort it in place, then construct a new String from the sorted array.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.7`,
+        title: `Exception Handling & Custom Exceptions`,
+        hours: 3,
+        sections: [
+          {
+            title: `Exception Hierarchy & Checked vs Unchecked`,
+            notes: `## Exception Hierarchy & Checked vs Unchecked
 
 ### The Exception Class Hierarchy
 
@@ -6277,9 +6687,11 @@ graph TD
     T[Throwable]
     T --> E[Exception]
     T --> ER[Error]
-    E --> CE["Checked Exceptions\n(must handle or declare)"]
+    E --> CE["Checked Exceptions
+(must handle or declare)"]
     E --> RE[RuntimeException]
-    RE --> UC["Unchecked Exceptions\n(optional to handle)"]
+    RE --> UC["Unchecked Exceptions
+(optional to handle)"]
     CE --> IO[IOException]
     CE --> SQL[SQLException]
     CE --> CN[ClassNotFoundException]
@@ -6346,8 +6758,8 @@ The Java community has been debating this for 25 years. The pragmatic modern vie
 - **Throw checked** when the caller has a realistic path to recovery and the failure is external (file system, network, database)
 - **Throw unchecked** for programming errors (null, wrong argument, wrong state) — these should be fixed in code, not caught at runtime
 - **Modern frameworks** (Spring, Hibernate, most cloud-native libs) wrap checked exceptions in unchecked ones to avoid \`throws\` pollution`,
-          code: [
-            `import java.io.*;
+            code: [
+              `import java.io.*;
 
 public class CheckedDemo {
     // Method 1: propagate with throws
@@ -6384,7 +6796,7 @@ public class CheckedDemo {
         System.out.println("First line: " + line);
     }
 }`,
-            `public class ExceptionHierarchyDemo {
+              `public class ExceptionHierarchyDemo {
     // Demonstrate catching at different levels of hierarchy
     static void riskyOp(int choice) throws Exception {
         switch (choice) {
@@ -6411,18 +6823,33 @@ public class CheckedDemo {
         }
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between checked and unchecked exceptions?', a: 'Checked exceptions (subclasses of Exception but not RuntimeException) must be caught or declared with throws — the compiler enforces this. Unchecked exceptions (RuntimeException subclasses) do not require handling. Checked = recoverable external failures; Unchecked = programming bugs.' },
-            { q: 'Should you catch Error?', a: 'No. Errors (OutOfMemoryError, StackOverflowError) signal JVM-level failures you cannot meaningfully recover from. Catching them suppresses the signal that the JVM is in a bad state. Let them propagate to the top-level crash handler.' },
-            { q: 'If a method throws a checked exception, what are your two options as the caller?', a: '(1) Wrap in try/catch and handle it. (2) Declare it with throws in your own method signature, passing the responsibility up the call stack. You must choose one — the compiler will not compile if you do neither.' },
-            { q: 'What is NullPointerException and why is it unchecked?', a: 'NPE is thrown when you call a method or access a field on a null reference. It is unchecked because it represents a programming error (you should have checked for null) rather than a recoverable external failure. The compiler cannot predict which references might be null at runtime.' },
-            { q: 'What is the parent of all exceptions and errors in Java?', a: 'Throwable. It has two direct subclasses: Exception (for recoverable conditions) and Error (for JVM-level failures). Only Throwable subclasses can be thrown with throw or caught in catch blocks.' }
-          ]
-        },
-        {
-          title: 'try/catch/finally & try-with-resources',
-          notes: `## try/catch/finally & try-with-resources
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between checked and unchecked exceptions?`,
+                a: `Checked exceptions (subclasses of Exception but not RuntimeException) must be caught or declared with throws — the compiler enforces this. Unchecked exceptions (RuntimeException subclasses) do not require handling. Checked = recoverable external failures; Unchecked = programming bugs.`
+              },
+              {
+                q: `Should you catch Error?`,
+                a: `No. Errors (OutOfMemoryError, StackOverflowError) signal JVM-level failures you cannot meaningfully recover from. Catching them suppresses the signal that the JVM is in a bad state. Let them propagate to the top-level crash handler.`
+              },
+              {
+                q: `If a method throws a checked exception, what are your two options as the caller?`,
+                a: `(1) Wrap in try/catch and handle it. (2) Declare it with throws in your own method signature, passing the responsibility up the call stack. You must choose one — the compiler will not compile if you do neither.`
+              },
+              {
+                q: `What is NullPointerException and why is it unchecked?`,
+                a: `NPE is thrown when you call a method or access a field on a null reference. It is unchecked because it represents a programming error (you should have checked for null) rather than a recoverable external failure. The compiler cannot predict which references might be null at runtime.`
+              },
+              {
+                q: `What is the parent of all exceptions and errors in Java?`,
+                a: `Throwable. It has two direct subclasses: Exception (for recoverable conditions) and Error (for JVM-level failures). Only Throwable subclasses can be thrown with throw or caught in catch blocks.`
+              }
+            ]
+          },
+          {
+            title: `try/catch/finally & try-with-resources`,
+            notes: `## try/catch/finally & try-with-resources
 
 ### Basic try/catch/finally
 
@@ -6531,8 +6958,8 @@ try {
 \`\`\`
 
 This is why **never throw from finally** and **never return from finally** (a return in finally discards the exception in the same way). With try-with-resources, the framework uses suppressed exceptions to avoid this.`,
-          code: [
-            `import java.io.*;
+            code: [
+              `import java.io.*;
 
 public class TryWithResourcesDemo {
     // Custom AutoCloseable
@@ -6566,7 +6993,8 @@ public class TryWithResourcesDemo {
             System.out.println("Error: " + e.getMessage());
         }
 
-        System.out.println("\n=== Exception path ===");
+        System.out.println("
+=== Exception path ===");
         try (DatabaseConnection conn = new DatabaseConnection("jdbc:h2:mem")) {
             conn.query("BAD SQL");                // throws
         } catch (Exception e) {
@@ -6575,7 +7003,7 @@ public class TryWithResourcesDemo {
         }
     }
 }`,
-            `public class MultiCatchDemo {
+              `public class MultiCatchDemo {
     static void process(String input) throws Exception {
         if (input == null)       throw new NullPointerException("null input");
         if (input.isEmpty())     throw new IllegalArgumentException("empty input");
@@ -6603,18 +7031,33 @@ public class TryWithResourcesDemo {
         }
     }
 }`
-          ],
-          flashcards: [
-            { q: 'When does the finally block NOT run?', a: 'The finally block does not run when System.exit() is called, when the JVM crashes (e.g. kill -9 on the process), or when a daemon thread is killed as the JVM shuts down. In all other cases — including re-thrown exceptions — finally always runs.' },
-            { q: 'What is a suppressed exception in try-with-resources?', a: 'When both the try body and a resource\'s close() method throw, the exception from close() is attached to the primary exception as a suppressed exception (via Throwable.addSuppressed). Retrieve them with e.getSuppressed(). This prevents the original exception from being silently lost, which was a problem with manual finally blocks.' },
-            { q: 'In what order are try-with-resources resources closed?', a: 'Reverse order of declaration. If you declare (A, B, C), they close as C.close(), B.close(), A.close(). This mirrors stack-based resource acquisition: last acquired, first released.' },
-            { q: 'What is multi-catch and what restriction applies to the variable?', a: 'Multi-catch (Java 7+) lets one catch block handle multiple exception types: catch (IOException | SQLException e). The variable e is implicitly final — you cannot reassign it inside the block. This prevents the ambiguity of which type e is after reassignment.' },
-            { q: 'What happens if you throw from a finally block?', a: 'The exception being handled in the try/catch is silently lost and replaced by the finally exception. This is a common bug. Similarly, a return in finally discards any exception. Never throw or return from finally — use try-with-resources to avoid needing finally for cleanup.' }
-          ]
-        },
-        {
-          title: 'Custom Exceptions & Exception Chaining',
-          notes: `## Custom Exceptions & Exception Chaining
+            ],
+            flashcards: [
+              {
+                q: `When does the finally block NOT run?`,
+                a: `The finally block does not run when System.exit() is called, when the JVM crashes (e.g. kill -9 on the process), or when a daemon thread is killed as the JVM shuts down. In all other cases — including re-thrown exceptions — finally always runs.`
+              },
+              {
+                q: `What is a suppressed exception in try-with-resources?`,
+                a: `When both the try body and a resource's close() method throw, the exception from close() is attached to the primary exception as a suppressed exception (via Throwable.addSuppressed). Retrieve them with e.getSuppressed(). This prevents the original exception from being silently lost, which was a problem with manual finally blocks.`
+              },
+              {
+                q: `In what order are try-with-resources resources closed?`,
+                a: `Reverse order of declaration. If you declare (A, B, C), they close as C.close(), B.close(), A.close(). This mirrors stack-based resource acquisition: last acquired, first released.`
+              },
+              {
+                q: `What is multi-catch and what restriction applies to the variable?`,
+                a: `Multi-catch (Java 7+) lets one catch block handle multiple exception types: catch (IOException | SQLException e). The variable e is implicitly final — you cannot reassign it inside the block. This prevents the ambiguity of which type e is after reassignment.`
+              },
+              {
+                q: `What happens if you throw from a finally block?`,
+                a: `The exception being handled in the try/catch is silently lost and replaced by the finally exception. This is a common bug. Similarly, a return in finally discards any exception. Never throw or return from finally — use try-with-resources to avoid needing finally for cleanup.`
+              }
+            ]
+          },
+          {
+            title: `Custom Exceptions & Exception Chaining`,
+            notes: `## Custom Exceptions & Exception Chaining
 
 ### When to Create Custom Exceptions
 
@@ -6744,8 +7187,8 @@ throw new IllegalArgumentException(
 catch (Exception e) { }  // BAD — error disappears
 catch (Exception e) { log.warn("Ignoring expected: {}", e.getMessage()); }  // OK with reason
 \`\`\``,
-          code: [
-            `// Full custom exception example with hierarchy
+            code: [
+              `// Full custom exception example with hierarchy
 class AppException extends RuntimeException {
     public AppException(String message)                  { super(message); }
     public AppException(String message, Throwable cause) { super(message, cause); }
@@ -6790,7 +7233,7 @@ class CustomExceptionDemo {
         }
     }
 }`,
-            `import java.sql.*;
+              `import java.sql.*;
 
 // Exception chaining demo — preserving the cause chain
 class DataAccessException extends RuntimeException {
@@ -6830,18 +7273,33 @@ class ExceptionChainDemo {
         }
     }
 }`
-          ],
-          flashcards: [
-            { q: 'When should you create a custom exception vs use a standard one?', a: 'Create custom exceptions when: (1) the caller needs to distinguish this failure from others in a catch block, (2) you need to carry domain-specific data (amount, orderId), (3) crossing a layer boundary to translate technical to domain language. Do not create them just to rename RuntimeException.' },
-            { q: 'Why must you always pass the original exception as the cause when rethrowing?', a: 'Without the cause, the original stack trace is lost forever — you see only where the new exception was thrown, not what caused it. Always use throw new MyException("message", originalException) to preserve the full chain for debugging.' },
-            { q: 'What are the two constructors every custom exception should have?', a: '(1) (String message) — for new errors. (2) (String message, Throwable cause) — for wrapping an existing exception. Both delegate to the matching super() constructor. This makes the exception useful in all wrapping scenarios.' },
-            { q: 'What is the "log or rethrow" rule?', a: 'When you catch an exception, either log it (and handle it) OR rethrow it — not both. If every layer logs and rethrows, the same exception appears in the log multiple times, obscuring the actual flow. Log only at the point where you truly handle it and stop propagation.' },
-            { q: 'What is the benefit of rooting all custom exceptions in your own AppException base class?', a: 'A single catch (AppException e) at the top-level handler catches all app exceptions. More specific handlers still work at lower levels. Monitoring and logging can filter by the hierarchy. And you can add cross-cutting fields (correlationId, errorCode) to AppException once.' }
-          ]
-        },
-        {
-          title: 'Exception Patterns & Real-World Best Practices',
-          notes: `## Exception Patterns & Real-World Best Practices
+            ],
+            flashcards: [
+              {
+                q: `When should you create a custom exception vs use a standard one?`,
+                a: `Create custom exceptions when: (1) the caller needs to distinguish this failure from others in a catch block, (2) you need to carry domain-specific data (amount, orderId), (3) crossing a layer boundary to translate technical to domain language. Do not create them just to rename RuntimeException.`
+              },
+              {
+                q: `Why must you always pass the original exception as the cause when rethrowing?`,
+                a: `Without the cause, the original stack trace is lost forever — you see only where the new exception was thrown, not what caused it. Always use throw new MyException("message", originalException) to preserve the full chain for debugging.`
+              },
+              {
+                q: `What are the two constructors every custom exception should have?`,
+                a: `(1) (String message) — for new errors. (2) (String message, Throwable cause) — for wrapping an existing exception. Both delegate to the matching super() constructor. This makes the exception useful in all wrapping scenarios.`
+              },
+              {
+                q: `What is the "log or rethrow" rule?`,
+                a: `When you catch an exception, either log it (and handle it) OR rethrow it — not both. If every layer logs and rethrows, the same exception appears in the log multiple times, obscuring the actual flow. Log only at the point where you truly handle it and stop propagation.`
+              },
+              {
+                q: `What is the benefit of rooting all custom exceptions in your own AppException base class?`,
+                a: `A single catch (AppException e) at the top-level handler catches all app exceptions. More specific handlers still work at lower levels. Monitoring and logging can filter by the hierarchy. And you can add cross-cutting fields (correlationId, errorCode) to AppException once.`
+              }
+            ]
+          },
+          {
+            title: `Exception Patterns & Real-World Best Practices`,
+            notes: `## Exception Patterns & Real-World Best Practices
 
 ### Anti-Pattern Gallery
 
@@ -6951,8 +7409,8 @@ String caller = walker.walk(frames ->
 | When is \`UncheckedIOException\` used? | Wrapping \`IOException\` for use in streams/lambdas |
 | Can a constructor throw? | Yes — any constructor can throw both checked and unchecked |
 | What is the \`throws\` clause on main? | Legal but useless in production — unhandled exceptions print to stderr and exit |`,
-          code: [
-            `import java.util.function.*;
+            code: [
+              `import java.util.function.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
@@ -7004,7 +7462,7 @@ public class ExceptionPatterns {
         }
     }
 }`,
-            `// Full real-world exception hierarchy example
+              `// Full real-world exception hierarchy example
 class AppException extends RuntimeException {
     private final String errorCode;
     public AppException(String errorCode, String message)                  {
@@ -7051,26 +7509,40 @@ class RealWorldDemo {
         }
     }
 }`
-          ],
-          flashcards: [
-            { q: 'Why is using exceptions for flow control bad?', a: 'Two reasons: (1) Performance — constructing an exception captures the full stack trace, which is expensive (hundreds of microseconds). (2) Clarity — exceptions should signal unexpected failures, not expected branches. Use if/else or Optional for expected conditions.' },
-            { q: 'How do you handle checked exceptions inside a stream lambda?', a: 'Option 1: wrap inline in try/catch and throw UncheckedIOException (or RuntimeException). Option 2: define a ThrowingFunction functional interface that declares throws Exception and write a wrapper that converts it. Checked exceptions cannot propagate through standard functional interfaces like Function or Consumer.' },
-            { q: 'What is the difference between throw e and throw new RuntimeException(e)?', a: 'throw e re-throws the original exception with its original type and stack trace. throw new RuntimeException(e) wraps it — adds a new stack frame layer, changes the type, but preserves the original as the cause. Use throw e when you want to preserve the original; wrap when converting checked to unchecked.' },
-            { q: 'What is UncheckedIOException?', a: 'A RuntimeException (added in Java 8) specifically for wrapping IOException. It is the standard way to propagate IO errors through lambdas and streams without checked exception boilerplate. Always prefer it over generic RuntimeException(e) when the cause is IOException.' },
-            { q: 'What is the "retry pattern" and when do you use it?', a: 'Retry wraps an operation in a loop, catching transient failures (network timeouts, temporary unavailability) and retrying up to N times. After N failures, it throws with the last exception as the cause. Appropriate for network calls, file system operations on remote mounts, or any operation where transient failures are expected.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '0.8',
-      title: 'Generics — Wildcards, Bounded Types, PECS',
-      hours: 3,
-      sections: [
-        {
-          title: 'Generic Classes & Methods — The Basics',
-          notes: `## Generic Classes & Methods — The Basics
+            ],
+            flashcards: [
+              {
+                q: `Why is using exceptions for flow control bad?`,
+                a: `Two reasons: (1) Performance — constructing an exception captures the full stack trace, which is expensive (hundreds of microseconds). (2) Clarity — exceptions should signal unexpected failures, not expected branches. Use if/else or Optional for expected conditions.`
+              },
+              {
+                q: `How do you handle checked exceptions inside a stream lambda?`,
+                a: `Option 1: wrap inline in try/catch and throw UncheckedIOException (or RuntimeException). Option 2: define a ThrowingFunction functional interface that declares throws Exception and write a wrapper that converts it. Checked exceptions cannot propagate through standard functional interfaces like Function or Consumer.`
+              },
+              {
+                q: `What is the difference between throw e and throw new RuntimeException(e)?`,
+                a: `throw e re-throws the original exception with its original type and stack trace. throw new RuntimeException(e) wraps it — adds a new stack frame layer, changes the type, but preserves the original as the cause. Use throw e when you want to preserve the original; wrap when converting checked to unchecked.`
+              },
+              {
+                q: `What is UncheckedIOException?`,
+                a: `A RuntimeException (added in Java 8) specifically for wrapping IOException. It is the standard way to propagate IO errors through lambdas and streams without checked exception boilerplate. Always prefer it over generic RuntimeException(e) when the cause is IOException.`
+              },
+              {
+                q: `What is the "retry pattern" and when do you use it?`,
+                a: `Retry wraps an operation in a loop, catching transient failures (network timeouts, temporary unavailability) and retrying up to N times. After N failures, it throws with the last exception as the cause. Appropriate for network calls, file system operations on remote mounts, or any operation where transient failures are expected.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.8`,
+        title: `Generics — Wildcards, Bounded Types, PECS`,
+        hours: 3,
+        sections: [
+          {
+            title: `Generic Classes & Methods — The Basics`,
+            notes: `## Generic Classes & Methods — The Basics
 
 Generics allow you to write classes and methods that work with **any type** while preserving full type safety at compile time. Before generics (pre-Java 5), collections stored \`Object\` and required unsafe casts everywhere.
 
@@ -7188,8 +7660,8 @@ public class Box {          // was Box<T>
 \`\`\`
 
 The compiler inserts **synthetic casts** at every point where you use the typed value, so type safety is preserved without needing runtime type information.`,
-          code: [
-            `import java.util.function.*;
+            code: [
+              `import java.util.function.*;
 
 public class Box<T> {
     private T value;
@@ -7228,7 +7700,7 @@ public class Box<T> {
         System.out.println(empty);    // Box[null]
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 public class GenericUtils {
     // Generic method — declared before return type
@@ -7263,18 +7735,33 @@ public class GenericUtils {
         System.out.println(invert(scores));         // {1=Alice, 2=Bob}
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is type erasure in Java generics?', a: 'At compile time, all type parameters are removed (erased) from bytecode. List<String> and List<Integer> both become List at runtime. The compiler inserts synthetic casts where needed to maintain type safety. Consequence: you cannot use instanceof with generic type parameters, and you cannot create generic arrays (new T[]).' },
-            { q: 'What are the naming conventions for type parameters?', a: 'T — Type (general), E — Element (collections), K — Key (maps), V — Value (maps), R — Return type (functions), N — Number. Use single uppercase letters. Multiple parameters: <K,V>, <T,R>.' },
-            { q: 'How does a generic method differ from a generic class?', a: 'A generic class declares type parameters on the class definition (class Box<T>). A generic method declares its own type parameters before the return type (public <T> T method()). A generic method can exist in a non-generic class, and its type parameter is independent of any class-level parameters.' },
-            { q: 'Why can\'t you write new T[] in Java?', a: 'Because of type erasure — at runtime, T is erased to Object, so the JVM would create Object[] but the reference would claim it\'s T[]. This is a heap pollution risk. Java prevents it at compile time. Workaround: accept a Class<T> token and use Array.newInstance(clazz, size).' },
-            { q: 'What is the diamond operator <> and when was it introduced?', a: 'Introduced in Java 7, <> allows type inference on the right side of variable declarations: new ArrayList<>() instead of new ArrayList<String>(). The compiler infers the type from the variable declaration. Java 9 extended this to anonymous classes.' }
-          ]
-        },
-        {
-          title: 'Bounded Type Parameters — extends & super',
-          notes: `## Bounded Type Parameters — extends & super
+            ],
+            flashcards: [
+              {
+                q: `What is type erasure in Java generics?`,
+                a: `At compile time, all type parameters are removed (erased) from bytecode. List<String> and List<Integer> both become List at runtime. The compiler inserts synthetic casts where needed to maintain type safety. Consequence: you cannot use instanceof with generic type parameters, and you cannot create generic arrays (new T[]).`
+              },
+              {
+                q: `What are the naming conventions for type parameters?`,
+                a: `T — Type (general), E — Element (collections), K — Key (maps), V — Value (maps), R — Return type (functions), N — Number. Use single uppercase letters. Multiple parameters: <K,V>, <T,R>.`
+              },
+              {
+                q: `How does a generic method differ from a generic class?`,
+                a: `A generic class declares type parameters on the class definition (class Box<T>). A generic method declares its own type parameters before the return type (public <T> T method()). A generic method can exist in a non-generic class, and its type parameter is independent of any class-level parameters.`
+              },
+              {
+                q: `Why can't you write new T[] in Java?`,
+                a: `Because of type erasure — at runtime, T is erased to Object, so the JVM would create Object[] but the reference would claim it's T[]. This is a heap pollution risk. Java prevents it at compile time. Workaround: accept a Class<T> token and use Array.newInstance(clazz, size).`
+              },
+              {
+                q: `What is the diamond operator <> and when was it introduced?`,
+                a: `Introduced in Java 7, <> allows type inference on the right side of variable declarations: new ArrayList<>() instead of new ArrayList<String>(). The compiler infers the type from the variable declaration. Java 9 extended this to anonymous classes.`
+              }
+            ]
+          },
+          {
+            title: `Bounded Type Parameters — extends & super`,
+            notes: `## Bounded Type Parameters — extends & super
 
 Without bounds, a type parameter \`T\` can be any type at all, but you can only call methods from \`Object\` on it. Bounds let you restrict what \`T\` can be — and gain access to the methods of the bound type.
 
@@ -7381,8 +7868,8 @@ List<? super Integer> contravariant = new ArrayList<Number>();
 contravariant.add(42);                      // OK — Integer IS-A Integer (or supertype)
 Object o = contravariant.get(0);           // read as Object only
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 
 public class BoundedDemo {
     // Upper bound — T must extend Number
@@ -7420,7 +7907,7 @@ public class BoundedDemo {
         System.out.println(numList);  // [1, 2, 3, 4, 5]
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 public class CovarianceDemo {
     // Invariance: List<Integer> is NOT a subtype of List<Number>
@@ -7453,18 +7940,33 @@ public class CovarianceDemo {
         System.out.println("First: " + first);      // 1
     }
 }`
-          ],
-          flashcards: [
-            { q: 'Is List<Integer> a subtype of List<Number>?', a: 'No — generics are invariant. List<Integer> and List<Number> are unrelated types. If it were allowed, you could do List<Number> n = intList; n.add(3.14); — corrupting an integer list. Use List<? extends Number> (covariant wildcard) to accept both.' },
-            { q: 'What is the difference between <T extends Number> and <? extends Number>?', a: '<T extends Number> is a bounded type parameter — T is named and can be referenced throughout the method signature and body. <? extends Number> is a wildcard — the type is anonymous and cannot be named. Use type parameters when you need to refer to the type; use wildcards when you just need to accept a family of types.' },
-            { q: 'What methods can you call on a value of type T when <T extends Comparable<T> & Serializable>?', a: 'All methods of Comparable (compareTo), all methods of Serializable (just a marker), and all methods of Object. Multiple bounds give access to all bound types\' methods.' },
-            { q: 'Can you add elements to a List<? extends Number>?', a: 'No. With an upper-bounded wildcard (? extends Number), the compiler does not know the exact type — it could be List<Integer>, List<Double>, or any other subtype. Adding any Number would risk type corruption. You can only read (as Number). Lower-bounded wildcard (? super Integer) is needed for writing.' },
-            { q: 'What is the result of multiple bounds <T extends A & B & C>?', a: 'T must be a subtype of A, B, and C simultaneously. The first bound must be a class (or Object); all subsequent bounds must be interfaces (Java has single inheritance). You gain access to methods from all bound types inside the generic method or class.' }
-          ]
-        },
-        {
-          title: 'PECS — Producer Extends, Consumer Super',
-          notes: `## PECS — Producer Extends, Consumer Super
+            ],
+            flashcards: [
+              {
+                q: `Is List<Integer> a subtype of List<Number>?`,
+                a: `No — generics are invariant. List<Integer> and List<Number> are unrelated types. If it were allowed, you could do List<Number> n = intList; n.add(3.14); — corrupting an integer list. Use List<? extends Number> (covariant wildcard) to accept both.`
+              },
+              {
+                q: `What is the difference between <T extends Number> and <? extends Number>?`,
+                a: `<T extends Number> is a bounded type parameter — T is named and can be referenced throughout the method signature and body. <? extends Number> is a wildcard — the type is anonymous and cannot be named. Use type parameters when you need to refer to the type; use wildcards when you just need to accept a family of types.`
+              },
+              {
+                q: `What methods can you call on a value of type T when <T extends Comparable<T> & Serializable>?`,
+                a: `All methods of Comparable (compareTo), all methods of Serializable (just a marker), and all methods of Object. Multiple bounds give access to all bound types' methods.`
+              },
+              {
+                q: `Can you add elements to a List<? extends Number>?`,
+                a: `No. With an upper-bounded wildcard (? extends Number), the compiler does not know the exact type — it could be List<Integer>, List<Double>, or any other subtype. Adding any Number would risk type corruption. You can only read (as Number). Lower-bounded wildcard (? super Integer) is needed for writing.`
+              },
+              {
+                q: `What is the result of multiple bounds <T extends A & B & C>?`,
+                a: `T must be a subtype of A, B, and C simultaneously. The first bound must be a class (or Object); all subsequent bounds must be interfaces (Java has single inheritance). You gain access to methods from all bound types inside the generic method or class.`
+              }
+            ]
+          },
+          {
+            title: `PECS — Producer Extends, Consumer Super`,
+            notes: `## PECS — Producer Extends, Consumer Super
 
 PECS is the golden rule for choosing between \`? extends T\` and \`? super T\`. It was coined by Joshua Bloch in *Effective Java* and appears in almost every Java interview at the mid-senior level.
 
@@ -7569,8 +8071,8 @@ public <T extends Number> T compute(Class<T> type) { ... }
 \`\`\`
 
 > **Interview insight:** PECS maximises API flexibility. The caller decides what collection to pass — you just express what guarantees you need. A method that takes \`List<? extends Number>\` is more useful than one that takes \`List<Number>\` because it accepts more types without sacrificing safety.`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 
 public class PecsDemo {
     // PECS: src is producer (extends), dst is consumer (super)
@@ -7609,7 +8111,7 @@ public class PecsDemo {
         System.out.println("Evens: " + evens);   // [2, 2]
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // Classic Stack example from Effective Java — PECS in pushAll/popAll
 class Stack<E> {
@@ -7650,18 +8152,33 @@ public class StackPecsDemo {
         // stack.popAll(result);   // COMPILE ERROR if popAll(Collection<E>)
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What does PECS stand for and what is the rule?', a: 'Producer Extends, Consumer Super. If a collection produces (provides) values you read, use ? extends T. If a collection consumes (accepts) values you write, use ? super T. If you both read and write, use the exact type with no wildcard.' },
-            { q: 'Why does Collections.copy use (List<? super T> dest, List<? extends T> src)?', a: 'src produces T values for you to read → extends. dest consumes T values you write into → super. This lets you copy List<Integer> into List<Number> (or List<Object>) — the asymmetry in the wildcards captures the actual direction of data flow.' },
-            { q: 'What happens when you try to read from a List<? super Integer>?', a: 'You can only read the elements as Object — the compiler doesn\'t know whether it\'s a List<Integer>, List<Number>, or List<Object>. The only safe type is Object. To get a usable type back, you must cast manually.' },
-            { q: 'Why is Comparator<? super T> used in sort(List<T>, Comparator<? super T>)?', a: 'A Comparator consumes T values (it receives two T objects to compare), making it a consumer → super. This means a Comparator<Object> can sort a List<String> — the comparator accepts any Object, which certainly includes String. Without ? super, only an exact Comparator<String> would work.' },
-            { q: 'Can you use a wildcard as a method return type?', a: 'Technically yes but it\'s almost always wrong — the caller receives a value of unknown type and cannot use it without casting, defeating the purpose of generics. Use a bounded type parameter (<T extends X>) for return types instead. Wildcards belong in method parameters.' }
-          ]
-        },
-        {
-          title: 'Type Erasure, Raw Types & Generic Patterns',
-          notes: `## Type Erasure, Raw Types & Generic Patterns
+            ],
+            flashcards: [
+              {
+                q: `What does PECS stand for and what is the rule?`,
+                a: `Producer Extends, Consumer Super. If a collection produces (provides) values you read, use ? extends T. If a collection consumes (accepts) values you write, use ? super T. If you both read and write, use the exact type with no wildcard.`
+              },
+              {
+                q: `Why does Collections.copy use (List<? super T> dest, List<? extends T> src)?`,
+                a: `src produces T values for you to read → extends. dest consumes T values you write into → super. This lets you copy List<Integer> into List<Number> (or List<Object>) — the asymmetry in the wildcards captures the actual direction of data flow.`
+              },
+              {
+                q: `What happens when you try to read from a List<? super Integer>?`,
+                a: `You can only read the elements as Object — the compiler doesn't know whether it's a List<Integer>, List<Number>, or List<Object>. The only safe type is Object. To get a usable type back, you must cast manually.`
+              },
+              {
+                q: `Why is Comparator<? super T> used in sort(List<T>, Comparator<? super T>)?`,
+                a: `A Comparator consumes T values (it receives two T objects to compare), making it a consumer → super. This means a Comparator<Object> can sort a List<String> — the comparator accepts any Object, which certainly includes String. Without ? super, only an exact Comparator<String> would work.`
+              },
+              {
+                q: `Can you use a wildcard as a method return type?`,
+                a: `Technically yes but it's almost always wrong — the caller receives a value of unknown type and cannot use it without casting, defeating the purpose of generics. Use a bounded type parameter (<T extends X>) for return types instead. Wildcards belong in method parameters.`
+              }
+            ]
+          },
+          {
+            title: `Type Erasure, Raw Types & Generic Patterns`,
+            notes: `## Type Erasure, Raw Types & Generic Patterns
 
 ### Raw Types — the Legacy Trap
 
@@ -7790,8 +8307,8 @@ public <T> T getInstance(Class<T> type) {
 | Is \`ArrayList<Integer>\` the same class as \`ArrayList<String>\`? | Yes — \`getClass()\` returns the same \`Class\` object |
 | What is heap pollution? | When a variable of parameterised type refers to an object of a different type — caused by raw types or unchecked casts |
 | What is the \`@SafeVarargs\` annotation? | Suppresses "possible heap pollution" warning on \`final\`/\`static\` varargs methods that are actually safe |`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.function.*;
 
 // Type-safe heterogeneous container (Bloch Item 33)
@@ -7823,7 +8340,7 @@ public class TypedMap {
         // String wrong = container.get(Integer.class);  // ClassCastException at get()
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 import java.util.function.*;
 
 // Generic Stack with bounded peek
@@ -7868,26 +8385,40 @@ public class GenericStack<E> {
         System.out.println("Drained: " + result);  // [item-3, item-2, item-1]
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is a raw type and why should you never use one in new code?', a: 'A raw type is a generic class without type arguments (List instead of List<String>). It bypasses all compile-time type checking — you get ClassCastException at runtime instead of compile errors. Raw types exist only for backward compatibility with pre-Java 5 libraries.' },
-            { q: 'What is heap pollution?', a: 'Heap pollution occurs when a variable of a parameterised type refers to an object of a different parameterised type. Caused by raw types or unchecked casts. Results in ClassCastException at unexpected places, sometimes far from the actual bug. Eliminated by avoiding raw types and suppressing warnings only when provably safe.' },
-            { q: 'What is a reifiable type?', a: 'A type whose complete type information is available at runtime. Primitives, non-generic classes, raw types, and unbounded wildcards (List<?>) are reifiable. Generic instantiations like List<String> are non-reifiable — their type argument is erased. Only reifiable types can be used with instanceof and array creation.' },
-            { q: 'What does @SafeVarargs suppress?', a: 'It suppresses the "possible heap pollution from parameterised vararg type" warning on methods with varargs of a generic type (T... items). Only use it when you are certain the method does not expose the array to unsafe operations. Can only be applied to static, final, or private methods.' },
-            { q: 'Why can the generic identity function return the same instance for all types?', a: 'Because of type erasure — at runtime, Function<Integer,Integer> and Function<String,String> are both just Function. The single Object-typed instance is safe because the identity function returns exactly what it receives, so no actual type mismatch can occur. The compiler cast is a no-op at runtime.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '0.9',
-      title: 'Collections Deep Dive — List, Set, Map, Queue',
-      hours: 4,
-      sections: [
-        {
-          title: 'List — ArrayList vs LinkedList vs CopyOnWrite',
-          notes: `## List — ArrayList vs LinkedList vs CopyOnWrite
+            ],
+            flashcards: [
+              {
+                q: `What is a raw type and why should you never use one in new code?`,
+                a: `A raw type is a generic class without type arguments (List instead of List<String>). It bypasses all compile-time type checking — you get ClassCastException at runtime instead of compile errors. Raw types exist only for backward compatibility with pre-Java 5 libraries.`
+              },
+              {
+                q: `What is heap pollution?`,
+                a: `Heap pollution occurs when a variable of a parameterised type refers to an object of a different parameterised type. Caused by raw types or unchecked casts. Results in ClassCastException at unexpected places, sometimes far from the actual bug. Eliminated by avoiding raw types and suppressing warnings only when provably safe.`
+              },
+              {
+                q: `What is a reifiable type?`,
+                a: `A type whose complete type information is available at runtime. Primitives, non-generic classes, raw types, and unbounded wildcards (List<?>) are reifiable. Generic instantiations like List<String> are non-reifiable — their type argument is erased. Only reifiable types can be used with instanceof and array creation.`
+              },
+              {
+                q: `What does @SafeVarargs suppress?`,
+                a: `It suppresses the "possible heap pollution from parameterised vararg type" warning on methods with varargs of a generic type (T... items). Only use it when you are certain the method does not expose the array to unsafe operations. Can only be applied to static, final, or private methods.`
+              },
+              {
+                q: `Why can the generic identity function return the same instance for all types?`,
+                a: `Because of type erasure — at runtime, Function<Integer,Integer> and Function<String,String> are both just Function. The single Object-typed instance is safe because the identity function returns exactly what it receives, so no actual type mismatch can occur. The compiler cast is a no-op at runtime.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.9`,
+        title: `Collections Deep Dive — List, Set, Map, Queue`,
+        hours: 4,
+        sections: [
+          {
+            title: `List — ArrayList vs LinkedList vs CopyOnWrite`,
+            notes: `## List — ArrayList vs LinkedList vs CopyOnWrite
 
 A \`List\` is an **ordered, index-addressable sequence** that allows duplicates. Three implementations cover 99% of real use cases.
 
@@ -7996,8 +8527,8 @@ mutable.add("d");     // OK
 \`\`\`
 
 > **Interview trap:** \`Arrays.asList()\` returns a fixed-size list backed by the original array — you can \`set()\` but not \`add()\` or \`remove()\`. \`List.of()\` is truly immutable and also does not permit null elements.`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 
 public class ListDemo {
     public static void main(String[] args) {
@@ -8034,7 +8565,7 @@ public class ListDemo {
         System.out.println("Arrays.asList after set: " + fixedSize); // [X,y,z]
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 import java.util.concurrent.*;
 
 public class ListPerformance {
@@ -8073,18 +8604,33 @@ public class ListPerformance {
         System.out.println("COW size: " + cow.size());
     }
 }`
-          ],
-          flashcards: [
-            { q: 'Why is ArrayList.get(i) O(1) but LinkedList.get(i) O(n)?', a: 'ArrayList is backed by a contiguous array — index i maps directly to memory offset. LinkedList is a doubly-linked chain — to reach index i you must traverse i nodes from the head (or from the tail if closer). This also means terrible cache performance for LinkedList.' },
-            { q: 'What is the difference between List.of() and Arrays.asList()?', a: 'List.of() (Java 9+) is truly immutable — no set, add, remove, and no null elements allowed. Arrays.asList() returns a fixed-size list backed by the original array — add/remove throw UnsupportedOperationException, but set() works and changes reflect in the backing array.' },
-            { q: 'When does ArrayList throw ConcurrentModificationException?', a: 'When the list is structurally modified (add/remove) while iterating with a for-each loop or explicit Iterator, and the modification is not done through the iterator\'s own remove() method. The iterator maintains a modCount; any external change increments it and the next hasNext()/next() detects the mismatch and throws.' },
-            { q: 'When should you use CopyOnWriteArrayList?', a: 'When reads vastly outnumber writes — e.g. event listener lists, plugin registries, UI observer lists. Every write copies the entire array, making it very expensive for write-heavy scenarios. Reads are completely lock-free and see a stable snapshot.' },
-            { q: 'Why is ArrayDeque usually preferred over LinkedList for queue operations?', a: 'ArrayDeque uses a resizable circular array — O(1) addFirst/addLast/pollFirst/pollLast with excellent cache locality. LinkedList allocates a new node object per element (GC pressure, pointer chasing). ArrayDeque is faster in practice for all queue/deque use cases.' }
-          ]
-        },
-        {
-          title: 'Set — HashSet, LinkedHashSet, TreeSet',
-          notes: `## Set — HashSet, LinkedHashSet, TreeSet
+            ],
+            flashcards: [
+              {
+                q: `Why is ArrayList.get(i) O(1) but LinkedList.get(i) O(n)?`,
+                a: `ArrayList is backed by a contiguous array — index i maps directly to memory offset. LinkedList is a doubly-linked chain — to reach index i you must traverse i nodes from the head (or from the tail if closer). This also means terrible cache performance for LinkedList.`
+              },
+              {
+                q: `What is the difference between List.of() and Arrays.asList()?`,
+                a: `List.of() (Java 9+) is truly immutable — no set, add, remove, and no null elements allowed. Arrays.asList() returns a fixed-size list backed by the original array — add/remove throw UnsupportedOperationException, but set() works and changes reflect in the backing array.`
+              },
+              {
+                q: `When does ArrayList throw ConcurrentModificationException?`,
+                a: `When the list is structurally modified (add/remove) while iterating with a for-each loop or explicit Iterator, and the modification is not done through the iterator's own remove() method. The iterator maintains a modCount; any external change increments it and the next hasNext()/next() detects the mismatch and throws.`
+              },
+              {
+                q: `When should you use CopyOnWriteArrayList?`,
+                a: `When reads vastly outnumber writes — e.g. event listener lists, plugin registries, UI observer lists. Every write copies the entire array, making it very expensive for write-heavy scenarios. Reads are completely lock-free and see a stable snapshot.`
+              },
+              {
+                q: `Why is ArrayDeque usually preferred over LinkedList for queue operations?`,
+                a: `ArrayDeque uses a resizable circular array — O(1) addFirst/addLast/pollFirst/pollLast with excellent cache locality. LinkedList allocates a new node object per element (GC pressure, pointer chasing). ArrayDeque is faster in practice for all queue/deque use cases.`
+              }
+            ]
+          },
+          {
+            title: `Set — HashSet, LinkedHashSet, TreeSet`,
+            notes: `## Set — HashSet, LinkedHashSet, TreeSet
 
 A \`Set\` is a collection that **does not allow duplicates**. Membership testing is the primary operation — choose the implementation based on ordering needs.
 
@@ -8093,9 +8639,12 @@ A \`Set\` is a collection that **does not allow duplicates**. Membership testing
 \`\`\`mermaid
 graph TD
     S[Set Interface]
-    S --> HS["HashSet\n(no order, fastest)"]
-    S --> LHS["LinkedHashSet\n(insertion order)"]
-    S --> TS["TreeSet\n(sorted order, NavigableSet)"]
+    S --> HS["HashSet
+(no order, fastest)"]
+    S --> LHS["LinkedHashSet
+(insertion order)"]
+    S --> TS["TreeSet
+(sorted order, NavigableSet)"]
     HS -. "backs" .-> HM[HashMap]
     LHS -. "backs" .-> LHM[LinkedHashMap]
     TS -. "backs" .-> TM[TreeMap]
@@ -8223,8 +8772,8 @@ a.removeAll(b);  // difference
 // Immutable set (Java 9+)
 Set<String> immutable = Set.of("a", "b", "c"); // no nulls, no duplicates
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 
 public class SetDemo {
     public static void main(String[] args) {
@@ -8255,7 +8804,7 @@ public class SetDemo {
         System.out.println("Diff:  " + diff);   // [1, 2, 3]
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // equals + hashCode contract for HashSet correctness
 class Point implements Comparable<Point> {
@@ -8294,18 +8843,33 @@ public class SetEqualsHashCode {
         System.out.println("Deduped (order preserved): " + deduped); // [a,b,c,d]
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is every Set implementation backed by?', a: 'A Map — elements are stored as map keys with a dummy value (Boolean.TRUE or a shared PRESENT object). HashSet → HashMap, LinkedHashSet → LinkedHashMap, TreeSet → TreeMap. This is why Set operations have the same complexity as the corresponding Map operations.' },
-            { q: 'What happens if you add an object to a HashSet but forget to override hashCode?', a: 'Two logically equal objects will have different hash codes (from Object.hashCode which is identity-based), so they hash to different buckets — both get added. The set appears to contain duplicates. The contract: equal objects must have equal hash codes.' },
-            { q: 'Does TreeSet use equals() to check for duplicates?', a: 'No — TreeSet uses compareTo() (or the provided Comparator). If compareTo() returns 0, the element is considered a duplicate and is not added, even if equals() returns false. This means inconsistency between equals and compareTo can cause subtle bugs in TreeSets.' },
-            { q: 'When would you choose LinkedHashSet over HashSet?', a: 'When you need O(1) membership testing AND predictable iteration order (insertion order). Common use cases: deduplication while preserving order (new LinkedHashSet<>(list)), LRU cache key tracking, any scenario where you need "seen in the order first encountered".' },
-            { q: 'What does TreeSet.floor(e) return?', a: 'The greatest element in the set that is less than or equal to e. Returns null if no such element exists. Counterpart: ceiling(e) returns the smallest element ≥ e. lower(e) is strictly less than e; higher(e) is strictly greater. All O(log n).' }
-          ]
-        },
-        {
-          title: 'Map — HashMap, LinkedHashMap, TreeMap, internals',
-          notes: `## Map — HashMap, LinkedHashMap, TreeMap, internals
+            ],
+            flashcards: [
+              {
+                q: `What is every Set implementation backed by?`,
+                a: `A Map — elements are stored as map keys with a dummy value (Boolean.TRUE or a shared PRESENT object). HashSet → HashMap, LinkedHashSet → LinkedHashMap, TreeSet → TreeMap. This is why Set operations have the same complexity as the corresponding Map operations.`
+              },
+              {
+                q: `What happens if you add an object to a HashSet but forget to override hashCode?`,
+                a: `Two logically equal objects will have different hash codes (from Object.hashCode which is identity-based), so they hash to different buckets — both get added. The set appears to contain duplicates. The contract: equal objects must have equal hash codes.`
+              },
+              {
+                q: `Does TreeSet use equals() to check for duplicates?`,
+                a: `No — TreeSet uses compareTo() (or the provided Comparator). If compareTo() returns 0, the element is considered a duplicate and is not added, even if equals() returns false. This means inconsistency between equals and compareTo can cause subtle bugs in TreeSets.`
+              },
+              {
+                q: `When would you choose LinkedHashSet over HashSet?`,
+                a: `When you need O(1) membership testing AND predictable iteration order (insertion order). Common use cases: deduplication while preserving order (new LinkedHashSet<>(list)), LRU cache key tracking, any scenario where you need "seen in the order first encountered".`
+              },
+              {
+                q: `What does TreeSet.floor(e) return?`,
+                a: `The greatest element in the set that is less than or equal to e. Returns null if no such element exists. Counterpart: ceiling(e) returns the smallest element ≥ e. lower(e) is strictly less than e; higher(e) is strictly greater. All O(log n).`
+              }
+            ]
+          },
+          {
+            title: `Map — HashMap, LinkedHashMap, TreeMap, internals`,
+            notes: `## Map — HashMap, LinkedHashMap, TreeMap, internals
 
 A \`Map\` stores **key-value pairs** with unique keys. It is the most-used non-list data structure in Java — almost every real application relies on it.
 
@@ -8430,8 +8994,8 @@ tm.tailMap("banana");               // keys from "banana" onwards (inclusive)
 | Iteration | O(capacity + n) | O(n) | O(n) |
 | Ordered iteration | ✗ | Insertion order | Sorted |
 | \`floor\` / \`ceiling\` | ✗ | ✗ | O(log n) |`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.stream.*;
 
 public class MapDemo {
@@ -8465,7 +9029,7 @@ public class MapDemo {
         System.out.println(scores.getOrDefault("Eve", -1)); // -1
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // LRU Cache using LinkedHashMap access-order
 class LruCache<K, V> extends LinkedHashMap<K, V> {
@@ -8513,18 +9077,33 @@ public class MapAdvanced {
         System.out.println("By length: " + byLength);
     }
 }`
-          ],
-          flashcards: [
-            { q: 'How does HashMap resolve hash collisions in Java 8+?', a: 'Collisions land in the same bucket. With < 8 entries the bucket is a linked list (O(n) worst case). When a bucket reaches 8 entries it is treeified into a Red-Black tree (O(log n) worst case). The tree reverts to a list when it shrinks below 6 entries.' },
-            { q: 'What is the default load factor of HashMap and what does it mean?', a: '0.75 (75%). When the map is 75% full (size > capacity * 0.75), it rehashes — creates a new array of double the capacity and redistributes all entries. Lower load factor → fewer collisions, more memory. Higher → more collisions, less memory. 0.75 is the empirically optimal balance.' },
-            { q: 'What is the difference between HashMap.get(k) and getOrDefault(k, def)?', a: 'get(k) returns null for missing keys AND for keys explicitly mapped to null — you cannot distinguish the two cases. getOrDefault(k, def) returns def only when the key is absent. Also avoids a NullPointerException if you chain methods on the result.' },
-            { q: 'How does LinkedHashMap implement an LRU cache?', a: 'Use the access-order constructor: new LinkedHashMap<>(capacity, 0.75f, true). In access-order mode, every get() moves the accessed entry to the tail. Override removeEldestEntry() to return true when size() > capacity — this evicts the head (least recently accessed) automatically on each put().' },
-            { q: 'What is the difference between HashMap.merge() and compute()?', a: 'merge(key, value, remappingFn) — if key is absent, puts value; if present, applies remappingFn(oldValue, value) and puts the result (or removes if null). compute(key, fn) — always calls fn(key, currentValue) regardless, where currentValue is null if absent. merge is for the "upsert with accumulator" pattern (word count); compute for general transformation.' }
-          ]
-        },
-        {
-          title: 'Queue, Deque, PriorityQueue & Concurrent Collections',
-          notes: `## Queue, Deque, PriorityQueue & Concurrent Collections
+            ],
+            flashcards: [
+              {
+                q: `How does HashMap resolve hash collisions in Java 8+?`,
+                a: `Collisions land in the same bucket. With < 8 entries the bucket is a linked list (O(n) worst case). When a bucket reaches 8 entries it is treeified into a Red-Black tree (O(log n) worst case). The tree reverts to a list when it shrinks below 6 entries.`
+              },
+              {
+                q: `What is the default load factor of HashMap and what does it mean?`,
+                a: `0.75 (75%). When the map is 75% full (size > capacity * 0.75), it rehashes — creates a new array of double the capacity and redistributes all entries. Lower load factor → fewer collisions, more memory. Higher → more collisions, less memory. 0.75 is the empirically optimal balance.`
+              },
+              {
+                q: `What is the difference between HashMap.get(k) and getOrDefault(k, def)?`,
+                a: `get(k) returns null for missing keys AND for keys explicitly mapped to null — you cannot distinguish the two cases. getOrDefault(k, def) returns def only when the key is absent. Also avoids a NullPointerException if you chain methods on the result.`
+              },
+              {
+                q: `How does LinkedHashMap implement an LRU cache?`,
+                a: `Use the access-order constructor: new LinkedHashMap<>(capacity, 0.75f, true). In access-order mode, every get() moves the accessed entry to the tail. Override removeEldestEntry() to return true when size() > capacity — this evicts the head (least recently accessed) automatically on each put().`
+              },
+              {
+                q: `What is the difference between HashMap.merge() and compute()?`,
+                a: `merge(key, value, remappingFn) — if key is absent, puts value; if present, applies remappingFn(oldValue, value) and puts the result (or removes if null). compute(key, fn) — always calls fn(key, currentValue) regardless, where currentValue is null if absent. merge is for the "upsert with accumulator" pattern (word count); compute for general transformation.`
+              }
+            ]
+          },
+          {
+            title: `Queue, Deque, PriorityQueue & Concurrent Collections`,
+            notes: `## Queue, Deque, PriorityQueue & Concurrent Collections
 
 ### Queue and Deque API
 
@@ -8601,12 +9180,18 @@ For multi-threaded code, never wrap a non-thread-safe collection with \`Collecti
 \`\`\`mermaid
 graph LR
     subgraph "Thread-safe Collections"
-        CHM["ConcurrentHashMap\n(segment locking, O(1))"]
-        CLinkedQ["ConcurrentLinkedQueue\n(lock-free FIFO)"]
-        ABQ["ArrayBlockingQueue\n(bounded, blocking)"]
-        LBQ["LinkedBlockingQueue\n(unbounded, blocking)"]
-        PBQ["PriorityBlockingQueue\n(priority, blocking)"]
-        COW["CopyOnWriteArrayList\n(read-heavy)"]
+        CHM["ConcurrentHashMap
+(segment locking, O(1))"]
+        CLinkedQ["ConcurrentLinkedQueue
+(lock-free FIFO)"]
+        ABQ["ArrayBlockingQueue
+(bounded, blocking)"]
+        LBQ["LinkedBlockingQueue
+(unbounded, blocking)"]
+        PBQ["PriorityBlockingQueue
+(priority, blocking)"]
+        COW["CopyOnWriteArrayList
+(read-heavy)"]
     end
     style CHM fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style ABQ fill:#0f1e12,stroke:#10b981,color:#e2e8f0
@@ -8658,8 +9243,8 @@ flowchart TD
     style HS fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
     style PQ fill:#0f1e12,stroke:#10b981,color:#e2e8f0
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 
 public class QueueDequeDemo {
     public static void main(String[] args) {
@@ -8702,7 +9287,7 @@ public class QueueDequeDemo {
         System.out.println("Top " + k + " largest: " + kLargest); // [5, 6, 9] or similar
     }
 }`,
-            `import java.util.concurrent.*;
+              `import java.util.concurrent.*;
 import java.util.*;
 
 public class ConcurrentCollectionsDemo {
@@ -8746,26 +9331,40 @@ public class ConcurrentCollectionsDemo {
         System.out.println("Results: " + results);
     }
 }`
-          ],
-          flashcards: [
-            { q: 'Why should you never use java.util.Stack in new code?', a: 'Stack extends Vector, which is a legacy class with all methods synchronised (unnecessary overhead in single-threaded use). It also has push/pop/peek plus inherited Vector methods that make no sense for a stack (like elementAt). Use ArrayDeque instead — it implements Deque with push/pop/peek and is much faster.' },
-            { q: 'What is the difference between Queue.poll() and Queue.remove()?', a: 'poll() returns null if the queue is empty. remove() throws NoSuchElementException if the queue is empty. Prefer poll() to avoid exception-driven flow control. The same pattern applies to offer() vs add() (offer returns false vs add throws) and peek() vs element().' },
-            { q: 'What is the time complexity of PriorityQueue.poll() and why?', a: 'O(log n). PriorityQueue is a binary heap — poll() removes the root (min/max element) and re-heapifies by sifting down the replacement element. The heap height is log n, so at most log n comparisons and swaps.' },
-            { q: 'Why does ConcurrentHashMap not allow null keys or values?', a: 'In a concurrent context, null creates ambiguity: you cannot tell if map.get(key) returned null because the key is absent or because it maps to null. HashMap allows null because containsKey() clarifies the ambiguity, but that two-call check is not atomic in ConcurrentHashMap. Disallowing null makes the single-call operations unambiguous.' },
-            { q: 'What is the difference between ArrayBlockingQueue and LinkedBlockingQueue?', a: 'ArrayBlockingQueue is bounded (fixed capacity specified at creation) and backed by an array — lower memory overhead, all elements pre-allocated. LinkedBlockingQueue is optionally bounded (defaults to Integer.MAX_VALUE) and backed by linked nodes — slightly higher overhead but no pre-allocation. Use ArrayBlockingQueue for bounded producer-consumer scenarios to limit memory.' }
-          ]
-        }
-      ]
-    },
-
-        {
-      id: '0.10',
-      title: 'Java 8 — Optional, Date/Time API, Method Refs',
-      hours: 4,
-      sections: [
-        {
-          title: 'Lambda Expressions & Functional Interfaces',
-          notes: `## Lambda Expressions & Functional Interfaces
+            ],
+            flashcards: [
+              {
+                q: `Why should you never use java.util.Stack in new code?`,
+                a: `Stack extends Vector, which is a legacy class with all methods synchronised (unnecessary overhead in single-threaded use). It also has push/pop/peek plus inherited Vector methods that make no sense for a stack (like elementAt). Use ArrayDeque instead — it implements Deque with push/pop/peek and is much faster.`
+              },
+              {
+                q: `What is the difference between Queue.poll() and Queue.remove()?`,
+                a: `poll() returns null if the queue is empty. remove() throws NoSuchElementException if the queue is empty. Prefer poll() to avoid exception-driven flow control. The same pattern applies to offer() vs add() (offer returns false vs add throws) and peek() vs element().`
+              },
+              {
+                q: `What is the time complexity of PriorityQueue.poll() and why?`,
+                a: `O(log n). PriorityQueue is a binary heap — poll() removes the root (min/max element) and re-heapifies by sifting down the replacement element. The heap height is log n, so at most log n comparisons and swaps.`
+              },
+              {
+                q: `Why does ConcurrentHashMap not allow null keys or values?`,
+                a: `In a concurrent context, null creates ambiguity: you cannot tell if map.get(key) returned null because the key is absent or because it maps to null. HashMap allows null because containsKey() clarifies the ambiguity, but that two-call check is not atomic in ConcurrentHashMap. Disallowing null makes the single-call operations unambiguous.`
+              },
+              {
+                q: `What is the difference between ArrayBlockingQueue and LinkedBlockingQueue?`,
+                a: `ArrayBlockingQueue is bounded (fixed capacity specified at creation) and backed by an array — lower memory overhead, all elements pre-allocated. LinkedBlockingQueue is optionally bounded (defaults to Integer.MAX_VALUE) and backed by linked nodes — slightly higher overhead but no pre-allocation. Use ArrayBlockingQueue for bounded producer-consumer scenarios to limit memory.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.10`,
+        title: `Java 8 — Optional, Date/Time API, Method Refs`,
+        hours: 4,
+        sections: [
+          {
+            title: `Lambda Expressions & Functional Interfaces`,
+            notes: `## Lambda Expressions & Functional Interfaces
 
 Java 8's lambda expressions let you treat behaviour as data — pass a block of code as a method argument, store it in a variable, or return it from a method. They are the foundation of the functional programming features added in Java 8.
 
@@ -8809,10 +9408,26 @@ System.out.println(len.transform("hello")); // 5
 
 \`\`\`mermaid
 graph LR
-    F[Function\nT → R\napply] --> BI[BiFunction\nT,U → R\napply]
-    P[Predicate\nT → boolean\ntest] --> BP[BiPredicate\nT,U → boolean\ntest]
-    S[Supplier\n() → T\nget] --> US[UnaryOperator\nT → T\napply]
-    C[Consumer\nT → void\naccept] --> BC[BiConsumer\nT,U → void\naccept]
+    F[Function
+T → R
+apply] --> BI[BiFunction
+T,U → R
+apply]
+    P[Predicate
+T → boolean
+test] --> BP[BiPredicate
+T,U → boolean
+test]
+    S[Supplier
+() → T
+get] --> US[UnaryOperator
+T → T
+apply]
+    C[Consumer
+T → void
+accept] --> BC[BiConsumer
+T,U → void
+accept]
     style F fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style P fill:#0f1e12,stroke:#10b981,color:#e2e8f0
     style S fill:#1e293b,stroke:#f59e0b,color:#fde68a
@@ -8869,8 +9484,8 @@ greet.accept("Bob");   // Hello, Bob
 \`\`\`
 
 **Why?** Lambdas may outlive the method that created them (stored in a list, passed to a thread). Allowing mutable captures would create race conditions. The captured value is copied at creation time.`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.function.*;
 
 public class LambdaDemo {
@@ -8894,7 +9509,8 @@ public class LambdaDemo {
         Predicate<String> longWord    = s -> s.length() > 3;
         Predicate<String> tAndLong   = startsWithT.and(longWord);
 
-        System.out.println("\nWords starting with 't' and longer than 3 chars:");
+        System.out.println("
+Words starting with 't' and longer than 3 chars:");
         words.stream().filter(tAndLong).forEach(w -> System.out.println("  " + w));
 
         // Function pipeline
@@ -8903,10 +9519,11 @@ public class LambdaDemo {
         Function<String, String[]> split  = s -> s.split("\\s+");
         Function<String, String[]> pipe   = clean.andThen(upper).andThen(split);
 
-        System.out.println("\nPipeline result: " + Arrays.toString(pipe.apply("  hello world  ")));
+        System.out.println("
+Pipeline result: " + Arrays.toString(pipe.apply("  hello world  ")));
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 import java.util.function.*;
 
 // Building a mini-pipeline with functional interfaces
@@ -8948,24 +9565,40 @@ public class FunctionalPipeline {
             return s.length();
         });
 
-        System.out.println("\nMemoised calls:");
+        System.out.println("
+Memoised calls:");
         System.out.println(expensiveLength.apply("hello"));  // computes
         System.out.println(expensiveLength.apply("world"));  // computes
         System.out.println(expensiveLength.apply("hello"));  // cached — no re-compute
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is a functional interface? Why does @FunctionalInterface exist?', a: 'A functional interface has exactly one abstract method (SAM — Single Abstract Method). This single method is what a lambda implements. @FunctionalInterface is a compile-time guard: it causes a compiler error if someone accidentally adds a second abstract method to the interface, breaking all existing lambdas that implement it.' },
-            { q: 'What does "effectively final" mean for lambda captures?', a: 'A variable is effectively final if it is never reassigned after its initial assignment — even without the explicit final keyword. Lambdas can only capture effectively final local variables because lambdas may outlive the stack frame; mutable captures would require sharing mutable state across threads, which is a race condition. The captured value is copied at lambda creation.' },
-            { q: 'What is the difference between Function.andThen() and Function.compose()?', a: 'f.andThen(g) = g(f(x)) — apply f first, then g. f.compose(g) = f(g(x)) — apply g first, then f. andThen reads left-to-right (most intuitive). Example: trim.andThen(upper) trims first then uppercases.' },
-            { q: 'Name the four core functional interfaces and their signatures.', a: 'Function<T,R>: T→R (apply). Predicate<T>: T→boolean (test). Supplier<T>: ()→T (get). Consumer<T>: T→void (accept). Plus specialisations: UnaryOperator<T>=Function<T,T>, BinaryOperator<T>=(T,T)→T, BiFunction, BiPredicate, BiConsumer.' },
-            { q: 'Can a lambda throw a checked exception? What is the workaround?', a: 'Only if the functional interface\'s abstract method declares that checked exception. Standard JDK interfaces (Function, Predicate, etc.) do not declare checked exceptions, so lambdas using them cannot throw checked exceptions directly. Workaround: wrap in try-catch inside the lambda, or define a custom @FunctionalInterface that declares throws Exception (e.g., ThrowingFunction<T,R>).' }
-          ]
-        },
-        {
-          title: 'Method References — Four Flavours',
-          notes: `## Method References — Four Flavours
+            ],
+            flashcards: [
+              {
+                q: `What is a functional interface? Why does @FunctionalInterface exist?`,
+                a: `A functional interface has exactly one abstract method (SAM — Single Abstract Method). This single method is what a lambda implements. @FunctionalInterface is a compile-time guard: it causes a compiler error if someone accidentally adds a second abstract method to the interface, breaking all existing lambdas that implement it.`
+              },
+              {
+                q: `What does "effectively final" mean for lambda captures?`,
+                a: `A variable is effectively final if it is never reassigned after its initial assignment — even without the explicit final keyword. Lambdas can only capture effectively final local variables because lambdas may outlive the stack frame; mutable captures would require sharing mutable state across threads, which is a race condition. The captured value is copied at lambda creation.`
+              },
+              {
+                q: `What is the difference between Function.andThen() and Function.compose()?`,
+                a: `f.andThen(g) = g(f(x)) — apply f first, then g. f.compose(g) = f(g(x)) — apply g first, then f. andThen reads left-to-right (most intuitive). Example: trim.andThen(upper) trims first then uppercases.`
+              },
+              {
+                q: `Name the four core functional interfaces and their signatures.`,
+                a: `Function<T,R>: T→R (apply). Predicate<T>: T→boolean (test). Supplier<T>: ()→T (get). Consumer<T>: T→void (accept). Plus specialisations: UnaryOperator<T>=Function<T,T>, BinaryOperator<T>=(T,T)→T, BiFunction, BiPredicate, BiConsumer.`
+              },
+              {
+                q: `Can a lambda throw a checked exception? What is the workaround?`,
+                a: `Only if the functional interface's abstract method declares that checked exception. Standard JDK interfaces (Function, Predicate, etc.) do not declare checked exceptions, so lambdas using them cannot throw checked exceptions directly. Workaround: wrap in try-catch inside the lambda, or define a custom @FunctionalInterface that declares throws Exception (e.g., ThrowingFunction<T,R>).`
+              }
+            ]
+          },
+          {
+            title: `Method References — Four Flavours`,
+            notes: `## Method References — Four Flavours
 
 Method references are shorthand for lambdas that do nothing but call a single existing method. They make code more readable by naming the method directly instead of wrapping it in a lambda.
 
@@ -8973,11 +9606,20 @@ Method references are shorthand for lambdas that do nothing but call a single ex
 
 \`\`\`mermaid
 graph TD
-    MR[Method Reference\nClass::method]
-    MR --> S[Static\nClass::staticMethod\ne.g. Integer::parseInt]
-    MR --> I[Instance — Bound\ninstance::method\ne.g. str::toUpperCase]
-    MR --> U[Instance — Unbound\nClass::instanceMethod\ne.g. String::toUpperCase]
-    MR --> C[Constructor\nClass::new\ne.g. ArrayList::new]
+    MR[Method Reference
+Class::method]
+    MR --> S[Static
+Class::staticMethod
+e.g. Integer::parseInt]
+    MR --> I[Instance — Bound
+instance::method
+e.g. str::toUpperCase]
+    MR --> U[Instance — Unbound
+Class::instanceMethod
+e.g. String::toUpperCase]
+    MR --> C[Constructor
+Class::new
+e.g. ArrayList::new]
     style S  fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style I  fill:#0f1e12,stroke:#10b981,color:#e2e8f0
     style U  fill:#1e293b,stroke:#f59e0b,color:#fde68a
@@ -9075,8 +9717,8 @@ List<String> copy = source.stream().collect(Collectors.toCollection(ArrayList::n
 ### \`System.out::println\` — Why It Works
 
 \`System.out\` is a static field of type \`PrintStream\`. \`System.out::println\` captures the current value of \`System.out\` at reference-creation time (bound instance ref). It satisfies \`Consumer<Object>\`, \`Consumer<String>\`, etc. because \`println\` is overloaded for all types.`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -9095,13 +9737,15 @@ public class MethodRefDemo {
         raw.stream().map(MethodRefDemo::clean).forEach(System.out::println);
 
         // 2. Unbound instance ref — method on the stream element
-        System.out.println("\nUnbound ref — String::trim then String::toUpperCase:");
+        System.out.println("
+Unbound ref — String::trim then String::toUpperCase:");
         raw.stream().map(String::trim).map(String::toUpperCase).forEach(System.out::println);
 
         // 3. Bound instance ref — captured instance
         String sep = ", ";
         Function<String, String> addSep = sep::concat;
-        System.out.println("\nBound ref — concat separator:");
+        System.out.println("
+Bound ref — concat separator:");
         raw.stream().map(String::trim).map(addSep).forEach(System.out::println);
 
         // 4. Constructor ref
@@ -9111,23 +9755,26 @@ public class MethodRefDemo {
         LinkedList<String> names = raw.stream()
             .map(String::trim)
             .collect(Collectors.toCollection(LinkedList::new));
-        System.out.println("\nConstructor ref — LinkedList: " + names);
+        System.out.println("
+Constructor ref — LinkedList: " + names);
 
         // 5. Unbound ref with records
         List<Person> people = List.of(
             new Person("Alice", 32), new Person("Bob", 28), new Person("Carol", 35));
 
-        System.out.println("\nUnbound record method ref — Person::intro:");
+        System.out.println("
+Unbound record method ref — Person::intro:");
         people.stream().map(Person::intro).forEach(System.out::println);
 
-        System.out.println("\nSorted by age using Comparator.comparingInt + method ref:");
+        System.out.println("
+Sorted by age using Comparator.comparingInt + method ref:");
         people.stream()
             .sorted(Comparator.comparingInt(Person::age))
             .map(Person::intro)
             .forEach(System.out::println);
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 import java.util.function.*;
 
 // Chaining and composing method references
@@ -9168,7 +9815,8 @@ public class MethodRefCompose {
         List<String> priceStrings = List.of("19.99", "5.50", "bad", "33.00");
         Function<String, Double> safeParse = ThrowingFunction.wrap(Double::parseDouble);
 
-        System.out.println("\nParsing prices (with error wrapping):");
+        System.out.println("
+Parsing prices (with error wrapping):");
         priceStrings.forEach(s -> {
             try {
                 System.out.printf("  %s → %.2f%n", s, safeParse.apply(s));
@@ -9178,18 +9826,33 @@ public class MethodRefCompose {
         });
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What are the four types of method references?', a: '1. Static — Class::staticMethod (Integer::parseInt). 2. Bound instance — instance::method (System.out::println, str::concat). 3. Unbound instance — Class::instanceMethod (String::toUpperCase, String::length) — instance is the first lambda parameter. 4. Constructor — Class::new (ArrayList::new, Person::new).' },
-            { q: 'What is the difference between String::toUpperCase (unbound) and str::toUpperCase (bound)?', a: 'Bound (str::toUpperCase): the instance is captured — always calls toUpperCase on that specific String. Satisfies Supplier<String>. Unbound (String::toUpperCase): the instance comes from the lambda parameter — you\'re saying "call toUpperCase on whatever String I receive." Satisfies Function<String,String>. Unbound is used in stream().map().' },
-            { q: 'How does BiFunction relate to an unbound method reference that takes a parameter?', a: 'String::startsWith has signature (String instance, String prefix) → boolean, so it fits BiFunction<String,String,Boolean>. The first argument is the target object (the String), the second is the method parameter. Any unbound ref to a one-argument method matches a BiFunction where the first type is the class.' },
-            { q: 'When should you prefer a lambda over a method reference?', a: 'When the body does more than one method call (chaining), when parameter naming adds clarity (a, b vs applying to implicit args), or when you need to adapt the signature (e.g. add a null check). Method references are ideal when the lambda body is exactly one method call with matching types — they\'re more readable and their stack traces name the actual method.' },
-            { q: 'What does int[]::new mean as a constructor reference?', a: 'It\'s a constructor reference for int arrays. It satisfies IntFunction<int[]> — given an int n, it returns new int[n]. Used in Stream.toArray(int[]::new) to collect a stream into an int array. The dimension is passed as the first argument.' }
-          ]
-        },
-        {
-          title: 'Optional — Null-Safe Programming',
-          notes: `## Optional — Null-Safe Programming
+            ],
+            flashcards: [
+              {
+                q: `What are the four types of method references?`,
+                a: `1. Static — Class::staticMethod (Integer::parseInt). 2. Bound instance — instance::method (System.out::println, str::concat). 3. Unbound instance — Class::instanceMethod (String::toUpperCase, String::length) — instance is the first lambda parameter. 4. Constructor — Class::new (ArrayList::new, Person::new).`
+              },
+              {
+                q: `What is the difference between String::toUpperCase (unbound) and str::toUpperCase (bound)?`,
+                a: `Bound (str::toUpperCase): the instance is captured — always calls toUpperCase on that specific String. Satisfies Supplier<String>. Unbound (String::toUpperCase): the instance comes from the lambda parameter — you're saying "call toUpperCase on whatever String I receive." Satisfies Function<String,String>. Unbound is used in stream().map().`
+              },
+              {
+                q: `How does BiFunction relate to an unbound method reference that takes a parameter?`,
+                a: `String::startsWith has signature (String instance, String prefix) → boolean, so it fits BiFunction<String,String,Boolean>. The first argument is the target object (the String), the second is the method parameter. Any unbound ref to a one-argument method matches a BiFunction where the first type is the class.`
+              },
+              {
+                q: `When should you prefer a lambda over a method reference?`,
+                a: `When the body does more than one method call (chaining), when parameter naming adds clarity (a, b vs applying to implicit args), or when you need to adapt the signature (e.g. add a null check). Method references are ideal when the lambda body is exactly one method call with matching types — they're more readable and their stack traces name the actual method.`
+              },
+              {
+                q: `What does int[]::new mean as a constructor reference?`,
+                a: `It's a constructor reference for int arrays. It satisfies IntFunction<int[]> — given an int n, it returns new int[n]. Used in Stream.toArray(int[]::new) to collect a stream into an int array. The dimension is passed as the first argument.`
+              }
+            ]
+          },
+          {
+            title: `Optional — Null-Safe Programming`,
+            notes: `## Optional — Null-Safe Programming
 
 \`Optional<T>\` is a container that either holds a non-null value or is empty. It was introduced in Java 8 to make the possibility of absence **explicit in the type system**, forcing callers to handle both cases rather than silently receiving \`null\`.
 
@@ -9295,8 +9958,8 @@ System.out.println(present); // [a, b]
 // isEmpty() — negation of isPresent() (Java 11)
 boolean missing = opt.isEmpty(); // opt.isPresent() == false
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 
 // Chaining Optional to replace null-check pyramids
 public class OptionalDemo {
@@ -9334,7 +9997,8 @@ public class OptionalDemo {
             System.out.printf("  User %d → %s%n", id, getCity(id));
         }
 
-        System.out.println("\nEmail domains:");
+        System.out.println("
+Email domains:");
         for (int id : new int[]{1, 2}) {
             try {
                 System.out.printf("  User %d → %s%n", id, getEmailDomain(id));
@@ -9344,7 +10008,8 @@ public class OptionalDemo {
         }
 
         // ifPresentOrElse
-        System.out.println("\nUser lookup with action:");
+        System.out.println("
+User lookup with action:");
         findUser(1).ifPresentOrElse(
             u -> System.out.println("  Found: " + u.name()),
             ()  -> System.out.println("  Not found")
@@ -9355,7 +10020,7 @@ public class OptionalDemo {
         );
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 import java.util.stream.*;
 
 // Optional with streams — flatMap and or()
@@ -9390,7 +10055,8 @@ public class OptionalStreams {
 
         // Optional::stream for filtering in streams-of-Optionals
         List<String> keys = List.of("db.host", "db.password", "app.name", "app.secret");
-        System.out.println("\nFound settings:");
+        System.out.println("
+Found settings:");
         keys.stream()
             .map(OptionalStreams::getSetting)     // Stream<Optional<String>>
             .flatMap(Optional::stream)            // Stream<String> — only present values
@@ -9406,7 +10072,8 @@ public class OptionalStreams {
         Optional<String> full = Optional.of("value");
         String c = full.orElse(expensiveComputation());    // still called! wasted work
         String d = full.orElseGet(() -> expensiveComputation()); // NOT called — lazy
-        System.out.println("\norElseGet result: " + d);
+        System.out.println("
+orElseGet result: " + d);
     }
 
     static String expensiveComputation() {
@@ -9414,18 +10081,33 @@ public class OptionalStreams {
         return "computed-default";
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between Optional.of(), Optional.ofNullable(), and Optional.empty()?', a: 'Optional.of(value) — wraps a non-null value; throws NullPointerException if value is null. Optional.ofNullable(value) — wraps if non-null, returns empty Optional if null (safe for unknown sources). Optional.empty() — creates an explicitly empty Optional with no value.' },
-            { q: 'What is the difference between orElse() and orElseGet()?', a: 'orElse(default) evaluates the default expression eagerly — always, even when the Optional is present. orElseGet(() -> compute()) is lazy — only calls the supplier when the Optional is empty. Prefer orElseGet() when the default requires computation (DB lookup, object creation) to avoid wasted work.' },
-            { q: 'Why should Optional not be used as a method parameter type?', a: 'It adds verbosity without benefit — callers must wrap every value in Optional.of() even when they know it\'s non-null. It doesn\'t prevent null (you can pass Optional.ofNullable(null)). It\'s semantically wrong: method parameters should be required, and optionality is better expressed via overloads or @Nullable annotation. Optional is for return types only.' },
-            { q: 'How does Optional.flatMap() differ from Optional.map()?', a: 'map(fn) wraps the result in Optional — if fn returns Optional<T>, you get Optional<Optional<T>>. flatMap(fn) expects fn to return Optional<T> itself and flattens the result — you get Optional<T>. Use flatMap when your transformation method already returns Optional (e.g. findUser returns Optional<User>).' },
-            { q: 'What does Optional.stream() do and why is it useful in Java 9+?', a: 'Returns a Stream of 0 or 1 elements — empty stream if the Optional is empty, single-element stream if present. Critical use: flatMap(Optional::stream) on a Stream<Optional<T>> to produce a Stream<T> with only the present values, discarding empties. Much cleaner than filter(Optional::isPresent).map(Optional::get).' }
-          ]
-        },
-        {
-          title: 'Date/Time API — java.time',
-          notes: `## Date/Time API — java.time
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between Optional.of(), Optional.ofNullable(), and Optional.empty()?`,
+                a: `Optional.of(value) — wraps a non-null value; throws NullPointerException if value is null. Optional.ofNullable(value) — wraps if non-null, returns empty Optional if null (safe for unknown sources). Optional.empty() — creates an explicitly empty Optional with no value.`
+              },
+              {
+                q: `What is the difference between orElse() and orElseGet()?`,
+                a: `orElse(default) evaluates the default expression eagerly — always, even when the Optional is present. orElseGet(() -> compute()) is lazy — only calls the supplier when the Optional is empty. Prefer orElseGet() when the default requires computation (DB lookup, object creation) to avoid wasted work.`
+              },
+              {
+                q: `Why should Optional not be used as a method parameter type?`,
+                a: `It adds verbosity without benefit — callers must wrap every value in Optional.of() even when they know it's non-null. It doesn't prevent null (you can pass Optional.ofNullable(null)). It's semantically wrong: method parameters should be required, and optionality is better expressed via overloads or @Nullable annotation. Optional is for return types only.`
+              },
+              {
+                q: `How does Optional.flatMap() differ from Optional.map()?`,
+                a: `map(fn) wraps the result in Optional — if fn returns Optional<T>, you get Optional<Optional<T>>. flatMap(fn) expects fn to return Optional<T> itself and flattens the result — you get Optional<T>. Use flatMap when your transformation method already returns Optional (e.g. findUser returns Optional<User>).`
+              },
+              {
+                q: `What does Optional.stream() do and why is it useful in Java 9+?`,
+                a: `Returns a Stream of 0 or 1 elements — empty stream if the Optional is empty, single-element stream if present. Critical use: flatMap(Optional::stream) on a Stream<Optional<T>> to produce a Stream<T> with only the present values, discarding empties. Much cleaner than filter(Optional::isPresent).map(Optional::get).`
+              }
+            ]
+          },
+          {
+            title: `Date/Time API — java.time`,
+            notes: `## Date/Time API — java.time
 
 Java 8 replaced the broken \`java.util.Date\` and \`Calendar\` with a clean, immutable, thread-safe Date/Time API in the \`java.time\` package (JSR-310). **Every object in \`java.time\` is immutable.**
 
@@ -9434,13 +10116,27 @@ Java 8 replaced the broken \`java.util.Date\` and \`Calendar\` with a clean, imm
 \`\`\`mermaid
 graph TD
     DT[java.time]
-    DT --> LD[LocalDate\ndate only\n2024-06-25]
-    DT --> LT[LocalTime\ntime only\n14:30:00]
-    DT --> LDT[LocalDateTime\ndate + time, no zone\n2024-06-25T14:30:00]
-    DT --> ZDT[ZonedDateTime\ndate + time + zone\n2024-06-25T14:30:00+05:30]
-    DT --> I[Instant\nUTC machine timestamp\n2024-06-25T09:00:00Z]
-    DT --> DUR[Duration\ntime-based amount\nPT8H30M]
-    DT --> PER[Period\ndate-based amount\nP2Y3M]
+    DT --> LD[LocalDate
+date only
+2024-06-25]
+    DT --> LT[LocalTime
+time only
+14:30:00]
+    DT --> LDT[LocalDateTime
+date + time, no zone
+2024-06-25T14:30:00]
+    DT --> ZDT[ZonedDateTime
+date + time + zone
+2024-06-25T14:30:00+05:30]
+    DT --> I[Instant
+UTC machine timestamp
+2024-06-25T09:00:00Z]
+    DT --> DUR[Duration
+time-based amount
+PT8H30M]
+    DT --> PER[Period
+date-based amount
+P2Y3M]
     style LD  fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style LDT fill:#0f1e12,stroke:#10b981,color:#e2e8f0
     style ZDT fill:#1e293b,stroke:#f59e0b,color:#fde68a
@@ -9548,8 +10244,8 @@ String iso = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE); // "2024-
 | Time zone | Implicit local zone | Explicit ZoneId / ZoneOffset |
 | Formatting | SimpleDateFormat is NOT thread-safe | DateTimeFormatter IS thread-safe |
 | Clarity | Date represents a point in time (badly named) | LocalDate, LocalDateTime, Instant each have clear semantics |`,
-          code: [
-            `import java.time.*;
+            code: [
+              `import java.time.*;
 import java.time.format.*;
 import java.time.temporal.*;
 
@@ -9575,12 +10271,14 @@ public class DateTimeDemo {
 
         ZonedDateTime indiaTime  = meeting.atZone(india);
         ZonedDateTime londonTime = indiaTime.withZoneSameInstant(london);
-        System.out.println("\nMeeting in India:  " + indiaTime);
+        System.out.println("
+Meeting in India:  " + indiaTime);
         System.out.println("Same meeting in London: " + londonTime);
 
         // --- Instant ---
         Instant now = Instant.now();
-        System.out.println("\nUTC instant: " + now);
+        System.out.println("
+UTC instant: " + now);
         System.out.println("Epoch ms:    " + now.toEpochMilli());
         System.out.println("As India:    " + LocalDateTime.ofInstant(now, india));
 
@@ -9588,14 +10286,15 @@ public class DateTimeDemo {
         LocalTime start = LocalTime.of(9, 0);
         LocalTime end   = LocalTime.of(17, 30);
         Duration workday = Duration.between(start, end);
-        System.out.printf("\nWorkday: %dh %dm%n", workday.toHours(), workday.toMinutesPart());
+        System.out.printf("
+Workday: %dh %dm%n", workday.toHours(), workday.toMinutesPart());
 
         // --- Formatting ---
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", java.util.Locale.ENGLISH);
         System.out.println("Formatted: " + today.format(fmt));
     }
 }`,
-            `import java.time.*;
+              `import java.time.*;
 import java.time.format.*;
 import java.time.temporal.*;
 import java.util.*;
@@ -9637,7 +10336,8 @@ public class DateTimePatterns {
         System.out.println("  Ends: " + m.endsAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
 
         // Next 5 business days
-        System.out.println("\nNext 5 business days from today:");
+        System.out.println("
+Next 5 business days from today:");
         businessDaysFrom(LocalDate.now(), 5)
             .forEach(d -> System.out.printf("  %s (%s)%n", d, d.getDayOfWeek()));
 
@@ -9645,36 +10345,53 @@ public class DateTimePatterns {
         LocalDate deadline = LocalDate.now().plusDays(30);
         long daysLeft   = ChronoUnit.DAYS.between(LocalDate.now(), deadline);
         long weeksLeft  = ChronoUnit.WEEKS.between(LocalDate.now(), deadline);
-        System.out.printf("\nDeadline %s — %d days (%d weeks) away%n",
+        System.out.printf("
+Deadline %s — %d days (%d weeks) away%n",
             deadline, daysLeft, weeksLeft);
 
         // Parse and convert legacy timestamp
         String legacyTs = "2024-06-25T09:00:00Z";
         Instant instant = Instant.parse(legacyTs);
-        System.out.println("\nLegacy UTC: " + legacyTs);
+        System.out.println("
+Legacy UTC: " + legacyTs);
         System.out.println("As India:   " +
             instant.atZone(india).format(DateTimeFormatter.ofPattern("d MMM yyyy HH:mm z")));
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between LocalDate, LocalDateTime, ZonedDateTime, and Instant?', a: 'LocalDate: date only, no time, no zone (2024-06-25). LocalDateTime: date + time, no zone (2024-06-25T14:30) — cannot be converted to a UTC point without a zone. ZonedDateTime: date + time + zone — a specific moment anywhere on Earth. Instant: machine timestamp in UTC — best for storing timestamps. Rule: use Instant for storage/comparison, ZonedDateTime for display, LocalDate for calendar calculations.' },
-            { q: 'Why is DateTimeFormatter thread-safe but SimpleDateFormat is not?', a: 'DateTimeFormatter is immutable — once created, all state is fixed and shared. SimpleDateFormat is mutable — it holds parsing state (calendar, number formatter) as instance fields that are modified during format/parse. Concurrent use of one SimpleDateFormat instance causes data corruption. DateTimeFormatter can be safely shared as a static field.' },
-            { q: 'What is the difference between Duration and Period?', a: 'Duration measures time-based amounts — hours, minutes, seconds, nanoseconds. Accurate across DST changes. Period measures date-based amounts — years, months, days. Important: Period.of(0,1,0) added to March 30 gives April 30, but Duration.ofDays(31) added to the same date is always exactly 31×86400 seconds — they diverge around DST and month-length changes.' },
-            { q: 'How do you convert between time zones in java.time?', a: 'Use withZoneSameInstant(newZone) — converts ZonedDateTime to a different zone representing the SAME instant. Use withZoneSameLocal(newZone) — keeps the local date/time but changes the zone label (different instant). Example: 10:00 India → withZoneSameInstant(UTC) → 04:30 UTC (same moment); → withZoneSameLocal(UTC) → 10:00 UTC (different moment).' },
-            { q: 'What was wrong with java.util.Date and Calendar?', a: '(1) Mutable — not thread-safe. (2) Date represents a millisecond-precision instant but is named "Date" (misleading). (3) Calendar months are 0-indexed (January = 0). (4) Calendar years offset by 1900. (5) SimpleDateFormat is not thread-safe. (6) No separation between "date only" and "date+time" concepts. (7) No Duration/Period abstractions. All fixed in java.time.' }
-          ]
-        }
-      ]
-    },
-    {
-      id: '0.11',
-      title: 'File I/O — java.io, NIO2 & Files API',
-      hours: 2,
-      sections: [
-        {
-          title: 'Streams, Readers & Writers — Classic java.io',
-          notes: `## Classic java.io — Streams, Readers & Writers
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between LocalDate, LocalDateTime, ZonedDateTime, and Instant?`,
+                a: `LocalDate: date only, no time, no zone (2024-06-25). LocalDateTime: date + time, no zone (2024-06-25T14:30) — cannot be converted to a UTC point without a zone. ZonedDateTime: date + time + zone — a specific moment anywhere on Earth. Instant: machine timestamp in UTC — best for storing timestamps. Rule: use Instant for storage/comparison, ZonedDateTime for display, LocalDate for calendar calculations.`
+              },
+              {
+                q: `Why is DateTimeFormatter thread-safe but SimpleDateFormat is not?`,
+                a: `DateTimeFormatter is immutable — once created, all state is fixed and shared. SimpleDateFormat is mutable — it holds parsing state (calendar, number formatter) as instance fields that are modified during format/parse. Concurrent use of one SimpleDateFormat instance causes data corruption. DateTimeFormatter can be safely shared as a static field.`
+              },
+              {
+                q: `What is the difference between Duration and Period?`,
+                a: `Duration measures time-based amounts — hours, minutes, seconds, nanoseconds. Accurate across DST changes. Period measures date-based amounts — years, months, days. Important: Period.of(0,1,0) added to March 30 gives April 30, but Duration.ofDays(31) added to the same date is always exactly 31×86400 seconds — they diverge around DST and month-length changes.`
+              },
+              {
+                q: `How do you convert between time zones in java.time?`,
+                a: `Use withZoneSameInstant(newZone) — converts ZonedDateTime to a different zone representing the SAME instant. Use withZoneSameLocal(newZone) — keeps the local date/time but changes the zone label (different instant). Example: 10:00 India → withZoneSameInstant(UTC) → 04:30 UTC (same moment); → withZoneSameLocal(UTC) → 10:00 UTC (different moment).`
+              },
+              {
+                q: `What was wrong with java.util.Date and Calendar?`,
+                a: `(1) Mutable — not thread-safe. (2) Date represents a millisecond-precision instant but is named "Date" (misleading). (3) Calendar months are 0-indexed (January = 0). (4) Calendar years offset by 1900. (5) SimpleDateFormat is not thread-safe. (6) No separation between "date only" and "date+time" concepts. (7) No Duration/Period abstractions. All fixed in java.time.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.11`,
+        title: `File I/O — java.io, NIO2 & Files API`,
+        hours: 2,
+        sections: [
+          {
+            title: `Streams, Readers & Writers — Classic java.io`,
+            notes: `## Classic java.io — Streams, Readers & Writers
 
 Java's original I/O API uses **byte streams** (InputStream/OutputStream) for binary data and **character streams** (Reader/Writer) for text.
 
@@ -9754,8 +10471,8 @@ try (ObjectInputStream ois = new ObjectInputStream(
 }
 // Each layer adds one responsibility — Buffering, Compression, Deserialization
 \`\`\``,
-          code: [
-            `import java.io.*;
+            code: [
+              `import java.io.*;
 import java.nio.charset.StandardCharsets;
 
 public class ClassicIODemo {
@@ -9809,16 +10526,25 @@ public class ClassicIODemo {
         System.out.println("Readable: " + tmp.canRead());
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between byte streams and character streams in java.io?', a: 'Byte streams (InputStream/OutputStream) transfer raw bytes — used for binary data: images, audio, serialized objects, encrypted data. Character streams (Reader/Writer) handle text with charset encoding — they translate between char (Unicode) and bytes using a specified charset (StandardCharsets.UTF_8). Always specify the charset explicitly (new FileReader(path, UTF_8)) — never rely on platform default which differs by OS.' },
-            { q: 'Why is BufferedInputStream/BufferedOutputStream important and what does it do?', a: 'FileInputStream.read() makes a system call to the OS for EVERY byte — extremely slow. BufferedInputStream reads a large chunk (default 8192 bytes) into an internal buffer with one system call, then serves subsequent read() calls from memory. This can improve performance by 100-1000x. Always wrap FileInputStream in BufferedInputStream (or use the Files API which buffers automatically). Same principle for BufferedOutputStream — flushes to disk in batches rather than per write.' },
-            { q: 'What is try-with-resources and why must you always use it for I/O?', a: 'try (Resource r = new Resource()) { ... } automatically calls r.close() when the block exits — whether normally or via exception. Without it, if an exception occurs before your explicit close() call, the stream leaks (file descriptor is not released, the OS limits open file descriptors per process). The resource must implement AutoCloseable. Multiple resources can be declared (comma-separated) and are closed in reverse order.' }
-          ]
-        },
-        {
-          title: 'NIO2 & the Files API — Modern Java File Operations',
-          notes: `## NIO2 & the Files API — Modern Java File Operations (Java 7+)
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between byte streams and character streams in java.io?`,
+                a: `Byte streams (InputStream/OutputStream) transfer raw bytes — used for binary data: images, audio, serialized objects, encrypted data. Character streams (Reader/Writer) handle text with charset encoding — they translate between char (Unicode) and bytes using a specified charset (StandardCharsets.UTF_8). Always specify the charset explicitly (new FileReader(path, UTF_8)) — never rely on platform default which differs by OS.`
+              },
+              {
+                q: `Why is BufferedInputStream/BufferedOutputStream important and what does it do?`,
+                a: `FileInputStream.read() makes a system call to the OS for EVERY byte — extremely slow. BufferedInputStream reads a large chunk (default 8192 bytes) into an internal buffer with one system call, then serves subsequent read() calls from memory. This can improve performance by 100-1000x. Always wrap FileInputStream in BufferedInputStream (or use the Files API which buffers automatically). Same principle for BufferedOutputStream — flushes to disk in batches rather than per write.`
+              },
+              {
+                q: `What is try-with-resources and why must you always use it for I/O?`,
+                a: `try (Resource r = new Resource()) { ... } automatically calls r.close() when the block exits — whether normally or via exception. Without it, if an exception occurs before your explicit close() call, the stream leaks (file descriptor is not released, the OS limits open file descriptors per process). The resource must implement AutoCloseable. Multiple resources can be declared (comma-separated) and are closed in reverse order.`
+              }
+            ]
+          },
+          {
+            title: `NIO2 & the Files API — Modern Java File Operations`,
+            notes: `## NIO2 & the Files API — Modern Java File Operations (Java 7+)
 
 NIO2 (\`java.nio.file\`) is the modern way to work with files. \`Files\` and \`Path\` replace \`File\` for most use cases.
 
@@ -9943,8 +10669,8 @@ try (FileChannel fc = FileChannel.open(Path.of("large.bin"))) {
     byte first = mbb.get(0);
 }
 \`\`\``,
-          code: [
-            `import java.nio.file.*;
+            code: [
+              `import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.io.IOException;
 import java.util.*;
@@ -10012,7 +10738,7 @@ public class NIO2Demo {
         modernFileOps();
     }
 }`,
-            `import java.nio.file.*;
+              `import java.nio.file.*;
 import java.nio.file.attribute.*;
 import java.io.IOException;
 import java.util.stream.*;
@@ -10077,38 +10803,44 @@ public class FileTreeDemo {
         System.out.println("Exists after delete: " + Files.exists(tmp));
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between Path/Files (NIO2) and File (java.io)?', a: 'java.io.File was Java\'s original file API — its methods return boolean on failure (no exception, no error message), it lacks symbolic link support, no file attribute support, and poor performance. java.nio.file.Path (Java 7+) uses a fluent API, throws IOException with meaningful messages on failure, supports symlinks/hard links, file attributes (creation time, permissions), and works with the Files utility class and stream-based directory walking. Prefer Path/Files for all new code.' },
-            { q: 'What are the Files methods for small vs large files?', a: 'Small files (fit in memory): Files.readString(path) → String, Files.readAllBytes(path) → byte[], Files.readAllLines(path) → List<String>, Files.writeString(path, content). Large files (streaming): Files.lines(path) returns Stream<String> — process line-by-line without loading all into memory; always close the stream (try-with-resources). Files.walk(dir) streams directory entries lazily. For binary large files, use FileChannel with ByteBuffer for maximum throughput.' },
-            { q: 'How do you walk a directory tree and what is the difference between Files.walk, Files.list, and Files.find?', a: 'Files.list(dir) returns immediate children only (non-recursive). Files.walk(dir) returns all descendants recursively (depth-first); takes optional maxDepth. Files.find(dir, depth, BiPredicate<Path,BasicFileAttributes>) combines walk with a filter predicate that also has access to file attributes without a second stat() call — efficient for size/date filtering. All three return Stream<Path> and must be closed. To delete a tree: Files.walk(dir).sorted(Comparator.reverseOrder()).forEach(Files::delete).' },
-            { q: 'What are FileChannel and ByteBuffer used for?', a: 'FileChannel (java.nio.channels) provides higher-performance I/O for large binary files: it reads/writes ByteBuffers (allocated byte arrays), supports scatter/gather I/O, file locking, and memory-mapped files. ByteBuffer.allocateDirect() allocates off-heap memory (no GC pressure). Memory-mapped files (FileChannel.map()) map a file region to virtual memory — the OS handles paging; random access is as fast as array access. Use FileChannel when streams/Files API are too slow for the use case.' }
-          ]
-        }
-      ]
-    },
-
-
-  ]
-},
-
-/* ===================== PHASE 1: JVM ===================== */
-{
-  id: 'p1',
-  title: 'JVM Internals & Runtime',
-  icon: 'cpu',
-  blurb: 'How the JVM loads, runs, optimises and reclaims memory for your code.',
-  modules: [
-    {
-      id: '1.1',
-      title: 'JVM Architecture',
-      hours: 4,
-      sections: [
-
-        /* ── SECTION 1 ─────────────────────────────────────────────── */
-        {
-          title: 'JVM Overview & Bytecode Pipeline',
-          notes: `
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between Path/Files (NIO2) and File (java.io)?`,
+                a: `java.io.File was Java's original file API — its methods return boolean on failure (no exception, no error message), it lacks symbolic link support, no file attribute support, and poor performance. java.nio.file.Path (Java 7+) uses a fluent API, throws IOException with meaningful messages on failure, supports symlinks/hard links, file attributes (creation time, permissions), and works with the Files utility class and stream-based directory walking. Prefer Path/Files for all new code.`
+              },
+              {
+                q: `What are the Files methods for small vs large files?`,
+                a: `Small files (fit in memory): Files.readString(path) → String, Files.readAllBytes(path) → byte[], Files.readAllLines(path) → List<String>, Files.writeString(path, content). Large files (streaming): Files.lines(path) returns Stream<String> — process line-by-line without loading all into memory; always close the stream (try-with-resources). Files.walk(dir) streams directory entries lazily. For binary large files, use FileChannel with ByteBuffer for maximum throughput.`
+              },
+              {
+                q: `How do you walk a directory tree and what is the difference between Files.walk, Files.list, and Files.find?`,
+                a: `Files.list(dir) returns immediate children only (non-recursive). Files.walk(dir) returns all descendants recursively (depth-first); takes optional maxDepth. Files.find(dir, depth, BiPredicate<Path,BasicFileAttributes>) combines walk with a filter predicate that also has access to file attributes without a second stat() call — efficient for size/date filtering. All three return Stream<Path> and must be closed. To delete a tree: Files.walk(dir).sorted(Comparator.reverseOrder()).forEach(Files::delete).`
+              },
+              {
+                q: `What are FileChannel and ByteBuffer used for?`,
+                a: `FileChannel (java.nio.channels) provides higher-performance I/O for large binary files: it reads/writes ByteBuffers (allocated byte arrays), supports scatter/gather I/O, file locking, and memory-mapped files. ByteBuffer.allocateDirect() allocates off-heap memory (no GC pressure). Memory-mapped files (FileChannel.map()) map a file region to virtual memory — the OS handles paging; random access is as fast as array access. Use FileChannel when streams/Files API are too slow for the use case.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p1`,
+    title: `JVM Internals & Runtime`,
+    icon: `cpu`,
+    blurb: `How the JVM loads, runs, optimises and reclaims memory for your code.`,
+    modules: [
+      {
+        id: `1.1`,
+        title: `JVM Architecture`,
+        hours: 4,
+        sections: [
+          {
+            title: `JVM Overview & Bytecode Pipeline`,
+            notes: `
 # JVM Overview & The Bytecode Pipeline
 
 ## What Is the JVM? (The Translator Analogy)
@@ -10240,11 +10972,11 @@ This is why **Java benchmarks must warm up before measuring**. A "benchmark" tha
 > ## 12. Execution Begins
 > The Execution Engine starts interpreting bytecode from \`main()\`. Hot methods get profiled. After ~10,000 invocations the JIT (C1 then C2) compiles them to native machine code. GC runs periodically. When \`main()\` returns, the JVM checks for non-daemon threads — if none, it shuts down.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Inspect JVM runtime info & bytecode pipeline',
-              code: `// Demonstrates JVM runtime information and the class loading pipeline.
+            code: [
+              {
+                lang: `java`,
+                title: `Inspect JVM runtime info & bytecode pipeline`,
+                code: `// Demonstrates JVM runtime information and the class loading pipeline.
 // Run with: java JvmPipeline
 public class JvmPipeline {
     static int counter = 42; // static: lives in Metaspace; value set at initialization
@@ -10278,11 +11010,11 @@ public class JvmPipeline {
         // null means Bootstrap — the root, most trusted loader
     }
 }`
-            },
-            {
-              lang: 'bash',
-              title: 'Inspect bytecode with javap',
-              code: `# Compile and disassemble any class to see its bytecode
+              },
+              {
+                lang: `bash`,
+                title: `Inspect bytecode with javap`,
+                code: `# Compile and disassemble any class to see its bytecode
 javac HelloWorld.java
 javap -c HelloWorld           # show bytecode instructions
 javap -verbose HelloWorld     # show constant pool, stack size, flags
@@ -10300,21 +11032,34 @@ java -Xmx2g -Xms512m -XX:MaxMetaspaceSize=256m -jar app.jar
 
 # Enable JIT compilation logging (noisy, for learning only)
 java -XX:+PrintCompilation MyApp 2>&1 | head -20`
-            }
-          ],
-          flashcards: [
-            { q: 'What is bytecode and why does it make Java portable?', a: 'Bytecode is a platform-neutral binary format produced by javac. It uses a stack-based instruction set that no real CPU understands directly. The JVM translates it to native machine code at runtime — meaning the same .class file runs on any OS/architecture that has a JVM implementation.' },
-            { q: 'Name four JVM implementations and when you would choose each.', a: 'OpenJDK (default, community, free), Amazon Corretto (AWS deployments, free LTS), GraalVM (polyglot, ahead-of-time compilation for fast startup), Azul Zing (specialized low-pause GC for latency-sensitive systems). Choice depends on support, GC characteristics, and startup requirements.' },
-            { q: 'What are the three JVM subsystems?', a: '1) Class Loading Subsystem — finds, verifies, and initializes classes. 2) Runtime Data Areas — heap, metaspace, per-thread stacks, PC registers. 3) Execution Engine — interpreter, JIT compiler (C1/C2), and GC.' },
-            { q: 'Why must benchmarks warm up before measuring Java performance?', a: 'On a cold JVM, all code runs interpreted (10-100x slower than native). JIT compilation promotes hot methods to native code over the first seconds/minutes. Measuring cold is not representative of steady-state production performance. Use JMH for correct benchmarks.' },
-            { q: 'What is the correct sequence of events when you run "java HelloWorld"?', a: '1) JVM process starts. 2) Bootstrap ClassLoader loads core classes. 3) App ClassLoader finds HelloWorld.class. 4) Loading (Class object created). 5) Verification. 6) Preparation (static field defaults). 7) Resolution. 8) Initialization (static blocks). 9) Main thread stack created. 10) main() frame pushed. 11) Interpreter starts. 12) JIT compiles hot methods.' }
-          ]
-        },
-
-        /* ── SECTION 2 ─────────────────────────────────────────────── */
-        {
-          title: 'Class Loading Subsystem',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is bytecode and why does it make Java portable?`,
+                a: `Bytecode is a platform-neutral binary format produced by javac. It uses a stack-based instruction set that no real CPU understands directly. The JVM translates it to native machine code at runtime — meaning the same .class file runs on any OS/architecture that has a JVM implementation.`
+              },
+              {
+                q: `Name four JVM implementations and when you would choose each.`,
+                a: `OpenJDK (default, community, free), Amazon Corretto (AWS deployments, free LTS), GraalVM (polyglot, ahead-of-time compilation for fast startup), Azul Zing (specialized low-pause GC for latency-sensitive systems). Choice depends on support, GC characteristics, and startup requirements.`
+              },
+              {
+                q: `What are the three JVM subsystems?`,
+                a: `1) Class Loading Subsystem — finds, verifies, and initializes classes. 2) Runtime Data Areas — heap, metaspace, per-thread stacks, PC registers. 3) Execution Engine — interpreter, JIT compiler (C1/C2), and GC.`
+              },
+              {
+                q: `Why must benchmarks warm up before measuring Java performance?`,
+                a: `On a cold JVM, all code runs interpreted (10-100x slower than native). JIT compilation promotes hot methods to native code over the first seconds/minutes. Measuring cold is not representative of steady-state production performance. Use JMH for correct benchmarks.`
+              },
+              {
+                q: `What is the correct sequence of events when you run "java HelloWorld"?`,
+                a: `1) JVM process starts. 2) Bootstrap ClassLoader loads core classes. 3) App ClassLoader finds HelloWorld.class. 4) Loading (Class object created). 5) Verification. 6) Preparation (static field defaults). 7) Resolution. 8) Initialization (static blocks). 9) Main thread stack created. 10) main() frame pushed. 11) Interpreter starts. 12) JIT compiles hot methods.`
+              }
+            ]
+          },
+          {
+            title: `Class Loading Subsystem`,
+            notes: `
 # Class Loading Subsystem — The Librarian
 
 ## Why Class Loading Matters for Senior Engineers
@@ -10432,11 +11177,11 @@ This is why Tomcat can run two web apps that both use Hibernate 5.x and Hibernat
 
 **Hot-reload** (JRebel, dev-mode hot swap) — discards the old classloader and creates a new one for the changed class. The old \`Class\` objects become unreachable; GC eventually collects them (if no memory leaks).
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Class loading phases & parent delegation in action',
-              code: `// Demonstrates: loading phases, parent delegation, and class identity.
+            code: [
+              {
+                lang: `java`,
+                title: `Class loading phases & parent delegation in action`,
+                code: `// Demonstrates: loading phases, parent delegation, and class identity.
 public class ClassLoadingDemo {
 
     // Static field — allocated to default (null) in Prepare phase, set here in Initialize
@@ -10472,11 +11217,11 @@ public class ClassLoadingDemo {
         System.out.println("ArrayList class loader: " + list.getClass().getClassLoader());
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Custom ClassLoader for plugin/hot-reload pattern',
-              code: `import java.io.*;
+              },
+              {
+                lang: `java`,
+                title: `Custom ClassLoader for plugin/hot-reload pattern`,
+                code: `import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 
@@ -10535,23 +11280,42 @@ public class PluginClassLoaderDemo {
         System.out.println("  A class from app1's loader != same class from app2's loader.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What are the three sub-phases of Linking and what does each do?', a: 'Verify: checks bytecode structural integrity and safety (throws VerifyError if malformed). Prepare: allocates static fields with type-default values (0/null/false), NOT declared values. Resolve: replaces symbolic class/field/method references in the constant pool with direct memory pointers.' },
-            { q: 'Why are static fields set to 0/null during Prepare rather than their declared value?', a: 'Prepare allocates memory and applies safe type-defaults before any Java code runs. Declared values (e.g. static int x = 42) are assigned during Initialization when static initializer blocks execute. This ordering ensures the memory is safely allocated before any custom logic runs.' },
-            { q: 'What is the parent-delegation model and what are its three benefits?', a: 'When asked to load a class, a ClassLoader delegates to its parent first. Only if parent fails does it attempt to load itself. Benefits: (1) Security — core classes like String always loaded by Bootstrap, can\'t be spoofed. (2) Consistency — same name + same loader = same Class object. (3) Deduplication — core classes loaded once, shared everywhere.' },
-            { q: 'What is the class identity contract?', a: 'Two classes are the same type only if they share the same fully-qualified name AND the same ClassLoader instance. Same bytecode loaded by two different ClassLoaders = two distinct types. Casting one to the other throws ClassCastException even though the code "looks right".' },
-            { q: 'Why would you write a custom ClassLoader?', a: 'Plugin systems (load user jars at runtime), hot-reload (swap changed classes without restart), application isolation (multiple library versions in same JVM — Tomcat model), loading from non-standard sources (database, encrypted jar, network stream), or frameworks like Spring Boot\'s fat-jar (load from nested JARs).' },
-            { q: 'How can static initializer circular dependencies cause deadlock?', a: 'If class A\'s static init reads B.y, and class B\'s static init reads A.x, and two threads simultaneously trigger each class\'s initialization: Thread 1 holds A\'s init lock and waits for B; Thread 2 holds B\'s init lock and waits for A. Classic deadlock. Keep static initializers simple.' },
-            { q: 'Why does Tomcat use child-first ClassLoaders (breaking parent delegation)?', a: 'Standard delegation would force all web apps to share the same library versions from the server classpath. Child-first (each app\'s WEB-INF/lib loads before the parent) allows app1 to use Hibernate 5 and app2 to use Hibernate 6 in the same JVM without conflict.' }
-          ]
-        },
-
-        /* ── SECTION 3 ─────────────────────────────────────────────── */
-        {
-          title: 'Heap & Object Memory',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What are the three sub-phases of Linking and what does each do?`,
+                a: `Verify: checks bytecode structural integrity and safety (throws VerifyError if malformed). Prepare: allocates static fields with type-default values (0/null/false), NOT declared values. Resolve: replaces symbolic class/field/method references in the constant pool with direct memory pointers.`
+              },
+              {
+                q: `Why are static fields set to 0/null during Prepare rather than their declared value?`,
+                a: `Prepare allocates memory and applies safe type-defaults before any Java code runs. Declared values (e.g. static int x = 42) are assigned during Initialization when static initializer blocks execute. This ordering ensures the memory is safely allocated before any custom logic runs.`
+              },
+              {
+                q: `What is the parent-delegation model and what are its three benefits?`,
+                a: `When asked to load a class, a ClassLoader delegates to its parent first. Only if parent fails does it attempt to load itself. Benefits: (1) Security — core classes like String always loaded by Bootstrap, can't be spoofed. (2) Consistency — same name + same loader = same Class object. (3) Deduplication — core classes loaded once, shared everywhere.`
+              },
+              {
+                q: `What is the class identity contract?`,
+                a: `Two classes are the same type only if they share the same fully-qualified name AND the same ClassLoader instance. Same bytecode loaded by two different ClassLoaders = two distinct types. Casting one to the other throws ClassCastException even though the code "looks right".`
+              },
+              {
+                q: `Why would you write a custom ClassLoader?`,
+                a: `Plugin systems (load user jars at runtime), hot-reload (swap changed classes without restart), application isolation (multiple library versions in same JVM — Tomcat model), loading from non-standard sources (database, encrypted jar, network stream), or frameworks like Spring Boot's fat-jar (load from nested JARs).`
+              },
+              {
+                q: `How can static initializer circular dependencies cause deadlock?`,
+                a: `If class A's static init reads B.y, and class B's static init reads A.x, and two threads simultaneously trigger each class's initialization: Thread 1 holds A's init lock and waits for B; Thread 2 holds B's init lock and waits for A. Classic deadlock. Keep static initializers simple.`
+              },
+              {
+                q: `Why does Tomcat use child-first ClassLoaders (breaking parent delegation)?`,
+                a: `Standard delegation would force all web apps to share the same library versions from the server classpath. Child-first (each app's WEB-INF/lib loads before the parent) allows app1 to use Hibernate 5 and app2 to use Hibernate 6 in the same JVM without conflict.`
+              }
+            ]
+          },
+          {
+            title: `Heap & Object Memory`,
+            notes: `
 # Heap & Object Memory
 
 ## The Heap: Shared Object Store
@@ -10633,12 +11397,17 @@ Java 8 replaced PermGen with **Metaspace**, which lives in **native memory** (ou
 \`\`\`mermaid
 graph LR
     subgraph MS["🗂️ Metaspace — native memory, not in -Xmx"]
-        CS["Class structures\nfield names, types, bytecode"]
-        RCP["Runtime constant pool\nstring literals, numbers"]
-        MT["Method tables vtable\nfor virtual dispatch"]
-        SF["Static field REFERENCES\n(pointer into heap)"]
+        CS["Class structures
+field names, types, bytecode"]
+        RCP["Runtime constant pool
+string literals, numbers"]
+        MT["Method tables vtable
+for virtual dispatch"]
+        SF["Static field REFERENCES
+(pointer into heap)"]
     end
-    SF -->|"points to"| HEAP["Regular Heap\n(actual object)"]
+    SF -->|"points to"| HEAP["Regular Heap
+(actual object)"]
     style MS fill:#1e1a2e,stroke:#a78bfa,color:#ddd6fe
     style HEAP fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
 \`\`\`
@@ -10660,9 +11429,12 @@ Every Java object on the heap has a fixed header followed by its fields:
 \`\`\`mermaid
 graph TB
     subgraph OBJ["Java Object on Heap (e.g. new Integer(42))"]
-        MW["Mark Word — 8 bytes\nhashCode · GC age · lock state · GC metadata"]
-        CP["Class Pointer — 4-8 bytes\npoints to Class object in Metaspace"]
-        IF["Instance Fields\nactual data, aligned to 4/8 byte boundaries"]
+        MW["Mark Word — 8 bytes
+hashCode · GC age · lock state · GC metadata"]
+        CP["Class Pointer — 4-8 bytes
+points to Class object in Metaspace"]
+        IF["Instance Fields
+actual data, aligned to 4/8 byte boundaries"]
     end
     style MW fill:#1e293b,stroke:#f59e0b,color:#fde68a
     style CP fill:#1e293b,stroke:#818cf8,color:#c4b5fd
@@ -10681,13 +11453,13 @@ The header is 12–16 bytes. This means an \`Integer\` object (holding one 4-byt
 | \`OutOfMemoryError: Direct buffer memory\` | NIO direct buffers exhaust native memory | Reduce -XX:MaxDirectMemorySize usage |
 
 > [!EU]
-> At companies with high traffic (Adyen, Booking.com, Zalando), GC tuning is a real skill. Saying "we had metaspace OOMs caused by Hibernate proxy generation — fixed by capping -XX:MaxMetaspaceSize=512m and ensuring Hibernate\'s proxy factory was singleton-scoped" shows real production experience. Generic "increase heap" answers score low.
+> At companies with high traffic (Adyen, Booking.com, Zalando), GC tuning is a real skill. Saying "we had metaspace OOMs caused by Hibernate proxy generation — fixed by capping -XX:MaxMetaspaceSize=512m and ensuring Hibernate's proxy factory was singleton-scoped" shows real production experience. Generic "increase heap" answers score low.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Object memory, generational promotion & GC triggers',
-              code: `import java.lang.management.*;
+            code: [
+              {
+                lang: `java`,
+                title: `Object memory, generational promotion & GC triggers`,
+                code: `import java.lang.management.*;
 import java.util.*;
 
 // Demonstrates: heap regions, GC triggers, and object promotion.
@@ -10736,11 +11508,11 @@ public class HeapDemo {
         System.out.println("Survivors size: " + survivors.size());
     }
 }`
-            },
-            {
-              lang: 'bash',
-              title: 'Heap diagnostics & GC log analysis',
-              code: `# Enable GC logging (Java 11+) — essential for production diagnosis
+              },
+              {
+                lang: `bash`,
+                title: `Heap diagnostics & GC log analysis`,
+                code: `# Enable GC logging (Java 11+) — essential for production diagnosis
 java -Xmx2g \\
      -Xlog:gc*:file=/tmp/gc.log:time,uptime,level,tags \\
      -jar app.jar
@@ -10767,22 +11539,38 @@ jmap -histo <pid> | head -30
 # - Object reference: 4 bytes (compressed oops, default when heap < 32GB)
 # - Object header: 12 bytes (8 mark + 4 class pointer with compressed oops)
 # - Minimum object size: 16 bytes (header + at least 4 bytes padding)`
-            }
-          ],
-          flashcards: [
-            { q: 'What is the Weak Generational Hypothesis and how does it influence heap design?', a: 'Most objects die young — short-lived request-scoped objects created in abundance but discarded quickly. This insight leads to generational GC: split the heap into Young (Eden, Survivors) and Old (Tenured). Young GC is cheap because most Eden objects are already dead; only survivors are copied.' },
-            { q: 'Walk through the path of a short-lived object vs a long-lived object in the heap.', a: 'Short-lived: created in Eden → Minor GC hits → not reachable → reclaimed (Eden reset). Long-lived: Eden → Minor GC → copied to Survivor S0 (age=1) → next Minor GC → copied to S1 (age=2) → ... → age reaches MaxTenuringThreshold (default 15) → promoted to Old Generation.' },
-            { q: 'What replaced PermGen in Java 8 and what problem did it solve?', a: 'Metaspace, which lives in native memory and grows dynamically. PermGen was a fixed-size heap region that caused "OutOfMemoryError: PermGen space" when too many classes were loaded. Metaspace avoids the hard limit but still needs -XX:MaxMetaspaceSize to cap classloader leaks.' },
-            { q: 'What does Metaspace store? What does NOT live in Metaspace?', a: 'Metaspace stores: class structures (field names, method bytecode, vtables), runtime constant pool, static field references. NOT in Metaspace: the objects that static fields point to (those are in the heap), instance data, thread stacks.' },
-            { q: 'What is the minimum memory footprint of a Java object?', a: '16 bytes: 8-byte mark word + 4-byte compressed class pointer (with compressed oops, default when heap < 32GB) + at minimum 4 bytes of field data or padding. An empty object with no fields is 16 bytes. This 4x overhead over raw primitives is why value types (Valhalla) matter for memory-intensive code.' },
-            { q: 'What does "OutOfMemoryError: GC overhead limit exceeded" mean?', a: 'The JVM detected that GC is consuming more than 98% of CPU time but reclaiming less than 2% of heap. It throws OOM to prevent the app from crawling indefinitely. Usually means: memory leak filling Old Gen. Fix: increase -Xmx, find and fix the leak, or disable with -XX:-UseGCOverheadLimit (not recommended).' }
-          ]
-        },
-
-        /* ── SECTION 4 ─────────────────────────────────────────────── */
-        {
-          title: 'Thread Stack & Native Memory',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the Weak Generational Hypothesis and how does it influence heap design?`,
+                a: `Most objects die young — short-lived request-scoped objects created in abundance but discarded quickly. This insight leads to generational GC: split the heap into Young (Eden, Survivors) and Old (Tenured). Young GC is cheap because most Eden objects are already dead; only survivors are copied.`
+              },
+              {
+                q: `Walk through the path of a short-lived object vs a long-lived object in the heap.`,
+                a: `Short-lived: created in Eden → Minor GC hits → not reachable → reclaimed (Eden reset). Long-lived: Eden → Minor GC → copied to Survivor S0 (age=1) → next Minor GC → copied to S1 (age=2) → ... → age reaches MaxTenuringThreshold (default 15) → promoted to Old Generation.`
+              },
+              {
+                q: `What replaced PermGen in Java 8 and what problem did it solve?`,
+                a: `Metaspace, which lives in native memory and grows dynamically. PermGen was a fixed-size heap region that caused "OutOfMemoryError: PermGen space" when too many classes were loaded. Metaspace avoids the hard limit but still needs -XX:MaxMetaspaceSize to cap classloader leaks.`
+              },
+              {
+                q: `What does Metaspace store? What does NOT live in Metaspace?`,
+                a: `Metaspace stores: class structures (field names, method bytecode, vtables), runtime constant pool, static field references. NOT in Metaspace: the objects that static fields point to (those are in the heap), instance data, thread stacks.`
+              },
+              {
+                q: `What is the minimum memory footprint of a Java object?`,
+                a: `16 bytes: 8-byte mark word + 4-byte compressed class pointer (with compressed oops, default when heap < 32GB) + at minimum 4 bytes of field data or padding. An empty object with no fields is 16 bytes. This 4x overhead over raw primitives is why value types (Valhalla) matter for memory-intensive code.`
+              },
+              {
+                q: `What does "OutOfMemoryError: GC overhead limit exceeded" mean?`,
+                a: `The JVM detected that GC is consuming more than 98% of CPU time but reclaiming less than 2% of heap. It throws OOM to prevent the app from crawling indefinitely. Usually means: memory leak filling Old Gen. Fix: increase -Xmx, find and fix the leak, or disable with -XX:-UseGCOverheadLimit (not recommended).`
+              }
+            ]
+          },
+          {
+            title: `Thread Stack & Native Memory`,
+            notes: `
 # Thread Stack & Native Memory
 
 ## Per-Thread Memory Architecture
@@ -10817,9 +11605,18 @@ Every method call pushes a new **stack frame**. When the method returns, its fra
 \`\`\`mermaid
 graph TB
     subgraph SF["Stack Frame: int compute(int a, int b)"]
-        LV["📋 Local Variable Array\n[0] this (implicit)\n[1] a = 10\n[2] b = 20\n[3] result (local)"]
-        OS["⚡ Operand Stack\nscratch pad for bytecode\ngrows and shrinks per instruction"]
-        FD["🔗 Frame Data\nruntime constant pool ref\nreturn address → caller\nexception table reference"]
+        LV["📋 Local Variable Array
+[0] this (implicit)
+[1] a = 10
+[2] b = 20
+[3] result (local)"]
+        OS["⚡ Operand Stack
+scratch pad for bytecode
+grows and shrinks per instruction"]
+        FD["🔗 Frame Data
+runtime constant pool ref
+return address → caller
+exception table reference"]
     end
     style LV fill:#1e293b,stroke:#6366f1,color:#e2e8f0
     style OS fill:#1e293b,stroke:#10b981,color:#a7f3d0
@@ -10913,11 +11710,11 @@ try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
 // All 100,000 complete in ~1 second with minimal memory (vs 50–100GB for platform threads)
 \`\`\`
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Stack frames, recursion depth & virtual threads',
-              code: `import java.time.*;
+            code: [
+              {
+                lang: `java`,
+                title: `Stack frames, recursion depth & virtual threads`,
+                code: `import java.time.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.stream.*;
@@ -10988,22 +11785,38 @@ public class StackDemo {
         System.out.println("Virtual threads: stack starts at ~1KB on heap, grows on demand.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What are the three components of a JVM stack frame?', a: '1) Local variable array: holds "this", method parameters, and local variables. 2) Operand stack: bytecode instructions push/pop values here (scratch pad for calculations). 3) Frame data: reference to the runtime constant pool, return address, and exception table.' },
-            { q: 'Why does the JVM throw StackOverflowError (not OutOfMemoryError) for deep recursion?', a: 'The JVM stack is a fixed-size per-thread structure (tuned by -Xss, default 512KB–1MB). When recursion creates more frames than fit, the stack overflows → StackOverflowError. The heap is fine; it\'s the stack that\'s exhausted. OutOfMemoryError is specifically for heap exhaustion.' },
-            { q: 'Why doesn\'t the JVM optimize tail-recursive methods like Scala/Haskell does?', a: 'The JVM specification does not require tail-call optimization. Even syntactically tail-recursive Java methods create a new stack frame per call. Scala\'s @tailrec annotation asks the compiler to rewrite recursive calls as loops (JVM bytecode with a jump). Java developers must do this rewrite manually.' },
-            { q: 'What is the PC register and what is it used for?', a: 'The Program Counter register per thread holds the address of the bytecode instruction currently executing. When the OS context-switches threads, PC is saved/restored so execution resumes exactly where it left off. For native methods (JNI), PC is undefined — native code uses CPU registers, not JVM bytecode.' },
-            { q: 'How do virtual threads differ from platform threads in memory model?', a: 'Platform threads have a fixed native stack (512KB–1MB) tied to an OS thread. Virtual threads store their stack as a continuation on the heap (starts ~1KB, grows dynamically). When blocked on I/O, a virtual thread unmounts from its carrier thread (freeing it) and remounts when I/O completes. This enables millions of virtual threads on a small carrier thread pool.' },
-            { q: 'How do you calculate the native memory consumed by thread stacks?', a: 'thread_count × stack_size_per_thread. With default -Xss1m: 1,000 threads × 1MB = 1GB native memory just for stacks. This is why platform-thread-based servers max out at ~thousands of concurrent requests. Virtual threads (JDK 21) avoid this by heap-backing their stacks.' }
-          ]
-        },
-
-        /* ── SECTION 5 ─────────────────────────────────────────────── */
-        {
-          title: 'JIT Compilation & Runtime Optimizations',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What are the three components of a JVM stack frame?`,
+                a: `1) Local variable array: holds "this", method parameters, and local variables. 2) Operand stack: bytecode instructions push/pop values here (scratch pad for calculations). 3) Frame data: reference to the runtime constant pool, return address, and exception table.`
+              },
+              {
+                q: `Why does the JVM throw StackOverflowError (not OutOfMemoryError) for deep recursion?`,
+                a: `The JVM stack is a fixed-size per-thread structure (tuned by -Xss, default 512KB–1MB). When recursion creates more frames than fit, the stack overflows → StackOverflowError. The heap is fine; it's the stack that's exhausted. OutOfMemoryError is specifically for heap exhaustion.`
+              },
+              {
+                q: `Why doesn't the JVM optimize tail-recursive methods like Scala/Haskell does?`,
+                a: `The JVM specification does not require tail-call optimization. Even syntactically tail-recursive Java methods create a new stack frame per call. Scala's @tailrec annotation asks the compiler to rewrite recursive calls as loops (JVM bytecode with a jump). Java developers must do this rewrite manually.`
+              },
+              {
+                q: `What is the PC register and what is it used for?`,
+                a: `The Program Counter register per thread holds the address of the bytecode instruction currently executing. When the OS context-switches threads, PC is saved/restored so execution resumes exactly where it left off. For native methods (JNI), PC is undefined — native code uses CPU registers, not JVM bytecode.`
+              },
+              {
+                q: `How do virtual threads differ from platform threads in memory model?`,
+                a: `Platform threads have a fixed native stack (512KB–1MB) tied to an OS thread. Virtual threads store their stack as a continuation on the heap (starts ~1KB, grows dynamically). When blocked on I/O, a virtual thread unmounts from its carrier thread (freeing it) and remounts when I/O completes. This enables millions of virtual threads on a small carrier thread pool.`
+              },
+              {
+                q: `How do you calculate the native memory consumed by thread stacks?`,
+                a: `thread_count × stack_size_per_thread. With default -Xss1m: 1,000 threads × 1MB = 1GB native memory just for stacks. This is why platform-thread-based servers max out at ~thousands of concurrent requests. Virtual threads (JDK 21) avoid this by heap-backing their stacks.`
+              }
+            ]
+          },
+          {
+            title: `JIT Compilation & Runtime Optimizations`,
+            notes: `
 # JIT Compilation & Runtime Optimizations
 
 ## The Three-Phase Execution Model
@@ -11142,11 +11955,11 @@ Better tools:
 > [!EU]
 > Senior engineers at Adyen or Booking.com who work on high-throughput payment APIs know: "we saw a 40% throughput drop after deploying a new service version — profiled with async-profiler, found JIT was deoptimizing our critical path because a new subclass of PaymentProcessor was introduced, breaking speculative inlining. Fixed by making the hot implementation \`final\`." That kind of story wins interviews.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'JIT warmup curve & inlining demonstration',
-              code: `// Demonstrates JIT warmup: performance improves as C1 then C2 compiles hot methods.
+            code: [
+              {
+                lang: `java`,
+                title: `JIT warmup curve & inlining demonstration`,
+                code: `// Demonstrates JIT warmup: performance improves as C1 then C2 compiles hot methods.
 // For accurate benchmarks always use JMH (never measure with System.currentTimeMillis in production).
 public class JitWarmupDemo {
 
@@ -11187,11 +12000,11 @@ public class JitWarmupDemo {
         System.out.println("Performance stabilizes when C2 kicks in (usually round 3-5).");
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Escape analysis & dead code elimination',
-              code: `// Demonstrates two key JIT optimizations:
+              },
+              {
+                lang: `java`,
+                title: `Escape analysis & dead code elimination`,
+                code: `// Demonstrates two key JIT optimizations:
 // 1. Escape analysis: if object doesn't escape, JIT may stack-allocate or scalar-replace it
 // 2. Dead code elimination: static final boolean flags get branches compiled away entirely
 
@@ -11242,32 +12055,49 @@ public class JitOptimizationsDemo {
         System.out.println("Verify with: java -XX:+PrintGCDetails (look for no Young GC)");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What are the five tiers of tiered compilation?', a: 'Level 0: Interpreter (no compilation). Level 1: C1, no profiling. Level 2: C1 with basic profiling. Level 3: C1 with full profiling (feeding C2). Level 4: C2 with maximum aggressive optimization. Methods progress through levels as they get hotter.' },
-            { q: 'What is method inlining and why is it the most impactful JIT optimization?', a: 'Inlining copies a called method\'s body directly into the caller, eliminating call overhead and enabling further optimizations (escape analysis, dead code elimination) on the combined code. A short getter like getPrice() called millions of times per second is a prime inlining target — it effectively becomes a direct field access.' },
-            { q: 'What is escape analysis and what optimization does it enable?', a: 'Escape analysis determines whether an object reference can be observed outside its creating method. If it doesn\'t escape (no return, no field write, no inter-thread sharing), the JIT can stack-allocate the object (no GC pressure) or scalar-replace it (decompose into primitive fields, eliminating the object entirely).' },
-            { q: 'What is On-Stack Replacement (OSR)?', a: 'OSR allows the JVM to replace an executing interpreted method with JIT-compiled code mid-execution — even while a long-running loop is active. Without OSR, a loop that starts interpreted would stay interpreted until the next call. OSR enables transitioning to compiled code at loop back-edges.' },
-            { q: 'What is speculative inlining and what happens when the speculation is wrong?', a: 'The JIT profiles virtual method call sites and speculatively inlines the most common implementation (e.g., ArrayList.add() for all Collection.add() calls). A guard checks each call. If a different implementation arrives, the JIT deoptimizes — reverts to interpreted code — and eventually recompiles with the new profile data.' },
-            { q: 'How does making a boolean flag "static final" eliminate logging overhead?', a: 'static final boolean DEBUG = false; is known at compile/JIT time. C2 sees "this branch condition is always false" and eliminates the entire if (DEBUG) branch from native code. Zero CPU cycles, zero memory overhead — as if the code doesn\'t exist. Runtime (non-final) flags cannot be eliminated this way.' },
-            { q: 'What happens when the JVM code cache fills up?', a: 'The JIT compiler stops compiling new methods. Hot methods that would have been compiled stay interpreted or at C1. Throughput silently degrades — no exception is thrown. Fix: increase -XX:ReservedCodeCacheSize=512m. Detect: check JMX Compilation MXBean or GC logs for "CodeCache is full" messages.' }
-          ]
-        }
-
-      ], // end sections
-      // keep backward-compat top-level notes stub (empty — sections take over)
-      notes: ``,
-      code: [],
-      flashcards: []
-    },
-
-
-    {
-      id: '1.2',
-      title: 'Garbage Collection Internals',
-      hours: 5,
-      notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What are the five tiers of tiered compilation?`,
+                a: `Level 0: Interpreter (no compilation). Level 1: C1, no profiling. Level 2: C1 with basic profiling. Level 3: C1 with full profiling (feeding C2). Level 4: C2 with maximum aggressive optimization. Methods progress through levels as they get hotter.`
+              },
+              {
+                q: `What is method inlining and why is it the most impactful JIT optimization?`,
+                a: `Inlining copies a called method's body directly into the caller, eliminating call overhead and enabling further optimizations (escape analysis, dead code elimination) on the combined code. A short getter like getPrice() called millions of times per second is a prime inlining target — it effectively becomes a direct field access.`
+              },
+              {
+                q: `What is escape analysis and what optimization does it enable?`,
+                a: `Escape analysis determines whether an object reference can be observed outside its creating method. If it doesn't escape (no return, no field write, no inter-thread sharing), the JIT can stack-allocate the object (no GC pressure) or scalar-replace it (decompose into primitive fields, eliminating the object entirely).`
+              },
+              {
+                q: `What is On-Stack Replacement (OSR)?`,
+                a: `OSR allows the JVM to replace an executing interpreted method with JIT-compiled code mid-execution — even while a long-running loop is active. Without OSR, a loop that starts interpreted would stay interpreted until the next call. OSR enables transitioning to compiled code at loop back-edges.`
+              },
+              {
+                q: `What is speculative inlining and what happens when the speculation is wrong?`,
+                a: `The JIT profiles virtual method call sites and speculatively inlines the most common implementation (e.g., ArrayList.add() for all Collection.add() calls). A guard checks each call. If a different implementation arrives, the JIT deoptimizes — reverts to interpreted code — and eventually recompiles with the new profile data.`
+              },
+              {
+                q: `How does making a boolean flag "static final" eliminate logging overhead?`,
+                a: `static final boolean DEBUG = false; is known at compile/JIT time. C2 sees "this branch condition is always false" and eliminates the entire if (DEBUG) branch from native code. Zero CPU cycles, zero memory overhead — as if the code doesn't exist. Runtime (non-final) flags cannot be eliminated this way.`
+              },
+              {
+                q: `What happens when the JVM code cache fills up?`,
+                a: `The JIT compiler stops compiling new methods. Hot methods that would have been compiled stay interpreted or at C1. Throughput silently degrades — no exception is thrown. Fix: increase -XX:ReservedCodeCacheSize=512m. Detect: check JMX Compilation MXBean or GC logs for "CodeCache is full" messages.`
+              }
+            ]
+          }
+        ],
+        notes: ``,
+        code: [],
+        flashcards: []
+      },
+      {
+        id: `1.2`,
+        title: `Garbage Collection Internals`,
+        hours: 5,
+        notes: `
 # Garbage Collection Internals — From Zero to Senior Level
 
 ## What Is Garbage Collection? (Start Here)
@@ -11309,12 +12139,18 @@ This observation — "most objects die young" — is called the **Weak Generatio
 graph TB
     subgraph HEAP["Java Heap"]
         subgraph YG["Young Generation ~25%"]
-            E["🌱 Eden\nnew objects\n~80% of YG"]
-            S0["Survivor S0\nage 1-N"]
-            S1["Survivor S1\nbounce here"]
+            E["🌱 Eden
+new objects
+~80% of YG"]
+            S0["Survivor S0
+age 1-N"]
+            S1["Survivor S1
+bounce here"]
         end
         subgraph OG["Old Generation ~75%"]
-            TEN["📦 Tenured\nlong-lived objects\nage ≥ MaxTenuringThreshold"]
+            TEN["📦 Tenured
+long-lived objects
+age ≥ MaxTenuringThreshold"]
         end
         E -->|"Minor GC survived"| S0
         S0 -->|"survived again"| S1
@@ -11537,11 +12373,11 @@ Connection conn = dataSource.getConnection();
 > [!EU]
 > The classic European interview question: *"Your service has periodic 2-second latency spikes. Walk me through how you'd diagnose it."* Strong answer: (1) Check GC logs first — correlate spike timestamps with GC events; (2) If Full GC → take heap dump, find leak with MAT dominator tree; (3) If pause inherent to collector → switch to ZGC; (4) If allocation rate too high → profile with async-profiler to find hot allocation sites and reduce object creation. Showing measurement-first thinking beats reciting flags.
 `,
-      code: [
-        {
-          lang: 'java',
-          title: 'Watch generational GC & promotion happen',
-          code: `import java.util.*;
+        code: [
+          {
+            lang: `java`,
+            title: `Watch generational GC & promotion happen`,
+            code: `import java.util.*;
 
 public class GcDemo {
     public static void main(String[] args) {
@@ -11566,11 +12402,11 @@ public class GcDemo {
         System.out.println("Tip: re-run with -Xlog:gc -Xmx64m to see GC pauses.");
     }
 }`
-        },
-        {
-          lang: 'java',
-          title: 'Common memory leak patterns and how to find them',
-          code: `import java.util.*;
+          },
+          {
+            lang: `java`,
+            title: `Common memory leak patterns and how to find them`,
+            code: `import java.util.*;
 import java.util.concurrent.*;
 
 // The four most common Java memory leak patterns — all produce reachable-but-unused objects.
@@ -11639,11 +12475,11 @@ public class MemoryLeakPatterns {
         System.out.println("A growing byte[] at the top of the list -> memory leak.");
     }
 }`
-        },
-        {
-          lang: 'java',
-          title: 'G1 GC tuning: reading pause logs and setting goals',
-          code: `// This demo generates GC activity you can observe with -Xlog:gc*
+          },
+          {
+            lang: `java`,
+            title: `G1 GC tuning: reading pause logs and setting goals`,
+            code: `// This demo generates GC activity you can observe with -Xlog:gc*
 // Run with: java -Xmx128m -Xms128m -XX:+UseG1GC -XX:MaxGCPauseMillis=50 -Xlog:gc*:stdout GcTuningDemo
 // Then watch G1 try to hit the 50ms pause goal.
 import java.util.*;
@@ -11691,23 +12527,50 @@ public class GcTuningDemo {
         System.out.println("Leave 25% of container RAM for Metaspace, threads, direct memory.");
     }
 }`
-        }
-      ],
-      flashcards: [
-        { q: 'Why does the JVM use tracing GC instead of reference counting?', a: 'Tracing from GC roots correctly reclaims cyclic references (A→B→A) that reference counting would leak, and it avoids per-assignment counter bookkeeping overhead.' },
-        { q: 'State the weak generational hypothesis and its consequence.', a: '"Most objects die young." Therefore the heap is split into young/old generations so cheap, frequent minor GCs reclaim short-lived objects, while expensive major GCs run rarely.' },
-        { q: 'How does G1 differ from Parallel GC?', a: 'G1 splits the heap into ~2048 equal regions dynamically tagged Eden/Survivor/Old/Humongous, collects highest-garbage regions first, and targets a configurable pause goal (MaxGCPauseMillis). Parallel maximises throughput but with longer, less predictable STW pauses.' },
-        { q: 'How do ZGC/Shenandoah achieve sub-millisecond pauses?', a: 'They perform marking AND object relocation/compaction concurrently with the application using load/read barriers (and coloured pointers in ZGC), so STW phases are tiny and largely independent of heap size.' },
-        { q: 'Can you have a memory leak in Java? Give examples.', a: 'Yes — objects that remain reachable but unused: unbounded static collections/caches, unremoved listeners, ThreadLocals in thread pools, unclosed resources. GC won\'t reclaim them because they\'re still referenced. Diagnose via heap dump + dominator tree.' },
-        { q: 'First step when diagnosing GC-related latency spikes?', a: 'Enable and read GC logs (-Xlog:gc*) to confirm pauses correlate with the spikes, then take a heap dump to inspect the retained set — measure before tuning any flags.' },
-        { q: 'Why set -Xms equal to -Xmx in production?', a: 'If Xms < Xmx, the JVM starts with a small heap and grows it on demand. Heap growth triggers a Full GC (to copy/compact) — an avoidable pause. Setting them equal allocates the full heap at startup, trading startup memory for stable, predictable runtime behaviour.' },
-        { q: 'What is a "humongous object" in G1 GC?', a: 'An object that is 50%+ of a G1 region size (default ~1-32MB depending on heap). G1 allocates these directly in the old generation (Humongous regions), bypassing Eden. They can trigger mixed GCs early — if you see many humongous allocations, increase G1HeapRegionSize or redesign the allocation.' },
-        { q: 'Name the four classic Java memory leak patterns.', a: '1) Unbounded static caches/collections that grow without eviction. 2) Listeners/observers registered but never deregistered. 3) ThreadLocals not cleared in thread-pool threads (pool threads are reused, values accumulate). 4) Inner classes/lambdas that capture references to large outer objects submitted to long-lived executors.' }
-      ],
-      sections: [
-        {
-          title: 'GC Fundamentals & Object Reachability',
-          notes: `
+          }
+        ],
+        flashcards: [
+          {
+            q: `Why does the JVM use tracing GC instead of reference counting?`,
+            a: `Tracing from GC roots correctly reclaims cyclic references (A→B→A) that reference counting would leak, and it avoids per-assignment counter bookkeeping overhead.`
+          },
+          {
+            q: `State the weak generational hypothesis and its consequence.`,
+            a: `"Most objects die young." Therefore the heap is split into young/old generations so cheap, frequent minor GCs reclaim short-lived objects, while expensive major GCs run rarely.`
+          },
+          {
+            q: `How does G1 differ from Parallel GC?`,
+            a: `G1 splits the heap into ~2048 equal regions dynamically tagged Eden/Survivor/Old/Humongous, collects highest-garbage regions first, and targets a configurable pause goal (MaxGCPauseMillis). Parallel maximises throughput but with longer, less predictable STW pauses.`
+          },
+          {
+            q: `How do ZGC/Shenandoah achieve sub-millisecond pauses?`,
+            a: `They perform marking AND object relocation/compaction concurrently with the application using load/read barriers (and coloured pointers in ZGC), so STW phases are tiny and largely independent of heap size.`
+          },
+          {
+            q: `Can you have a memory leak in Java? Give examples.`,
+            a: `Yes — objects that remain reachable but unused: unbounded static collections/caches, unremoved listeners, ThreadLocals in thread pools, unclosed resources. GC won't reclaim them because they're still referenced. Diagnose via heap dump + dominator tree.`
+          },
+          {
+            q: `First step when diagnosing GC-related latency spikes?`,
+            a: `Enable and read GC logs (-Xlog:gc*) to confirm pauses correlate with the spikes, then take a heap dump to inspect the retained set — measure before tuning any flags.`
+          },
+          {
+            q: `Why set -Xms equal to -Xmx in production?`,
+            a: `If Xms < Xmx, the JVM starts with a small heap and grows it on demand. Heap growth triggers a Full GC (to copy/compact) — an avoidable pause. Setting them equal allocates the full heap at startup, trading startup memory for stable, predictable runtime behaviour.`
+          },
+          {
+            q: `What is a "humongous object" in G1 GC?`,
+            a: `An object that is 50%+ of a G1 region size (default ~1-32MB depending on heap). G1 allocates these directly in the old generation (Humongous regions), bypassing Eden. They can trigger mixed GCs early — if you see many humongous allocations, increase G1HeapRegionSize or redesign the allocation.`
+          },
+          {
+            q: `Name the four classic Java memory leak patterns.`,
+            a: `1) Unbounded static caches/collections that grow without eviction. 2) Listeners/observers registered but never deregistered. 3) ThreadLocals not cleared in thread-pool threads (pool threads are reused, values accumulate). 4) Inner classes/lambdas that capture references to large outer objects submitted to long-lived executors.`
+          }
+        ],
+        sections: [
+          {
+            title: `GC Fundamentals & Object Reachability`,
+            notes: `
 ### Why Garbage Collection Exists
 
 Garbage collection exists to separate **object lifetime** from **programmer memory bookkeeping**. Java code still allocates memory explicitly with \`new\`, but it does not explicitly release heap objects. The JVM watches the object graph, determines which objects can still affect the program, and reuses memory occupied by objects that can no longer be reached.
@@ -11806,11 +12669,11 @@ A **Full GC** means a broad stop-the-world collection across the heap and often 
 > [!EU]
 > A common European interview prompt is: "If two objects reference each other, can Java collect them?" The senior answer is yes, if neither is reachable from a GC root. Reachability, not reference count, decides liveness.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Reachability and Cycles',
-              code: `public class ReachabilityCycleDemo {
+            code: [
+              {
+                lang: `java`,
+                title: `Reachability and Cycles`,
+                code: `public class ReachabilityCycleDemo {
     static class Node {
         final String name;
         Node next;
@@ -11846,11 +12709,11 @@ A **Full GC** means a broad stop-the-world collection across the heap and often 
         System.out.println("Cycle had internal references, but no root path.");
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'WeakReference and ReferenceQueue',
-              code: `import java.lang.ref.ReferenceQueue;
+              },
+              {
+                lang: `java`,
+                title: `WeakReference and ReferenceQueue`,
+                code: `import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 
 public class WeakReferenceQueueDemo {
@@ -11887,24 +12750,54 @@ public class WeakReferenceQueueDemo {
         System.out.println("Reference enqueued: " + (queue.remove(1000) == weak));
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What makes an object live in Java?', a: 'An object is live if it is reachable by following references from at least one GC root.' },
-            { q: 'Why does tracing GC collect cycles?', a: 'It marks objects reachable from roots. A cycle with no root path is unmarked and therefore collectible.' },
-            { q: 'Name four common GC root categories.', a: 'Thread stack locals, static fields of loaded classes, JNI references, and active threads/JVM internal references.' },
-            { q: 'What is the difference between eligible for GC and collected?', a: 'Eligible means unreachable. Collected means a later GC cycle actually reclaimed or moved the memory.' },
-            { q: 'When is a weak reference cleared?', a: 'After the referent has no strong or soft path, a suitable GC may clear the weak reference and enqueue it if a queue was supplied.' },
-            { q: 'What is a phantom reference for?', a: 'It supports cleanup after an object is no longer reachable, commonly for native or off-heap resources.' },
-            { q: 'Why are soft references risky for caches?', a: 'They are cleared according to GC memory-pressure heuristics, not predictable business eviction rules.' },
-            { q: 'What is usually collected by a Minor GC?', a: 'The young generation: Eden and one survivor space, depending on collector implementation.' },
-            { q: 'What makes Full GC dangerous for latency?', a: 'It is usually stop-the-world and may inspect, compact, and update references across a large heap.' },
-            { q: 'What is the key weakness of reference counting?', a: 'It cannot reclaim isolated cycles without extra cycle detection and adds overhead to reference updates.' }
-          ]
-        },
-        {
-          title: 'Generational GC & Collection Mechanics',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What makes an object live in Java?`,
+                a: `An object is live if it is reachable by following references from at least one GC root.`
+              },
+              {
+                q: `Why does tracing GC collect cycles?`,
+                a: `It marks objects reachable from roots. A cycle with no root path is unmarked and therefore collectible.`
+              },
+              {
+                q: `Name four common GC root categories.`,
+                a: `Thread stack locals, static fields of loaded classes, JNI references, and active threads/JVM internal references.`
+              },
+              {
+                q: `What is the difference between eligible for GC and collected?`,
+                a: `Eligible means unreachable. Collected means a later GC cycle actually reclaimed or moved the memory.`
+              },
+              {
+                q: `When is a weak reference cleared?`,
+                a: `After the referent has no strong or soft path, a suitable GC may clear the weak reference and enqueue it if a queue was supplied.`
+              },
+              {
+                q: `What is a phantom reference for?`,
+                a: `It supports cleanup after an object is no longer reachable, commonly for native or off-heap resources.`
+              },
+              {
+                q: `Why are soft references risky for caches?`,
+                a: `They are cleared according to GC memory-pressure heuristics, not predictable business eviction rules.`
+              },
+              {
+                q: `What is usually collected by a Minor GC?`,
+                a: `The young generation: Eden and one survivor space, depending on collector implementation.`
+              },
+              {
+                q: `What makes Full GC dangerous for latency?`,
+                a: `It is usually stop-the-world and may inspect, compact, and update references across a large heap.`
+              },
+              {
+                q: `What is the key weakness of reference counting?`,
+                a: `It cannot reclaim isolated cycles without extra cycle detection and adds overhead to reference updates.`
+              }
+            ]
+          },
+          {
+            title: `Generational GC & Collection Mechanics`,
+            notes: `
 ### Weak Generational Hypothesis
 
 The weak generational hypothesis says **most objects die young**. Web requests, JSON parsing, validation objects, temporary collections, builders, streams, and logging strings often live for milliseconds. A much smaller set, such as caches, Spring singletons, connection pools, and session state, survives for a long time.
@@ -12001,11 +12894,11 @@ Common causes:
 > [!SUCCESS]
 > For interviews, connect mechanics to cost: young GC is cheap because dead objects cost almost nothing; old/full GC is expensive because live objects dominate the work.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Allocation Pressure and Young GC',
-              code: `import java.util.ArrayList;
+            code: [
+              {
+                lang: `java`,
+                title: `Allocation Pressure and Young GC`,
+                code: `import java.util.ArrayList;
 import java.util.List;
 
 public class YoungGcPressureDemo {
@@ -12029,11 +12922,11 @@ public class YoungGcPressureDemo {
         System.out.println("Run with: -Xms64m -Xmx64m -Xlog:gc*");
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Old-to-Young Reference Shape',
-              code: `import java.util.ArrayList;
+              },
+              {
+                lang: `java`,
+                title: `Old-to-Young Reference Shape`,
+                code: `import java.util.ArrayList;
 import java.util.List;
 
 public class OldToYoungReferenceDemo {
@@ -12065,24 +12958,54 @@ public class OldToYoungReferenceDemo {
         System.out.println("A JVM write barrier tracks these old-to-young stores.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What does the weak generational hypothesis say?', a: 'Most allocated objects become unreachable quickly, so young memory should be collected frequently and cheaply.' },
-            { q: 'Where do most new Java objects start?', a: 'In Eden, usually inside the allocating thread\'s TLAB.' },
-            { q: 'What happens to objects that survive young GC repeatedly?', a: 'They age in survivor spaces and are eventually promoted to the old generation.' },
-            { q: 'Why are two survivor spaces used?', a: 'Copying collectors move live objects from one survivor space to the other, then clear the source space.' },
-            { q: 'What is a TLAB?', a: 'A Thread-Local Allocation Buffer: a private Eden chunk that lets a thread allocate with a fast pointer bump.' },
-            { q: 'Why does young GC need remembered sets or card tables?', a: 'To find old-generation objects that reference young objects without scanning the entire old generation.' },
-            { q: 'What is a write barrier?', a: 'Small JVM-inserted code that records reference writes, such as marking a card dirty.' },
-            { q: 'What is promotion failure?', a: 'A young GC has live objects to move to Old, but Old does not have enough suitable space.' },
-            { q: 'Why can survivor spaces being too small hurt performance?', a: 'Objects may promote prematurely, increasing old-generation pressure and Full GC risk.' },
-            { q: 'What usually makes a Full GC appear in a healthy service?', a: 'It should be rare; if frequent, suspect old-gen pressure, allocation bursts, fragmentation, or a memory leak.' }
-          ]
-        },
-        {
-          title: 'Modern GC Algorithms: G1, ZGC, Shenandoah',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does the weak generational hypothesis say?`,
+                a: `Most allocated objects become unreachable quickly, so young memory should be collected frequently and cheaply.`
+              },
+              {
+                q: `Where do most new Java objects start?`,
+                a: `In Eden, usually inside the allocating thread's TLAB.`
+              },
+              {
+                q: `What happens to objects that survive young GC repeatedly?`,
+                a: `They age in survivor spaces and are eventually promoted to the old generation.`
+              },
+              {
+                q: `Why are two survivor spaces used?`,
+                a: `Copying collectors move live objects from one survivor space to the other, then clear the source space.`
+              },
+              {
+                q: `What is a TLAB?`,
+                a: `A Thread-Local Allocation Buffer: a private Eden chunk that lets a thread allocate with a fast pointer bump.`
+              },
+              {
+                q: `Why does young GC need remembered sets or card tables?`,
+                a: `To find old-generation objects that reference young objects without scanning the entire old generation.`
+              },
+              {
+                q: `What is a write barrier?`,
+                a: `Small JVM-inserted code that records reference writes, such as marking a card dirty.`
+              },
+              {
+                q: `What is promotion failure?`,
+                a: `A young GC has live objects to move to Old, but Old does not have enough suitable space.`
+              },
+              {
+                q: `Why can survivor spaces being too small hurt performance?`,
+                a: `Objects may promote prematurely, increasing old-generation pressure and Full GC risk.`
+              },
+              {
+                q: `What usually makes a Full GC appear in a healthy service?`,
+                a: `It should be rare; if frequent, suspect old-gen pressure, allocation bursts, fragmentation, or a memory leak.`
+              }
+            ]
+          },
+          {
+            title: `Modern GC Algorithms: G1, ZGC, Shenandoah`,
+            notes: `
 ### Serial and Parallel GC
 
 Serial GC is simple: one GC thread performs collection work, and application threads stop during collection. It is still relevant for tiny heaps, command-line tools, small containers with one CPU, and teaching.
@@ -12158,11 +13081,11 @@ Why use it?
 > [!EU]
 > If asked "Which collector should we use?", start with requirements: pause SLO, heap size, allocation rate, CPU budget, Java version, and observability. Collector choice is an engineering trade, not a badge.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Collector and Heap Introspection',
-              code: `import java.lang.management.GarbageCollectorMXBean;
+            code: [
+              {
+                lang: `java`,
+                title: `Collector and Heap Introspection`,
+                code: `import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryPoolMXBean;
 
@@ -12182,11 +13105,11 @@ public class GcIntrospectionDemo {
         }
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Latency Probe for Collector Experiments',
-              code: `import java.util.ArrayList;
+              },
+              {
+                lang: `java`,
+                title: `Latency Probe for Collector Experiments`,
+                code: `import java.util.ArrayList;
 import java.util.List;
 
 public class CollectorLatencyProbe {
@@ -12215,24 +13138,54 @@ public class CollectorLatencyProbe {
         System.out.println("Compare runs with G1, ZGC, Shenandoah, or Parallel GC plus -Xlog:gc*.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'When is Serial GC still reasonable?', a: 'Tiny heaps, single-CPU environments, short CLI tools, and educational demos.' },
-            { q: 'What is Parallel GC optimized for?', a: 'Throughput: minimizing total time spent in GC rather than minimizing individual pause latency.' },
-            { q: 'How is G1 heap layout different from classic generations?', a: 'G1 uses many equal-sized regions dynamically labeled Eden, Survivor, Old, Humongous, or Free.' },
-            { q: 'What is a G1 mixed collection?', a: 'A pause that collects young regions plus selected old regions with high reclaimable garbage.' },
-            { q: 'What does -XX:MaxGCPauseMillis do for G1?', a: 'It gives G1 a pause-time goal used to size collection work; it is not a hard guarantee.' },
-            { q: 'How does ZGC keep pauses very small?', a: 'It performs most marking, relocation, and remapping concurrently using colored pointers and load barriers.' },
-            { q: 'What is a load barrier?', a: 'JIT-inserted logic that runs when reading references, allowing a concurrent collector to fix or validate references.' },
-            { q: 'How does Shenandoah compact concurrently?', a: 'It uses forwarding metadata/read barriers so objects can move while application threads continue.' },
-            { q: 'What is Epsilon GC?', a: 'A no-op collector that never reclaims memory and fails with OOM when the heap fills.' },
-            { q: 'What should drive GC collector selection?', a: 'Latency SLO, heap size, live set, allocation rate, CPU budget, Java version, and operational tooling.' }
-          ]
-        },
-        {
-          title: 'GC Tuning & Diagnosing Leaks',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `When is Serial GC still reasonable?`,
+                a: `Tiny heaps, single-CPU environments, short CLI tools, and educational demos.`
+              },
+              {
+                q: `What is Parallel GC optimized for?`,
+                a: `Throughput: minimizing total time spent in GC rather than minimizing individual pause latency.`
+              },
+              {
+                q: `How is G1 heap layout different from classic generations?`,
+                a: `G1 uses many equal-sized regions dynamically labeled Eden, Survivor, Old, Humongous, or Free.`
+              },
+              {
+                q: `What is a G1 mixed collection?`,
+                a: `A pause that collects young regions plus selected old regions with high reclaimable garbage.`
+              },
+              {
+                q: `What does -XX:MaxGCPauseMillis do for G1?`,
+                a: `It gives G1 a pause-time goal used to size collection work; it is not a hard guarantee.`
+              },
+              {
+                q: `How does ZGC keep pauses very small?`,
+                a: `It performs most marking, relocation, and remapping concurrently using colored pointers and load barriers.`
+              },
+              {
+                q: `What is a load barrier?`,
+                a: `JIT-inserted logic that runs when reading references, allowing a concurrent collector to fix or validate references.`
+              },
+              {
+                q: `How does Shenandoah compact concurrently?`,
+                a: `It uses forwarding metadata/read barriers so objects can move while application threads continue.`
+              },
+              {
+                q: `What is Epsilon GC?`,
+                a: `A no-op collector that never reclaims memory and fails with OOM when the heap fills.`
+              },
+              {
+                q: `What should drive GC collector selection?`,
+                a: `Latency SLO, heap size, live set, allocation rate, CPU budget, Java version, and operational tooling.`
+              }
+            ]
+          },
+          {
+            title: `GC Tuning & Diagnosing Leaks`,
+            notes: `
 ### Enable and Read GC Logs
 
 Modern Java uses unified logging. A strong default for production investigation is:
@@ -12320,11 +13273,11 @@ In the code examples below, a global registry simulates a parent-level singleton
 > [!EU]
 > Interviewers like classloader leaks because they test whether you understand that classes themselves are garbage-collected only when their defining classloader becomes unreachable.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Classloader Leak',
-              code: `import javax.tools.JavaCompiler;
+            code: [
+              {
+                lang: `java`,
+                title: `Classloader Leak`,
+                code: `import javax.tools.JavaCompiler;
 import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
 import java.net.URI;
@@ -12376,11 +13329,11 @@ public class ClassLoaderLeakDemo {
         }
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Classloader Leak Fix',
-              code: `import javax.tools.JavaCompiler;
+              },
+              {
+                lang: `java`,
+                title: `Classloader Leak Fix`,
+                code: `import javax.tools.JavaCompiler;
 import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
 import java.lang.ref.WeakReference;
@@ -12440,34 +13393,61 @@ public class ClassLoaderLeakFixDemo {
         }
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What JVM flag enables detailed modern GC logging?', a: '-Xlog:gc*; commonly with file rotation: -Xlog:gc*:file=gc.log:time,uptime,level,tags:filecount=5,filesize=20m.' },
-            { q: 'Which GC metrics matter most?', a: 'Pause time, throughput, allocation rate, promotion rate, old-gen occupancy, and Full GC frequency.' },
-            { q: 'What tool is commonly used for heap-dump dominator analysis?', a: 'Eclipse MAT, especially the dominator tree and leak suspects report.' },
-            { q: 'How do you capture a heap dump from a running JVM?', a: 'Use jmap -dump:format=b,file=heap.hprof <pid>, or configure HeapDumpOnOutOfMemoryError for OOM cases.' },
-            { q: 'Why can static collections leak?', a: 'Static fields are reachable through loaded classes, so entries remain live until removed or the classloader unloads.' },
-            { q: 'Why are ThreadLocals risky in thread pools?', a: 'Pool threads are long-lived, so ThreadLocal values can survive across requests unless remove() is called.' },
-            { q: 'What is a classloader leak?', a: 'A long-lived reference keeps a child classloader or its classes/objects reachable, preventing class unloading and metadata cleanup.' },
-            { q: 'Why set -Xms equal to -Xmx?', a: 'It avoids runtime heap resizing and makes GC behavior more predictable in stable production services.' },
-            { q: 'What does InitiatingHeapOccupancyPercent tune for G1?', a: 'The old-generation occupancy threshold at which G1 starts concurrent marking.' },
-            { q: 'What is the safest GC tuning workflow?', a: 'Measure with logs/JFR, identify the bottleneck, change one thing, then compare before and after under realistic load.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '1.3',
-      title: 'Java Memory Model & Safe Publication',
-      hours: 4,
-      sections: [
-
-        /* ── SECTION 1 ─────────────────────────────────────────────── */
-        {
-          title: 'The Visibility Problem & CPU Caches',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What JVM flag enables detailed modern GC logging?`,
+                a: `-Xlog:gc*; commonly with file rotation: -Xlog:gc*:file=gc.log:time,uptime,level,tags:filecount=5,filesize=20m.`
+              },
+              {
+                q: `Which GC metrics matter most?`,
+                a: `Pause time, throughput, allocation rate, promotion rate, old-gen occupancy, and Full GC frequency.`
+              },
+              {
+                q: `What tool is commonly used for heap-dump dominator analysis?`,
+                a: `Eclipse MAT, especially the dominator tree and leak suspects report.`
+              },
+              {
+                q: `How do you capture a heap dump from a running JVM?`,
+                a: `Use jmap -dump:format=b,file=heap.hprof <pid>, or configure HeapDumpOnOutOfMemoryError for OOM cases.`
+              },
+              {
+                q: `Why can static collections leak?`,
+                a: `Static fields are reachable through loaded classes, so entries remain live until removed or the classloader unloads.`
+              },
+              {
+                q: `Why are ThreadLocals risky in thread pools?`,
+                a: `Pool threads are long-lived, so ThreadLocal values can survive across requests unless remove() is called.`
+              },
+              {
+                q: `What is a classloader leak?`,
+                a: `A long-lived reference keeps a child classloader or its classes/objects reachable, preventing class unloading and metadata cleanup.`
+              },
+              {
+                q: `Why set -Xms equal to -Xmx?`,
+                a: `It avoids runtime heap resizing and makes GC behavior more predictable in stable production services.`
+              },
+              {
+                q: `What does InitiatingHeapOccupancyPercent tune for G1?`,
+                a: `The old-generation occupancy threshold at which G1 starts concurrent marking.`
+              },
+              {
+                q: `What is the safest GC tuning workflow?`,
+                a: `Measure with logs/JFR, identify the bottleneck, change one thing, then compare before and after under realistic load.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `1.3`,
+        title: `Java Memory Model & Safe Publication`,
+        hours: 4,
+        sections: [
+          {
+            title: `The Visibility Problem & CPU Caches`,
+            notes: `
 # The Visibility Problem & CPU Caches
 
 ## Why Multi-Threaded Code Is Harder Than It Looks
@@ -12563,11 +13543,11 @@ You don't insert barriers directly. The JVM inserts them when you use \`volatile
 > [!EU]
 > At Adyen, Deutsche Bank, or any fintech using high-throughput order processing: explaining that you diagnosed a false-sharing issue between two counters in a hot loop (confirmed with perf c2c or async-profiler) is a top-tier answer. Most candidates have never even heard of it.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Visibility bug — demonstrated with a live counter',
-              code: `// Run with: java -server VisibilityDemo  (server JIT makes the bug more likely)
+            code: [
+              {
+                lang: `java`,
+                title: `Visibility bug — demonstrated with a live counter`,
+                code: `// Run with: java -server VisibilityDemo  (server JIT makes the bug more likely)
 // The "fix" is to mark the field volatile — see the commented version.
 public class VisibilityDemo {
 
@@ -12602,11 +13582,11 @@ public class VisibilityDemo {
         }
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'False sharing — two counters in the same cache line',
-              code: `import java.util.concurrent.*;
+              },
+              {
+                lang: `java`,
+                title: `False sharing — two counters in the same cache line`,
+                code: `import java.util.concurrent.*;
 
 public class FalseSharing {
 
@@ -12651,21 +13631,34 @@ public class FalseSharing {
         System.out.printf("Speedup from padding: %.1fx%n", (double)badMs/goodMs);
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What three hardware/compiler effects make multi-threaded visibility unsafe?', a: '1) CPU caches — each core has its own L1/L2 cache, writes go there first. 2) Instruction reordering — CPUs execute instructions out-of-order for performance. 3) Compiler/JIT optimization — reorders or eliminates reads/writes that it deems equivalent in single-thread semantics.' },
-            { q: 'Why can the JVM\'s JIT turn "while (running)" into an infinite loop?', a: 'If "running" is not volatile, the JIT sees no writes to it inside the loop and no synchronization. It legally hoists the read into a register before the loop. Subsequent iterations read from the register (always true), never from memory. This is valid per JMM — no happens-before was established.' },
-            { q: 'What is a memory barrier (fence) and when does the JVM insert one?', a: 'A memory barrier is a CPU instruction that prevents reordering of loads/stores across it. The JVM inserts barriers when you use: volatile reads/writes, synchronized monitor enter/exit, or java.util.concurrent lock acquire/release.' },
-            { q: 'What is false sharing and how do you fix it?', a: 'CPU cache lines are 64 bytes. If two threads write different variables that occupy the same cache line, every write invalidates the other thread\'s line — causing expensive cache-coherence traffic. Fix: pad fields to force them onto separate cache lines.' },
-            { q: 'What is the Java Memory Model?', a: 'The JMM is a specification that defines exactly when one thread\'s write to a shared variable is guaranteed to be visible to another thread\'s read. It uses the happens-before relation: if action A happens-before action B, then A\'s effects are visible to B.' }
-          ]
-        },
-
-        /* ── SECTION 2 ─────────────────────────────────────────────── */
-        {
-          title: 'Happens-Before & volatile',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What three hardware/compiler effects make multi-threaded visibility unsafe?`,
+                a: `1) CPU caches — each core has its own L1/L2 cache, writes go there first. 2) Instruction reordering — CPUs execute instructions out-of-order for performance. 3) Compiler/JIT optimization — reorders or eliminates reads/writes that it deems equivalent in single-thread semantics.`
+              },
+              {
+                q: `Why can the JVM's JIT turn "while (running)" into an infinite loop?`,
+                a: `If "running" is not volatile, the JIT sees no writes to it inside the loop and no synchronization. It legally hoists the read into a register before the loop. Subsequent iterations read from the register (always true), never from memory. This is valid per JMM — no happens-before was established.`
+              },
+              {
+                q: `What is a memory barrier (fence) and when does the JVM insert one?`,
+                a: `A memory barrier is a CPU instruction that prevents reordering of loads/stores across it. The JVM inserts barriers when you use: volatile reads/writes, synchronized monitor enter/exit, or java.util.concurrent lock acquire/release.`
+              },
+              {
+                q: `What is false sharing and how do you fix it?`,
+                a: `CPU cache lines are 64 bytes. If two threads write different variables that occupy the same cache line, every write invalidates the other thread's line — causing expensive cache-coherence traffic. Fix: pad fields to force them onto separate cache lines.`
+              },
+              {
+                q: `What is the Java Memory Model?`,
+                a: `The JMM is a specification that defines exactly when one thread's write to a shared variable is guaranteed to be visible to another thread's read. It uses the happens-before relation: if action A happens-before action B, then A's effects are visible to B.`
+              }
+            ]
+          },
+          {
+            title: `Happens-Before & volatile`,
+            notes: `
 # Happens-Before & volatile
 
 ## The Happens-Before Relation
@@ -12765,11 +13758,11 @@ void increment() { atomicCount.incrementAndGet(); }
 > [!EU]
 > At Booking.com or Adyen: "We diagnosed a JIT loop-hoisting bug where our cache invalidation flag wasn't volatile. Confirmed with -XX:+PrintCompilation — the loop compiled without a memory barrier. Adding volatile cost ~2% throughput, acceptable for correctness." That precision wins the JMM section.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'volatile piggybacking — safe non-volatile reads via HB transitivity',
-              code: `import java.util.concurrent.*;
+            code: [
+              {
+                lang: `java`,
+                title: `volatile piggybacking — safe non-volatile reads via HB transitivity`,
+                code: `import java.util.concurrent.*;
 
 public class VolatilePiggyback {
     private volatile boolean initialized = false;
@@ -12804,11 +13797,11 @@ public class VolatilePiggyback {
         System.out.println("All readers initialised safely.");
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'HB rules: thread start/join',
-              code: `import java.util.*;
+              },
+              {
+                lang: `java`,
+                title: `HB rules: thread start/join`,
+                code: `import java.util.*;
 
 public class HappensBeforeRules {
 
@@ -12843,21 +13836,34 @@ public class HappensBeforeRules {
         System.out.println("monitorShared = " + monitorShared[0]); // always 2000
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What does "happens-before" mean in the JMM?', a: 'If action A happens-before action B, then A\'s memory effects (writes) are guaranteed to be visible when B executes. It\'s not about wall-clock time — it\'s about guaranteed ordering. Without a happens-before relationship, two threads may observe each other\'s writes in any order, or not at all.' },
-            { q: 'List the six happens-before rules.', a: '1) Program order — within one thread, earlier actions HB later. 2) Monitor — unlock HB next lock of same monitor. 3) Volatile — write to volatile HB subsequent reads of it. 4) Thread start — before start() HB all actions in thread. 5) Thread join — all thread actions HB after join() returns. 6) Transitivity — A HB B and B HB C implies A HB C.' },
-            { q: 'What two guarantees does volatile provide? What does it NOT guarantee?', a: 'Provides: (1) Visibility — writes are immediately visible to subsequent volatile reads. (2) No reordering past the volatile access (memory barrier semantics). Does NOT guarantee: atomicity of compound operations. volatile int x; x++ is still a non-atomic read-modify-write — use AtomicInteger.' },
-            { q: 'What is volatile piggybacking?', a: 'Writing non-volatile fields before a volatile write, then reading the volatile field before reading non-volatile fields. By transitivity: program-order HB (non-volatile write HB volatile write) + volatile HB (volatile write HB volatile read) = non-volatile write HB non-volatile read. Makes non-volatile reads safe.' },
-            { q: 'When is volatile correct? When is it NOT enough?', a: 'Correct: single-writer flag, reference swap to immutable object. NOT enough: counter incremented by multiple threads (use AtomicInteger), check-then-act (use AtomicReference.compareAndSet), multi-variable invariants (use synchronized block).' }
-          ]
-        },
-
-        /* ── SECTION 3 ─────────────────────────────────────────────── */
-        {
-          title: 'synchronized, Locks & Atomics',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does "happens-before" mean in the JMM?`,
+                a: `If action A happens-before action B, then A's memory effects (writes) are guaranteed to be visible when B executes. It's not about wall-clock time — it's about guaranteed ordering. Without a happens-before relationship, two threads may observe each other's writes in any order, or not at all.`
+              },
+              {
+                q: `List the six happens-before rules.`,
+                a: `1) Program order — within one thread, earlier actions HB later. 2) Monitor — unlock HB next lock of same monitor. 3) Volatile — write to volatile HB subsequent reads of it. 4) Thread start — before start() HB all actions in thread. 5) Thread join — all thread actions HB after join() returns. 6) Transitivity — A HB B and B HB C implies A HB C.`
+              },
+              {
+                q: `What two guarantees does volatile provide? What does it NOT guarantee?`,
+                a: `Provides: (1) Visibility — writes are immediately visible to subsequent volatile reads. (2) No reordering past the volatile access (memory barrier semantics). Does NOT guarantee: atomicity of compound operations. volatile int x; x++ is still a non-atomic read-modify-write — use AtomicInteger.`
+              },
+              {
+                q: `What is volatile piggybacking?`,
+                a: `Writing non-volatile fields before a volatile write, then reading the volatile field before reading non-volatile fields. By transitivity: program-order HB (non-volatile write HB volatile write) + volatile HB (volatile write HB volatile read) = non-volatile write HB non-volatile read. Makes non-volatile reads safe.`
+              },
+              {
+                q: `When is volatile correct? When is it NOT enough?`,
+                a: `Correct: single-writer flag, reference swap to immutable object. NOT enough: counter incremented by multiple threads (use AtomicInteger), check-then-act (use AtomicReference.compareAndSet), multi-variable invariants (use synchronized block).`
+              }
+            ]
+          },
+          {
+            title: `synchronized, Locks & Atomics`,
+            notes: `
 # synchronized, Locks & Atomics
 
 ## synchronized: The Original Mutual Exclusion
@@ -12867,11 +13873,16 @@ Every Java object has an intrinsic **monitor lock**. \`synchronized\` acquires t
 \`\`\`mermaid
 flowchart LR
     A["Thread A tries to enter synchronized block"] --> B{Lock available?}
-    B -->|Yes| C["Thread A acquires lock\nEnters critical section"]
-    B -->|"No — Thread B holds it"| D["Thread A BLOCKED\nWaits in entry set"]
-    C --> E["Thread A executes\ncritical section"]
-    E --> F["Thread A releases lock\non exit or exception"]
-    F --> G["Entry set thread\nwoken up to compete"]
+    B -->|Yes| C["Thread A acquires lock
+Enters critical section"]
+    B -->|"No — Thread B holds it"| D["Thread A BLOCKED
+Waits in entry set"]
+    C --> E["Thread A executes
+critical section"]
+    E --> F["Thread A releases lock
+on exit or exception"]
+    F --> G["Entry set thread
+woken up to compete"]
     style C fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
     style D fill:#2d1515,stroke:#ef4444,color:#fca5a5
     style F fill:#1e293b,stroke:#6366f1,color:#e2e8f0
@@ -12982,11 +13993,11 @@ hits.sum();        // merge all cells (slightly stale under concurrent updates)
 > [!TIP]
 > **Decision guide:** Simple counter one writer → \`volatile\`. Counter multiple writers → \`AtomicInteger\` (low/medium) or \`LongAdder\` (high contention). Complex invariant → \`synchronized\` block. Read-heavy cache → \`ReentrantReadWriteLock\`. Lock with timeout/interruption → \`ReentrantLock.tryLock()\`.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'ReentrantLock with Condition: producer-consumer',
-              code: `import java.util.concurrent.locks.*;
+            code: [
+              {
+                lang: `java`,
+                title: `ReentrantLock with Condition: producer-consumer`,
+                code: `import java.util.concurrent.locks.*;
 import java.util.*;
 
 public class ProducerConsumer<T> {
@@ -13048,11 +14059,11 @@ public class ProducerConsumer<T> {
         producer.join(); consumer.join();
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'CAS loop and LongAdder vs AtomicLong performance',
-              code: `import java.util.concurrent.*;
+              },
+              {
+                lang: `java`,
+                title: `CAS loop and LongAdder vs AtomicLong performance`,
+                code: `import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
 public class AtomicsDemo {
@@ -13099,22 +14110,38 @@ public class AtomicsDemo {
         System.out.println("Max seen: " + maxSeen.get()); // 1000
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What three guarantees does synchronized provide?', a: '1) Mutual exclusion — at most one thread executes the block at a time. 2) Visibility — all writes inside are flushed and visible after the next synchronized on the same lock. 3) Atomicity — the block appears as a single atomic operation to other threads using the same lock.' },
-            { q: 'What does ReentrantLock provide that synchronized does not?', a: 'Timed lock acquisition (tryLock with timeout), interruptible waiting (lockInterruptibly), fairness option (FIFO ordering), multiple condition variables (newCondition for fine-grained wait/signal), and runtime inspection (isLocked, getQueueLength). Always unlock in a finally block.' },
-            { q: 'How does Compare-And-Swap (CAS) work?', a: 'CAS(variable, expected, new) atomically: checks if variable==expected, and if so sets it to new (returns true). If variable changed, returns false. Callers spin in a retry loop. It\'s a single hardware instruction (CMPXCHG on x86) — no blocking, lower overhead than locks under low contention.' },
-            { q: 'When should you use LongAdder instead of AtomicLong?', a: 'Under high thread contention for the same counter. LongAdder maintains per-thread cells — threads update different cells (no cache-line contention). sum() merges all cells. Tradeoff: sum() is slightly stale under concurrent updates. Use for statistics/counters, not for synchronization. 2-10x faster under heavy contention.' },
-            { q: 'What is the correct pattern for using ReentrantLock?', a: 'lock.lock(); try { // critical section } finally { lock.unlock(); }. The finally block guarantees unlock even if the critical section throws. Forgetting finally causes permanent lock acquisition (potential deadlock). synchronized handles unlock automatically.' },
-            { q: 'When should you use ReadWriteLock?', a: 'When reads vastly outnumber writes and reads are purely read-only. Multiple threads hold the read lock simultaneously. The write lock is exclusive. Ideal for caches, configuration stores, read-heavy shared maps. StampedLock (Java 8+) is an optimistic alternative with lower overhead.' }
-          ]
-        },
-
-        /* ── SECTION 4 ─────────────────────────────────────────────── */
-        {
-          title: 'Safe Publication & Immutability',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What three guarantees does synchronized provide?`,
+                a: `1) Mutual exclusion — at most one thread executes the block at a time. 2) Visibility — all writes inside are flushed and visible after the next synchronized on the same lock. 3) Atomicity — the block appears as a single atomic operation to other threads using the same lock.`
+              },
+              {
+                q: `What does ReentrantLock provide that synchronized does not?`,
+                a: `Timed lock acquisition (tryLock with timeout), interruptible waiting (lockInterruptibly), fairness option (FIFO ordering), multiple condition variables (newCondition for fine-grained wait/signal), and runtime inspection (isLocked, getQueueLength). Always unlock in a finally block.`
+              },
+              {
+                q: `How does Compare-And-Swap (CAS) work?`,
+                a: `CAS(variable, expected, new) atomically: checks if variable==expected, and if so sets it to new (returns true). If variable changed, returns false. Callers spin in a retry loop. It's a single hardware instruction (CMPXCHG on x86) — no blocking, lower overhead than locks under low contention.`
+              },
+              {
+                q: `When should you use LongAdder instead of AtomicLong?`,
+                a: `Under high thread contention for the same counter. LongAdder maintains per-thread cells — threads update different cells (no cache-line contention). sum() merges all cells. Tradeoff: sum() is slightly stale under concurrent updates. Use for statistics/counters, not for synchronization. 2-10x faster under heavy contention.`
+              },
+              {
+                q: `What is the correct pattern for using ReentrantLock?`,
+                a: `lock.lock(); try { // critical section } finally { lock.unlock(); }. The finally block guarantees unlock even if the critical section throws. Forgetting finally causes permanent lock acquisition (potential deadlock). synchronized handles unlock automatically.`
+              },
+              {
+                q: `When should you use ReadWriteLock?`,
+                a: `When reads vastly outnumber writes and reads are purely read-only. Multiple threads hold the read lock simultaneously. The write lock is exclusive. Ideal for caches, configuration stores, read-heavy shared maps. StampedLock (Java 8+) is an optimistic alternative with lower overhead.`
+              }
+            ]
+          },
+          {
+            title: `Safe Publication & Immutability`,
+            notes: `
 # Safe Publication & Immutability
 
 ## What Is "Safe Publication"?
@@ -13131,11 +14158,14 @@ flowchart LR
         W1 --> W2
     end
     subgraph TB["Thread B — Reader"]
-        R["reads shared field\ngets reference"]
-        R2["reads x\nmay see 0!"]
+        R["reads shared field
+gets reference"]
+        R2["reads x
+may see 0!"]
         R --> R2
     end
-    W2 -.->|"CPU may reorder W2 before W1\nno HB guarantee"| R
+    W2 -.->|"CPU may reorder W2 before W1
+no HB guarantee"| R
     style W1 fill:#2d1515,stroke:#ef4444,color:#fca5a5
     style R2 fill:#2d1515,stroke:#ef4444,color:#fca5a5
     style W2 fill:#1e293b,stroke:#334155,color:#94a3b8
@@ -13245,11 +14275,11 @@ public final class Point {
 > [!EU]
 > At Goldman Sachs, JPMorgan or Deutsche Bank: "Why is your Config class thread-safe?" Wrong answer: "It looks fine." Right answer: "It's immutable — all fields are final, set in the constructor. The JMM guarantees final field visibility after construction. We use List.copyOf for mutable list parameters. No thread can mutate it after construction, so no synchronization is needed at read time." That level of precision wins the concurrency section.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Unsafe vs safe publication patterns',
-              code: `import java.util.concurrent.*;
+            code: [
+              {
+                lang: `java`,
+                title: `Unsafe vs safe publication patterns`,
+                code: `import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
 public class PublicationPatterns {
@@ -13309,11 +14339,11 @@ public class PublicationPatterns {
         System.out.println("All threads see value=42: " + allSee42); // always true
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Immutable class with Records and defensive copies',
-              code: `import java.util.*;
+              },
+              {
+                lang: `java`,
+                title: `Immutable class with Records and defensive copies`,
+                code: `import java.util.*;
 import java.time.*;
 
 public class ImmutablePatterns {
@@ -13363,26 +14393,42 @@ public class ImmutablePatterns {
         System.out.println("Discounted: " + discounted.totalAmount()); // 1350.0
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is "safe publication" and why does unsafe publication happen?', a: 'Safe publication means another thread is guaranteed to see a fully-initialized object. Unsafe publication happens when the reference is made visible before the constructor completes — CPU/compiler may reorder "store reference" before "store fields", so another thread reads default values (0, null).' },
-            { q: 'Name the four safe publication mechanisms in Java.', a: '1) Static final field — class initialization is safely published. 2) volatile reference — volatile write HB subsequent reads. 3) synchronized — monitor unlock HB next lock. 4) Concurrent collections — ConcurrentHashMap, BlockingQueue etc. provide safe publication built-in.' },
-            { q: 'What makes a class truly immutable?', a: '1) All fields are final. 2) No mutating methods. 3) Class is final. 4) Defensive copies of mutable constructor arguments. 5) No "this" escape in constructor.' },
-            { q: 'What JMM special rule applies to final fields?', a: 'A write to a final field in a constructor HB any thread that reads that field after the constructor completes (assuming "this" doesn\'t escape). You can share objects with only final fields across threads without explicit synchronization.' },
-            { q: 'What is "constructor escape" and why is it dangerous?', a: 'Publishing "this" inside the constructor (e.g. Registry.register(this)) before the constructor finishes. Another thread may observe the object in a partially-constructed state — fields at their default values. Fix: never publish this before the constructor returns.' },
-            { q: 'Why are Java Records a good choice for concurrent code?', a: 'Records are automatically: all fields private final, class implicitly final, no setters. With defensive copies of mutable inputs (List.copyOf), they\'re fully immutable — safe to share across threads with zero synchronization.' }
-          ]
-        }
-
-      ]
-    },
-
-    {
-      id: '1.4',
-      title: 'JIT Compilation & Performance',
-      hours: 3,
-      notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is "safe publication" and why does unsafe publication happen?`,
+                a: `Safe publication means another thread is guaranteed to see a fully-initialized object. Unsafe publication happens when the reference is made visible before the constructor completes — CPU/compiler may reorder "store reference" before "store fields", so another thread reads default values (0, null).`
+              },
+              {
+                q: `Name the four safe publication mechanisms in Java.`,
+                a: `1) Static final field — class initialization is safely published. 2) volatile reference — volatile write HB subsequent reads. 3) synchronized — monitor unlock HB next lock. 4) Concurrent collections — ConcurrentHashMap, BlockingQueue etc. provide safe publication built-in.`
+              },
+              {
+                q: `What makes a class truly immutable?`,
+                a: `1) All fields are final. 2) No mutating methods. 3) Class is final. 4) Defensive copies of mutable constructor arguments. 5) No "this" escape in constructor.`
+              },
+              {
+                q: `What JMM special rule applies to final fields?`,
+                a: `A write to a final field in a constructor HB any thread that reads that field after the constructor completes (assuming "this" doesn't escape). You can share objects with only final fields across threads without explicit synchronization.`
+              },
+              {
+                q: `What is "constructor escape" and why is it dangerous?`,
+                a: `Publishing "this" inside the constructor (e.g. Registry.register(this)) before the constructor finishes. Another thread may observe the object in a partially-constructed state — fields at their default values. Fix: never publish this before the constructor returns.`
+              },
+              {
+                q: `Why are Java Records a good choice for concurrent code?`,
+                a: `Records are automatically: all fields private final, class implicitly final, no setters. With defensive copies of mutable inputs (List.copyOf), they're fully immutable — safe to share across threads with zero synchronization.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `1.4`,
+        title: `JIT Compilation & Performance`,
+        hours: 3,
+        notes: `
 # JIT Compilation & Performance — From Zero to Senior Level
 
 ## What Is JIT and Why Does It Exist?
@@ -13617,11 +14663,11 @@ Spring Boot 3 + GraalVM Native Image is increasingly used for **serverless funct
 > [!EU]
 > The rigour question: *"How did you measure that your code was actually slow? How do you know your optimisation helped?"* Answer: JMH for micro-benchmarks (with warmup, multiple forks, Blackhole), async-profiler flame graphs for production CPU hotspots, JFR for system-level view. Saying "I ran it a few times and it felt faster" is the wrong answer for a German engineering team.
 `,
-      code: [
-        {
-          lang: 'java',
-          title: 'Escape analysis & JIT warm-up effect',
-          code: `public class JitDemo {
+        code: [
+          {
+            lang: `java`,
+            title: `Escape analysis & JIT warm-up effect`,
+            code: `public class JitDemo {
     // This object does not escape -> JIT may scalar-replace it (no heap alloc)
     static long distanceSquared(int x, int y) {
         int[] point = new int[] { x, y };  // candidate for scalar replacement
@@ -13643,11 +14689,11 @@ Spring Boot 3 + GraalVM Native Image is increasingly used for **serverless funct
                            "or -XX:-DoEscapeAnalysis to disable scalar replacement.");
     }
 }`
-        },
-        {
-          lang: 'java',
-          title: 'Proper JMH microbenchmark — the correct way to measure Java performance',
-          code: `// JMH (Java Microbenchmark Harness) is the ONLY correct way to benchmark JVM code.
+          },
+          {
+            lang: `java`,
+            title: `Proper JMH microbenchmark — the correct way to measure Java performance`,
+            code: `// JMH (Java Microbenchmark Harness) is the ONLY correct way to benchmark JVM code.
 // Naive System.nanoTime loops are invalid: JIT may eliminate the code, warm-up skews results.
 
 // PRODUCTION DEPENDENCY: org.openjdk.jmh:jmh-core:1.37
@@ -13725,11 +14771,11 @@ public class JmhConceptDemo {
         System.out.println("JMH prevents dead-code elimination and reports confidence intervals.");
     }
 }`
-        },
-        {
-          lang: 'java',
-          title: 'GraalVM Native Image: tradeoffs made concrete',
-          code: `// GraalVM Native Image compiles Java AOT to a native binary.
+          },
+          {
+            lang: `java`,
+            title: `GraalVM Native Image: tradeoffs made concrete`,
+            code: `// GraalVM Native Image compiles Java AOT to a native binary.
 // Startup: milliseconds (vs seconds for JVM). Memory: ~10x lower at startup.
 // Cost: no JIT runtime optimisation, closed-world assumption.
 // Best for: CLI tools, serverless functions, microservices where cold-start matters.
@@ -13786,21 +14832,42 @@ public class GraalvmNativeDemo {
         staticFriendly(); // would work in native image
     }
 }`
-        }
-      ],
-      flashcards: [
-        { q: 'What is tiered compilation?', a: 'The JVM starts interpreting (level 0), compiles hot methods with C1 (levels 1–3, fast + profiling), and promotes the hottest to C2 (level 4, aggressive profile-guided optimisation).' },
-        { q: 'What is escape analysis and what does it enable?', a: 'Analysis determining whether an object escapes its creating method/thread. If it doesn\'t, the JIT can scalar-replace it (avoid heap allocation) and elide locks (lock coarsening/elision).' },
-        { q: 'Why use JMH instead of System.nanoTime loops?', a: 'JMH handles JIT warm-up (discards early iterations), prevents dead-code elimination from removing your benchmark (via Blackhole), forks fresh JVMs per benchmark, and reports statistically meaningful averages and confidence intervals.' },
-        { q: 'What does GraalVM Native Image trade away for fast startup?', a: 'Peak JIT throughput (profiling-guided optimisation cannot happen AOT), runtime adaptivity, and the ability to load classes dynamically — reflection/proxies need explicit build-time configuration. Build time is also 3-10 minutes vs seconds for a JAR.' },
-        { q: 'What JVM optimisation does method inlining enable?', a: 'Inlining copies a called method\'s body into the caller, eliminating call overhead and exposing the combined code to further optimisations (escape analysis, constant folding, dead-code elimination). It is the most impactful single JIT optimisation.' },
-        { q: 'What is deoptimisation and when does it happen?', a: 'The JIT makes speculative optimisations (e.g. assuming a call site is monomorphic). If an assumption is later violated (a new subclass appears), the JIT deoptimises — falls back to the interpreter for that code path — and recompiles with the new type information.' },
-        { q: 'When is GraalVM Native Image the right choice vs the JVM?', a: 'Native image wins for serverless functions, CLI tools, and batch jobs where cold-start time and memory footprint matter more than peak throughput. The JVM wins for long-running services where JIT profiling delivers peak throughput that AOT cannot match.' }
-      ],
-      sections: [
-        {
-          title: 'Why Interpretation is Slow & How JIT Helps',
-          notes: `
+          }
+        ],
+        flashcards: [
+          {
+            q: `What is tiered compilation?`,
+            a: `The JVM starts interpreting (level 0), compiles hot methods with C1 (levels 1–3, fast + profiling), and promotes the hottest to C2 (level 4, aggressive profile-guided optimisation).`
+          },
+          {
+            q: `What is escape analysis and what does it enable?`,
+            a: `Analysis determining whether an object escapes its creating method/thread. If it doesn't, the JIT can scalar-replace it (avoid heap allocation) and elide locks (lock coarsening/elision).`
+          },
+          {
+            q: `Why use JMH instead of System.nanoTime loops?`,
+            a: `JMH handles JIT warm-up (discards early iterations), prevents dead-code elimination from removing your benchmark (via Blackhole), forks fresh JVMs per benchmark, and reports statistically meaningful averages and confidence intervals.`
+          },
+          {
+            q: `What does GraalVM Native Image trade away for fast startup?`,
+            a: `Peak JIT throughput (profiling-guided optimisation cannot happen AOT), runtime adaptivity, and the ability to load classes dynamically — reflection/proxies need explicit build-time configuration. Build time is also 3-10 minutes vs seconds for a JAR.`
+          },
+          {
+            q: `What JVM optimisation does method inlining enable?`,
+            a: `Inlining copies a called method's body into the caller, eliminating call overhead and exposing the combined code to further optimisations (escape analysis, constant folding, dead-code elimination). It is the most impactful single JIT optimisation.`
+          },
+          {
+            q: `What is deoptimisation and when does it happen?`,
+            a: `The JIT makes speculative optimisations (e.g. assuming a call site is monomorphic). If an assumption is later violated (a new subclass appears), the JIT deoptimises — falls back to the interpreter for that code path — and recompiles with the new type information.`
+          },
+          {
+            q: `When is GraalVM Native Image the right choice vs the JVM?`,
+            a: `Native image wins for serverless functions, CLI tools, and batch jobs where cold-start time and memory footprint matter more than peak throughput. The JVM wins for long-running services where JIT profiling delivers peak throughput that AOT cannot match.`
+          }
+        ],
+        sections: [
+          {
+            title: `Why Interpretation is Slow & How JIT Helps`,
+            notes: `
 ### Interpreting Bytecode
 
 The JVM can run bytecode immediately by interpreting it. The interpreter reads one bytecode instruction, decodes it, executes the corresponding VM routine, then repeats. This is excellent for startup because no compilation delay is paid up front.
@@ -13813,9 +14880,11 @@ The Just-In-Time compiler watches running code and compiles hot paths into nativ
 
 \`\`\`mermaid
 flowchart LR
-    A["🚀 Cold Start<br/>Load classes<br/>fast startup"] -->|"bytecode dispatch\nslow per op"| B
+    A["🚀 Cold Start<br/>Load classes<br/>fast startup"] -->|"bytecode dispatch
+slow per op"| B
     B["Interpret<br/>Level 0<br/>collecting profiles"] -->|"~1000 invocations<br/>counter fires"| C
-    C["C1 Compile<br/>Levels 1-3<br/>fast + profiling"] -->|"~10000 invocations\nhot method"| D
+    C["C1 Compile<br/>Levels 1-3<br/>fast + profiling"] -->|"~10000 invocations
+hot method"| D
     D["C2 Compile<br/>Level 4<br/>max optimisation"] -->|"steady state"| E["⚡ Peak Throughput<br/>native code<br/>profile-guided"]
     style A fill:#1e293b,stroke:#818cf8,color:#e2e8f0
     style B fill:#2d1515,stroke:#ef4444,color:#fca5a5
@@ -13861,11 +14930,11 @@ For CLI tools and serverless functions, startup dominates. For long-running APIs
 > [!EU]
 > A common interview challenge is: "Our Java code is slow on the first request. Is Java slow?" A precise answer distinguishes class loading and JIT warm-up from steady-state performance, then proposes warm-up traffic, CDS/AppCDS, native image, or architectural changes depending on the product requirement.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Cold vs Warm Timing Demo',
-              code: `public class ColdWarmTimingDemo {
+            code: [
+              {
+                lang: `java`,
+                title: `Cold vs Warm Timing Demo`,
+                code: `public class ColdWarmTimingDemo {
     static long work(int n) {
         long acc = 0;
         for (int i = 1; i <= n; i++) {
@@ -13901,11 +14970,11 @@ For CLI tools and serverless functions, startup dominates. For long-running APIs
         System.out.println("Run with -XX:+PrintCompilation to see compilation activity.");
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Naive Benchmark Pitfall',
-              code: `public class NaiveBenchmarkPitfall {
+              },
+              {
+                lang: `java`,
+                title: `Naive Benchmark Pitfall`,
+                code: `public class NaiveBenchmarkPitfall {
     static int compute(int x) {
         int y = x;
         y = y * 31 + 17;
@@ -13938,24 +15007,54 @@ For CLI tools and serverless functions, startup dominates. For long-running APIs
         System.out.println("Still use JMH for real decisions: warmup, forks, Blackhole, stats.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'Why is bytecode interpretation slower than compiled native code?', a: 'Each bytecode instruction pays decode/dispatch overhead and runs through generic VM machinery instead of optimized CPU-specific instructions and registers.' },
-            { q: 'What does the JIT compiler compile?', a: 'Hot methods and hot loop paths observed at runtime, not every method in the program immediately.' },
-            { q: 'Why can JIT beat static AOT for long-running services?', a: 'It uses runtime profile data such as receiver types, branch probabilities, and allocation behavior to optimize actual hot paths.' },
-            { q: 'What is JVM warm-up?', a: 'The period where code is interpreted, profiled, compiled by lower tiers, and eventually optimized into high-quality native code.' },
-            { q: 'Why is cold JVM benchmarking misleading?', a: 'It includes class loading, verification, interpretation, and compilation transitions rather than steady-state optimized execution.' },
-            { q: 'When is AOT or native image attractive?', a: 'When startup time and memory footprint matter more than warmed peak throughput, such as serverless and CLI tools.' },
-            { q: 'What does JMH protect against?', a: 'Missing warm-up, dead-code elimination, JVM state pollution, insufficient forks, and poor statistical measurement.' },
-            { q: 'What is a benchmark fork in JMH?', a: 'A separate JVM process used to isolate measurements from prior JVM state and compilation history.' },
-            { q: 'What is the difference between startup and peak performance?', a: 'Startup is time to begin useful work; peak performance is optimized steady-state throughput after warm-up.' },
-            { q: 'Which tool should you use for a Java microbenchmark?', a: 'JMH, the Java Microbenchmark Harness.' }
-          ]
-        },
-        {
-          title: 'Tiered Compilation: C1 & C2',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is bytecode interpretation slower than compiled native code?`,
+                a: `Each bytecode instruction pays decode/dispatch overhead and runs through generic VM machinery instead of optimized CPU-specific instructions and registers.`
+              },
+              {
+                q: `What does the JIT compiler compile?`,
+                a: `Hot methods and hot loop paths observed at runtime, not every method in the program immediately.`
+              },
+              {
+                q: `Why can JIT beat static AOT for long-running services?`,
+                a: `It uses runtime profile data such as receiver types, branch probabilities, and allocation behavior to optimize actual hot paths.`
+              },
+              {
+                q: `What is JVM warm-up?`,
+                a: `The period where code is interpreted, profiled, compiled by lower tiers, and eventually optimized into high-quality native code.`
+              },
+              {
+                q: `Why is cold JVM benchmarking misleading?`,
+                a: `It includes class loading, verification, interpretation, and compilation transitions rather than steady-state optimized execution.`
+              },
+              {
+                q: `When is AOT or native image attractive?`,
+                a: `When startup time and memory footprint matter more than warmed peak throughput, such as serverless and CLI tools.`
+              },
+              {
+                q: `What does JMH protect against?`,
+                a: `Missing warm-up, dead-code elimination, JVM state pollution, insufficient forks, and poor statistical measurement.`
+              },
+              {
+                q: `What is a benchmark fork in JMH?`,
+                a: `A separate JVM process used to isolate measurements from prior JVM state and compilation history.`
+              },
+              {
+                q: `What is the difference between startup and peak performance?`,
+                a: `Startup is time to begin useful work; peak performance is optimized steady-state throughput after warm-up.`
+              },
+              {
+                q: `Which tool should you use for a Java microbenchmark?`,
+                a: `JMH, the Java Microbenchmark Harness.`
+              }
+            ]
+          },
+          {
+            title: `Tiered Compilation: C1 & C2`,
+            notes: `
 ### The Five Tiers
 
 HotSpot uses tiered compilation so it does not spend expensive compiler time on code that may never matter. The interpreter starts execution immediately. C1 compiles quickly and can add profiling. C2 compiles more slowly but produces aggressive optimized code for methods that prove important.
@@ -13983,15 +15082,23 @@ The JVM tracks method invocation counters and loop back-edge counters. When coun
 \`\`\`mermaid
 flowchart TD
     INV["Method invoked"] --> HOT{Hot enough?}
-    HOT -->|No| T0["Level 0: Interpret\ncollect invocation count"]
+    HOT -->|No| T0["Level 0: Interpret
+collect invocation count"]
     T0 -->|"counter > threshold"| HOT
-    HOT -->|"Yes → C1 candidate"| C1["Level 1-3: C1 Native\n+ profiling counters"]
-    C1 --> VERY{Very hot or\nhot loop OSR?}
-    VERY -->|No| KEEPC1["Keep C1 code\ngood enough"]
-    VERY -->|Yes| C2["Level 4: C2 Native\naggressive optimisation"]
-    C2 --> ASS{Assumption\nviolated?}
+    HOT -->|"Yes → C1 candidate"| C1["Level 1-3: C1 Native
++ profiling counters"]
+    C1 --> VERY{Very hot or
+hot loop OSR?}
+    VERY -->|No| KEEPC1["Keep C1 code
+good enough"]
+    VERY -->|Yes| C2["Level 4: C2 Native
+aggressive optimisation"]
+    C2 --> ASS{Assumption
+violated?}
     ASS -->|"No"| PEAK["⚡ Peak performance"]
-    ASS -->|"Yes — new subclass,\nbranch changed etc."| DEOPT["Deoptimise\nfall back to interpreter"]
+    ASS -->|"Yes — new subclass,
+branch changed etc."| DEOPT["Deoptimise
+fall back to interpreter"]
     DEOPT -->|"reprofile"| C1
     style T0 fill:#2d1515,stroke:#ef4444,color:#fca5a5
     style C1 fill:#1e293b,stroke:#f59e0b,color:#fde68a
@@ -14019,11 +15126,11 @@ Common deoptimization triggers include class loading that invalidates hierarchy 
 > [!SUCCESS]
 > Senior-level explanation: tiered compilation is a budget allocator. It spends cheap compiler time early to get speed and profile data, then spends expensive C2 time only where runtime evidence says it will pay off.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Hot Method Tier Promotion',
-              code: `public class TierPromotionDemo {
+            code: [
+              {
+                lang: `java`,
+                title: `Hot Method Tier Promotion`,
+                code: `public class TierPromotionDemo {
     static int score(String value) {
         int result = 0;
         for (int i = 0; i < value.length(); i++) {
@@ -14041,11 +15148,11 @@ Common deoptimization triggers include class loading that invalidates hierarchy 
         System.out.println("Run with: -XX:+PrintCompilation -XX:+TieredCompilation");
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'OSR Long-Running Loop Demo',
-              code: `public class OsrLoopDemo {
+              },
+              {
+                lang: `java`,
+                title: `OSR Long-Running Loop Demo`,
+                code: `public class OsrLoopDemo {
     public static void main(String[] args) {
         long sum = 0;
         long start = System.nanoTime();
@@ -14063,24 +15170,54 @@ Common deoptimization triggers include class loading that invalidates hierarchy 
         System.out.println("Run with -XX:+PrintCompilation and look for % OSR compilations.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What is tier 0 in HotSpot tiered compilation?', a: 'The bytecode interpreter.' },
-            { q: 'What are tiers 1 through 3?', a: 'C1 compiled code at different profiling levels, from simple native code to fully profiled C1 code.' },
-            { q: 'What is tier 4?', a: 'C2 optimized server-compiler code.' },
-            { q: 'Why does the JVM use C1 before C2?', a: 'C1 compiles quickly and gathers profile data, while C2 is slower but produces better optimized code.' },
-            { q: 'What counters make code hot?', a: 'Method invocation counters and loop back-edge counters.' },
-            { q: 'What is OSR?', a: 'On-Stack Replacement: switching a currently running interpreted loop to compiled code before the method returns.' },
-            { q: 'What does -XX:CompileThreshold influence?', a: 'How hot code generally must become before compilation is considered, though tiered policy has more heuristics.' },
-            { q: 'What is deoptimisation?', a: 'Discarding compiled code and returning to a safer tier when a speculative JIT assumption becomes invalid.' },
-            { q: 'How can class loading trigger deoptimization?', a: 'A newly loaded subclass can invalidate assumptions about a call site or class hierarchy.' },
-            { q: 'What does a megamorphic call site do to optimization?', a: 'It makes devirtualization and inlining harder because many receiver types appear at the same call site.' }
-          ]
-        },
-        {
-          title: 'Key JIT Optimisations',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is tier 0 in HotSpot tiered compilation?`,
+                a: `The bytecode interpreter.`
+              },
+              {
+                q: `What are tiers 1 through 3?`,
+                a: `C1 compiled code at different profiling levels, from simple native code to fully profiled C1 code.`
+              },
+              {
+                q: `What is tier 4?`,
+                a: `C2 optimized server-compiler code.`
+              },
+              {
+                q: `Why does the JVM use C1 before C2?`,
+                a: `C1 compiles quickly and gathers profile data, while C2 is slower but produces better optimized code.`
+              },
+              {
+                q: `What counters make code hot?`,
+                a: `Method invocation counters and loop back-edge counters.`
+              },
+              {
+                q: `What is OSR?`,
+                a: `On-Stack Replacement: switching a currently running interpreted loop to compiled code before the method returns.`
+              },
+              {
+                q: `What does -XX:CompileThreshold influence?`,
+                a: `How hot code generally must become before compilation is considered, though tiered policy has more heuristics.`
+              },
+              {
+                q: `What is deoptimisation?`,
+                a: `Discarding compiled code and returning to a safer tier when a speculative JIT assumption becomes invalid.`
+              },
+              {
+                q: `How can class loading trigger deoptimization?`,
+                a: `A newly loaded subclass can invalidate assumptions about a call site or class hierarchy.`
+              },
+              {
+                q: `What does a megamorphic call site do to optimization?`,
+                a: `It makes devirtualization and inlining harder because many receiver types appear at the same call site.`
+              }
+            ]
+          },
+          {
+            title: `Key JIT Optimisations`,
+            notes: `
 ### Method Inlining
 
 Inlining replaces a method call with the callee body. It removes call overhead, but the bigger win is that it exposes more code to later optimizations. Once a getter, helper, or strategy method is inline, constants can fold, allocations can disappear, and virtual calls can become direct.
@@ -14160,11 +15297,11 @@ flowchart TD
 > [!SUCCESS]
 > A useful rule: small cohesive methods are usually JIT-friendly because they inline well, and they are also human-friendly because they are easier to understand. Clean code and JIT-friendly code are usually the same code.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'Inlining Before and After Concept',
-              code: `public class InliningConceptDemo {
+            code: [
+              {
+                lang: `java`,
+                title: `Inlining Before and After Concept`,
+                code: `public class InliningConceptDemo {
     static int addTax(int cents) {
         return cents + tax(cents);
     }
@@ -14188,11 +15325,11 @@ flowchart TD
         System.out.println("Run with -XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining");
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Escape Analysis Before and After Concept',
-              code: `public class EscapeAnalysisConceptDemo {
+              },
+              {
+                lang: `java`,
+                title: `Escape Analysis Before and After Concept`,
+                code: `public class EscapeAnalysisConceptDemo {
     record Point(int x, int y) {}
 
     static int distanceSquared(int x, int y) {
@@ -14215,24 +15352,54 @@ flowchart TD
         System.out.println("Compare allocation behavior with and without -XX:-DoEscapeAnalysis.");
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'Why is method inlining so important?', a: 'It removes call overhead and exposes the combined code to further optimizations such as escape analysis and constant folding.' },
-            { q: 'What does -XX:MaxInlineSize control?', a: 'The bytecode-size threshold for ordinary small-method inlining decisions.' },
-            { q: 'What is escape analysis?', a: 'A JIT analysis that determines whether an object can be observed outside its method or thread.' },
-            { q: 'What is scalar replacement?', a: 'Replacing an object allocation with its individual fields, often held in registers, so no heap object is created.' },
-            { q: 'What is lock elision?', a: 'Removing synchronization when the JIT proves the locked object cannot be shared across threads.' },
-            { q: 'What is dead-code elimination?', a: 'Removing computations that have no observable effect.' },
-            { q: 'What is devirtualisation?', a: 'Turning a virtual/interface call into a direct call based on observed receiver types.' },
-            { q: 'What is a monomorphic call site?', a: 'A call site that has observed one receiver type, making direct call and inlining likely.' },
-            { q: 'What is a JVM intrinsic?', a: 'A special optimized JVM implementation for a known method, often using CPU-specific instructions.' },
-            { q: 'How do you verify inlining decisions?', a: 'Use -XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining or inspect with JITWatch.' }
-          ]
-        },
-        {
-          title: 'Profiling, Measuring & GraalVM',
-          notes: `
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is method inlining so important?`,
+                a: `It removes call overhead and exposes the combined code to further optimizations such as escape analysis and constant folding.`
+              },
+              {
+                q: `What does -XX:MaxInlineSize control?`,
+                a: `The bytecode-size threshold for ordinary small-method inlining decisions.`
+              },
+              {
+                q: `What is escape analysis?`,
+                a: `A JIT analysis that determines whether an object can be observed outside its method or thread.`
+              },
+              {
+                q: `What is scalar replacement?`,
+                a: `Replacing an object allocation with its individual fields, often held in registers, so no heap object is created.`
+              },
+              {
+                q: `What is lock elision?`,
+                a: `Removing synchronization when the JIT proves the locked object cannot be shared across threads.`
+              },
+              {
+                q: `What is dead-code elimination?`,
+                a: `Removing computations that have no observable effect.`
+              },
+              {
+                q: `What is devirtualisation?`,
+                a: `Turning a virtual/interface call into a direct call based on observed receiver types.`
+              },
+              {
+                q: `What is a monomorphic call site?`,
+                a: `A call site that has observed one receiver type, making direct call and inlining likely.`
+              },
+              {
+                q: `What is a JVM intrinsic?`,
+                a: `A special optimized JVM implementation for a known method, often using CPU-specific instructions.`
+              },
+              {
+                q: `How do you verify inlining decisions?`,
+                a: `Use -XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining or inspect with JITWatch.`
+              }
+            ]
+          },
+          {
+            title: `Profiling, Measuring & GraalVM`,
+            notes: `
 ### PrintCompilation
 
 \`-XX:+PrintCompilation\` prints methods as the JVM compiles them. A typical line includes a timestamp, compilation id, tier, method name, bytecode size, and sometimes markers for OSR, made-not-entrant, or made-zombie code.
@@ -14278,15 +15445,22 @@ GraalVM has two different stories. Native Image is AOT: it builds a standalone b
 \`\`\`mermaid
 graph LR
     subgraph AOT["GraalVM Native Image (AOT)"]
-        N1["Build time: full app analysis\nreflection config required"]
-        N2["Binary: ~40MB standalone\nno JVM needed at runtime"]
-        N3["Startup: 30ms ✅\nMemory: 50MB ✅\nPeak throughput: lower ⚠️"]
+        N1["Build time: full app analysis
+reflection config required"]
+        N2["Binary: ~40MB standalone
+no JVM needed at runtime"]
+        N3["Startup: 30ms ✅
+Memory: 50MB ✅
+Peak throughput: lower ⚠️"]
         N1 --> N2 --> N3
     end
     subgraph JIT["HotSpot / Graal JIT (JVM)"]
-        J1["Runtime: interpret → C1 → C2\nno build-time constraint"]
-        J2["Startup: 1-2s ⚠️\nMemory: 300MB+ ⚠️"]
-        J3["Peak throughput: highest ✅\nProfile-guided, adaptive"]
+        J1["Runtime: interpret → C1 → C2
+no build-time constraint"]
+        J2["Startup: 1-2s ⚠️
+Memory: 300MB+ ⚠️"]
+        J3["Peak throughput: highest ✅
+Profile-guided, adaptive"]
         J1 --> J2 --> J3
     end
     style AOT fill:#1e293b,stroke:#818cf8
@@ -14310,11 +15484,11 @@ The benchmark below is a real JMH benchmark. It uses warm-up iterations that are
 > [!EU]
 > A rigorous performance report includes the tool, JVM version, flags, hardware, warm-up, input sizes, confidence/error values, and a before/after comparison. Without those, it is a story, not evidence.
 `,
-          code: [
-            {
-              lang: 'java',
-              title: 'PrintCompilation Target Program',
-              code: `public class PrintCompilationTarget {
+            code: [
+              {
+                lang: `java`,
+                title: `PrintCompilation Target Program`,
+                code: `public class PrintCompilationTarget {
     static long parseAndMix(String text) {
         long result = 1125899906842597L;
         for (int i = 0; i < text.length(); i++) {
@@ -14332,11 +15506,11 @@ The benchmark below is a real JMH benchmark. It uses warm-up iterations that are
         System.out.println("Run with: -XX:+PrintCompilation");
     }
 }`
-            },
-            {
-              lang: 'java',
-              title: 'Real JMH Benchmark Showing Warm-Up Effect',
-              code: `import org.openjdk.jmh.annotations.Benchmark;
+              },
+              {
+                lang: `java`,
+                title: `Real JMH Benchmark Showing Warm-Up Effect`,
+                code: `import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
@@ -14372,41 +15546,69 @@ public class WarmupEffectBenchmark {
         blackhole.consume(value);
     }
 }`
-            }
-          ],
-          flashcards: [
-            { q: 'What does -XX:+PrintCompilation show?', a: 'JVM compilation events including compile id, tier, method, bytecode size, and status markers.' },
-            { q: 'What does tier 4 mean in PrintCompilation output?', a: 'C2 optimized compiled code.' },
-            { q: 'What is JFR best used for?', a: 'Low-overhead production profiling across CPU, allocation, locks, GC, threads, exceptions, and latency events.' },
-            { q: 'What does async-profiler produce?', a: 'Low-overhead flame graphs for CPU, allocation, lock, or wall-clock profiling.' },
-            { q: 'What is JITWatch used for?', a: 'Visualizing JIT compilation logs, inlining decisions, bytecode, and assembly relationships.' },
-            { q: 'What does -XX:CICompilerCount tune?', a: 'The number of compiler threads available for JIT compilation.' },
-            { q: 'What is the code cache?', a: 'Native memory where the JVM stores generated compiled machine code.' },
-            { q: 'How is GraalVM Native Image different from Graal JIT?', a: 'Native Image is ahead-of-time compilation to a standalone binary; Graal JIT optimizes code at runtime inside a JVM.' },
-            { q: 'Why does Native Image start quickly?', a: 'Most analysis and compilation happen at build time, so runtime avoids JVM warm-up and dynamic JIT compilation.' },
-            { q: 'Why can Native Image have lower peak throughput?', a: 'It lacks runtime profile-guided JIT optimization and must obey closed-world build-time assumptions.' }
-          ]
-        }
-      ]
-    }
-  ]
-},
-
-/* ===================== PHASE 2: Modern Java ===================== */
-{
-  id: 'p2',
-  title: 'Core & Modern Java (8 → 21)',
-  icon: 'code-2',
-  blurb: 'Collections, concurrency, and the language leaps: lambdas, records, sealed types, pattern matching, virtual threads.',
-  modules: [
-    {
-      id: '2.1',
-      title: 'Collections & Equals/HashCode Contracts',
-      hours: 4,
-      sections: [
-        {
-          title: 'Collection Hierarchy & Choosing the Right Type',
-          notes: `## Collection Hierarchy & Choosing the Right Type
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does -XX:+PrintCompilation show?`,
+                a: `JVM compilation events including compile id, tier, method, bytecode size, and status markers.`
+              },
+              {
+                q: `What does tier 4 mean in PrintCompilation output?`,
+                a: `C2 optimized compiled code.`
+              },
+              {
+                q: `What is JFR best used for?`,
+                a: `Low-overhead production profiling across CPU, allocation, locks, GC, threads, exceptions, and latency events.`
+              },
+              {
+                q: `What does async-profiler produce?`,
+                a: `Low-overhead flame graphs for CPU, allocation, lock, or wall-clock profiling.`
+              },
+              {
+                q: `What is JITWatch used for?`,
+                a: `Visualizing JIT compilation logs, inlining decisions, bytecode, and assembly relationships.`
+              },
+              {
+                q: `What does -XX:CICompilerCount tune?`,
+                a: `The number of compiler threads available for JIT compilation.`
+              },
+              {
+                q: `What is the code cache?`,
+                a: `Native memory where the JVM stores generated compiled machine code.`
+              },
+              {
+                q: `How is GraalVM Native Image different from Graal JIT?`,
+                a: `Native Image is ahead-of-time compilation to a standalone binary; Graal JIT optimizes code at runtime inside a JVM.`
+              },
+              {
+                q: `Why does Native Image start quickly?`,
+                a: `Most analysis and compilation happen at build time, so runtime avoids JVM warm-up and dynamic JIT compilation.`
+              },
+              {
+                q: `Why can Native Image have lower peak throughput?`,
+                a: `It lacks runtime profile-guided JIT optimization and must obey closed-world build-time assumptions.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p2`,
+    title: `Core & Modern Java (8 → 21)`,
+    icon: `code-2`,
+    blurb: `Collections, concurrency, and the language leaps: lambdas, records, sealed types, pattern matching, virtual threads.`,
+    modules: [
+      {
+        id: `2.1`,
+        title: `Collections & Equals/HashCode Contracts`,
+        hours: 4,
+        sections: [
+          {
+            title: `Collection Hierarchy & Choosing the Right Type`,
+            notes: `## Collection Hierarchy & Choosing the Right Type
 
 The Java Collections Framework (JCF) is a unified architecture for representing and manipulating groups of objects. Every collection falls into one of three interfaces: \`List\`, \`Set\`, or \`Map\` (not technically a \`Collection\`, but part of the framework).
 
@@ -14419,13 +15621,24 @@ graph TD
     CO --> LI[List]
     CO --> SE[Set]
     CO --> QU[Queue]
-    LI --> AL[ArrayList\nordered, indexed\nO1 get, On insert]
-    LI --> LL[LinkedList\nO1 head/tail\nOn get]
-    SE --> HS[HashSet\nO1 add/contains\nunordered]
-    SE --> LS[LinkedHashSet\ninsertion order]
-    SE --> TS[TreeSet\nsorted\nOlogn]
-    QU --> PQ[PriorityQueue\nheap-based]
-    QU --> AQ[ArrayDeque\nstack + queue]
+    LI --> AL[ArrayList
+ordered, indexed
+O1 get, On insert]
+    LI --> LL[LinkedList
+O1 head/tail
+On get]
+    SE --> HS[HashSet
+O1 add/contains
+unordered]
+    SE --> LS[LinkedHashSet
+insertion order]
+    SE --> TS[TreeSet
+sorted
+Ologn]
+    QU --> PQ[PriorityQueue
+heap-based]
+    QU --> AQ[ArrayDeque
+stack + queue]
     style AL fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style HS fill:#0f1e12,stroke:#10b981,color:#e2e8f0
     style TS fill:#1e0a0a,stroke:#ef4444,color:#fecaca
@@ -14508,8 +15721,8 @@ System.out.println(queue.poll()); // "first" — FIFO
 | Key-value, sorted | \`TreeMap\` |
 
 > **Interview rule:** reach for \`ArrayList\` and \`HashMap\` first — they are the correct default for 90% of use cases. Only switch when you have a specific requirement (ordering, sorting, deduplication).`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.stream.*;
 
 public class CollectionTypesDemo {
@@ -14528,7 +15741,8 @@ public class CollectionTypesDemo {
         // --- Set semantics: no duplicates ---
         List<String> rawTags = List.of("java", "spring", "java", "jvm", "spring", "jdbc");
         Set<String> unique = new LinkedHashSet<>(rawTags); // insertion-order, deduped
-        System.out.println("\nUnique tags (insertion order): " + unique);
+        System.out.println("
+Unique tags (insertion order): " + unique);
 
         // Set operations
         Set<String> setA = new HashSet<>(Set.of("a", "b", "c", "d"));
@@ -14549,14 +15763,15 @@ public class CollectionTypesDemo {
         tasks.add(new Task("Write tests",  5));
         tasks.add(new Task("Code review",  7));
 
-        System.out.println("\nTask queue (highest priority first):");
+        System.out.println("
+Task queue (highest priority first):");
         while (!tasks.isEmpty()) {
             Task t = tasks.poll();
             System.out.printf("  [%2d] %s%n", t.priority(), t.name());
         }
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // ArrayDeque as stack, queue, and sliding window
 public class DequeDemo {
@@ -14612,22 +15827,38 @@ public class DequeDemo {
         System.out.println("Forward: " + browser.goForward());
 
         int[] nums = {1, 3, -1, -3, 5, 3, 6, 7};
-        System.out.println("\nSliding window max (k=3): " + Arrays.toString(slidingWindowMax(nums, 3)));
+        System.out.println("
+Sliding window max (k=3): " + Arrays.toString(slidingWindowMax(nums, 3)));
         // [3, 3, 5, 5, 6, 7]
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the time complexity of ArrayList.get(i), add(), and add(i, elem)?', a: 'get(i): O(1) — direct array index access. add() to end: O(1) amortised (occasional O(n) resize, but amortised constant). add(i, elem) at index: O(n) — all elements from i onward must be shifted right. For frequent mid-list inserts, consider LinkedList (but its O(n) traversal to find position negates the O(1) insert benefit in practice — ArrayDeque is often better).' },
-            { q: 'When should you use LinkedHashSet over HashSet?', a: 'When you need both uniqueness AND insertion order. HashSet gives O(1) operations but no order guarantee. LinkedHashSet gives the same O(1) complexity but maintains a doubly-linked list connecting entries in insertion order. Common use: deduplicate a list while preserving order — new LinkedHashSet<>(list).' },
-            { q: 'What is the difference between PriorityQueue.poll() and peek()?', a: 'peek() returns the head element (smallest for natural order, or according to Comparator) without removing it — O(1). poll() removes and returns the head — O(log n) because it must re-heapify. offer()/add() is also O(log n). PriorityQueue does NOT sort on iteration — only poll() order is guaranteed. For sorted output: keep polling until empty.' },
-            { q: 'Why prefer ArrayDeque over Stack and LinkedList for stack/queue operations?', a: 'Stack extends Vector which is synchronized — unnecessary overhead in single-threaded code. LinkedList allocates a node object per element. ArrayDeque uses a resizable array internally: O(1) amortised push/pop/offer/poll, better cache locality than LinkedList, no synchronization overhead. It implements Deque, so it serves as both stack (push/pop) and queue (offer/poll).' },
-            { q: 'What does Collections.unmodifiableList() return and how does it differ from List.of()?', a: 'Collections.unmodifiableList(list) returns a view — modifications to the original list are reflected in the unmodifiable view. It wraps the original without copying. List.of() creates a new truly immutable list that cannot be modified from any reference. For defensive returns, List.copyOf() makes an immutable snapshot, while List.of() is for literals.' }
-          ]
-        },
-        {
-          title: 'equals() and hashCode() Contract',
-          notes: `## equals() and hashCode() Contract
+            ],
+            flashcards: [
+              {
+                q: `What is the time complexity of ArrayList.get(i), add(), and add(i, elem)?`,
+                a: `get(i): O(1) — direct array index access. add() to end: O(1) amortised (occasional O(n) resize, but amortised constant). add(i, elem) at index: O(n) — all elements from i onward must be shifted right. For frequent mid-list inserts, consider LinkedList (but its O(n) traversal to find position negates the O(1) insert benefit in practice — ArrayDeque is often better).`
+              },
+              {
+                q: `When should you use LinkedHashSet over HashSet?`,
+                a: `When you need both uniqueness AND insertion order. HashSet gives O(1) operations but no order guarantee. LinkedHashSet gives the same O(1) complexity but maintains a doubly-linked list connecting entries in insertion order. Common use: deduplicate a list while preserving order — new LinkedHashSet<>(list).`
+              },
+              {
+                q: `What is the difference between PriorityQueue.poll() and peek()?`,
+                a: `peek() returns the head element (smallest for natural order, or according to Comparator) without removing it — O(1). poll() removes and returns the head — O(log n) because it must re-heapify. offer()/add() is also O(log n). PriorityQueue does NOT sort on iteration — only poll() order is guaranteed. For sorted output: keep polling until empty.`
+              },
+              {
+                q: `Why prefer ArrayDeque over Stack and LinkedList for stack/queue operations?`,
+                a: `Stack extends Vector which is synchronized — unnecessary overhead in single-threaded code. LinkedList allocates a node object per element. ArrayDeque uses a resizable array internally: O(1) amortised push/pop/offer/poll, better cache locality than LinkedList, no synchronization overhead. It implements Deque, so it serves as both stack (push/pop) and queue (offer/poll).`
+              },
+              {
+                q: `What does Collections.unmodifiableList() return and how does it differ from List.of()?`,
+                a: `Collections.unmodifiableList(list) returns a view — modifications to the original list are reflected in the unmodifiable view. It wraps the original without copying. List.of() creates a new truly immutable list that cannot be modified from any reference. For defensive returns, List.copyOf() makes an immutable snapshot, while List.of() is for literals.`
+              }
+            ]
+          },
+          {
+            title: `equals() and hashCode() Contract`,
+            notes: `## equals() and hashCode() Contract
 
 The equals/hashCode contract is one of the most tested Java topics in senior interviews. Get it wrong and \`HashSet\`, \`HashMap\`, and any hash-based collection silently breaks — losing items or producing ghost duplicates.
 
@@ -14696,10 +15927,14 @@ System.out.println(set.contains(p2)); // true ✓
 
 \`\`\`mermaid
 graph LR
-    KEY[key.hashCode\ne.g. 42]
-    KEY --> BUCKET[bucket index\nhash & mask]
-    BUCKET --> CHAIN[linked chain\nor tree node]
-    CHAIN --> EQ[key.equals\nfor each node]
+    KEY[key.hashCode
+e.g. 42]
+    KEY --> BUCKET[bucket index
+hash & mask]
+    BUCKET --> CHAIN[linked chain
+or tree node]
+    CHAIN --> EQ[key.equals
+for each node]
     EQ --> VAL[value]
     style KEY fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style EQ  fill:#0f1e12,stroke:#10b981,color:#e2e8f0
@@ -14740,8 +15975,8 @@ System.out.println(map.size());   // 1 — the entry is still there, just unreac
 \`\`\`
 
 **Rule:** never use a mutable object as a Map key or Set element. Use immutable types (String, Integer, records, custom immutable class).`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 
 public class EqualsHashCodeDemo {
     // Correct implementation for a value object
@@ -14796,7 +16031,7 @@ public class EqualsHashCodeDemo {
         System.out.println("Lookup with b: " + quantities.get(b)); // 5 — found via equals
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // Demonstrate the broken-contract failure and mutable key danger
 public class ContractViolations {
@@ -14835,7 +16070,8 @@ public class ContractViolations {
         MutableId mutable = new MutableId(1);
         Map<MutableId, String> map = new HashMap<>();
         map.put(mutable, "original value");
-        System.out.println("\nBefore mutation: " + map.get(mutable)); // original value
+        System.out.println("
+Before mutation: " + map.get(mutable)); // original value
 
         mutable.id = 999; // mutate after put!
         System.out.println("After mutation:  " + map.get(mutable));  // null — wrong bucket now
@@ -14845,21 +16081,37 @@ public class ContractViolations {
         record Point(int x, int y) {}
         Set<Point> points = new HashSet<>();
         points.add(new Point(1, 2));
-        System.out.println("\nRecord lookup: " + points.contains(new Point(1, 2))); // true
+        System.out.println("
+Record lookup: " + points.contains(new Point(1, 2))); // true
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What happens if you override equals() but NOT hashCode()?', a: 'Two "equal" objects will hash to different buckets in HashMap/HashSet (because Object.hashCode() returns identity-based values). HashSet.contains(b) returns false even when a.equals(b) is true — b lands in a different bucket from a. The contract requires: a.equals(b) → a.hashCode() == b.hashCode(). Breaking this silently corrupts all hash-based collections.' },
-            { q: 'What are the five properties of the equals() contract?', a: 'Reflexive: x.equals(x) = true. Symmetric: x.equals(y) ↔ y.equals(x). Transitive: x.equals(y) ∧ y.equals(z) → x.equals(z). Consistent: repeated calls return same result (no state change). Non-null: x.equals(null) = false (never throws NullPointerException).' },
-            { q: 'Why must you never use a mutable object as a HashMap key?', a: 'A key\'s bucket is determined by its hashCode() at insertion time. If the object is mutated after insertion, its hashCode changes, so it is now in the wrong bucket. The entry still exists but is unreachable via get() — the map is corrupted. Always use immutable types (String, Integer, record, or custom immutable class) as map keys.' },
-            { q: 'How does HashMap use hashCode() and equals() to find a value?', a: 'HashMap.get(key): (1) compute key.hashCode(), (2) compute bucket index = hash & (capacity-1), (3) traverse the linked list (or red-black tree for large buckets) at that bucket, (4) for each node, check key.equals(nodeKey) until found or list exhausted. hashCode determines the bucket (O(1) array lookup); equals identifies the exact entry within the bucket.' },
-            { q: 'What does Objects.hash(a, b, c) do and why is it preferred?', a: 'Objects.hash(a,b,c) calls Arrays.hashCode(new Object[]{a,b,c}) which computes 31*31*h(a) + 31*h(b) + h(c) — the standard polynomial hash. It is preferred over manual "31 * result + field.hashCode()" because: null-safe (handles null fields gracefully), concise, standard, and consistent with what IDEs and records generate. Use the same fields as in equals().' }
-          ]
-        },
-        {
-          title: 'Comparable vs Comparator',
-          notes: `## Comparable vs Comparator
+            ],
+            flashcards: [
+              {
+                q: `What happens if you override equals() but NOT hashCode()?`,
+                a: `Two "equal" objects will hash to different buckets in HashMap/HashSet (because Object.hashCode() returns identity-based values). HashSet.contains(b) returns false even when a.equals(b) is true — b lands in a different bucket from a. The contract requires: a.equals(b) → a.hashCode() == b.hashCode(). Breaking this silently corrupts all hash-based collections.`
+              },
+              {
+                q: `What are the five properties of the equals() contract?`,
+                a: `Reflexive: x.equals(x) = true. Symmetric: x.equals(y) ↔ y.equals(x). Transitive: x.equals(y) ∧ y.equals(z) → x.equals(z). Consistent: repeated calls return same result (no state change). Non-null: x.equals(null) = false (never throws NullPointerException).`
+              },
+              {
+                q: `Why must you never use a mutable object as a HashMap key?`,
+                a: `A key's bucket is determined by its hashCode() at insertion time. If the object is mutated after insertion, its hashCode changes, so it is now in the wrong bucket. The entry still exists but is unreachable via get() — the map is corrupted. Always use immutable types (String, Integer, record, or custom immutable class) as map keys.`
+              },
+              {
+                q: `How does HashMap use hashCode() and equals() to find a value?`,
+                a: `HashMap.get(key): (1) compute key.hashCode(), (2) compute bucket index = hash & (capacity-1), (3) traverse the linked list (or red-black tree for large buckets) at that bucket, (4) for each node, check key.equals(nodeKey) until found or list exhausted. hashCode determines the bucket (O(1) array lookup); equals identifies the exact entry within the bucket.`
+              },
+              {
+                q: `What does Objects.hash(a, b, c) do and why is it preferred?`,
+                a: `Objects.hash(a,b,c) calls Arrays.hashCode(new Object[]{a,b,c}) which computes 31*31*h(a) + 31*h(b) + h(c) — the standard polynomial hash. It is preferred over manual "31 * result + field.hashCode()" because: null-safe (handles null fields gracefully), concise, standard, and consistent with what IDEs and records generate. Use the same fields as in equals().`
+              }
+            ]
+          },
+          {
+            title: `Comparable vs Comparator`,
+            notes: `## Comparable vs Comparator
 
 Sorting in Java has two mechanisms: \`Comparable\` (natural order, built into the class) and \`Comparator\` (external, pluggable order). Understanding when to use each is a common interview question.
 
@@ -14953,8 +16205,8 @@ System.out.println(words); // [fig, kiwi, apple, banana, cherry]
 | Sorting a third-party class you can't modify | \`Comparator\` |
 | Passing order to \`TreeSet\`/\`TreeMap\` constructor | \`Comparator\` |
 | Algorithm choice based on runtime condition | \`Comparator\` |`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.time.*;
 
 public class ComparableComparatorDemo {
@@ -14987,17 +16239,19 @@ public class ComparableComparatorDemo {
             new TreeMap<>(Comparator.comparingDouble(Product::price).reversed());
         catalog.forEach(p -> inventory.put(p, (int)(100 / p.price())));
 
-        System.out.println("\nInventory (price desc):");
+        System.out.println("
+Inventory (price desc):");
         inventory.forEach((p, qty) ->
             System.out.printf("  %-15s $%.2f  stock=%d%n", p.name(), p.price(), qty));
 
         // Null-safe sort
         List<String> tags = new ArrayList<>(Arrays.asList("java", null, "spring", null, "jdbc"));
         tags.sort(Comparator.nullsLast(Comparator.naturalOrder()));
-        System.out.println("\nNull-safe sort: " + tags);
+        System.out.println("
+Null-safe sort: " + tags);
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // Implementing Comparable with correct compareTo
 public class ComparableImpl {
@@ -15052,18 +16306,33 @@ public class ComparableImpl {
         System.out.println("Versions >= 2.0.0: " + latest.tailSet(new Version("2.0.0")));
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between Comparable and Comparator?', a: 'Comparable (java.lang) is implemented by a class to define its natural ordering — one ordering baked into the class. Comparator (java.util) is external — a separate object or lambda that defines an ordering independently of the class. Use Comparable for the primary, "obvious" ordering; use Comparator for alternative orderings, third-party classes, or runtime-chosen orders.' },
-            { q: 'Why should you never implement compareTo() as return a.field - b.field?', a: 'Integer subtraction overflows for extreme values: if a=Integer.MAX_VALUE and b=-1, MAX_VALUE - (-1) overflows to a negative number, reversing the comparison. Always use Integer.compare(a, b), Long.compare(a, b), or Double.compare(a, b) — these are overflow-safe and return -1, 0, or 1 correctly.' },
-            { q: 'How does Comparator.thenComparing() work?', a: 'thenComparing() adds a secondary comparator applied only when the primary comparator returns 0 (equal). You can chain arbitrarily: byDept.thenComparingInt(Employee::salary).thenComparing(Employee::name) — sort by dept, then within same dept by salary, then within same dept+salary by name. Each thenComparing() is only consulted when all previous ones return 0.' },
-            { q: 'What is Comparator.nullsFirst() / nullsLast() for?', a: 'Standard comparators throw NullPointerException when comparing a null element. Comparator.nullsFirst(natural) wraps another comparator and sorts nulls before all non-null elements. nullsLast(natural) sorts nulls after. Essential when sorting collections that may contain null elements.' },
-            { q: 'What is the consistency-with-equals requirement for compareTo()?', a: 'Strongly recommended (not mandatory): if x.compareTo(y) == 0, then x.equals(y) should be true. If violated, the element behaves differently in sorted collections (TreeSet/TreeMap, which use compareTo) vs hash collections (HashMap/HashSet, which use equals). BigDecimal is a known violator: "2.0".compareTo("2.00") = 0 but "2.0".equals("2.00") = false, so TreeSet treats them as duplicates but HashMap treats them as different keys.' }
-          ]
-        },
-        {
-          title: 'Maps Deep Dive — HashMap, LinkedHashMap, TreeMap',
-          notes: `## Maps Deep Dive — HashMap, LinkedHashMap, TreeMap
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between Comparable and Comparator?`,
+                a: `Comparable (java.lang) is implemented by a class to define its natural ordering — one ordering baked into the class. Comparator (java.util) is external — a separate object or lambda that defines an ordering independently of the class. Use Comparable for the primary, "obvious" ordering; use Comparator for alternative orderings, third-party classes, or runtime-chosen orders.`
+              },
+              {
+                q: `Why should you never implement compareTo() as return a.field - b.field?`,
+                a: `Integer subtraction overflows for extreme values: if a=Integer.MAX_VALUE and b=-1, MAX_VALUE - (-1) overflows to a negative number, reversing the comparison. Always use Integer.compare(a, b), Long.compare(a, b), or Double.compare(a, b) — these are overflow-safe and return -1, 0, or 1 correctly.`
+              },
+              {
+                q: `How does Comparator.thenComparing() work?`,
+                a: `thenComparing() adds a secondary comparator applied only when the primary comparator returns 0 (equal). You can chain arbitrarily: byDept.thenComparingInt(Employee::salary).thenComparing(Employee::name) — sort by dept, then within same dept by salary, then within same dept+salary by name. Each thenComparing() is only consulted when all previous ones return 0.`
+              },
+              {
+                q: `What is Comparator.nullsFirst() / nullsLast() for?`,
+                a: `Standard comparators throw NullPointerException when comparing a null element. Comparator.nullsFirst(natural) wraps another comparator and sorts nulls before all non-null elements. nullsLast(natural) sorts nulls after. Essential when sorting collections that may contain null elements.`
+              },
+              {
+                q: `What is the consistency-with-equals requirement for compareTo()?`,
+                a: `Strongly recommended (not mandatory): if x.compareTo(y) == 0, then x.equals(y) should be true. If violated, the element behaves differently in sorted collections (TreeSet/TreeMap, which use compareTo) vs hash collections (HashMap/HashSet, which use equals). BigDecimal is a known violator: "2.0".compareTo("2.00") = 0 but "2.0".equals("2.00") = false, so TreeSet treats them as duplicates but HashMap treats them as different keys.`
+              }
+            ]
+          },
+          {
+            title: `Maps Deep Dive — HashMap, LinkedHashMap, TreeMap`,
+            notes: `## Maps Deep Dive — HashMap, LinkedHashMap, TreeMap
 
 Maps are the most-used data structure in backend Java. Understanding their internal mechanics, thread-safety, and choosing between them is a staple of senior interviews.
 
@@ -15075,10 +16344,21 @@ graph TD
     HM --> B0[Bucket 0]
     HM --> B3[Bucket 3]
     HM --> B7[Bucket 7]
-    B0 --> N1[Node\nkey=Alice\nval=30\nnext→]
-    N1 --> N2[Node\nkey=Eve\nval=25\nnext=null]
-    B3 --> N3[Node\nkey=Bob\nval=40\nnext=null]
-    B7 --> N4[TreeNode\nred-black tree\nwhen chain ≥ 8]
+    B0 --> N1[Node
+key=Alice
+val=30
+next→]
+    N1 --> N2[Node
+key=Eve
+val=25
+next=null]
+    B3 --> N3[Node
+key=Bob
+val=40
+next=null]
+    B7 --> N4[TreeNode
+red-black tree
+when chain ≥ 8]
     style B0 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style B7 fill:#1e0a0a,stroke:#ef4444,color:#fecaca
 \`\`\`
@@ -15179,8 +16459,8 @@ counters.computeIfAbsent("hits", k -> new AtomicInteger()).incrementAndGet();
 // Java 8 atomic operations
 counters.merge("hits", new AtomicInteger(1), (a, b) -> { a.addAndGet(b.get()); return a; });
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.stream.*;
 
 public class MapDeepDive {
@@ -15202,7 +16482,8 @@ public class MapDeepDive {
         List<String> names = List.of("Alice","Bob","Carol","Amy","Brian","Charlie");
         Map<Character, List<String>> byInitial = new TreeMap<>();
         names.forEach(n -> byInitial.computeIfAbsent(n.charAt(0), k -> new ArrayList<>()).add(n));
-        System.out.println("\nGrouped by initial: " + byInitial);
+        System.out.println("
+Grouped by initial: " + byInitial);
 
         // 3. LinkedHashMap — preserve insertion order for config
         Map<String, String> config = new LinkedHashMap<>();
@@ -15210,7 +16491,8 @@ public class MapDeepDive {
         config.put("db.port", "5432");
         config.put("db.name", "myapp");
         config.put("app.env", "production");
-        System.out.println("\nConfig (insertion order):");
+        System.out.println("
+Config (insertion order):");
         config.forEach((k, v) -> System.out.println("  " + k + "=" + v));
 
         // 4. TreeMap range query — log entries by timestamp prefix
@@ -15221,12 +16503,13 @@ public class MapDeepDive {
         logs.put("2024-06-25T11:00", "request received");
         logs.put("2024-06-25T11:30", "shutdown");
 
-        System.out.println("\nLogs from 10:00-11:00:");
+        System.out.println("
+Logs from 10:00-11:00:");
         logs.subMap("2024-06-25T10:00", "2024-06-25T11:00")
             .forEach((k, v) -> System.out.println("  " + k + " — " + v));
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // LRU Cache using LinkedHashMap + computeIfAbsent patterns
 public class LruAndComputeDemo {
@@ -15270,7 +16553,8 @@ public class LruAndComputeDemo {
             new String[]{"Marketing",   "Dave"}
         );
 
-        System.out.println("\nDept breakdown:");
+        System.out.println("
+Dept breakdown:");
         groupAndCount(employees).forEach((dept, members) -> {
             System.out.println("  " + dept + ":");
             members.forEach((name, count) ->
@@ -15278,25 +16562,40 @@ public class LruAndComputeDemo {
         });
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is HashMap\'s default initial capacity and load factor, and when does it resize?', a: 'Default capacity: 16 buckets. Default load factor: 0.75. Resize trigger: when size > capacity × loadFactor (size > 12 for default settings). Resize doubles the capacity and rehashes all entries. Pre-sizing with new HashMap<>(expectedSize / 0.75 + 1) avoids costly rehashing if the approximate size is known upfront.' },
-            { q: 'What changed in HashMap in Java 8 for collision handling?', a: 'Before Java 8: colliding entries always formed a linked list — O(n) worst case for all operations. Java 8+: when a bucket chain reaches 8 entries, it is treeified into a red-black tree — O(log n) worst case. When entries drop below 6 (after removes), it reverts to a linked list. This prevents hash-flooding DoS attacks and improves worst-case performance.' },
-            { q: 'How do you implement an LRU cache using LinkedHashMap?', a: 'Extend LinkedHashMap, pass true as the third constructor argument (accessOrder=true — moves accessed entries to the end). Override removeEldestEntry(eldest) to return true when size() > capacity. On get(), the accessed entry moves to the tail (most-recent); when over capacity, the eldest (head) entry is evicted. One-liner: new LinkedHashMap<>(cap, 0.75f, true) { protected boolean removeEldestEntry(Entry e) { return size() > cap; } }' },
-            { q: 'What is the difference between put(), putIfAbsent(), computeIfAbsent(), and merge()?', a: 'put(k,v): unconditionally writes. putIfAbsent(k,v): writes only if key absent; returns old value (or null). computeIfAbsent(k, fn): calls fn only if key absent, stores result; great for grouping (computeIfAbsent(key, k->new ArrayList<>()).add(item)). merge(k, v, fn): if key absent, puts v; if present, applies fn(oldValue, v) — perfect for counters (merge(word, 1, Integer::sum)).' },
-            { q: 'When would you use TreeMap instead of HashMap?', a: 'When you need sorted key iteration, range queries (subMap, headMap, tailMap), or nearest-key lookups (floorKey, ceilingKey, lowerKey, higherKey). Examples: log entries by timestamp prefix, autocomplete with prefix range, scheduling sorted by time. TreeMap costs O(log n) per operation vs HashMap\'s O(1). Keys must implement Comparable or a Comparator must be provided.' }
-          ]
-        }
-      ]
-    },
-    {
-      id: '2.2',
-      title: 'Concurrency: Threads, Executors, Locks',
-      hours: 5,
-      sections: [
-        {
-          title: 'Threads, Runnable, Callable & Thread Lifecycle',
-          notes: `## Threads, Runnable, Callable & Thread Lifecycle
+            ],
+            flashcards: [
+              {
+                q: `What is HashMap's default initial capacity and load factor, and when does it resize?`,
+                a: `Default capacity: 16 buckets. Default load factor: 0.75. Resize trigger: when size > capacity × loadFactor (size > 12 for default settings). Resize doubles the capacity and rehashes all entries. Pre-sizing with new HashMap<>(expectedSize / 0.75 + 1) avoids costly rehashing if the approximate size is known upfront.`
+              },
+              {
+                q: `What changed in HashMap in Java 8 for collision handling?`,
+                a: `Before Java 8: colliding entries always formed a linked list — O(n) worst case for all operations. Java 8+: when a bucket chain reaches 8 entries, it is treeified into a red-black tree — O(log n) worst case. When entries drop below 6 (after removes), it reverts to a linked list. This prevents hash-flooding DoS attacks and improves worst-case performance.`
+              },
+              {
+                q: `How do you implement an LRU cache using LinkedHashMap?`,
+                a: `Extend LinkedHashMap, pass true as the third constructor argument (accessOrder=true — moves accessed entries to the end). Override removeEldestEntry(eldest) to return true when size() > capacity. On get(), the accessed entry moves to the tail (most-recent); when over capacity, the eldest (head) entry is evicted. One-liner: new LinkedHashMap<>(cap, 0.75f, true) { protected boolean removeEldestEntry(Entry e) { return size() > cap; } }`
+              },
+              {
+                q: `What is the difference between put(), putIfAbsent(), computeIfAbsent(), and merge()?`,
+                a: `put(k,v): unconditionally writes. putIfAbsent(k,v): writes only if key absent; returns old value (or null). computeIfAbsent(k, fn): calls fn only if key absent, stores result; great for grouping (computeIfAbsent(key, k->new ArrayList<>()).add(item)). merge(k, v, fn): if key absent, puts v; if present, applies fn(oldValue, v) — perfect for counters (merge(word, 1, Integer::sum)).`
+              },
+              {
+                q: `When would you use TreeMap instead of HashMap?`,
+                a: `When you need sorted key iteration, range queries (subMap, headMap, tailMap), or nearest-key lookups (floorKey, ceilingKey, lowerKey, higherKey). Examples: log entries by timestamp prefix, autocomplete with prefix range, scheduling sorted by time. TreeMap costs O(log n) per operation vs HashMap's O(1). Keys must implement Comparable or a Comparator must be provided.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `2.2`,
+        title: `Concurrency: Threads, Executors, Locks`,
+        hours: 5,
+        sections: [
+          {
+            title: `Threads, Runnable, Callable & Thread Lifecycle`,
+            notes: `## Threads, Runnable, Callable & Thread Lifecycle
 
 Java concurrency starts with \`Thread\` — an OS-level thread of execution. Understanding the thread lifecycle and the difference between \`Runnable\` and \`Callable\` is the foundation everything else builds on.
 
@@ -15418,8 +16717,8 @@ try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 \`\`\`
 
 Virtual threads are cheap to create, block without pinning OS threads, and have no pooling overhead. For I/O-heavy workloads they replace thread-pool tuning entirely. Platform threads (classic Java threads) remain for CPU-bound work.`,
-          code: [
-            `import java.util.concurrent.*;
+            code: [
+              `import java.util.concurrent.*;
 import java.util.*;
 
 public class ThreadBasicsDemo {
@@ -15472,7 +16771,7 @@ public class ThreadBasicsDemo {
         // Result is usually < 5000 — lost updates
     }
 }`,
-            `import java.util.concurrent.*;
+              `import java.util.concurrent.*;
 
 // Callable, Future, and daemon threads
 public class CallableAndFutureDemo {
@@ -15521,18 +16820,33 @@ public class CallableAndFutureDemo {
         exec.shutdown();
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What are the six thread states in Java and what triggers each transition?', a: 'NEW (created, not started). RUNNABLE (start() called; may be running or waiting for CPU). BLOCKED (waiting to acquire a synchronized monitor). WAITING (Object.wait(), Thread.join() with no timeout, LockSupport.park()). TIMED_WAITING (sleep(ms), wait(ms), join(ms)). TERMINATED (run() completed normally or threw). Key: BLOCKED waits for a lock; WAITING waits for a signal from another thread.' },
-            { q: 'What is the difference between Runnable and Callable?', a: 'Runnable.run() returns void and cannot throw checked exceptions. Callable<V>.call() returns V and can throw any Exception. Callable is used with ExecutorService.submit() which returns Future<V>. Runnable is used for fire-and-forget tasks; Callable for tasks that produce results or need to signal errors via exceptions.' },
-            { q: 'Why must you restore the interrupt flag after catching InterruptedException?', a: 'InterruptedException clears the interrupt flag as a side effect of being thrown. If you catch and swallow it, callers higher up the call stack cannot tell the thread was interrupted. Correct pattern: catch InterruptedException, do cleanup, call Thread.currentThread().interrupt() to restore the flag, then return or rethrow. This allows cooperative cancellation to propagate correctly.' },
-            { q: 'What is the difference between Thread.sleep() and Object.wait()?', a: 'sleep() pauses the current thread but does NOT release any monitor (lock) it holds — other threads trying to synchronize on the same object remain blocked. wait() must be called inside a synchronized block, pauses the thread AND releases the monitor, allowing other threads to enter the synchronized block. wait() re-acquires the monitor before returning when notified.' },
-            { q: 'What are virtual threads (Java 21) and when should you use them?', a: 'Virtual threads are lightweight user-mode threads managed by the JVM rather than mapped 1:1 to OS threads. Creating millions of them is cheap (kilobytes of stack vs megabytes for platform threads). When a virtual thread blocks on I/O, the OS thread underneath is released to run other virtual threads. Use for I/O-bound workloads (HTTP servers, DB queries). For CPU-bound work, platform thread pools are still appropriate.' }
-          ]
-        },
-        {
-          title: 'Executors, Thread Pools & CompletableFuture',
-          notes: `## Executors, Thread Pools & CompletableFuture
+            ],
+            flashcards: [
+              {
+                q: `What are the six thread states in Java and what triggers each transition?`,
+                a: `NEW (created, not started). RUNNABLE (start() called; may be running or waiting for CPU). BLOCKED (waiting to acquire a synchronized monitor). WAITING (Object.wait(), Thread.join() with no timeout, LockSupport.park()). TIMED_WAITING (sleep(ms), wait(ms), join(ms)). TERMINATED (run() completed normally or threw). Key: BLOCKED waits for a lock; WAITING waits for a signal from another thread.`
+              },
+              {
+                q: `What is the difference between Runnable and Callable?`,
+                a: `Runnable.run() returns void and cannot throw checked exceptions. Callable<V>.call() returns V and can throw any Exception. Callable is used with ExecutorService.submit() which returns Future<V>. Runnable is used for fire-and-forget tasks; Callable for tasks that produce results or need to signal errors via exceptions.`
+              },
+              {
+                q: `Why must you restore the interrupt flag after catching InterruptedException?`,
+                a: `InterruptedException clears the interrupt flag as a side effect of being thrown. If you catch and swallow it, callers higher up the call stack cannot tell the thread was interrupted. Correct pattern: catch InterruptedException, do cleanup, call Thread.currentThread().interrupt() to restore the flag, then return or rethrow. This allows cooperative cancellation to propagate correctly.`
+              },
+              {
+                q: `What is the difference between Thread.sleep() and Object.wait()?`,
+                a: `sleep() pauses the current thread but does NOT release any monitor (lock) it holds — other threads trying to synchronize on the same object remain blocked. wait() must be called inside a synchronized block, pauses the thread AND releases the monitor, allowing other threads to enter the synchronized block. wait() re-acquires the monitor before returning when notified.`
+              },
+              {
+                q: `What are virtual threads (Java 21) and when should you use them?`,
+                a: `Virtual threads are lightweight user-mode threads managed by the JVM rather than mapped 1:1 to OS threads. Creating millions of them is cheap (kilobytes of stack vs megabytes for platform threads). When a virtual thread blocks on I/O, the OS thread underneath is released to run other virtual threads. Use for I/O-bound workloads (HTTP servers, DB queries). For CPU-bound work, platform thread pools are still appropriate.`
+              }
+            ]
+          },
+          {
+            title: `Executors, Thread Pools & CompletableFuture`,
+            notes: `## Executors, Thread Pools & CompletableFuture
 
 Creating raw threads is expensive and uncontrolled. The \`java.util.concurrent\` executor framework manages thread lifecycle, pool sizing, work queuing, and graceful shutdown.
 
@@ -15540,10 +16854,16 @@ Creating raw threads is expensive and uncontrolled. The \`java.util.concurrent\`
 
 \`\`\`mermaid
 graph TD
-    EX[Executor\nexecute Runnable]
-    EX --> ES[ExecutorService\nsubmit Callable\nshutdown lifecycle]
-    ES --> SE[ScheduledExecutorService\nschedule delay/periodic]
-    ES --> FJP[ForkJoinPool\nwork-stealing\nparallelStream]
+    EX[Executor
+execute Runnable]
+    EX --> ES[ExecutorService
+submit Callable
+shutdown lifecycle]
+    ES --> SE[ScheduledExecutorService
+schedule delay/periodic]
+    ES --> FJP[ForkJoinPool
+work-stealing
+parallelStream]
     style ES fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style FJP fill:#0f1e12,stroke:#10b981,color:#e2e8f0
 \`\`\`
@@ -15646,8 +16966,8 @@ cf.handle((result, ex) -> ex != null ? "fallback" : result); // always runs
 cf.exceptionally(ex -> "default");                            // only on failure
 cf.whenComplete((r, ex) -> log(r, ex));                       // side effect, preserves result
 \`\`\``,
-          code: [
-            `import java.util.concurrent.*;
+            code: [
+              `import java.util.concurrent.*;
 import java.util.*;
 
 public class ExecutorDemo {
@@ -15674,7 +16994,8 @@ public class ExecutorDemo {
 
         // 2. ScheduledExecutorService
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-        System.out.println("\nScheduled tasks:");
+        System.out.println("
+Scheduled tasks:");
 
         ScheduledFuture<?> once = scheduler.schedule(
             () -> System.out.println("  One-shot after 100ms"), 100, TimeUnit.MILLISECONDS);
@@ -15695,7 +17016,8 @@ public class ExecutorDemo {
             () -> { Thread.sleep(50); return 3; }
         );
         List<Future<Integer>> results = batch.invokeAll(tasks, 2, TimeUnit.SECONDS);
-        System.out.println("\ninvokeAll results:");
+        System.out.println("
+invokeAll results:");
         results.forEach(f -> {
             try { System.out.println("  " + f.get()); }
             catch (Exception e) { System.out.println("  failed: " + e.getMessage()); }
@@ -15703,7 +17025,7 @@ public class ExecutorDemo {
         batch.shutdown();
     }
 }`,
-            `import java.util.concurrent.*;
+              `import java.util.concurrent.*;
 import java.util.*;
 import java.util.stream.*;
 
@@ -15762,18 +17084,33 @@ public class CompletableFutureDemo {
         cpuPool.shutdown();
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between shutdown() and shutdownNow()?', a: 'shutdown() stops accepting new tasks but allows currently running and queued tasks to complete. shutdownNow() attempts to stop all running tasks (sends interrupt to each), skips queued tasks (returns them as a List<Runnable>), and stops accepting new tasks. Always call shutdown() first, then awaitTermination(), and only call shutdownNow() if the wait is exceeded.' },
-            { q: 'What are the four ThreadPoolExecutor rejection policies?', a: 'AbortPolicy (default): throws RejectedExecutionException. CallerRunsPolicy: the submitting thread runs the task itself (natural backpressure — slows the producer). DiscardPolicy: silently drops the task. DiscardOldestPolicy: drops the oldest task in the queue to make room. CallerRunsPolicy is the safest for web services — it slows clients naturally instead of losing work.' },
-            { q: 'What does CompletableFuture.thenApply() vs thenApplyAsync() do differently?', a: 'thenApply(fn) runs fn on whichever thread completed the previous stage (often the I/O thread). thenApplyAsync(fn) runs fn on the ForkJoinPool.commonPool() (or a specified executor). For CPU-bound transformations, thenApplyAsync(fn, cpuExecutor) is safer — it avoids tying up I/O threads with CPU work and keeps the thread pools appropriately specialised.' },
-            { q: 'What is the difference between CompletableFuture.handle(), exceptionally(), and whenComplete()?', a: 'exceptionally(fn) runs fn only on failure — returns the fallback value, propagates result unchanged on success. handle(fn) always runs — receives (result, exception), one will be null; can transform or recover. whenComplete(fn) always runs for side effects (logging) but passes the original result/exception through unchanged — it doesn\'t transform.' },
-            { q: 'Why should you avoid using ForkJoinPool.commonPool() for blocking I/O in CompletableFuture?', a: 'The common pool has a fixed size (CPU cores - 1) and is shared by all parallel streams and CompletableFuture by default. Blocking I/O tasks occupy these threads, starving other work in the JVM. Pass a dedicated I/O executor as the second argument to supplyAsync/thenApplyAsync. This separates I/O-bound and CPU-bound thread pools, preventing one from starving the other.' }
-          ]
-        },
-        {
-          title: 'Synchronization, Locks & Atomic Variables',
-          notes: `## Synchronization, Locks & Atomic Variables
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between shutdown() and shutdownNow()?`,
+                a: `shutdown() stops accepting new tasks but allows currently running and queued tasks to complete. shutdownNow() attempts to stop all running tasks (sends interrupt to each), skips queued tasks (returns them as a List<Runnable>), and stops accepting new tasks. Always call shutdown() first, then awaitTermination(), and only call shutdownNow() if the wait is exceeded.`
+              },
+              {
+                q: `What are the four ThreadPoolExecutor rejection policies?`,
+                a: `AbortPolicy (default): throws RejectedExecutionException. CallerRunsPolicy: the submitting thread runs the task itself (natural backpressure — slows the producer). DiscardPolicy: silently drops the task. DiscardOldestPolicy: drops the oldest task in the queue to make room. CallerRunsPolicy is the safest for web services — it slows clients naturally instead of losing work.`
+              },
+              {
+                q: `What does CompletableFuture.thenApply() vs thenApplyAsync() do differently?`,
+                a: `thenApply(fn) runs fn on whichever thread completed the previous stage (often the I/O thread). thenApplyAsync(fn) runs fn on the ForkJoinPool.commonPool() (or a specified executor). For CPU-bound transformations, thenApplyAsync(fn, cpuExecutor) is safer — it avoids tying up I/O threads with CPU work and keeps the thread pools appropriately specialised.`
+              },
+              {
+                q: `What is the difference between CompletableFuture.handle(), exceptionally(), and whenComplete()?`,
+                a: `exceptionally(fn) runs fn only on failure — returns the fallback value, propagates result unchanged on success. handle(fn) always runs — receives (result, exception), one will be null; can transform or recover. whenComplete(fn) always runs for side effects (logging) but passes the original result/exception through unchanged — it doesn't transform.`
+              },
+              {
+                q: `Why should you avoid using ForkJoinPool.commonPool() for blocking I/O in CompletableFuture?`,
+                a: `The common pool has a fixed size (CPU cores - 1) and is shared by all parallel streams and CompletableFuture by default. Blocking I/O tasks occupy these threads, starving other work in the JVM. Pass a dedicated I/O executor as the second argument to supplyAsync/thenApplyAsync. This separates I/O-bound and CPU-bound thread pools, preventing one from starving the other.`
+              }
+            ]
+          },
+          {
+            title: `Synchronization, Locks & Atomic Variables`,
+            notes: `## Synchronization, Locks & Atomic Variables
 
 When multiple threads share mutable state, you need a mechanism to prevent data races. Java provides three tiers: \`synchronized\` (implicit), \`java.util.concurrent.locks\` (explicit), and \`java.util.concurrent.atomic\` (lock-free).
 
@@ -15902,8 +17239,12 @@ long total = adder.sum(); // adds stripes at read time
 
 \`\`\`mermaid
 graph LR
-    T1[Thread 1\nholds Lock A\nwaiting for Lock B]
-    T2[Thread 2\nholds Lock B\nwaiting for Lock A]
+    T1[Thread 1
+holds Lock A
+waiting for Lock B]
+    T2[Thread 2
+holds Lock B
+waiting for Lock A]
     T1 -- blocked by --> T2
     T2 -- blocked by --> T1
     style T1 fill:#1e0a0a,stroke:#ef4444,color:#fecaca
@@ -15917,8 +17258,8 @@ graph LR
 4. Circular wait — thread A waits for B, B waits for A
 
 **Prevention:** always acquire locks in a consistent global order (e.g. by ID). Or use \`tryLock(timeout)\` to back off and retry.`,
-          code: [
-            `import java.util.concurrent.*;
+            code: [
+              `import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.*;
 
@@ -15954,7 +17295,7 @@ public class SynchronizationDemo {
         System.out.println("Atomic:    " + atomicCount.get() + " ✓");
     }
 }`,
-            `import java.util.concurrent.*;
+              `import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
 import java.util.*;
 
@@ -16054,18 +17395,33 @@ public class LockPatternDemo {
         producer.join(); consumer.join();
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between volatile and synchronized?', a: 'volatile guarantees visibility — all threads see the latest write — but NOT atomicity. i++ on a volatile variable is still a race condition (read-increment-write is three steps). synchronized provides both visibility (happens-before on lock release/acquire) AND atomicity (mutual exclusion). Use volatile for simple flags (boolean running); use synchronized or AtomicXxx for counter operations.' },
-            { q: 'What is CAS (Compare-And-Swap) and how do AtomicInteger operations use it?', a: 'CAS is a CPU instruction: compare memory location to expected value, write new value only if match, else fail and retry. AtomicInteger.incrementAndGet() is a spin loop: read current value, compute +1, CAS(current, current+1) — retry if another thread changed it between read and CAS. No locks, no OS context switch, very fast under low-to-medium contention.' },
-            { q: 'When does ReadWriteLock outperform a regular synchronized lock?', a: 'When reads vastly outnumber writes. ReadWriteLock allows unlimited concurrent readers (read lock shared). A plain synchronized lock serialises ALL access — even concurrent reads. For a read-heavy cache (99% reads), ReadWriteLock can be 10x+ faster. Under write-heavy load the advantage disappears because writers must wait for all readers, increasing write latency.' },
-            { q: 'What are the four conditions required for deadlock?', a: 'Mutual exclusion (resources held exclusively), Hold and wait (hold one lock while waiting for another), No preemption (locks cannot be forcibly taken), Circular wait (A waits for B, B waits for A). Prevention: break circular wait by acquiring locks in a consistent global order (e.g. by object ID). Or use tryLock(timeout) to back off and retry rather than waiting indefinitely.' },
-            { q: 'What is LongAdder and when is it better than AtomicLong?', a: 'LongAdder reduces contention under high throughput by maintaining multiple per-stripe counters (one per CPU contention group). increment() updates a local stripe; sum() adds all stripes. Under high thread contention AtomicLong forces all threads to CAS the same memory location — many retries. LongAdder eliminates this bottleneck at the cost of a slightly expensive sum() read. Use AtomicLong when you read frequently; LongAdder when you write frequently (metrics, hit counters).' }
-          ]
-        },
-        {
-          title: 'Concurrent Collections & Best Practices',
-          notes: `## Concurrent Collections & Best Practices
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between volatile and synchronized?`,
+                a: `volatile guarantees visibility — all threads see the latest write — but NOT atomicity. i++ on a volatile variable is still a race condition (read-increment-write is three steps). synchronized provides both visibility (happens-before on lock release/acquire) AND atomicity (mutual exclusion). Use volatile for simple flags (boolean running); use synchronized or AtomicXxx for counter operations.`
+              },
+              {
+                q: `What is CAS (Compare-And-Swap) and how do AtomicInteger operations use it?`,
+                a: `CAS is a CPU instruction: compare memory location to expected value, write new value only if match, else fail and retry. AtomicInteger.incrementAndGet() is a spin loop: read current value, compute +1, CAS(current, current+1) — retry if another thread changed it between read and CAS. No locks, no OS context switch, very fast under low-to-medium contention.`
+              },
+              {
+                q: `When does ReadWriteLock outperform a regular synchronized lock?`,
+                a: `When reads vastly outnumber writes. ReadWriteLock allows unlimited concurrent readers (read lock shared). A plain synchronized lock serialises ALL access — even concurrent reads. For a read-heavy cache (99% reads), ReadWriteLock can be 10x+ faster. Under write-heavy load the advantage disappears because writers must wait for all readers, increasing write latency.`
+              },
+              {
+                q: `What are the four conditions required for deadlock?`,
+                a: `Mutual exclusion (resources held exclusively), Hold and wait (hold one lock while waiting for another), No preemption (locks cannot be forcibly taken), Circular wait (A waits for B, B waits for A). Prevention: break circular wait by acquiring locks in a consistent global order (e.g. by object ID). Or use tryLock(timeout) to back off and retry rather than waiting indefinitely.`
+              },
+              {
+                q: `What is LongAdder and when is it better than AtomicLong?`,
+                a: `LongAdder reduces contention under high throughput by maintaining multiple per-stripe counters (one per CPU contention group). increment() updates a local stripe; sum() adds all stripes. Under high thread contention AtomicLong forces all threads to CAS the same memory location — many retries. LongAdder eliminates this bottleneck at the cost of a slightly expensive sum() read. Use AtomicLong when you read frequently; LongAdder when you write frequently (metrics, hit counters).`
+              }
+            ]
+          },
+          {
+            title: `Concurrent Collections & Best Practices`,
+            notes: `## Concurrent Collections & Best Practices
 
 The JDK provides thread-safe collection implementations in \`java.util.concurrent\` — most more efficient than wrapping with \`Collections.synchronizedXxx()\` because they use finer-grained locking or lock-free algorithms.
 
@@ -16074,12 +17430,23 @@ The JDK provides thread-safe collection implementations in \`java.util.concurren
 \`\`\`mermaid
 graph TD
     CC[java.util.concurrent]
-    CC --> CHM[ConcurrentHashMap\nlock-striped\nO1 operations]
-    CC --> CLQ[ConcurrentLinkedQueue\nlock-free FIFO]
-    CC --> COW[CopyOnWriteArrayList\nread: lock-free\nwrite: full copy]
-    CC --> LBQ[LinkedBlockingQueue\noptionally bounded\nproducer-consumer]
-    CC --> ABQ[ArrayBlockingQueue\nbounded FIFO\nblocking put/take]
-    CC --> PQ[PriorityBlockingQueue\nunbounded\nblocking priority]
+    CC --> CHM[ConcurrentHashMap
+lock-striped
+O1 operations]
+    CC --> CLQ[ConcurrentLinkedQueue
+lock-free FIFO]
+    CC --> COW[CopyOnWriteArrayList
+read: lock-free
+write: full copy]
+    CC --> LBQ[LinkedBlockingQueue
+optionally bounded
+producer-consumer]
+    CC --> ABQ[ArrayBlockingQueue
+bounded FIFO
+blocking put/take]
+    CC --> PQ[PriorityBlockingQueue
+unbounded
+blocking priority]
     style CHM fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style LBQ fill:#0f1e12,stroke:#10b981,color:#e2e8f0
     style COW fill:#1e293b,stroke:#f59e0b,color:#fde68a
@@ -16189,8 +17556,8 @@ synchronized (this) {
 // @ThreadSafe, @GuardedBy, @NotThreadSafe (from jcip-annotations)
 @GuardedBy("this") private int count;
 \`\`\``,
-          code: [
-            `import java.util.concurrent.*;
+            code: [
+              `import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.*;
 
@@ -16240,7 +17607,7 @@ public class ProducerConsumerDemo {
         producer.join(); consumer.join();
     }
 }`,
-            `import java.util.concurrent.*;
+              `import java.util.concurrent.*;
 import java.util.*;
 
 // CountDownLatch, CyclicBarrier, Semaphore patterns
@@ -16272,7 +17639,8 @@ public class SynchroniserDemo {
         Thread.sleep(100);
 
         // 2. Semaphore — limit concurrent DB connections
-        System.out.println("\n=== Semaphore — max 2 concurrent connections ===");
+        System.out.println("
+=== Semaphore — max 2 concurrent connections ===");
         Semaphore dbSemaphore = new Semaphore(2);
         List<Thread> clients = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
@@ -16295,25 +17663,40 @@ public class SynchroniserDemo {
         for (Thread t : clients) t.join();
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between ConcurrentHashMap and Collections.synchronizedMap()?', a: 'synchronizedMap wraps every method in synchronized(this) — all reads AND writes serialised on one lock. ConcurrentHashMap uses lock striping (Java 7) / CAS + per-node locking (Java 8+) — concurrent reads never lock, and concurrent writes on different buckets proceed in parallel. ConcurrentHashMap is significantly faster under contention and provides atomic compound operations (computeIfAbsent, merge).' },
-            { q: 'What is CopyOnWriteArrayList and when is it appropriate?', a: 'Reads use the current array with no locking (zero overhead for reads). Every write (add/remove/set) copies the entire array, modifies the copy, and atomically swaps the reference. Iterators snapshot the array at creation — no ConcurrentModificationException. Use for: event listener lists, observer registries where reads massively outnumber writes. Avoid for large lists or frequent writes — O(n) copy per mutation.' },
-            { q: 'What is the difference between CountDownLatch and CyclicBarrier?', a: 'CountDownLatch is a one-time-use gate: one thread waits for N others to countDown(). Cannot be reset. CyclicBarrier is reusable: N threads all wait at the barrier until the last one arrives, then all proceed together. After each "phase" the barrier resets. CountDownLatch: one waiter, N reporters. CyclicBarrier: N waiters, all proceed together — useful for multi-phase parallel algorithms.' },
-            { q: 'What is ThreadLocal and when is it appropriate?', a: 'ThreadLocal provides each thread with its own isolated instance of a variable — no sharing, no synchronization needed. Used for: thread-confined state (SimpleDateFormat per thread, DB connection per thread in servlet containers, security context in Spring), per-thread counters. Must call remove() when the thread\'s work is done (especially in thread pools) or values leak across requests.' },
-            { q: 'What is BlockingQueue.put() vs offer() vs add()?', a: 'add(e): throws IllegalStateException if queue is full. offer(e): returns false if full (non-blocking). offer(e, timeout, unit): waits up to timeout, then returns false if still full. put(e): blocks indefinitely until space is available. For producer-consumer: put() and take() are the idiomatic choice — they block naturally, providing backpressure without polling.' }
-          ]
-        }
-      ]
-    },
-    {
-      id: '2.3',
-      title: 'Streams, Lambdas & Functional Java',
-      hours: 4,
-      sections: [
-        {
-          title: 'Stream Pipeline — Source, Intermediate & Terminal',
-          notes: `## Stream Pipeline — Source, Intermediate & Terminal
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between ConcurrentHashMap and Collections.synchronizedMap()?`,
+                a: `synchronizedMap wraps every method in synchronized(this) — all reads AND writes serialised on one lock. ConcurrentHashMap uses lock striping (Java 7) / CAS + per-node locking (Java 8+) — concurrent reads never lock, and concurrent writes on different buckets proceed in parallel. ConcurrentHashMap is significantly faster under contention and provides atomic compound operations (computeIfAbsent, merge).`
+              },
+              {
+                q: `What is CopyOnWriteArrayList and when is it appropriate?`,
+                a: `Reads use the current array with no locking (zero overhead for reads). Every write (add/remove/set) copies the entire array, modifies the copy, and atomically swaps the reference. Iterators snapshot the array at creation — no ConcurrentModificationException. Use for: event listener lists, observer registries where reads massively outnumber writes. Avoid for large lists or frequent writes — O(n) copy per mutation.`
+              },
+              {
+                q: `What is the difference between CountDownLatch and CyclicBarrier?`,
+                a: `CountDownLatch is a one-time-use gate: one thread waits for N others to countDown(). Cannot be reset. CyclicBarrier is reusable: N threads all wait at the barrier until the last one arrives, then all proceed together. After each "phase" the barrier resets. CountDownLatch: one waiter, N reporters. CyclicBarrier: N waiters, all proceed together — useful for multi-phase parallel algorithms.`
+              },
+              {
+                q: `What is ThreadLocal and when is it appropriate?`,
+                a: `ThreadLocal provides each thread with its own isolated instance of a variable — no sharing, no synchronization needed. Used for: thread-confined state (SimpleDateFormat per thread, DB connection per thread in servlet containers, security context in Spring), per-thread counters. Must call remove() when the thread's work is done (especially in thread pools) or values leak across requests.`
+              },
+              {
+                q: `What is BlockingQueue.put() vs offer() vs add()?`,
+                a: `add(e): throws IllegalStateException if queue is full. offer(e): returns false if full (non-blocking). offer(e, timeout, unit): waits up to timeout, then returns false if still full. put(e): blocks indefinitely until space is available. For producer-consumer: put() and take() are the idiomatic choice — they block naturally, providing backpressure without polling.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `2.3`,
+        title: `Streams, Lambdas & Functional Java`,
+        hours: 4,
+        sections: [
+          {
+            title: `Stream Pipeline — Source, Intermediate & Terminal`,
+            notes: `## Stream Pipeline — Source, Intermediate & Terminal
 
 A \`Stream<T>\` is a sequence of elements supporting sequential and parallel aggregate operations. Unlike collections, streams are **lazy** — intermediate operations do nothing until a terminal operation is called — and **single-use** (a consumed stream cannot be reused).
 
@@ -16321,11 +17704,19 @@ A \`Stream<T>\` is a sequence of elements supporting sequential and parallel agg
 
 \`\`\`mermaid
 graph LR
-    SRC[Source\nCollection / array\nStream.of / generate]
-    SRC --> INT1[filter\nIntermediate\nlazy, returns Stream]
-    INT1 --> INT2[map\nIntermediate]
-    INT2 --> INT3[sorted / distinct\nIntermediate]
-    INT3 --> TRM[collect / forEach\nfindFirst / reduce\nTerminal — triggers execution]
+    SRC[Source
+Collection / array
+Stream.of / generate]
+    SRC --> INT1[filter
+Intermediate
+lazy, returns Stream]
+    INT1 --> INT2[map
+Intermediate]
+    INT2 --> INT3[sorted / distinct
+Intermediate]
+    INT3 --> TRM[collect / forEach
+findFirst / reduce
+Terminal — triggers execution]
     style SRC fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style INT1 fill:#1e293b,stroke:#475569,color:#94a3b8
     style INT2 fill:#1e293b,stroke:#475569,color:#94a3b8
@@ -16444,8 +17835,8 @@ Optional<String> firstLong = Stream.generate(() -> {
 .filter(s -> s.contains("aaa"))
 .findFirst(); // stops as soon as one is found — doesn't generate infinitely
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.stream.*;
 
 public class StreamPipelineDemo {
@@ -16504,10 +17895,11 @@ public class StreamPipelineDemo {
             .limit(5)
             .peek(n -> System.out.print(n + " "))
             .count();
-        System.out.println("\nEven numbers found: " + count);
+        System.out.println("
+Even numbers found: " + count);
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 import java.util.stream.*;
 
 // Primitive streams and boxing overhead
@@ -16557,18 +17949,33 @@ public class PrimitiveStreamDemo {
         System.out.println("takeWhile odd: " + odd); // [1, 3, 5, 7]
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What does "lazy evaluation" mean for streams and why does it matter?', a: 'Intermediate operations (filter, map, sorted) do nothing when called — they build a pipeline description. Execution only starts when a terminal operation (collect, findFirst, count) is invoked. This enables short-circuit optimisation: filter().map().findFirst() stops processing after finding the first match, not after processing all elements. It also enables efficient infinite stream processing with limit().' },
-            { q: 'What is the difference between map() and flatMap()?', a: 'map(fn) applies fn to each element and wraps the result — Stream<List<String>> maps to Stream<List<String>>. flatMap(fn) applies fn (which returns Stream) to each element and flattens one level — Stream<List<String>>.flatMap(Collection::stream) → Stream<String>. Use flatMap to unwrap nested structures: orders.flatMap(o -> o.getItems().stream()) gives a flat stream of all items.' },
-            { q: 'What is the difference between findFirst() and findAny()?', a: 'findFirst() always returns the first element in encounter order. findAny() may return any element — for sequential streams it returns the first, but for parallel streams it returns whichever thread finishes first (faster). Both return Optional<T> and are short-circuit operations. Prefer findAny() in parallel pipelines where encounter order doesn\'t matter.' },
-            { q: 'Why use IntStream / LongStream / DoubleStream instead of Stream<Integer>?', a: 'Primitive streams avoid boxing overhead. Stream<Integer> boxes each int into an Integer object (allocation + GC pressure). IntStream stores primitives directly. For large ranges (1..1_000_000) or hot paths, primitive streams are significantly faster and more memory-efficient. They also provide specialised terminals: sum(), average(), min(), max(), summaryStatistics() — no need to write reduce().' },
-            { q: 'Can a stream be reused after a terminal operation? What happens?', a: 'No. Once a terminal operation is invoked, the stream is considered consumed. Any subsequent attempt to use it throws IllegalStateException: "stream has already been operated upon or closed." A new stream must be obtained from the source. This is why intermediate operations return a new stream (the pipeline) rather than modifying the original, and why you should not store streams in variables and reuse them.' }
-          ]
-        },
-        {
-          title: 'Collectors — groupingBy, joining, toMap & Custom',
-          notes: `## Collectors — groupingBy, joining, toMap & Custom
+            ],
+            flashcards: [
+              {
+                q: `What does "lazy evaluation" mean for streams and why does it matter?`,
+                a: `Intermediate operations (filter, map, sorted) do nothing when called — they build a pipeline description. Execution only starts when a terminal operation (collect, findFirst, count) is invoked. This enables short-circuit optimisation: filter().map().findFirst() stops processing after finding the first match, not after processing all elements. It also enables efficient infinite stream processing with limit().`
+              },
+              {
+                q: `What is the difference between map() and flatMap()?`,
+                a: `map(fn) applies fn to each element and wraps the result — Stream<List<String>> maps to Stream<List<String>>. flatMap(fn) applies fn (which returns Stream) to each element and flattens one level — Stream<List<String>>.flatMap(Collection::stream) → Stream<String>. Use flatMap to unwrap nested structures: orders.flatMap(o -> o.getItems().stream()) gives a flat stream of all items.`
+              },
+              {
+                q: `What is the difference between findFirst() and findAny()?`,
+                a: `findFirst() always returns the first element in encounter order. findAny() may return any element — for sequential streams it returns the first, but for parallel streams it returns whichever thread finishes first (faster). Both return Optional<T> and are short-circuit operations. Prefer findAny() in parallel pipelines where encounter order doesn't matter.`
+              },
+              {
+                q: `Why use IntStream / LongStream / DoubleStream instead of Stream<Integer>?`,
+                a: `Primitive streams avoid boxing overhead. Stream<Integer> boxes each int into an Integer object (allocation + GC pressure). IntStream stores primitives directly. For large ranges (1..1_000_000) or hot paths, primitive streams are significantly faster and more memory-efficient. They also provide specialised terminals: sum(), average(), min(), max(), summaryStatistics() — no need to write reduce().`
+              },
+              {
+                q: `Can a stream be reused after a terminal operation? What happens?`,
+                a: `No. Once a terminal operation is invoked, the stream is considered consumed. Any subsequent attempt to use it throws IllegalStateException: "stream has already been operated upon or closed." A new stream must be obtained from the source. This is why intermediate operations return a new stream (the pipeline) rather than modifying the original, and why you should not store streams in variables and reuse them.`
+              }
+            ]
+          },
+          {
+            title: `Collectors — groupingBy, joining, toMap & Custom`,
+            notes: `## Collectors — groupingBy, joining, toMap & Custom
 
 \`Collectors\` is the factory class for the most powerful stream terminal operation: \`collect()\`. It handles the common patterns of grouping, partitioning, joining strings, building maps, and statistical summarisation.
 
@@ -16708,8 +18115,8 @@ Map<String, String> commaSeparatedByDept =
         )
     ));
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.stream.*;
 
 public class CollectorsDemo {
@@ -16736,13 +18143,15 @@ public class CollectorsDemo {
         Map<String, IntSummaryStatistics> statsByDept = staff.stream()
             .collect(Collectors.groupingBy(Employee::dept,
                 Collectors.summarizingInt(Employee::salary)));
-        System.out.println("\nSalary stats by dept:");
+        System.out.println("
+Salary stats by dept:");
         new TreeMap<>(statsByDept).forEach((dept, s) ->
             System.out.printf("  %-15s avg=%-8.0f max=%d%n",
                 dept, s.getAverage(), s.getMax()));
 
         // 2. partitioningBy
-        System.out.println("\n=== partitioningBy ===");
+        System.out.println("
+=== partitioningBy ===");
         Map<Boolean, List<String>> activeNames = staff.stream()
             .collect(Collectors.partitioningBy(Employee::active,
                 Collectors.mapping(Employee::name, Collectors.toList())));
@@ -16750,7 +18159,8 @@ public class CollectorsDemo {
         System.out.println("Inactive: " + activeNames.get(false));
 
         // 3. joining
-        System.out.println("\n=== joining ===");
+        System.out.println("
+=== joining ===");
         String roster = staff.stream()
             .filter(Employee::active)
             .sorted(Comparator.comparing(Employee::name))
@@ -16759,7 +18169,8 @@ public class CollectorsDemo {
         System.out.println(roster);
 
         // 4. toMap with merge function
-        System.out.println("\n=== toMap (max salary by dept) ===");
+        System.out.println("
+=== toMap (max salary by dept) ===");
         Map<String, Integer> maxByDept = staff.stream()
             .collect(Collectors.toMap(
                 Employee::dept, Employee::salary, Integer::max));
@@ -16767,7 +18178,8 @@ public class CollectorsDemo {
             System.out.printf("  %-15s $%d%n", dept, sal));
 
         // 5. Names grouped by dept (mapping downstream)
-        System.out.println("\n=== namesByDept ===");
+        System.out.println("
+=== namesByDept ===");
         Map<String, String> nameList = staff.stream()
             .collect(Collectors.groupingBy(Employee::dept,
                 Collectors.mapping(Employee::name,
@@ -16777,7 +18189,7 @@ public class CollectorsDemo {
             System.out.printf("  %-15s %s%n", dept, names));
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 import java.util.stream.*;
 import java.util.function.*;
 
@@ -16826,7 +18238,8 @@ public class CustomCollectorDemo {
         });
 
         // Revenue by category
-        System.out.println("\nRevenue by category:");
+        System.out.println("
+Revenue by category:");
         Map<String, Double> revenue = catalog.stream()
             .collect(Collectors.groupingBy(Product::category,
                 Collectors.summingDouble(p -> p.price() * p.sold())));
@@ -16838,21 +18251,37 @@ public class CustomCollectorDemo {
             .sorted(Comparator.comparing(Product::name))
             .map(Product::name)
             .collect(Collectors.joining(" | "));
-        System.out.println("\nAll products: " + allNames);
+        System.out.println("
+All products: " + allNames);
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is Collectors.groupingBy() and what does its downstream parameter do?', a: 'groupingBy(classifier) groups stream elements into a Map<K, List<T>> where K is the result of the classifier. The optional downstream parameter replaces the default List collector with any other collector: groupingBy(dept, counting()) → Map<String,Long>, groupingBy(dept, averagingInt(salary)) → Map<String,Double>, groupingBy(dept, mapping(name, toList())) → Map<String,List<String>>.' },
-            { q: 'What is the difference between groupingBy and partitioningBy?', a: 'partitioningBy is a specialised groupingBy with a boolean classifier — always produces a Map<Boolean, List<T>> with exactly two keys (true and false). groupingBy with any classifier can produce N groups. partitioningBy guarantees both keys exist even if one group is empty; groupingBy only has keys for groups that contain elements.' },
-            { q: 'What happens if two elements map to the same key in Collectors.toMap()?', a: 'By default, toMap() throws IllegalStateException: "Duplicate key". To handle duplicates, provide a merge function as the third argument: toMap(keyFn, valueFn, (existing, newVal) -> existing) to keep the first, or Integer::max to keep the higher value. The merge function receives (existing, incoming) and returns what to store.' },
-            { q: 'What is Collectors.collectingAndThen() used for?', a: 'collectingAndThen(downstream, finisher) applies a transformation to the result of another collector. Examples: (1) collectingAndThen(toList(), Collections::unmodifiableList) — produce an unmodifiable list; (2) groupingBy(dept, collectingAndThen(mapping(name, joining(",")), s -> "[" + s + "]")) — join names with brackets. It\'s an adapter for the final result.' },
-            { q: 'What are the four components of a custom Collector.of()?', a: 'supplier: creates the mutable result container (e.g. ArrayList::new, StringBuilder::new). accumulator: adds one element to the container (list::add, sb::append). combiner: merges two containers from parallel sub-streams (left::addAll). finisher: converts the container to the final result type (Collections::unmodifiableList, StringBuilder::toString). For sequential streams, combiner is rarely called.' }
-          ]
-        },
-        {
-          title: 'flatMap, reduce & Stream Composition Patterns',
-          notes: `## flatMap, reduce & Stream Composition Patterns
+            ],
+            flashcards: [
+              {
+                q: `What is Collectors.groupingBy() and what does its downstream parameter do?`,
+                a: `groupingBy(classifier) groups stream elements into a Map<K, List<T>> where K is the result of the classifier. The optional downstream parameter replaces the default List collector with any other collector: groupingBy(dept, counting()) → Map<String,Long>, groupingBy(dept, averagingInt(salary)) → Map<String,Double>, groupingBy(dept, mapping(name, toList())) → Map<String,List<String>>.`
+              },
+              {
+                q: `What is the difference between groupingBy and partitioningBy?`,
+                a: `partitioningBy is a specialised groupingBy with a boolean classifier — always produces a Map<Boolean, List<T>> with exactly two keys (true and false). groupingBy with any classifier can produce N groups. partitioningBy guarantees both keys exist even if one group is empty; groupingBy only has keys for groups that contain elements.`
+              },
+              {
+                q: `What happens if two elements map to the same key in Collectors.toMap()?`,
+                a: `By default, toMap() throws IllegalStateException: "Duplicate key". To handle duplicates, provide a merge function as the third argument: toMap(keyFn, valueFn, (existing, newVal) -> existing) to keep the first, or Integer::max to keep the higher value. The merge function receives (existing, incoming) and returns what to store.`
+              },
+              {
+                q: `What is Collectors.collectingAndThen() used for?`,
+                a: `collectingAndThen(downstream, finisher) applies a transformation to the result of another collector. Examples: (1) collectingAndThen(toList(), Collections::unmodifiableList) — produce an unmodifiable list; (2) groupingBy(dept, collectingAndThen(mapping(name, joining(",")), s -> "[" + s + "]")) — join names with brackets. It's an adapter for the final result.`
+              },
+              {
+                q: `What are the four components of a custom Collector.of()?`,
+                a: `supplier: creates the mutable result container (e.g. ArrayList::new, StringBuilder::new). accumulator: adds one element to the container (list::add, sb::append). combiner: merges two containers from parallel sub-streams (left::addAll). finisher: converts the container to the final result type (Collections::unmodifiableList, StringBuilder::toString). For sequential streams, combiner is rarely called.`
+              }
+            ]
+          },
+          {
+            title: `flatMap, reduce & Stream Composition Patterns`,
+            notes: `## flatMap, reduce & Stream Composition Patterns
 
 \`flatMap\` and \`reduce\` are the two most interview-tested stream operations. Understanding when and how to use them — and how streams compose — separates average from strong Java candidates.
 
@@ -16974,8 +18403,8 @@ stream.map(this::transform).collect(Collectors.toList()); // CORRECT
 // 4. Streams are not Iterables (no for-each loop over a stream)
 for (String s : stream) { } // DOES NOT COMPILE — use forEach or collect first
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.stream.*;
 
 public class FlatMapReduceDemo {
@@ -17006,13 +18435,15 @@ public class FlatMapReduceDemo {
             .distinct()
             .sorted()
             .collect(Collectors.toList());
-        System.out.println("\nCustomers who ordered " + target + ": " + gadgetCustomers);
+        System.out.println("
+Customers who ordered " + target + ": " + gadgetCustomers);
 
         // 3. reduce — sum, product, finding max
         double totalRevenue = orders.stream()
             .map(Order::total)
             .reduce(0.0, Double::sum);
-        System.out.printf("\nTotal revenue: $%.2f%n", totalRevenue);
+        System.out.printf("
+Total revenue: $%.2f%n", totalRevenue);
 
         Optional<Order> largestOrder = orders.stream()
             .reduce((a, b) -> a.total() >= b.total() ? a : b);
@@ -17025,7 +18456,8 @@ public class FlatMapReduceDemo {
             "product quality is great",
             "easy returns great service"
         );
-        System.out.println("\nWord frequency:");
+        System.out.println("
+Word frequency:");
         reviews.stream()
             .flatMap(s -> Arrays.stream(s.split("\\s+")))
             .collect(Collectors.groupingBy(w -> w, Collectors.counting()))
@@ -17035,7 +18467,7 @@ public class FlatMapReduceDemo {
             .forEach(e -> System.out.printf("  %-10s %d%n", e.getKey(), e.getValue()));
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 import java.util.stream.*;
 import java.util.function.*;
 
@@ -17086,21 +18518,37 @@ public class StreamCompositionDemo {
         List<String> combos = types.stream()
             .flatMap(type -> ranges.stream().map(range -> type + " " + range))
             .collect(Collectors.toList());
-        System.out.println("\nAll combos: " + combos);
+        System.out.println("
+All combos: " + combos);
     }
 }`
-          ],
-          flashcards: [
-            { q: 'Explain flatMap with a concrete example of when you need it over map.', a: 'map(fn) wraps each result in the stream — if fn returns Stream<T>, you get Stream<Stream<T>>. flatMap(fn) flattens: orders.stream().map(o -> o.items().stream()) gives Stream<Stream<String>>; orders.stream().flatMap(o -> o.items().stream()) gives Stream<String>. Use flatMap whenever your mapping function returns a collection, Optional, or Stream — to get a flat sequence rather than a nested one.' },
-            { q: 'What is the difference between reduce(identity, accumulator) and reduce(accumulator)?', a: 'reduce(0, Integer::sum) — identity is the starting value; always returns T (never empty, never null, safe on empty stream). reduce(Integer::sum) — no identity; returns Optional<T> (empty if stream is empty, because there is no "nothing" value for all types). Use the identity form when you have a natural zero (0 for sum, 1 for product, "" for join). Use Optional form when an empty stream should signal absence.' },
-            { q: 'Why is it wrong to modify external state inside a stream operation?', a: 'Stream pipelines can be made parallel — multiple threads running the same lambda concurrently. Mutations to shared state (adding to a list outside the stream) cause race conditions. Also, stateful intermediate operations break the pure-function model and make the code order-dependent and unpredictable. Use collect() to gather results safely, rather than forEach + external list mutation.' },
-            { q: 'What is a Supplier<Stream<T>> pattern and why is it useful?', a: 'A stream is single-use. Supplier<Stream<T>> delays stream creation so you can call .get() multiple times to get fresh streams from the same source. This lets you run multiple terminal operations (count, sum, findFirst) over the same logical source without re-collecting to a list first. Pattern: Supplier<Stream<T>> src = () -> list.stream().filter(...).' },
-            { q: 'How does Optional.flatMap() relate to Stream.flatMap()?', a: 'Same principle: the mapping function returns a wrapped type and flatMap avoids double wrapping. Optional.map(f) where f returns Optional<U> gives Optional<Optional<U>>. Optional.flatMap(f) gives Optional<U> directly. Used for chaining Optional-returning methods: findUser(id).flatMap(User::getAddress).flatMap(Address::getCity) — each step returns Optional, flatMap chains them without nesting.' }
-          ]
-        },
-        {
-          title: 'Parallel Streams & Performance',
-          notes: `## Parallel Streams & Performance
+            ],
+            flashcards: [
+              {
+                q: `Explain flatMap with a concrete example of when you need it over map.`,
+                a: `map(fn) wraps each result in the stream — if fn returns Stream<T>, you get Stream<Stream<T>>. flatMap(fn) flattens: orders.stream().map(o -> o.items().stream()) gives Stream<Stream<String>>; orders.stream().flatMap(o -> o.items().stream()) gives Stream<String>. Use flatMap whenever your mapping function returns a collection, Optional, or Stream — to get a flat sequence rather than a nested one.`
+              },
+              {
+                q: `What is the difference between reduce(identity, accumulator) and reduce(accumulator)?`,
+                a: `reduce(0, Integer::sum) — identity is the starting value; always returns T (never empty, never null, safe on empty stream). reduce(Integer::sum) — no identity; returns Optional<T> (empty if stream is empty, because there is no "nothing" value for all types). Use the identity form when you have a natural zero (0 for sum, 1 for product, "" for join). Use Optional form when an empty stream should signal absence.`
+              },
+              {
+                q: `Why is it wrong to modify external state inside a stream operation?`,
+                a: `Stream pipelines can be made parallel — multiple threads running the same lambda concurrently. Mutations to shared state (adding to a list outside the stream) cause race conditions. Also, stateful intermediate operations break the pure-function model and make the code order-dependent and unpredictable. Use collect() to gather results safely, rather than forEach + external list mutation.`
+              },
+              {
+                q: `What is a Supplier<Stream<T>> pattern and why is it useful?`,
+                a: `A stream is single-use. Supplier<Stream<T>> delays stream creation so you can call .get() multiple times to get fresh streams from the same source. This lets you run multiple terminal operations (count, sum, findFirst) over the same logical source without re-collecting to a list first. Pattern: Supplier<Stream<T>> src = () -> list.stream().filter(...).`
+              },
+              {
+                q: `How does Optional.flatMap() relate to Stream.flatMap()?`,
+                a: `Same principle: the mapping function returns a wrapped type and flatMap avoids double wrapping. Optional.map(f) where f returns Optional<U> gives Optional<Optional<U>>. Optional.flatMap(f) gives Optional<U> directly. Used for chaining Optional-returning methods: findUser(id).flatMap(User::getAddress).flatMap(Address::getCity) — each step returns Optional, flatMap chains them without nesting.`
+              }
+            ]
+          },
+          {
+            title: `Parallel Streams & Performance`,
+            notes: `## Parallel Streams & Performance
 
 Parallel streams split the source data, process chunks on ForkJoinPool.commonPool() threads, and combine results. They can dramatically speed up CPU-bound work on multi-core machines — or silently degrade performance when misused.
 
@@ -17108,13 +18556,20 @@ Parallel streams split the source data, process chunks on ForkJoinPool.commonPoo
 
 \`\`\`mermaid
 graph TD
-    SRC[Source\nList of 1M integers]
-    SRC --> SP[Spliterator\nsplits data recursively]
-    SP --> W1[Worker 1\nsubset 0-250k]
-    SP --> W2[Worker 2\nsubset 250k-500k]
-    SP --> W3[Worker 3\nsubset 500k-750k]
-    SP --> W4[Worker 4\nsubset 750k-1M]
-    W1 --> CM[combine\nresults]
+    SRC[Source
+List of 1M integers]
+    SRC --> SP[Spliterator
+splits data recursively]
+    SP --> W1[Worker 1
+subset 0-250k]
+    SP --> W2[Worker 2
+subset 250k-500k]
+    SP --> W3[Worker 3
+subset 500k-750k]
+    SP --> W4[Worker 4
+subset 750k-1M]
+    W1 --> CM[combine
+results]
     W2 --> CM
     W3 --> CM
     W4 --> CM
@@ -17221,8 +18676,8 @@ list.parallelStream()
 | Operations | filter, map, reduce | sorted, distinct on small data |
 
 > **Interview rule:** "Always benchmark before using parallelStream." The overhead of splitting, scheduling, and merging is real. For in-memory list operations under 10k elements, \`.stream()\` is almost always faster.`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.stream.*;
 import java.util.concurrent.*;
 
@@ -17269,7 +18724,8 @@ public class ParallelStreamDemo {
         pool.shutdown();
 
         // Demonstrate the race condition with mutable accumulation
-        System.out.println("\nRace condition demo:");
+        System.out.println("
+Race condition demo:");
         List<Integer> unsafe = new ArrayList<>();
         data.subList(0, 1000).parallelStream().forEach(unsafe::add);
         System.out.println("  Unsafe parallel add: expected=1000 got=" + unsafe.size()
@@ -17280,7 +18736,7 @@ public class ParallelStreamDemo {
         System.out.println("  Safe collect:        got=" + safe.size() + " ✓");
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 import java.util.stream.*;
 
 // When parallel is SLOWER + Spliterator examples
@@ -17316,7 +18772,8 @@ public class ParallelPitfallsDemo {
             .filter(n -> n > 999_990).findFirst();
         Optional<Integer> any = source.parallelStream()
             .filter(n -> n > 999_990).findAny();
-        System.out.println("\nfindFirst (ordered): " + first.orElse(-1));
+        System.out.println("
+findFirst (ordered): " + first.orElse(-1));
         System.out.println("findAny   (faster):  " + any.orElse(-1));
     }
 
@@ -17327,26 +18784,40 @@ public class ParallelPitfallsDemo {
         return (System.nanoTime() - start) / 5;
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What thread pool do parallel streams use and what is the problem?', a: 'ForkJoinPool.commonPool() — shared across all parallel streams AND CompletableFuture.supplyAsync() calls in the JVM. Its size defaults to (CPU cores - 1). If you submit blocking I/O work, you occupy common pool threads and starve other parallel work. For isolation, wrap the stream in a ForkJoinPool.submit() call with a custom pool.' },
-            { q: 'When does parallelStream() actually hurt performance?', a: '(1) Small data — split/merge overhead exceeds gains. Rule: N × cost_per_element must be large. (2) LinkedList — its Spliterator cannot split efficiently (must traverse to find midpoint). (3) Blocking I/O — occupies ForkJoinPool threads. (4) Stateful/ordered operations like sorted() require global coordination. (5) Shared mutable state — causes race conditions. Always benchmark; sequential is usually faster under 10k simple operations.' },
-            { q: 'Why is forEach + external mutable list wrong for parallel streams?', a: 'ArrayList is not thread-safe. parallelStream().forEach(list::add) has multiple threads calling list.add() concurrently without synchronization — you get lost updates, wrong size, or ArrayIndexOutOfBoundsException. The correct pattern is always .collect(Collectors.toList()) — the collector is thread-safe and each thread builds its own partial result that is merged.' },
-            { q: 'What is a Spliterator and why does ArrayList parallelize better than LinkedList?', a: 'Spliterator (Splittable Iterator) divides the source for parallel processing. ArrayList\'s Spliterator uses index arithmetic to find the midpoint in O(1) — clean binary splits. LinkedList\'s Spliterator must traverse to find the midpoint — O(n). Poor splitting means uneven work distribution and parallel overhead without benefit. Arrays and ArrayLists are the best sources for parallel streams.' },
-            { q: 'What is the difference between parallel() and parallelStream()?', a: 'collection.parallelStream() starts a parallel stream from a collection. sequential_stream.parallel() switches an existing sequential stream to parallel mode. sequential_stream.sequential() switches back. The last call to parallel()/sequential() before the terminal operation determines the mode for the entire pipeline — it\'s a single flag on the pipeline, not a per-operation setting.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '2.4',
-      title: 'Virtual Threads & Structured Concurrency (Java 21)',
-      hours: 4,
-      sections: [
-        {
-          title: 'Virtual Threads — Project Loom & the Platform Thread Problem',
-          notes: `## Virtual Threads — Project Loom & the Platform Thread Problem
+            ],
+            flashcards: [
+              {
+                q: `What thread pool do parallel streams use and what is the problem?`,
+                a: `ForkJoinPool.commonPool() — shared across all parallel streams AND CompletableFuture.supplyAsync() calls in the JVM. Its size defaults to (CPU cores - 1). If you submit blocking I/O work, you occupy common pool threads and starve other parallel work. For isolation, wrap the stream in a ForkJoinPool.submit() call with a custom pool.`
+              },
+              {
+                q: `When does parallelStream() actually hurt performance?`,
+                a: `(1) Small data — split/merge overhead exceeds gains. Rule: N × cost_per_element must be large. (2) LinkedList — its Spliterator cannot split efficiently (must traverse to find midpoint). (3) Blocking I/O — occupies ForkJoinPool threads. (4) Stateful/ordered operations like sorted() require global coordination. (5) Shared mutable state — causes race conditions. Always benchmark; sequential is usually faster under 10k simple operations.`
+              },
+              {
+                q: `Why is forEach + external mutable list wrong for parallel streams?`,
+                a: `ArrayList is not thread-safe. parallelStream().forEach(list::add) has multiple threads calling list.add() concurrently without synchronization — you get lost updates, wrong size, or ArrayIndexOutOfBoundsException. The correct pattern is always .collect(Collectors.toList()) — the collector is thread-safe and each thread builds its own partial result that is merged.`
+              },
+              {
+                q: `What is a Spliterator and why does ArrayList parallelize better than LinkedList?`,
+                a: `Spliterator (Splittable Iterator) divides the source for parallel processing. ArrayList's Spliterator uses index arithmetic to find the midpoint in O(1) — clean binary splits. LinkedList's Spliterator must traverse to find the midpoint — O(n). Poor splitting means uneven work distribution and parallel overhead without benefit. Arrays and ArrayLists are the best sources for parallel streams.`
+              },
+              {
+                q: `What is the difference between parallel() and parallelStream()?`,
+                a: `collection.parallelStream() starts a parallel stream from a collection. sequential_stream.parallel() switches an existing sequential stream to parallel mode. sequential_stream.sequential() switches back. The last call to parallel()/sequential() before the terminal operation determines the mode for the entire pipeline — it's a single flag on the pipeline, not a per-operation setting.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `2.4`,
+        title: `Virtual Threads & Structured Concurrency (Java 21)`,
+        hours: 4,
+        sections: [
+          {
+            title: `Virtual Threads — Project Loom & the Platform Thread Problem`,
+            notes: `## Virtual Threads — Project Loom & the Platform Thread Problem
 
 ### Why Platform Threads Fall Short
 
@@ -17354,9 +18825,17 @@ Traditional Java threads map 1:1 to OS threads. OS threads are expensive (~1MB s
 
 \`\`\`mermaid
 graph LR
-    PT[Platform Thread\nOS Thread 1:1\n~1MB stack\nmax ~thousands]
-    VT[Virtual Thread\nJVM-managed\n~few KB\nmax millions]
-    CT[Carrier Thread\nOS thread pool\nFixed size = CPU cores]
+    PT[Platform Thread
+OS Thread 1:1
+~1MB stack
+max ~thousands]
+    VT[Virtual Thread
+JVM-managed
+~few KB
+max millions]
+    CT[Carrier Thread
+OS thread pool
+Fixed size = CPU cores]
     VT --> CT
     CT --> OS[OS Scheduler]
     PT --> OS
@@ -17448,8 +18927,8 @@ try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
 }
 // Takes ~100ms (all 1000 virtual threads run "simultaneously")
 \`\`\``,
-          code: [
-            `import java.time.Duration;
+            code: [
+              `import java.time.Duration;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
@@ -17481,7 +18960,8 @@ public class VirtualThreadBasics {
         }
 
         // 3. Compare virtual vs platform thread overhead
-        System.out.println("\nCreating 1000 platform threads...");
+        System.out.println("
+Creating 1000 platform threads...");
         long pt = System.currentTimeMillis();
         var ptList = IntStream.range(0, 1000)
             .mapToObj(i -> Thread.ofPlatform().unstarted(() -> {}))
@@ -17499,11 +18979,12 @@ public class VirtualThreadBasics {
         for (Thread t : vtList) t.join();
         System.out.println("Virtual:  " + (System.currentTimeMillis() - vts) + "ms");
 
-        System.out.println("\nIs virtual: " +
+        System.out.println("
+Is virtual: " +
             Thread.startVirtualThread(() -> {}).isVirtual());
     }
 }`,
-            `import java.util.concurrent.*;
+              `import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.stream.*;
 
@@ -17551,18 +19032,33 @@ public class VirtualThreadState {
         System.out.println("Done");
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is a virtual thread and how does it differ from a platform thread?', a: 'A virtual thread is a lightweight thread managed by the JVM, not the OS. Platform threads map 1:1 to OS threads (~1MB stack each, expensive context switching). Virtual threads are multiplexed onto a small pool of OS "carrier" threads (sized to CPU count). When a virtual thread blocks on I/O, it is UNMOUNTED from the carrier thread (which picks up another virtual thread), then REMOUNTED when I/O completes. Cost: ~few KB heap each, millions can exist simultaneously.' },
-            { q: 'What happens when a virtual thread calls a blocking operation?', a: 'The JVM detects the blocking call, UNMOUNTS the virtual thread from its carrier thread, and parks the virtual thread state in heap memory. The carrier thread is immediately freed to mount and run another runnable virtual thread. When the blocking operation completes (e.g. I/O finishes), the virtual thread becomes runnable and is scheduled onto any available carrier thread. The OS thread never blocks — only the virtual thread does.' },
-            { q: 'How do you create virtual threads in Java 21?', a: 'Three ways: (1) Thread.ofVirtual().start(runnable) — creates and starts one; (2) Executors.newVirtualThreadPerTaskExecutor() — executor that creates a new virtual thread per submitted task; (3) Thread.startVirtualThread(runnable) — shorthand. Thread.ofVirtual() returns a builder for configuration (name, factory). Check with Thread.currentThread().isVirtual().' },
-            { q: 'Are virtual threads pooled like platform thread pools?', a: 'No. Virtual threads are intentionally NOT pooled — a new virtual thread is created for each task (hence newVirtualThreadPerTaskExecutor). This is safe because virtual threads are cheap to create (~microseconds, ~few KB). Pooling virtual threads would actually be harmful: it would prevent the runtime from disposing of them when done and could cause ThreadLocal leaks (since pool threads are reused). Always use newVirtualThreadPerTaskExecutor, not newFixedThreadPool, with virtual threads.' },
-            { q: 'What is "thread pinning" and when does it occur with virtual threads?', a: 'Pinning is when a virtual thread is stuck to its carrier thread and CANNOT be unmounted even during a blocking operation — defeating the purpose of virtual threads. It happens in two cases: (1) Inside a synchronized block or method — the JVM pins the virtual thread to the carrier for the duration. (2) When calling native code (JNI). Fix: replace synchronized with ReentrantLock. JVM flag -Djdk.tracePinnedThreads=full reports pinning events. Java 24+ will fix synchronized pinning.' }
-          ]
-        },
-        {
-          title: 'Structured Concurrency — StructuredTaskScope',
-          notes: `## Structured Concurrency — StructuredTaskScope
+            ],
+            flashcards: [
+              {
+                q: `What is a virtual thread and how does it differ from a platform thread?`,
+                a: `A virtual thread is a lightweight thread managed by the JVM, not the OS. Platform threads map 1:1 to OS threads (~1MB stack each, expensive context switching). Virtual threads are multiplexed onto a small pool of OS "carrier" threads (sized to CPU count). When a virtual thread blocks on I/O, it is UNMOUNTED from the carrier thread (which picks up another virtual thread), then REMOUNTED when I/O completes. Cost: ~few KB heap each, millions can exist simultaneously.`
+              },
+              {
+                q: `What happens when a virtual thread calls a blocking operation?`,
+                a: `The JVM detects the blocking call, UNMOUNTS the virtual thread from its carrier thread, and parks the virtual thread state in heap memory. The carrier thread is immediately freed to mount and run another runnable virtual thread. When the blocking operation completes (e.g. I/O finishes), the virtual thread becomes runnable and is scheduled onto any available carrier thread. The OS thread never blocks — only the virtual thread does.`
+              },
+              {
+                q: `How do you create virtual threads in Java 21?`,
+                a: `Three ways: (1) Thread.ofVirtual().start(runnable) — creates and starts one; (2) Executors.newVirtualThreadPerTaskExecutor() — executor that creates a new virtual thread per submitted task; (3) Thread.startVirtualThread(runnable) — shorthand. Thread.ofVirtual() returns a builder for configuration (name, factory). Check with Thread.currentThread().isVirtual().`
+              },
+              {
+                q: `Are virtual threads pooled like platform thread pools?`,
+                a: `No. Virtual threads are intentionally NOT pooled — a new virtual thread is created for each task (hence newVirtualThreadPerTaskExecutor). This is safe because virtual threads are cheap to create (~microseconds, ~few KB). Pooling virtual threads would actually be harmful: it would prevent the runtime from disposing of them when done and could cause ThreadLocal leaks (since pool threads are reused). Always use newVirtualThreadPerTaskExecutor, not newFixedThreadPool, with virtual threads.`
+              },
+              {
+                q: `What is "thread pinning" and when does it occur with virtual threads?`,
+                a: `Pinning is when a virtual thread is stuck to its carrier thread and CANNOT be unmounted even during a blocking operation — defeating the purpose of virtual threads. It happens in two cases: (1) Inside a synchronized block or method — the JVM pins the virtual thread to the carrier for the duration. (2) When calling native code (JNI). Fix: replace synchronized with ReentrantLock. JVM flag -Djdk.tracePinnedThreads=full reports pinning events. Java 24+ will fix synchronized pinning.`
+              }
+            ]
+          },
+          {
+            title: `Structured Concurrency — StructuredTaskScope`,
+            notes: `## Structured Concurrency — StructuredTaskScope
 
 Structured concurrency (Java 21 preview, finalised in Java 25) treats a group of related concurrent tasks as a single unit of work. The scope owns its tasks — when the scope exits, all tasks are guaranteed to be done or cancelled. No task outlives its scope.
 
@@ -17679,8 +19175,8 @@ try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
     throw new ServiceUnavailableException("Operations timed out", e);
 }
 \`\`\``,
-          code: [
-            `import java.util.concurrent.*;
+            code: [
+              `import java.util.concurrent.*;
 import java.util.concurrent.StructuredTaskScope.*;
 import java.util.*;
 import java.time.*;
@@ -17737,11 +19233,13 @@ public class StructuredConcurrencyDemo {
         System.out.printf("Wallet: $%.2f%n", dash.wallet().balance());
 
         // Time should be ~120ms (max of 80/120/60), not 80+120+60=260ms
-        System.out.println("\nFallback test:");
+        System.out.println("
+Fallback test:");
         System.out.println(fetchWithFallback(99)); // REPLICA:99
 
         // Timeout demo
-        System.out.println("\nTimeout demo:");
+        System.out.println("
+Timeout demo:");
         try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
             scope.fork(() -> { Thread.sleep(2000); return "slow"; });
             scope.joinUntil(Instant.now().plusMillis(500));
@@ -17751,7 +19249,7 @@ public class StructuredConcurrencyDemo {
         }
     }
 }`,
-            `import java.util.concurrent.*;
+              `import java.util.concurrent.*;
 import java.util.*;
 import java.util.stream.*;
 
@@ -17813,18 +19311,33 @@ public class FanOutDemo {
                 ep.stock()));
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is structured concurrency and what problem does it solve?', a: 'Structured concurrency is a programming model where concurrent tasks are organized into a scope — tasks cannot outlive their scope. It solves three problems with traditional unstructured concurrency: (1) Task leaks — tasks escape and run after the parent exits; (2) Partial failures — if one of several parallel tasks fails, the others keep running wastefully; (3) Cancellation — interrupting the calling thread doesn\'t propagate to child tasks. With StructuredTaskScope, if any child fails/is cancelled, all siblings are cancelled automatically.' },
-            { q: 'What is the difference between ShutdownOnFailure and ShutdownOnSuccess?', a: 'ShutdownOnFailure: waits for all forked tasks. If ANY task fails (throws), the scope shuts down and cancels the rest. Call .throwIfFailed() to propagate the exception. Use for: parallel fetches where ALL results are needed. ShutdownOnSuccess: shuts down as soon as ANY task succeeds. Returns the first result. Remaining tasks are cancelled. Use for: fallback/race patterns where the fastest response wins (primary DB vs replica, nearest cache node).' },
-            { q: 'How does StructuredTaskScope relate to virtual threads?', a: 'StructuredTaskScope is designed to work with virtual threads — scope.fork() creates a virtual thread for each task by default. This pairing is powerful: virtual threads handle blocking I/O without wasting OS threads, and structured concurrency handles cancellation and lifetime management. Together they make blocking concurrent code as efficient as reactive/async code but far simpler to write and reason about.' },
-            { q: 'How do you implement a timeout with StructuredTaskScope?', a: 'Use scope.joinUntil(Instant deadline) instead of scope.join(). If the deadline passes before all tasks complete, joinUntil returns and the scope automatically cancels remaining tasks. Then call scope.throwIfFailed() — but also check for TimeoutException from joinUntil. Pattern: try { scope.joinUntil(Instant.now().plusSeconds(5)); scope.throwIfFailed(); } catch (TimeoutException e) { handle timeout }.' },
-            { q: 'What guarantee does StructuredTaskScope give about task lifetime?', a: 'The try-with-resources scope.close() (called implicitly at the end of the try block) blocks until ALL forked tasks complete — either normally or by cancellation. It is impossible for a forked task to outlive its scope. This means no thread leaks: when the try block exits, you can be certain all child tasks are done. This is the fundamental "structured" guarantee — child concurrent work is bounded by the parent scope\'s lifetime.' }
-          ]
-        },
-        {
-          title: 'Virtual Thread Pinning, Limitations & When NOT to Use',
-          notes: `## Virtual Thread Pinning, Limitations & When NOT to Use
+            ],
+            flashcards: [
+              {
+                q: `What is structured concurrency and what problem does it solve?`,
+                a: `Structured concurrency is a programming model where concurrent tasks are organized into a scope — tasks cannot outlive their scope. It solves three problems with traditional unstructured concurrency: (1) Task leaks — tasks escape and run after the parent exits; (2) Partial failures — if one of several parallel tasks fails, the others keep running wastefully; (3) Cancellation — interrupting the calling thread doesn't propagate to child tasks. With StructuredTaskScope, if any child fails/is cancelled, all siblings are cancelled automatically.`
+              },
+              {
+                q: `What is the difference between ShutdownOnFailure and ShutdownOnSuccess?`,
+                a: `ShutdownOnFailure: waits for all forked tasks. If ANY task fails (throws), the scope shuts down and cancels the rest. Call .throwIfFailed() to propagate the exception. Use for: parallel fetches where ALL results are needed. ShutdownOnSuccess: shuts down as soon as ANY task succeeds. Returns the first result. Remaining tasks are cancelled. Use for: fallback/race patterns where the fastest response wins (primary DB vs replica, nearest cache node).`
+              },
+              {
+                q: `How does StructuredTaskScope relate to virtual threads?`,
+                a: `StructuredTaskScope is designed to work with virtual threads — scope.fork() creates a virtual thread for each task by default. This pairing is powerful: virtual threads handle blocking I/O without wasting OS threads, and structured concurrency handles cancellation and lifetime management. Together they make blocking concurrent code as efficient as reactive/async code but far simpler to write and reason about.`
+              },
+              {
+                q: `How do you implement a timeout with StructuredTaskScope?`,
+                a: `Use scope.joinUntil(Instant deadline) instead of scope.join(). If the deadline passes before all tasks complete, joinUntil returns and the scope automatically cancels remaining tasks. Then call scope.throwIfFailed() — but also check for TimeoutException from joinUntil. Pattern: try { scope.joinUntil(Instant.now().plusSeconds(5)); scope.throwIfFailed(); } catch (TimeoutException e) { handle timeout }.`
+              },
+              {
+                q: `What guarantee does StructuredTaskScope give about task lifetime?`,
+                a: `The try-with-resources scope.close() (called implicitly at the end of the try block) blocks until ALL forked tasks complete — either normally or by cancellation. It is impossible for a forked task to outlive its scope. This means no thread leaks: when the try block exits, you can be certain all child tasks are done. This is the fundamental "structured" guarantee — child concurrent work is bounded by the parent scope's lifetime.`
+              }
+            ]
+          },
+          {
+            title: `Virtual Thread Pinning, Limitations & When NOT to Use`,
+            notes: `## Virtual Thread Pinning, Limitations & When NOT to Use
 
 ### Thread Pinning
 
@@ -17940,8 +19453,8 @@ TomcatProtocolHandlerCustomizer<?> virtualThreadCustomizer() {
     return handler -> handler.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
 }
 \`\`\``,
-          code: [
-            `import java.util.concurrent.*;
+            code: [
+              `import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
 
 public class PinningDemo {
@@ -17999,7 +19512,7 @@ public class PinningDemo {
         System.out.printf("Speedup: %.1fx%n", (double) syncTime / lockTime);
     }
 }`,
-            `import java.util.concurrent.*;
+              `import java.util.concurrent.*;
 import java.util.stream.*;
 
 // CPU-bound vs I/O-bound: when VTs help and when they don't
@@ -18041,7 +19554,8 @@ public class CpuVsIoBenchmark {
             return null;
         });
 
-        System.out.println("\n=== I/O-bound (VTs shine) ===");
+        System.out.println("
+=== I/O-bound (VTs shine) ===");
 
         benchmark("FixedThreadPool-50 (I/O)", n, () -> {
             try (var e = Executors.newFixedThreadPool(50)) {
@@ -18059,18 +19573,33 @@ public class CpuVsIoBenchmark {
         });
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What causes virtual thread pinning and how do you fix it?', a: 'Two causes: (1) synchronized blocks/methods — when a virtual thread enters a synchronized block, the JVM pins it to the carrier thread for the entire duration. Fix: replace synchronized with ReentrantLock or other java.util.concurrent.locks. (2) Native/JNI frames — inherent, no fix. Detect pinning with JVM flag -Djdk.tracePinnedThreads=full. Java 24 fixes synchronized pinning for most cases.' },
-            { q: 'Why should you NOT use ThreadLocal caching with virtual threads?', a: 'With platform thread pools, threads are reused, so ThreadLocal state is reused across tasks — caching a DB connection in ThreadLocal is efficient. With virtual threads: a new virtual thread is created per task (not pooled), so ThreadLocal.withInitial() is called for EVERY task — you get a new (expensive) connection per task instead of sharing. Also, ThreadLocal state is never cleaned up. Use ScopedValue (Java 21) instead: immutable, inheritable, automatically scoped to the structured concurrency scope.' },
-            { q: 'When do virtual threads NOT improve performance?', a: 'Virtual threads do NOT help for CPU-bound work. They help only when threads are blocked waiting (I/O, sleep, locks). For CPU computation, all virtual threads compete for the same small pool of carrier threads — you get no more parallelism than a fixed thread pool sized to CPU count. For CPU work, use parallel streams (ForkJoinPool) or a fixed thread pool. Virtual threads shine for high-concurrency I/O: web servers, database calls, API clients.' },
-            { q: 'How do you enable virtual threads in Spring Boot 3.2+?', a: 'Set spring.threads.virtual.enabled=true in application.yml/properties. Spring Boot then uses virtual threads for: Tomcat request handling, @Async tasks, @Scheduled tasks, and other Spring-managed executors. No code changes needed in most apps. For manual Tomcat config: @Bean TomcatProtocolHandlerCustomizer<?> that calls handler.setExecutor(Executors.newVirtualThreadPerTaskExecutor()).' },
-            { q: 'What is the relationship between ScopedValue and virtual threads?', a: 'ScopedValue (Java 21 preview) is the recommended replacement for ThreadLocal when using virtual threads. Key differences: ScopedValue is IMMUTABLE (set once via ScopedValue.where().run()), automatically INHERITED by child virtual threads in a StructuredTaskScope, and automatically CLEANED UP when the scope exits — no remove() needed. This makes it composable with structured concurrency and free of the caching/leak issues that ThreadLocal has with virtual threads.' }
-          ]
-        },
-        {
-          title: 'Migration Patterns & Best Practices',
-          notes: `## Migration Patterns & Best Practices
+            ],
+            flashcards: [
+              {
+                q: `What causes virtual thread pinning and how do you fix it?`,
+                a: `Two causes: (1) synchronized blocks/methods — when a virtual thread enters a synchronized block, the JVM pins it to the carrier thread for the entire duration. Fix: replace synchronized with ReentrantLock or other java.util.concurrent.locks. (2) Native/JNI frames — inherent, no fix. Detect pinning with JVM flag -Djdk.tracePinnedThreads=full. Java 24 fixes synchronized pinning for most cases.`
+              },
+              {
+                q: `Why should you NOT use ThreadLocal caching with virtual threads?`,
+                a: `With platform thread pools, threads are reused, so ThreadLocal state is reused across tasks — caching a DB connection in ThreadLocal is efficient. With virtual threads: a new virtual thread is created per task (not pooled), so ThreadLocal.withInitial() is called for EVERY task — you get a new (expensive) connection per task instead of sharing. Also, ThreadLocal state is never cleaned up. Use ScopedValue (Java 21) instead: immutable, inheritable, automatically scoped to the structured concurrency scope.`
+              },
+              {
+                q: `When do virtual threads NOT improve performance?`,
+                a: `Virtual threads do NOT help for CPU-bound work. They help only when threads are blocked waiting (I/O, sleep, locks). For CPU computation, all virtual threads compete for the same small pool of carrier threads — you get no more parallelism than a fixed thread pool sized to CPU count. For CPU work, use parallel streams (ForkJoinPool) or a fixed thread pool. Virtual threads shine for high-concurrency I/O: web servers, database calls, API clients.`
+              },
+              {
+                q: `How do you enable virtual threads in Spring Boot 3.2+?`,
+                a: `Set spring.threads.virtual.enabled=true in application.yml/properties. Spring Boot then uses virtual threads for: Tomcat request handling, @Async tasks, @Scheduled tasks, and other Spring-managed executors. No code changes needed in most apps. For manual Tomcat config: @Bean TomcatProtocolHandlerCustomizer<?> that calls handler.setExecutor(Executors.newVirtualThreadPerTaskExecutor()).`
+              },
+              {
+                q: `What is the relationship between ScopedValue and virtual threads?`,
+                a: `ScopedValue (Java 21 preview) is the recommended replacement for ThreadLocal when using virtual threads. Key differences: ScopedValue is IMMUTABLE (set once via ScopedValue.where().run()), automatically INHERITED by child virtual threads in a StructuredTaskScope, and automatically CLEANED UP when the scope exits — no remove() needed. This makes it composable with structured concurrency and free of the caching/leak issues that ThreadLocal has with virtual threads.`
+              }
+            ]
+          },
+          {
+            title: `Migration Patterns & Best Practices`,
+            notes: `## Migration Patterns & Best Practices
 
 ### Identifying Migration Candidates
 
@@ -18191,8 +19720,8 @@ void testConcurrentRequests() throws Exception {
     assertEquals(concurrency, success.get());
 }
 \`\`\``,
-          code: [
-            `import java.net.http.*;
+            code: [
+              `import java.net.http.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -18238,11 +19767,12 @@ public class HttpFanOutDemo {
             });
         }
 
-        System.out.printf("\nTotal: %dms (should be ~1000ms, not %dms)%n",
+        System.out.printf("
+Total: %dms (should be ~1000ms, not %dms)%n",
             System.currentTimeMillis() - start, urls.size() * 1000);
     }
 }`,
-            `import java.util.concurrent.*;
+              `import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
 // Migration audit: find synchronized blocks that cause pinning
@@ -18296,26 +19826,40 @@ public class MigrationAudit {
                 " isVirtual=" + Thread.currentThread().isVirtual())).join();
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the minimum change needed to migrate a thread-pool-based app to virtual threads?', a: 'Replace Executors.newFixedThreadPool(N) with Executors.newVirtualThreadPerTaskExecutor(). In Spring Boot 3.2+, set spring.threads.virtual.enabled=true in application.yml — this switches Tomcat, @Async, @Scheduled all at once. Remove thread-pool-sizing configuration (server.tomcat.threads.max, spring.task.execution.pool.max-size) — these have no effect with virtual threads and mislead readers.' },
-            { q: 'How should HikariCP connection pool size be configured when using virtual threads?', a: 'Set maximumPoolSize to the maximum connections your DATABASE can handle — not to match the thread pool size. Previously, maximumPoolSize was set equal to the thread pool size so threads always had a connection. With virtual threads, you may have thousands of concurrent tasks but only need as many DB connections as your DB can serve (typically 10-50). Virtual threads wait efficiently for a connection without wasting OS threads. Also set connectionTimeout (e.g. 3000ms) to avoid indefinite waits.' },
-            { q: 'How do you test that code works correctly with high virtual thread concurrency?', a: 'Use CountDownLatch + newVirtualThreadPerTaskExecutor: spawn N concurrent tasks (e.g. 1000), each decrementing the latch on completion. Assert latch.await(timeout) returns true (all tasks finished in time, not N × latency). Also check correctness via an AtomicInteger success counter. Use -Djdk.tracePinnedThreads=full during tests to detect pinning. In Spring: @SpringBootTest with WebTestClient can be used for concurrency testing.' },
-            { q: 'Can virtual threads replace reactive programming (WebFlux)?', a: 'For most applications: yes. Virtual threads with blocking I/O achieve the same throughput as reactive non-blocking code but with synchronous, simpler code. There is no callback pyramid or Mono/Flux chain. However, reactive remains valuable for: (1) backpressure — reactive streams model data-flow with demand signals; (2) streaming pipelines with complex operators; (3) integrations with reactive-only libraries. Spring Boot 3.2+ supports both; for new projects with standard DB/HTTP I/O, virtual threads + blocking code is simpler.' },
-            { q: 'What should you audit before migrating a codebase to virtual threads?', a: '(1) synchronized blocks in hot paths — replace with ReentrantLock; (2) ThreadLocal caching of heavy resources (connections, parsers) — move to scoped resources or ScopedValue; (3) JDBC driver compatibility — ensure driver is virtual-thread-friendly (PostgreSQL 42.6+, MySQL 8.x may need newer version); (4) Third-party libraries that use synchronized internally (check release notes); (5) Remove thread pool size configurations that assumed fixed-size platform thread pools.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '2.5',
-      title: 'Records, Sealed Types & Pattern Matching (Java 17–21)',
-      hours: 3,
-      sections: [
-        {
-          title: 'Records — Immutable Data Carriers',
-          notes: `## Records — Immutable Data Carriers (Java 16+)
+            ],
+            flashcards: [
+              {
+                q: `What is the minimum change needed to migrate a thread-pool-based app to virtual threads?`,
+                a: `Replace Executors.newFixedThreadPool(N) with Executors.newVirtualThreadPerTaskExecutor(). In Spring Boot 3.2+, set spring.threads.virtual.enabled=true in application.yml — this switches Tomcat, @Async, @Scheduled all at once. Remove thread-pool-sizing configuration (server.tomcat.threads.max, spring.task.execution.pool.max-size) — these have no effect with virtual threads and mislead readers.`
+              },
+              {
+                q: `How should HikariCP connection pool size be configured when using virtual threads?`,
+                a: `Set maximumPoolSize to the maximum connections your DATABASE can handle — not to match the thread pool size. Previously, maximumPoolSize was set equal to the thread pool size so threads always had a connection. With virtual threads, you may have thousands of concurrent tasks but only need as many DB connections as your DB can serve (typically 10-50). Virtual threads wait efficiently for a connection without wasting OS threads. Also set connectionTimeout (e.g. 3000ms) to avoid indefinite waits.`
+              },
+              {
+                q: `How do you test that code works correctly with high virtual thread concurrency?`,
+                a: `Use CountDownLatch + newVirtualThreadPerTaskExecutor: spawn N concurrent tasks (e.g. 1000), each decrementing the latch on completion. Assert latch.await(timeout) returns true (all tasks finished in time, not N × latency). Also check correctness via an AtomicInteger success counter. Use -Djdk.tracePinnedThreads=full during tests to detect pinning. In Spring: @SpringBootTest with WebTestClient can be used for concurrency testing.`
+              },
+              {
+                q: `Can virtual threads replace reactive programming (WebFlux)?`,
+                a: `For most applications: yes. Virtual threads with blocking I/O achieve the same throughput as reactive non-blocking code but with synchronous, simpler code. There is no callback pyramid or Mono/Flux chain. However, reactive remains valuable for: (1) backpressure — reactive streams model data-flow with demand signals; (2) streaming pipelines with complex operators; (3) integrations with reactive-only libraries. Spring Boot 3.2+ supports both; for new projects with standard DB/HTTP I/O, virtual threads + blocking code is simpler.`
+              },
+              {
+                q: `What should you audit before migrating a codebase to virtual threads?`,
+                a: `(1) synchronized blocks in hot paths — replace with ReentrantLock; (2) ThreadLocal caching of heavy resources (connections, parsers) — move to scoped resources or ScopedValue; (3) JDBC driver compatibility — ensure driver is virtual-thread-friendly (PostgreSQL 42.6+, MySQL 8.x may need newer version); (4) Third-party libraries that use synchronized internally (check release notes); (5) Remove thread pool size configurations that assumed fixed-size platform thread pools.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `2.5`,
+        title: `Records, Sealed Types & Pattern Matching (Java 17–21)`,
+        hours: 3,
+        sections: [
+          {
+            title: `Records — Immutable Data Carriers`,
+            notes: `## Records — Immutable Data Carriers (Java 16+)
 
 Records are a concise way to declare immutable data-holding classes. The compiler generates the constructor, accessors, \`equals()\`, \`hashCode()\`, and \`toString()\` from the record components.
 
@@ -18426,8 +19970,8 @@ void processOrders(List<Order> orders) {
         .toList();
 }
 \`\`\``,
-          code: [
-            `import java.math.BigDecimal;
+            code: [
+              `import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.*;
 
@@ -18496,7 +20040,7 @@ public class RecordsDemo {
         try { new Point(-1, 5); } catch (IllegalArgumentException e) { System.out.println("Caught: " + e.getMessage()); }
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // Records as DTOs, local records, and with collections
 public class RecordPatterns {
@@ -18547,18 +20091,33 @@ public class RecordPatterns {
         System.out.println("Updated age: " + updated.age());
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What does a record declaration auto-generate?', a: 'For record Point(int x, int y): (1) private final fields x and y; (2) canonical constructor Point(int x, int y); (3) public accessor methods x() and y() — NOT getX()/getY(); (4) equals() — compares all components by value; (5) hashCode() — based on all components; (6) toString() — "Point[x=3, y=4]". Records are implicitly final and extend java.lang.Record.' },
-            { q: 'What is a compact constructor in a record and when do you use it?', a: 'A compact constructor omits the parameter list (no parentheses): public record Range(int min, int max) { Range { if (min > max) throw new IllegalArgumentException(...); } }. The compiler injects the assignments (this.min = min; this.max = max;) after the body. Use compact constructors for: validation, normalisation of inputs (e.g. trim strings). You can reassign the parameters before the implicit assignments.' },
-            { q: 'What are the key limitations of records?', a: '(1) Cannot extend any class (implicitly extends Record). (2) Cannot declare instance fields beyond the record components. (3) All components are automatically final — records are immutable by definition. (4) Cannot be abstract. (5) Cannot be sealed (but a sealed interface can have record implementors). Records CAN: implement interfaces, have static fields/methods, have custom methods, be generic, be local (inside methods).' },
-            { q: 'Why are records ideal as Map keys or Set elements?', a: 'Records auto-generate equals() and hashCode() based on ALL components. This means two records with the same component values are equal and have the same hash code — they work correctly as map keys without any manual implementation. Example: new CacheKey("user", 1).equals(new CacheKey("user", 1)) is true, so cache.get(new CacheKey("user", 1)) correctly retrieves the value.' },
-            { q: 'How do you "update" a record field since records are immutable?', a: 'Create a new record instance with the changed value and all other fields copied from the original: Person updated = new Person(original.name(), original.age() + 1, original.address()). This is explicit but verbose for records with many fields. Java does not yet have built-in "wither" methods (unlike Kotlin data classes with copy()). Libraries like Lombok (@With) can generate wither methods for records.' }
-          ]
-        },
-        {
-          title: 'Sealed Classes & Interfaces',
-          notes: `## Sealed Classes & Interfaces (Java 17+)
+            ],
+            flashcards: [
+              {
+                q: `What does a record declaration auto-generate?`,
+                a: `For record Point(int x, int y): (1) private final fields x and y; (2) canonical constructor Point(int x, int y); (3) public accessor methods x() and y() — NOT getX()/getY(); (4) equals() — compares all components by value; (5) hashCode() — based on all components; (6) toString() — "Point[x=3, y=4]". Records are implicitly final and extend java.lang.Record.`
+              },
+              {
+                q: `What is a compact constructor in a record and when do you use it?`,
+                a: `A compact constructor omits the parameter list (no parentheses): public record Range(int min, int max) { Range { if (min > max) throw new IllegalArgumentException(...); } }. The compiler injects the assignments (this.min = min; this.max = max;) after the body. Use compact constructors for: validation, normalisation of inputs (e.g. trim strings). You can reassign the parameters before the implicit assignments.`
+              },
+              {
+                q: `What are the key limitations of records?`,
+                a: `(1) Cannot extend any class (implicitly extends Record). (2) Cannot declare instance fields beyond the record components. (3) All components are automatically final — records are immutable by definition. (4) Cannot be abstract. (5) Cannot be sealed (but a sealed interface can have record implementors). Records CAN: implement interfaces, have static fields/methods, have custom methods, be generic, be local (inside methods).`
+              },
+              {
+                q: `Why are records ideal as Map keys or Set elements?`,
+                a: `Records auto-generate equals() and hashCode() based on ALL components. This means two records with the same component values are equal and have the same hash code — they work correctly as map keys without any manual implementation. Example: new CacheKey("user", 1).equals(new CacheKey("user", 1)) is true, so cache.get(new CacheKey("user", 1)) correctly retrieves the value.`
+              },
+              {
+                q: `How do you "update" a record field since records are immutable?`,
+                a: `Create a new record instance with the changed value and all other fields copied from the original: Person updated = new Person(original.name(), original.age() + 1, original.address()). This is explicit but verbose for records with many fields. Java does not yet have built-in "wither" methods (unlike Kotlin data classes with copy()). Libraries like Lombok (@With) can generate wither methods for records.`
+              }
+            ]
+          },
+          {
+            title: `Sealed Classes & Interfaces`,
+            notes: `## Sealed Classes & Interfaces (Java 17+)
 
 Sealed types restrict which classes can extend or implement them. Combined with pattern matching, they enable exhaustive modelling of algebraic data types — a closed set of known subtypes.
 
@@ -18653,8 +20212,8 @@ void processEvent(PaymentEvent event) {
     // No default — if you add a new event type, compiler forces you to handle it here
 }
 \`\`\``,
-          code: [
-            `// Sealed types + exhaustive pattern matching
+            code: [
+              `// Sealed types + exhaustive pattern matching
 public class SealedTypesDemo {
     // Shape hierarchy
     sealed interface Shape permits Circle, Rectangle, Triangle {}
@@ -18713,7 +20272,7 @@ public class SealedTypesDemo {
         }
     }
 }`,
-            `import java.time.Instant;
+              `import java.time.Instant;
 import java.util.*;
 
 // Domain modelling with sealed types
@@ -18762,18 +20321,33 @@ public class PaymentDomain {
         state.log().forEach(l -> System.out.println("  " + l));
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is a sealed class/interface and what does it enforce?', a: 'A sealed type restricts which classes can extend or implement it. You declare: sealed interface Shape permits Circle, Rectangle, Triangle {}. Only the listed permitted types can implement it. Each permitted type must be: final (closes the hierarchy), sealed (further restricts), or non-sealed (opens it back up). Permitted types must be in the same package (or module). The compiler can then check that switch expressions over sealed types are exhaustive — no default needed if all subtypes are covered.' },
-            { q: 'What is the difference between final, sealed, and non-sealed in the context of permitted subtypes?', a: 'When a permitted type is declared final, no further subclassing is possible — the hierarchy is completely closed at that type. When declared sealed, it can further restrict its own subtypes. When declared non-sealed, it re-opens the hierarchy — any class can extend it, but the compiler can no longer guarantee exhaustiveness. Records are implicitly final, so record Circle(...) implements Shape {} is automatically a closed subtype.' },
-            { q: 'How do sealed types enable exhaustiveness checking in switch?', a: 'When you switch over a sealed type and cover ALL permitted types (including subtypes of nested sealed types), the compiler verifies exhaustiveness — no default case is needed. If you add a new permitted type (e.g. add Ellipse to the permits list), every switch expression over Shape that doesn\'t cover Ellipse becomes a compile error. This is the key benefit: refactoring safely, knowing the compiler will find every switch that needs updating.' },
-            { q: 'What is an Algebraic Data Type (ADT) and how do records + sealed types implement it?', a: 'ADTs model data as a fixed set of variants, each carrying different data. Sum type (sealed) = "this is ONE OF these cases". Product type (record) = "this has ALL of these fields". Combined: sealed interface Result<T> permits Ok, Err {} with record Ok<T>(T value) and record Err<T>(String message) gives a type-safe result type that forces callers to handle both cases in a switch. Common ADT patterns: Result, Option, event hierarchies, AST nodes.' },
-            { q: 'When should you use sealed types over standard inheritance?', a: 'Use sealed when: (1) the set of subtypes is deliberately closed — you OWN all the variants; (2) you want the compiler to enforce exhaustive handling at every switch site; (3) modelling domain events, state machines, or discriminated unions. Avoid when: the type is an extension point for users/libraries (sealed breaks extensibility). Standard abstract class/interface is correct when third parties should be able to add subtypes.' }
-          ]
-        },
-        {
-          title: 'Pattern Matching — instanceof, Switch & Deconstruction',
-          notes: `## Pattern Matching — instanceof, Switch & Deconstruction
+            ],
+            flashcards: [
+              {
+                q: `What is a sealed class/interface and what does it enforce?`,
+                a: `A sealed type restricts which classes can extend or implement it. You declare: sealed interface Shape permits Circle, Rectangle, Triangle {}. Only the listed permitted types can implement it. Each permitted type must be: final (closes the hierarchy), sealed (further restricts), or non-sealed (opens it back up). Permitted types must be in the same package (or module). The compiler can then check that switch expressions over sealed types are exhaustive — no default needed if all subtypes are covered.`
+              },
+              {
+                q: `What is the difference between final, sealed, and non-sealed in the context of permitted subtypes?`,
+                a: `When a permitted type is declared final, no further subclassing is possible — the hierarchy is completely closed at that type. When declared sealed, it can further restrict its own subtypes. When declared non-sealed, it re-opens the hierarchy — any class can extend it, but the compiler can no longer guarantee exhaustiveness. Records are implicitly final, so record Circle(...) implements Shape {} is automatically a closed subtype.`
+              },
+              {
+                q: `How do sealed types enable exhaustiveness checking in switch?`,
+                a: `When you switch over a sealed type and cover ALL permitted types (including subtypes of nested sealed types), the compiler verifies exhaustiveness — no default case is needed. If you add a new permitted type (e.g. add Ellipse to the permits list), every switch expression over Shape that doesn't cover Ellipse becomes a compile error. This is the key benefit: refactoring safely, knowing the compiler will find every switch that needs updating.`
+              },
+              {
+                q: `What is an Algebraic Data Type (ADT) and how do records + sealed types implement it?`,
+                a: `ADTs model data as a fixed set of variants, each carrying different data. Sum type (sealed) = "this is ONE OF these cases". Product type (record) = "this has ALL of these fields". Combined: sealed interface Result<T> permits Ok, Err {} with record Ok<T>(T value) and record Err<T>(String message) gives a type-safe result type that forces callers to handle both cases in a switch. Common ADT patterns: Result, Option, event hierarchies, AST nodes.`
+              },
+              {
+                q: `When should you use sealed types over standard inheritance?`,
+                a: `Use sealed when: (1) the set of subtypes is deliberately closed — you OWN all the variants; (2) you want the compiler to enforce exhaustive handling at every switch site; (3) modelling domain events, state machines, or discriminated unions. Avoid when: the type is an extension point for users/libraries (sealed breaks extensibility). Standard abstract class/interface is correct when third parties should be able to add subtypes.`
+              }
+            ]
+          },
+          {
+            title: `Pattern Matching — instanceof, Switch & Deconstruction`,
+            notes: `## Pattern Matching — instanceof, Switch & Deconstruction
 
 ### Pattern Matching for instanceof (Java 16+)
 
@@ -18892,7 +20466,7 @@ int result = switch (code) {
 
 \`\`\`java
 // Inline string — hard to read
-String json = "{\"name\": \"Alice\", \"age\": 30}";
+String json = "{"name": "Alice", "age": 30}";
 
 // Text block — preserves formatting, no escaping
 String json = """
@@ -18915,8 +20489,8 @@ String query = """
         SELECT * FROM %s WHERE id = %d
         """.formatted(tableName, id);
 \`\`\``,
-          code: [
-            `// Pattern matching — instanceof and switch
+            code: [
+              `// Pattern matching — instanceof and switch
 public class PatternMatchingDemo {
     sealed interface JsonValue permits JsonNull, JsonBool, JsonNum, JsonStr, JsonArr {}
     record JsonNull()                            implements JsonValue {}
@@ -18930,7 +20504,7 @@ public class PatternMatchingDemo {
             case JsonNull()            -> "null";
             case JsonBool(var b)       -> String.valueOf(b);
             case JsonNum(var n)        -> n == Math.floor(n) ? String.valueOf((long)n) : String.valueOf(n);
-            case JsonStr(var s)        -> "\"" + s + "\"";
+            case JsonStr(var s)        -> """ + s + """;
             case JsonArr(var list)     -> "[" + list.stream()
                 .map(PatternMatchingDemo::toJavaString)
                 .collect(java.util.stream.Collectors.joining(", ")) + "]";
@@ -18969,7 +20543,7 @@ public class PatternMatchingDemo {
             .forEach(System.out::println);
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // Switch expressions, text blocks, and modern Java features together
 public class ModernJavaFeatures {
@@ -19014,7 +20588,8 @@ public class ModernJavaFeatures {
         accounts.forEach(acc -> System.out.println(statusMessage(acc)));
 
         // Text block
-        System.out.println("\n--- Generated SQL ---");
+        System.out.println("
+--- Generated SQL ---");
         System.out.println(buildQuery("accounts", "ACTIVE", 10));
 
         // Pattern matching with deconstruction
@@ -19035,37 +20610,48 @@ public class ModernJavaFeatures {
         }));
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What does pattern matching for instanceof add over a regular instanceof check?', a: 'Pattern matching for instanceof (Java 16) combines the type check AND cast into one step: if (obj instanceof String s) declares a binding variable s that is already cast to String within the true branch. No separate cast line needed. The compiler tracks scope: if you negate the check (!(obj instanceof String s)) and return, then s is in scope after the return — "flow-sensitive typing". Also works with guards: instanceof String s && s.length() > 5.' },
-            { q: 'What is the difference between a switch statement and a switch expression?', a: 'Switch statement: produces no value, uses break, fall-through between cases is possible (a classic bug source), no exhaustiveness check. Switch expression (Java 14): produces a value, uses -> (arrow, no fall-through) or yield (in block), exhaustiveness is REQUIRED by compiler — all cases must be covered. Use switch expressions: as assignments, in return statements, and with pattern matching. Arrow cases remove fall-through; yield returns a value from a block arm.' },
-            { q: 'What are record patterns (deconstruction patterns) and what Java version introduced them?', a: 'Record patterns (Java 21) allow destructuring a record inside a pattern: case Circle(var r) -> ... or instanceof Line(Point(var x1,var y1), Point(var x2,var y2)). They extract component values directly without calling accessor methods. They compose: nested patterns like Line(Point(var x1,var y1), Point(var x2,var y2)) destructure deeply in one expression. This combines well with sealed type switch for concise, type-safe algebraic data type handling.' },
-            { q: 'What are text blocks and what whitespace rules apply?', a: 'Text blocks (Java 15) are multi-line string literals delimited by triple quotes. The opening """ must be followed by a newline. The closing """ determines indentation trimming: common leading whitespace is stripped based on the closing """ position. Escape sequences work as normal. String.formatted() can be chained for interpolation. Backslash-newline (\\<newline>) suppresses the newline. Text blocks preserve content between the outer quotes minus the common indent.' },
-            { q: 'What is a guarded pattern in a switch and when do you use it?', a: 'A guarded pattern adds a when clause to a type pattern: case Integer i when i > 0 -> "positive". The when predicate is evaluated after the type match succeeds. Multiple guards for the same type must be ordered from most specific to least (narrower first): case Integer i when i < 0 → "negative", case Integer i when i == 0 → "zero", case Integer i → "positive". The compiler checks that all patterns together are exhaustive but does NOT check for logical overlaps between guards — that\'s your responsibility.' }
-          ]
-        }
-      ]
-    },
-
-
-  ]
-},
-
-/* ===================== PHASE 3: Spring ===================== */
-{
-  id: 'p3',
-  title: 'Spring & Spring Boot',
-  icon: 'leaf',
-  blurb: 'IoC/DI internals, Boot auto-configuration, transactions, Data JPA, and security.',
-  modules: [
-    {
-      id: '3.1',
-      title: 'IoC, DI & Bean Lifecycle',
-      hours: 4,
-      sections: [
-        {
-          title: 'Inversion of Control & Dependency Injection',
-          notes: `## Inversion of Control & Dependency Injection
+            ],
+            flashcards: [
+              {
+                q: `What does pattern matching for instanceof add over a regular instanceof check?`,
+                a: `Pattern matching for instanceof (Java 16) combines the type check AND cast into one step: if (obj instanceof String s) declares a binding variable s that is already cast to String within the true branch. No separate cast line needed. The compiler tracks scope: if you negate the check (!(obj instanceof String s)) and return, then s is in scope after the return — "flow-sensitive typing". Also works with guards: instanceof String s && s.length() > 5.`
+              },
+              {
+                q: `What is the difference between a switch statement and a switch expression?`,
+                a: `Switch statement: produces no value, uses break, fall-through between cases is possible (a classic bug source), no exhaustiveness check. Switch expression (Java 14): produces a value, uses -> (arrow, no fall-through) or yield (in block), exhaustiveness is REQUIRED by compiler — all cases must be covered. Use switch expressions: as assignments, in return statements, and with pattern matching. Arrow cases remove fall-through; yield returns a value from a block arm.`
+              },
+              {
+                q: `What are record patterns (deconstruction patterns) and what Java version introduced them?`,
+                a: `Record patterns (Java 21) allow destructuring a record inside a pattern: case Circle(var r) -> ... or instanceof Line(Point(var x1,var y1), Point(var x2,var y2)). They extract component values directly without calling accessor methods. They compose: nested patterns like Line(Point(var x1,var y1), Point(var x2,var y2)) destructure deeply in one expression. This combines well with sealed type switch for concise, type-safe algebraic data type handling.`
+              },
+              {
+                q: `What are text blocks and what whitespace rules apply?`,
+                a: `Text blocks (Java 15) are multi-line string literals delimited by triple quotes. The opening """ must be followed by a newline. The closing """ determines indentation trimming: common leading whitespace is stripped based on the closing """ position. Escape sequences work as normal. String.formatted() can be chained for interpolation. Backslash-newline (\\<newline>) suppresses the newline. Text blocks preserve content between the outer quotes minus the common indent.`
+              },
+              {
+                q: `What is a guarded pattern in a switch and when do you use it?`,
+                a: `A guarded pattern adds a when clause to a type pattern: case Integer i when i > 0 -> "positive". The when predicate is evaluated after the type match succeeds. Multiple guards for the same type must be ordered from most specific to least (narrower first): case Integer i when i < 0 → "negative", case Integer i when i == 0 → "zero", case Integer i → "positive". The compiler checks that all patterns together are exhaustive but does NOT check for logical overlaps between guards — that's your responsibility.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p3`,
+    title: `Spring & Spring Boot`,
+    icon: `leaf`,
+    blurb: `IoC/DI internals, Boot auto-configuration, transactions, Data JPA, and security.`,
+    modules: [
+      {
+        id: `3.1`,
+        title: `IoC, DI & Bean Lifecycle`,
+        hours: 4,
+        sections: [
+          {
+            title: `Inversion of Control & Dependency Injection`,
+            notes: `## Inversion of Control & Dependency Injection
 
 > [!TIP]
 > **Big picture — read this first.** Spring is, at its core, one big factory. You write plain classes and tell Spring "this class needs a UserRepository"; Spring creates every object once, figures out what each one needs, and hands the right instances over for you. That's the *whole* idea behind the buzzwords below: **IoC** = Spring (not you) decides when objects are created and wired; **DI** = the concrete way it hands dependencies in. Everything else in this phase — auto-config, \`@Transactional\`, repositories — is built on top of this one factory. If you can explain *why you'd let a framework own object creation* in one sentence, you're ahead of most candidates.
@@ -19160,11 +20746,16 @@ class BadService {
 
 \`\`\`mermaid
 graph TD
-    AC[ApplicationContext\nIoC Container]
-    AC --> SC[Scans @Component\n@Service @Repository @Controller]
-    AC --> CF[Reads @Configuration\n@Bean methods]
-    AC --> WI[Wires dependencies\nby type + @Qualifier]
-    AC --> LM[Manages lifecycle\ninit → use → destroy]
+    AC[ApplicationContext
+IoC Container]
+    AC --> SC[Scans @Component
+@Service @Repository @Controller]
+    AC --> CF[Reads @Configuration
+@Bean methods]
+    AC --> WI[Wires dependencies
+by type + @Qualifier]
+    AC --> LM[Manages lifecycle
+init → use → destroy]
     SC --> B1[UserService bean]
     SC --> B2[UserRepository bean]
     CF --> B3[DataSource bean]
@@ -19176,8 +20767,8 @@ graph TD
 \`\`\`
 
 The ApplicationContext reads your \`@Component\`/\`@Configuration\` annotations, instantiates beans in the right order (respecting dependencies), and injects them where needed. Your code just declares what it needs — the container figures out how to provide it.`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 
 // DI without Spring — manual container to understand the concept
 public class ManualDiDemo {
@@ -19232,10 +20823,11 @@ public class ManualDiDemo {
         OrderService testService = new OrderService(mockNotifier, new FakePaymentGateway());
         testService.placeOrder(new Order("ORD-002", "bob@e.com", "ACC-456", 9.99));
 
-        System.out.println("\nMock captured: " + mockNotifier.sent);
+        System.out.println("
+Mock captured: " + mockNotifier.sent);
     }
 }`,
-            `// Spring-style DI with annotations (conceptual — shows the pattern)
+              `// Spring-style DI with annotations (conceptual — shows the pattern)
 // In a real Spring Boot project these classes live in separate files
 
 /*
@@ -19308,18 +20900,33 @@ public class SpringDiConceptual {
         System.out.println("  5. Keep beans stateless — state in DB/cache, not fields");
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is Inversion of Control (IoC)?', a: 'IoC means the framework controls the flow and object lifecycle, not your code. In classic code, you write main() and call framework APIs. With IoC, the framework calls your code (e.g. Spring creates your beans, wires them, and calls your @PostConstruct). The "control" of wiring and lifecycle is inverted from your code to the container.' },
-            { q: 'Why is constructor injection preferred over field injection?', a: '(1) Dependencies are explicit — visible to callers and tests. (2) Fields can be final — immutable after construction. (3) No Spring needed to instantiate — testable with new MyService(mockRepo). (4) Circular dependencies detected at startup (Spring refuses to start), not silently at runtime. (5) IDE flags missing required beans. Field @Autowired hides dependencies and requires reflection to test.' },
-            { q: 'What is the difference between @Component, @Service, @Repository, and @Controller?', a: 'All four are @Component specialisations — they all register a bean. The difference is semantic/functional: @Repository adds exception translation (SQLException → DataAccessException). @Controller marks MVC controllers (Spring MVC dispatch). @Service has no extra functionality but documents intent. Use the specific annotation for documentation, IDE support, and so framework features (AOP pointcuts, exception translation) can target them precisely.' },
-            { q: 'When is @Autowired required on a constructor in Spring?', a: 'Not required if the class has exactly one constructor (Spring 4.3+). Spring uses the single constructor automatically. @Autowired is required if the class has multiple constructors — it tells Spring which one to use for injection. Best practice: write one constructor with all dependencies, no @Autowired annotation needed.' },
-            { q: 'What is the ApplicationContext and how does it differ from BeanFactory?', a: 'Both are IoC containers. BeanFactory is the basic contract (lazy bean creation). ApplicationContext extends BeanFactory and adds: eager singleton creation at startup, ApplicationEvent publication, MessageSource (i18n), AOP auto-proxying. In Spring Boot, ApplicationContext is always used. BeanFactory is mainly a historical distinction — you never create one directly.' }
-          ]
-        },
-        {
-          title: 'Bean Lifecycle & Scopes',
-          notes: `## Bean Lifecycle & Scopes
+            ],
+            flashcards: [
+              {
+                q: `What is Inversion of Control (IoC)?`,
+                a: `IoC means the framework controls the flow and object lifecycle, not your code. In classic code, you write main() and call framework APIs. With IoC, the framework calls your code (e.g. Spring creates your beans, wires them, and calls your @PostConstruct). The "control" of wiring and lifecycle is inverted from your code to the container.`
+              },
+              {
+                q: `Why is constructor injection preferred over field injection?`,
+                a: `(1) Dependencies are explicit — visible to callers and tests. (2) Fields can be final — immutable after construction. (3) No Spring needed to instantiate — testable with new MyService(mockRepo). (4) Circular dependencies detected at startup (Spring refuses to start), not silently at runtime. (5) IDE flags missing required beans. Field @Autowired hides dependencies and requires reflection to test.`
+              },
+              {
+                q: `What is the difference between @Component, @Service, @Repository, and @Controller?`,
+                a: `All four are @Component specialisations — they all register a bean. The difference is semantic/functional: @Repository adds exception translation (SQLException → DataAccessException). @Controller marks MVC controllers (Spring MVC dispatch). @Service has no extra functionality but documents intent. Use the specific annotation for documentation, IDE support, and so framework features (AOP pointcuts, exception translation) can target them precisely.`
+              },
+              {
+                q: `When is @Autowired required on a constructor in Spring?`,
+                a: `Not required if the class has exactly one constructor (Spring 4.3+). Spring uses the single constructor automatically. @Autowired is required if the class has multiple constructors — it tells Spring which one to use for injection. Best practice: write one constructor with all dependencies, no @Autowired annotation needed.`
+              },
+              {
+                q: `What is the ApplicationContext and how does it differ from BeanFactory?`,
+                a: `Both are IoC containers. BeanFactory is the basic contract (lazy bean creation). ApplicationContext extends BeanFactory and adds: eager singleton creation at startup, ApplicationEvent publication, MessageSource (i18n), AOP auto-proxying. In Spring Boot, ApplicationContext is always used. BeanFactory is mainly a historical distinction — you never create one directly.`
+              }
+            ]
+          },
+          {
+            title: `Bean Lifecycle & Scopes`,
+            notes: `## Bean Lifecycle & Scopes
 
 Understanding the Spring bean lifecycle lets you hook into initialization and destruction phases — loading config, warming caches, releasing resources, closing connections cleanly.
 
@@ -19327,14 +20934,26 @@ Understanding the Spring bean lifecycle lets you hook into initialization and de
 
 \`\`\`mermaid
 graph LR
-    IN[Instantiate\nconstructor called]
-    IN --> PI[Property injection\n@Autowired fields/setters]
-    PI --> AC[Aware callbacks\nBeanNameAware etc.]
-    AC --> BP1[BeanPostProcessor\nbeforeInit]
-    BP1 --> IN2[Init\n@PostConstruct\nInitializingBean.afterPropertiesSet\ninit-method]
-    IN2 --> BP2[BeanPostProcessor\nafterInit]
-    BP2 --> US[In use\nhandling requests]
-    US --> DS[Destroy\n@PreDestroy\nDisposableBean.destroy\ndestroy-method]
+    IN[Instantiate
+constructor called]
+    IN --> PI[Property injection
+@Autowired fields/setters]
+    PI --> AC[Aware callbacks
+BeanNameAware etc.]
+    AC --> BP1[BeanPostProcessor
+beforeInit]
+    BP1 --> IN2[Init
+@PostConstruct
+InitializingBean.afterPropertiesSet
+init-method]
+    IN2 --> BP2[BeanPostProcessor
+afterInit]
+    BP2 --> US[In use
+handling requests]
+    US --> DS[Destroy
+@PreDestroy
+DisposableBean.destroy
+destroy-method]
     style IN fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style IN2 fill:#0f1e12,stroke:#10b981,color:#e2e8f0
     style DS fill:#1e0a0a,stroke:#ef4444,color:#fecaca
@@ -19440,8 +21059,8 @@ public class LoggingBeanPostProcessor implements BeanPostProcessor {
 \`\`\`
 
 > **Key insight:** Spring AOP (the mechanism behind \`@Transactional\`, \`@Cacheable\`, \`@Async\`) creates proxy objects in \`postProcessAfterInitialization\`. This is why you must inject beans (to get the proxy) rather than calling \`new MyService()\` directly — a directly constructed object has no proxy, so \`@Transactional\` on its methods does nothing.`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
@@ -19514,15 +21133,17 @@ public class BeanLifecycleDemo {
         ConnectionPool pool = container.getBean("pool");
         String c1 = pool.borrow();
         String c2 = pool.borrow();
-        System.out.println("\nBorrowed: " + c1 + ", " + c2);
+        System.out.println("
+Borrowed: " + c1 + ", " + c2);
         pool.release(c1);
         System.out.println("Released: " + c1);
 
-        System.out.println("\nShutting down container...");
+        System.out.println("
+Shutting down container...");
         container.shutdown();
     }
 }`,
-            `// Bean scopes and ObjectProvider pattern (conceptual Spring code)
+              `// Bean scopes and ObjectProvider pattern (conceptual Spring code)
 
 /*
 import org.springframework.beans.factory.ObjectProvider;
@@ -19544,7 +21165,8 @@ public class OrderService {
 public class ReportBuilder {
     private final List<String> lines = new ArrayList<>(); // ok — fresh instance each time
     public void addLine(String line) { lines.add(line); }
-    public String build() { return String.join("\n", lines); }
+    public String build() { return String.join("
+", lines); }
 }
 
 // Injecting prototype into singleton correctly
@@ -19595,18 +21217,33 @@ public class ScopesConceptual {
         System.out.println("  3. @PostConstruct  4. [in use]  5. @PreDestroy");
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the order of Spring bean lifecycle phases?', a: '1. Instantiate (constructor). 2. Populate properties (@Autowired injection). 3. BeanNameAware / other Aware callbacks. 4. BeanPostProcessor.beforeInitialization(). 5. @PostConstruct / InitializingBean.afterPropertiesSet() / init-method. 6. BeanPostProcessor.afterInitialization() — AOP proxies created here. 7. Bean in use. 8. @PreDestroy / DisposableBean.destroy() / destroy-method.' },
-            { q: 'When does @PostConstruct run and what is it safe to do there?', a: '@PostConstruct runs after all dependencies are injected (after constructor and @Autowired processing). It is safe to use all injected dependencies. Typical uses: warm a cache by loading from DB, validate configuration, register the bean with an external system, open a resource. Never do heavy work in the constructor (dependencies not yet injected).' },
-            { q: 'What is the default Spring bean scope and what does it mean?', a: 'Singleton — one instance per ApplicationContext. All components that @Autowired this bean receive the same object. This means singleton beans MUST be stateless — no mutable instance fields holding per-request data. If you need state per request, use prototype or request scope, or store state in the method stack / ThreadLocal / DB.' },
-            { q: 'What is the problem with @Autowiring a prototype bean into a singleton?', a: 'Spring injects once at startup. The singleton receives one prototype instance and holds it forever — effectively making it a singleton. Solution: inject ObjectProvider<Prototype> and call getObject() each time you need a fresh instance. Alternative: inject ApplicationContext and call ctx.getBean(Prototype.class). Spring\'s @Lookup annotation on a method is another approach.' },
-            { q: 'What is BeanPostProcessor and what uses it?', a: 'BeanPostProcessor intercepts all bean initialization — it runs before and after every bean\'s init phase. Spring\'s own AOP infrastructure creates proxy objects in postProcessAfterInitialization. This is how @Transactional, @Cacheable, @Async work — they replace your bean with a proxy that adds transaction/cache/async logic. You can write your own for cross-cutting concerns (logging, validation).' }
-          ]
-        },
-        {
-          title: '@Configuration, Component Scanning & Profiles',
-          notes: `## @Configuration, Component Scanning & Profiles
+            ],
+            flashcards: [
+              {
+                q: `What is the order of Spring bean lifecycle phases?`,
+                a: `1. Instantiate (constructor). 2. Populate properties (@Autowired injection). 3. BeanNameAware / other Aware callbacks. 4. BeanPostProcessor.beforeInitialization(). 5. @PostConstruct / InitializingBean.afterPropertiesSet() / init-method. 6. BeanPostProcessor.afterInitialization() — AOP proxies created here. 7. Bean in use. 8. @PreDestroy / DisposableBean.destroy() / destroy-method.`
+              },
+              {
+                q: `When does @PostConstruct run and what is it safe to do there?`,
+                a: `@PostConstruct runs after all dependencies are injected (after constructor and @Autowired processing). It is safe to use all injected dependencies. Typical uses: warm a cache by loading from DB, validate configuration, register the bean with an external system, open a resource. Never do heavy work in the constructor (dependencies not yet injected).`
+              },
+              {
+                q: `What is the default Spring bean scope and what does it mean?`,
+                a: `Singleton — one instance per ApplicationContext. All components that @Autowired this bean receive the same object. This means singleton beans MUST be stateless — no mutable instance fields holding per-request data. If you need state per request, use prototype or request scope, or store state in the method stack / ThreadLocal / DB.`
+              },
+              {
+                q: `What is the problem with @Autowiring a prototype bean into a singleton?`,
+                a: `Spring injects once at startup. The singleton receives one prototype instance and holds it forever — effectively making it a singleton. Solution: inject ObjectProvider<Prototype> and call getObject() each time you need a fresh instance. Alternative: inject ApplicationContext and call ctx.getBean(Prototype.class). Spring's @Lookup annotation on a method is another approach.`
+              },
+              {
+                q: `What is BeanPostProcessor and what uses it?`,
+                a: `BeanPostProcessor intercepts all bean initialization — it runs before and after every bean's init phase. Spring's own AOP infrastructure creates proxy objects in postProcessAfterInitialization. This is how @Transactional, @Cacheable, @Async work — they replace your bean with a proxy that adds transaction/cache/async logic. You can write your own for cross-cutting concerns (logging, validation).`
+              }
+            ]
+          },
+          {
+            title: `@Configuration, Component Scanning & Profiles`,
+            notes: `## @Configuration, Component Scanning & Profiles
 
 Spring discovers beans in two ways: component scanning (classpath scan for annotations) and explicit \`@Bean\` methods in \`@Configuration\` classes. Profiles let you activate different configurations per environment.
 
@@ -19756,8 +21393,8 @@ MessageSender defaultSender() { return msg -> System.out.println("DEFAULT: " + m
 \`\`\`
 
 This is the foundation of Spring Boot auto-configuration — every \`@AutoConfiguration\` class is guarded by \`@Conditional*\` annotations.`,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.function.*;
 
 // @Configuration + profiles without Spring — shows the concept
@@ -19804,12 +21441,13 @@ public class ConfigAndProfilesDemo {
         DataSource ds = config.dataSource();
         System.out.println(ds.query("SELECT * FROM users WHERE id = 1"));
 
-        System.out.println("\nBeans registered:");
+        System.out.println("
+Beans registered:");
         config.allBeans().forEach((name, bean) ->
             System.out.println("  " + name + " → " + bean.getClass().getSimpleName()));
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // @Qualifier pattern and conditional beans
 public class QualifierAndConditionalDemo {
@@ -19870,28 +21508,50 @@ public class QualifierAndConditionalDemo {
         }
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between @Component and @Bean?', a: '@Component (and its specialisations) is placed on a class — Spring creates the bean via the class constructor. @Bean is placed on a method inside a @Configuration class — Spring calls the method to get the bean. Use @Component for your own classes. Use @Bean for third-party library classes you can\'t annotate, or when construction logic is complex.' },
-            { q: 'What is special about @Bean methods inside a @Configuration class (CGLIB proxy)?', a: '@Configuration classes are CGLIB-proxied. When Spring calls a @Bean method, subsequent calls to that same method (from other @Bean methods in the same config) return the existing singleton rather than calling the method again. Without CGLIB (bare @Component), each call to a @Bean method creates a new object — breaking singleton semantics.' },
-            { q: 'How do Spring Profiles work and how do you activate them?', a: 'Profiles let you register different beans per environment. Annotate beans or @Configuration with @Profile("name"). Active profiles are set via: SPRING_PROFILES_ACTIVE environment variable, --spring.profiles.active CLI argument, spring.profiles.active in application.properties. Multiple profiles can be active. @Profile("!test") activates for all profiles except test.' },
-            { q: 'What is @ConfigurationProperties and why prefer it over @Value?', a: '@ConfigurationProperties binds a whole group of properties to a typed POJO (prefix = "payment" → payment.apiKey, payment.timeout). Benefits over @Value: IDE autocompletion, compile-time type safety, JSR-303 validation with @Validated, no SpEL strings scattered in code, properties are grouped logically. @Value is fine for one-off simple values.' },
-            { q: 'What is @ConditionalOnMissingBean and how does Spring Boot use it?', a: 'Registers a bean only if no other bean of that type is already registered. Spring Boot auto-configuration uses this extensively: auto-configure DataSource only if the user hasn\'t defined their own. This lets you override any auto-configured bean simply by defining your own @Bean of the same type — your bean is registered first, and the auto-config @ConditionalOnMissingBean check then skips.' }
-          ]
-        },
-        {
-          title: 'ApplicationContext, Events & Conditional Wiring',
-          notes: `## ApplicationContext, Events & Conditional Wiring
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between @Component and @Bean?`,
+                a: `@Component (and its specialisations) is placed on a class — Spring creates the bean via the class constructor. @Bean is placed on a method inside a @Configuration class — Spring calls the method to get the bean. Use @Component for your own classes. Use @Bean for third-party library classes you can't annotate, or when construction logic is complex.`
+              },
+              {
+                q: `What is special about @Bean methods inside a @Configuration class (CGLIB proxy)?`,
+                a: `@Configuration classes are CGLIB-proxied. When Spring calls a @Bean method, subsequent calls to that same method (from other @Bean methods in the same config) return the existing singleton rather than calling the method again. Without CGLIB (bare @Component), each call to a @Bean method creates a new object — breaking singleton semantics.`
+              },
+              {
+                q: `How do Spring Profiles work and how do you activate them?`,
+                a: `Profiles let you register different beans per environment. Annotate beans or @Configuration with @Profile("name"). Active profiles are set via: SPRING_PROFILES_ACTIVE environment variable, --spring.profiles.active CLI argument, spring.profiles.active in application.properties. Multiple profiles can be active. @Profile("!test") activates for all profiles except test.`
+              },
+              {
+                q: `What is @ConfigurationProperties and why prefer it over @Value?`,
+                a: `@ConfigurationProperties binds a whole group of properties to a typed POJO (prefix = "payment" → payment.apiKey, payment.timeout). Benefits over @Value: IDE autocompletion, compile-time type safety, JSR-303 validation with @Validated, no SpEL strings scattered in code, properties are grouped logically. @Value is fine for one-off simple values.`
+              },
+              {
+                q: `What is @ConditionalOnMissingBean and how does Spring Boot use it?`,
+                a: `Registers a bean only if no other bean of that type is already registered. Spring Boot auto-configuration uses this extensively: auto-configure DataSource only if the user hasn't defined their own. This lets you override any auto-configured bean simply by defining your own @Bean of the same type — your bean is registered first, and the auto-config @ConditionalOnMissingBean check then skips.`
+              }
+            ]
+          },
+          {
+            title: `ApplicationContext, Events & Conditional Wiring`,
+            notes: `## ApplicationContext, Events & Conditional Wiring
 
 ### ApplicationContext Hierarchy
 
 \`\`\`mermaid
 graph TD
-    BAC[BeanFactory\nbasic bean lookup]
-    BAC --> AC[ApplicationContext\n+ event publishing\n+ i18n\n+ AOP auto-proxy]
-    AC --> CAC[ConfigurableApplicationContext\n+ close lifecycle]
-    CAC --> WAC[WebApplicationContext\n+ Servlet support]
-    WAC --> SB[Spring Boot\nAnnotationConfigServletWebServerApplicationContext]
+    BAC[BeanFactory
+basic bean lookup]
+    BAC --> AC[ApplicationContext
++ event publishing
++ i18n
++ AOP auto-proxy]
+    AC --> CAC[ConfigurableApplicationContext
++ close lifecycle]
+    CAC --> WAC[WebApplicationContext
++ Servlet support]
+    WAC --> SB[Spring Boot
+AnnotationConfigServletWebServerApplicationContext]
     style AC fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style SB fill:#0f1e12,stroke:#10b981,color:#e2e8f0
 \`\`\`
@@ -20013,8 +21673,8 @@ class OrderServiceTest {
     @Test void testOrder() { /* fast, no context startup */ }
 }
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.function.*;
 import java.util.concurrent.*;
 
@@ -20079,7 +21739,7 @@ public class EventBusDemo {
         service.cancelOrder(id2);
     }
 }`,
-            `import java.util.*;
+              `import java.util.*;
 
 // Demonstrating ApplicationContext patterns: ServiceLocator vs proper DI
 public class ApplicationContextPatterns {
@@ -20141,25 +21801,40 @@ public class ApplicationContextPatterns {
         System.out.println("Plugin: " + dynamic.getClass().getSimpleName());
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is ApplicationEventPublisher and how does @EventListener work?', a: 'ApplicationEventPublisher is a Spring interface for publishing events. Inject it into any bean and call publishEvent(event). @EventListener on a method registers it to receive events — Spring scans all beans for @EventListener at startup. The method signature determines which event type it listens to. By default events are synchronous; add @Async for asynchronous delivery (requires @EnableAsync).' },
-            { q: 'What is the ServiceLocator anti-pattern in Spring?', a: 'Calling ctx.getBean() inside business logic to fetch dependencies at runtime. Problems: (1) hides dependencies — constructor doesn\'t show what the class needs, (2) hard to test — requires ApplicationContext or mocking it, (3) violates Dependency Inversion. Acceptable only for plugin factories needing runtime type resolution or injecting prototype beans (use ObjectProvider instead).' },
-            { q: 'What is @SpringBootTest vs @WebMvcTest?', a: '@SpringBootTest loads the full ApplicationContext — all beans, all auto-configurations. Suitable for integration tests but slow to start. @WebMvcTest loads only the web layer (controllers, filters, converters) and auto-configures MockMvc. Other dependencies are @MockBean. Much faster than @SpringBootTest, tests HTTP layer in isolation. For services with no HTTP, use plain unit tests (new ServiceImpl(mock(Repo.class))).' },
-            { q: 'What are the built-in Spring application lifecycle events?', a: 'ContextStartedEvent — after context.start() called. ContextRefreshedEvent — after all beans initialized (most useful: "context is ready"). ContextStoppedEvent — after context.stop(). ContextClosedEvent — after context.close() / JVM shutdown. ApplicationStartingEvent / ApplicationReadyEvent — Spring Boot specific, fire before/after context refresh. For bean-level hooks, prefer @PostConstruct / @PreDestroy over ContextRefreshedEvent.' },
-            { q: 'How does Spring know the order to instantiate and inject beans?', a: 'Spring builds a dependency graph from constructor/setter parameters and @Autowired references. It instantiates beans in topological order — if A depends on B, B is created first. Circular dependencies with constructor injection fail at startup (Spring refuses to start — a feature, not a bug). @Lazy or setter injection can break cycles but hides the design problem.' }
-          ]
-        }
-      ]
-    },
-    {
-      id: '3.2',
-      title: 'Spring Boot Auto-Configuration & Actuator',
-      hours: 3,
-      sections: [
-        {
-          title: 'Auto-Configuration Internals — How Spring Boot Wires Itself',
-          notes: `## Auto-Configuration Internals
+            ],
+            flashcards: [
+              {
+                q: `What is ApplicationEventPublisher and how does @EventListener work?`,
+                a: `ApplicationEventPublisher is a Spring interface for publishing events. Inject it into any bean and call publishEvent(event). @EventListener on a method registers it to receive events — Spring scans all beans for @EventListener at startup. The method signature determines which event type it listens to. By default events are synchronous; add @Async for asynchronous delivery (requires @EnableAsync).`
+              },
+              {
+                q: `What is the ServiceLocator anti-pattern in Spring?`,
+                a: `Calling ctx.getBean() inside business logic to fetch dependencies at runtime. Problems: (1) hides dependencies — constructor doesn't show what the class needs, (2) hard to test — requires ApplicationContext or mocking it, (3) violates Dependency Inversion. Acceptable only for plugin factories needing runtime type resolution or injecting prototype beans (use ObjectProvider instead).`
+              },
+              {
+                q: `What is @SpringBootTest vs @WebMvcTest?`,
+                a: `@SpringBootTest loads the full ApplicationContext — all beans, all auto-configurations. Suitable for integration tests but slow to start. @WebMvcTest loads only the web layer (controllers, filters, converters) and auto-configures MockMvc. Other dependencies are @MockBean. Much faster than @SpringBootTest, tests HTTP layer in isolation. For services with no HTTP, use plain unit tests (new ServiceImpl(mock(Repo.class))).`
+              },
+              {
+                q: `What are the built-in Spring application lifecycle events?`,
+                a: `ContextStartedEvent — after context.start() called. ContextRefreshedEvent — after all beans initialized (most useful: "context is ready"). ContextStoppedEvent — after context.stop(). ContextClosedEvent — after context.close() / JVM shutdown. ApplicationStartingEvent / ApplicationReadyEvent — Spring Boot specific, fire before/after context refresh. For bean-level hooks, prefer @PostConstruct / @PreDestroy over ContextRefreshedEvent.`
+              },
+              {
+                q: `How does Spring know the order to instantiate and inject beans?`,
+                a: `Spring builds a dependency graph from constructor/setter parameters and @Autowired references. It instantiates beans in topological order — if A depends on B, B is created first. Circular dependencies with constructor injection fail at startup (Spring refuses to start — a feature, not a bug). @Lazy or setter injection can break cycles but hides the design problem.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `3.2`,
+        title: `Spring Boot Auto-Configuration & Actuator`,
+        hours: 3,
+        sections: [
+          {
+            title: `Auto-Configuration Internals — How Spring Boot Wires Itself`,
+            notes: `## Auto-Configuration Internals
 
 > [!TIP]
 > **Big picture — read this first.** "Auto-configuration" sounds like magic, but it's just a giant pile of pre-written \`@Configuration\` classes that ship inside Spring Boot, each guarded by an *if* statement. When the app starts, Boot asks each one: "Is the H2 driver on the classpath? Has the user already defined their own DataSource? Is this property set?" — and only the ones whose conditions pass get applied. That's why dropping in a starter dependency "just works", and why **defining your own bean always wins** (the auto-config's \`@ConditionalOnMissingBean\` quietly steps aside). Hold onto that one mental model — *conditional config classes you can always override* — and the rest of this section is detail.
@@ -20172,10 +21847,15 @@ Spring Boot's auto-configuration is the mechanism that configures beans automati
 graph TD
     A[@SpringBootApplication] --> B[@EnableAutoConfiguration]
     B --> C[AutoConfigurationImportSelector]
-    C --> D[Read META-INF/spring/\nauto-configuration\nimports]
-    D --> E[Evaluate @Conditional\nannotations per class]
-    E --> F{Condition\npasses?}
-    F -->|Yes| G[Register bean\ndefinitions]
+    C --> D[Read META-INF/spring/
+auto-configuration
+imports]
+    D --> E[Evaluate @Conditional
+annotations per class]
+    E --> F{Condition
+passes?}
+    F -->|Yes| G[Register bean
+definitions]
     F -->|No| H[Skip class]
     style A fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style G fill:#0f1e12,stroke:#10b981,color:#e2e8f0
@@ -20258,8 +21938,8 @@ public class JdbcTemplateAutoConfiguration {
 // Or via property:
 // spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
 \`\`\``,
-          code: [
-            `import org.springframework.boot.autoconfigure.condition.*;
+            code: [
+              `import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.context.annotation.*;
 import org.springframework.boot.*;
 
@@ -20302,7 +21982,7 @@ public class MyLibProperties {
 // OR overrides specific beans/properties:
 // mylib.url=https://my-custom-endpoint.com
 // mylib.api-key=secret-123`,
-            `import org.springframework.boot.diagnostics.*;
+              `import org.springframework.boot.diagnostics.*;
 
 // Debugging auto-configuration decisions
 // Run with: java -jar app.jar --debug
@@ -20330,18 +22010,33 @@ public class AutoConfigReport implements ApplicationRunner {
 // @SpringBootTest loads full auto-config — use @TestConfiguration to add test beans
 // Use @MockBean to replace auto-configured beans with mocks in tests
 // @DataJpaTest / @WebMvcTest are "slice tests" that load only relevant auto-configs`
-          ],
-          flashcards: [
-            { q: 'How does Spring Boot auto-configuration work at a high level?', a: '@SpringBootApplication includes @EnableAutoConfiguration, which loads AutoConfigurationImportSelector. This reads all auto-configuration class names from META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports. Each listed class is then evaluated — its @Conditional annotations are checked, and only classes whose conditions pass are imported as @Configuration classes. User-defined beans always take precedence because @ConditionalOnMissingBean is used by auto-configs.' },
-            { q: 'What does @ConditionalOnMissingBean do and why is it important in auto-configs?', a: 'It means: "only register this bean if no bean of this type already exists in the context." Auto-config classes wrap their @Bean methods in @ConditionalOnMissingBean so that user-defined beans always win. If a user declares their own DataSource @Bean, the auto-configured one is skipped. This is the "user always wins" principle that makes Spring Boot auto-config safe to use alongside manual configuration.' },
-            { q: 'How do you exclude an auto-configuration class?', a: 'Two ways: (1) @SpringBootApplication(exclude = DataSourceAutoConfiguration.class) — compile-time, type-safe; (2) Property: spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration — runtime, useful in tests or profiles. Use exclusion when: you want to provide your own full configuration, or the auto-config is causing conflicts/startup failures that you can\'t resolve by just providing the missing beans.' },
-            { q: 'What is @ConfigurationProperties and how does it differ from @Value?', a: '@ConfigurationProperties binds a hierarchy of properties to a POJO: @ConfigurationProperties(prefix="mylib") class Props { String url; int timeout; }. Spring binds mylib.url and mylib.timeout automatically. @Value("${mylib.url}") injects a single property. Key differences: @ConfigurationProperties supports relaxed binding (url, my-url, MY_URL all map to url), works with validation (@Valid, @NotNull), and is type-safe for complex structures (lists, maps, nested objects). Prefer @ConfigurationProperties for anything more than 2-3 properties.' },
-            { q: 'How do you write a custom Spring Boot starter (auto-configuration)?', a: 'Steps: (1) Create a @AutoConfiguration class with @ConditionalOnXxx annotations and @Bean methods (each with @ConditionalOnMissingBean). (2) Add a @ConfigurationProperties class for user-configurable properties. (3) Register the auto-config class in META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports. (4) Add @AutoConfigureAfter/@AutoConfigureBefore for ordering if needed. (5) Package as a separate artifact that users add as a dependency. The naming convention is {name}-spring-boot-autoconfigure and {name}-spring-boot-starter.' }
-          ]
-        },
-        {
-          title: 'Spring Boot Actuator — Health, Metrics & Observability',
-          notes: `## Spring Boot Actuator — Health, Metrics & Observability
+            ],
+            flashcards: [
+              {
+                q: `How does Spring Boot auto-configuration work at a high level?`,
+                a: `@SpringBootApplication includes @EnableAutoConfiguration, which loads AutoConfigurationImportSelector. This reads all auto-configuration class names from META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports. Each listed class is then evaluated — its @Conditional annotations are checked, and only classes whose conditions pass are imported as @Configuration classes. User-defined beans always take precedence because @ConditionalOnMissingBean is used by auto-configs.`
+              },
+              {
+                q: `What does @ConditionalOnMissingBean do and why is it important in auto-configs?`,
+                a: `It means: "only register this bean if no bean of this type already exists in the context." Auto-config classes wrap their @Bean methods in @ConditionalOnMissingBean so that user-defined beans always win. If a user declares their own DataSource @Bean, the auto-configured one is skipped. This is the "user always wins" principle that makes Spring Boot auto-config safe to use alongside manual configuration.`
+              },
+              {
+                q: `How do you exclude an auto-configuration class?`,
+                a: `Two ways: (1) @SpringBootApplication(exclude = DataSourceAutoConfiguration.class) — compile-time, type-safe; (2) Property: spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration — runtime, useful in tests or profiles. Use exclusion when: you want to provide your own full configuration, or the auto-config is causing conflicts/startup failures that you can't resolve by just providing the missing beans.`
+              },
+              {
+                q: `What is @ConfigurationProperties and how does it differ from @Value?`,
+                a: `@ConfigurationProperties binds a hierarchy of properties to a POJO: @ConfigurationProperties(prefix="mylib") class Props { String url; int timeout; }. Spring binds mylib.url and mylib.timeout automatically. @Value("\${mylib.url}") injects a single property. Key differences: @ConfigurationProperties supports relaxed binding (url, my-url, MY_URL all map to url), works with validation (@Valid, @NotNull), and is type-safe for complex structures (lists, maps, nested objects). Prefer @ConfigurationProperties for anything more than 2-3 properties.`
+              },
+              {
+                q: `How do you write a custom Spring Boot starter (auto-configuration)?`,
+                a: `Steps: (1) Create a @AutoConfiguration class with @ConditionalOnXxx annotations and @Bean methods (each with @ConditionalOnMissingBean). (2) Add a @ConfigurationProperties class for user-configurable properties. (3) Register the auto-config class in META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports. (4) Add @AutoConfigureAfter/@AutoConfigureBefore for ordering if needed. (5) Package as a separate artifact that users add as a dependency. The naming convention is {name}-spring-boot-autoconfigure and {name}-spring-boot-starter.`
+              }
+            ]
+          },
+          {
+            title: `Spring Boot Actuator — Health, Metrics & Observability`,
+            notes: `## Spring Boot Actuator — Health, Metrics & Observability
 
 Actuator exposes production-ready endpoints for monitoring, health checking, and managing your Spring Boot application.
 
@@ -20473,8 +22168,8 @@ public class BuildInfoContributor implements InfoContributor {
     }
 }
 \`\`\``,
-          code: [
-            `import org.springframework.boot.actuate.health.*;
+            code: [
+              `import org.springframework.boot.actuate.health.*;
 import org.springframework.boot.actuate.info.*;
 import io.micrometer.core.instrument.*;
 import org.springframework.stereotype.*;
@@ -20531,7 +22226,7 @@ class OrderMetrics {
 
 // GET /actuator/metrics/orders.created → {"name":"orders.created","measurements":[{"statistic":"COUNT","value":42}]}
 // GET /actuator/metrics/order.processing?tag=... → percentile breakdowns`,
-            `import org.springframework.boot.*;
+              `import org.springframework.boot.*;
 import org.springframework.boot.actuate.endpoint.annotation.*;
 import org.springframework.boot.actuate.endpoint.web.annotation.*;
 import java.util.*;
@@ -20564,18 +22259,33 @@ public class FeatureFlagsEndpoint {
 }
 // Accessible at: GET/POST /actuator/feature-flags/{flag}/{enabled}
 // application.yml: management.endpoints.web.exposure.include=feature-flags`
-          ],
-          flashcards: [
-            { q: 'What is Spring Boot Actuator and what does it provide?', a: 'Actuator adds production-ready features to a Spring Boot app via HTTP endpoints: /health (liveness/readiness), /metrics (Micrometer), /info (build version), /env (properties), /loggers (change log levels at runtime), /threaddump and /heapdump. Add spring-boot-starter-actuator and configure management.endpoints.web.exposure.include. It is the foundation for Kubernetes health probes and Prometheus scraping.' },
-            { q: 'What is the difference between /health/liveness and /health/readiness in Kubernetes?', a: 'Liveness: "Is the process alive and not deadlocked?" — if DOWN, Kubernetes restarts the pod. Should only fail for fatal unrecoverable states. Readiness: "Can the pod serve requests?" — if DOWN, Kubernetes removes the pod from the load balancer but does NOT restart it. Should reflect temporary unavailability (warming up, DB connection lost). Configure: management.endpoint.health.group.liveness.include=livenessState and readiness.include=readinessState,db,redis.' },
-            { q: 'What is Micrometer and how does it relate to Actuator?', a: 'Micrometer is a metrics facade (like SLF4J for metrics) that Spring Boot Actuator integrates. It provides Counter, Timer, Gauge, DistributionSummary APIs that work regardless of the metrics backend. Add micrometer-registry-prometheus to export to Prometheus, micrometer-registry-datadog for Datadog, etc. without changing application code. Actuator exposes /actuator/metrics (JSON) and /actuator/prometheus (Prometheus text format).' },
-            { q: 'How do you create a custom health indicator?', a: 'Implement HealthIndicator and register as a @Component: @Component public class MyHealthIndicator implements HealthIndicator { @Override public Health health() { try { checkDependency(); return Health.up().withDetail("url", url).build(); } catch (Exception e) { return Health.down(e).withDetail("reason", e.getMessage()).build(); } } }. Spring Boot auto-discovers it and includes it in /actuator/health composite status. Name becomes "my" (class name minus "HealthIndicator", camelCase).' },
-            { q: 'How do you change a log level at runtime without restarting the application?', a: 'Use the /actuator/loggers endpoint. GET /actuator/loggers shows all loggers and current levels. POST /actuator/loggers/{logger-name} with body {"configuredLevel":"DEBUG"} changes that logger\'s level immediately. Requires management.endpoints.web.exposure.include=loggers. This is invaluable for diagnosing production issues without redeploying. Requires Spring Security or actuator is an open endpoint (secure it!).' }
-          ]
-        },
-        {
-          title: '@ConfigurationProperties, Profiles & Externalised Configuration',
-          notes: `## @ConfigurationProperties, Profiles & Externalised Configuration
+            ],
+            flashcards: [
+              {
+                q: `What is Spring Boot Actuator and what does it provide?`,
+                a: `Actuator adds production-ready features to a Spring Boot app via HTTP endpoints: /health (liveness/readiness), /metrics (Micrometer), /info (build version), /env (properties), /loggers (change log levels at runtime), /threaddump and /heapdump. Add spring-boot-starter-actuator and configure management.endpoints.web.exposure.include. It is the foundation for Kubernetes health probes and Prometheus scraping.`
+              },
+              {
+                q: `What is the difference between /health/liveness and /health/readiness in Kubernetes?`,
+                a: `Liveness: "Is the process alive and not deadlocked?" — if DOWN, Kubernetes restarts the pod. Should only fail for fatal unrecoverable states. Readiness: "Can the pod serve requests?" — if DOWN, Kubernetes removes the pod from the load balancer but does NOT restart it. Should reflect temporary unavailability (warming up, DB connection lost). Configure: management.endpoint.health.group.liveness.include=livenessState and readiness.include=readinessState,db,redis.`
+              },
+              {
+                q: `What is Micrometer and how does it relate to Actuator?`,
+                a: `Micrometer is a metrics facade (like SLF4J for metrics) that Spring Boot Actuator integrates. It provides Counter, Timer, Gauge, DistributionSummary APIs that work regardless of the metrics backend. Add micrometer-registry-prometheus to export to Prometheus, micrometer-registry-datadog for Datadog, etc. without changing application code. Actuator exposes /actuator/metrics (JSON) and /actuator/prometheus (Prometheus text format).`
+              },
+              {
+                q: `How do you create a custom health indicator?`,
+                a: `Implement HealthIndicator and register as a @Component: @Component public class MyHealthIndicator implements HealthIndicator { @Override public Health health() { try { checkDependency(); return Health.up().withDetail("url", url).build(); } catch (Exception e) { return Health.down(e).withDetail("reason", e.getMessage()).build(); } } }. Spring Boot auto-discovers it and includes it in /actuator/health composite status. Name becomes "my" (class name minus "HealthIndicator", camelCase).`
+              },
+              {
+                q: `How do you change a log level at runtime without restarting the application?`,
+                a: `Use the /actuator/loggers endpoint. GET /actuator/loggers shows all loggers and current levels. POST /actuator/loggers/{logger-name} with body {"configuredLevel":"DEBUG"} changes that logger's level immediately. Requires management.endpoints.web.exposure.include=loggers. This is invaluable for diagnosing production issues without redeploying. Requires Spring Security or actuator is an open endpoint (secure it!).`
+              }
+            ]
+          },
+          {
+            title: `@ConfigurationProperties, Profiles & Externalised Configuration`,
+            notes: `## @ConfigurationProperties, Profiles & Externalised Configuration
 
 ### @ConfigurationProperties In Depth
 
@@ -20719,8 +22429,8 @@ class PaymentServiceTest { ... }
 @ActiveProfiles("test")
 class ServiceTest { ... }
 \`\`\``,
-          code: [
-            `import org.springframework.boot.context.properties.*;
+            code: [
+              `import org.springframework.boot.context.properties.*;
 import org.springframework.validation.annotation.Validated;
 import jakarta.validation.constraints.*;
 import java.time.*;
@@ -20780,7 +22490,7 @@ public class AppProperties {
 
 // Usage
 // @Service class MyService { @Autowired AppProperties props; }`,
-            `import org.springframework.context.annotation.*;
+              `import org.springframework.context.annotation.*;
 import org.springframework.boot.test.context.*;
 import org.springframework.test.context.*;
 
@@ -20826,18 +22536,33 @@ class IntegrationTest {
         assert !props.getCache().enabled();
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is @ConfigurationProperties and when should you use it over @Value?', a: '@ConfigurationProperties binds a group of related properties to a POJO with prefix-based mapping. Benefits over @Value: (1) Relaxed binding — myapp.api-url, MYAPP_API_URL, myapp.apiUrl all map to apiUrl field; (2) JSR-303 validation with @Validated; (3) Works with complex types (lists, maps, nested objects, Duration, DataSize); (4) IDE autocomplete with spring-configuration-processor; (5) Testable POJO. Use @Value only for a single isolated property injection.' },
-            { q: 'What is the property source priority order in Spring Boot?', a: 'Highest to lowest: (1) Command-line args (--key=val); (2) OS environment variables (KEY_NAME with underscores); (3) application.yml in /config directory; (4) application.yml in classpath root; (5) @PropertySource; (6) Defaults in code. Profile-specific files (application-prod.yml) override the base file within the same precedence level. This allows secrets to come from env vars at runtime, overriding yaml defaults.' },
-            { q: 'How do Spring profiles work and how do you activate them?', a: 'Profiles group beans and configuration for different environments. Beans annotated @Profile("prod") are only registered when "prod" profile is active. @Profile("!local") means "all profiles except local". Profile-specific property files (application-prod.yml) are loaded on top of base application.yml. Activate via: SPRING_PROFILES_ACTIVE=prod env var, --spring.profiles.active=prod CLI arg, or spring.profiles.active in application.yml. Multiple profiles can be active simultaneously.' },
-            { q: 'How does relaxed binding work in Spring Boot property names?', a: 'Spring Boot accepts multiple naming conventions for the same property. app.myApiUrl in code binds to all of: app.my-api-url (kebab-case, recommended), app.myApiUrl (camelCase), app.my_api_url (snake_case), APP_MY_API_URL (SCREAMING_SNAKE, for env vars). This means you can use environment variables that don\'t support hyphens/dots (Kubernetes env vars, Docker env) to override yaml properties without any code change.' },
-            { q: 'How do you validate @ConfigurationProperties at startup?', a: 'Add @Validated to the @ConfigurationProperties class and use Jakarta Bean Validation annotations on fields: @NotBlank, @Positive, @Min/@Max, @Pattern, @Valid for nested objects. Add spring-boot-starter-validation to the classpath. If any constraint fails at startup, Spring Boot throws a BindException with all violations — the application refuses to start rather than silently running with bad config. This fail-fast behaviour prevents misconfigured deployments.' }
-          ]
-        },
-        {
-          title: 'Custom Auto-Configuration & Spring Boot Starters',
-          notes: `## Custom Auto-Configuration & Spring Boot Starters
+            ],
+            flashcards: [
+              {
+                q: `What is @ConfigurationProperties and when should you use it over @Value?`,
+                a: `@ConfigurationProperties binds a group of related properties to a POJO with prefix-based mapping. Benefits over @Value: (1) Relaxed binding — myapp.api-url, MYAPP_API_URL, myapp.apiUrl all map to apiUrl field; (2) JSR-303 validation with @Validated; (3) Works with complex types (lists, maps, nested objects, Duration, DataSize); (4) IDE autocomplete with spring-configuration-processor; (5) Testable POJO. Use @Value only for a single isolated property injection.`
+              },
+              {
+                q: `What is the property source priority order in Spring Boot?`,
+                a: `Highest to lowest: (1) Command-line args (--key=val); (2) OS environment variables (KEY_NAME with underscores); (3) application.yml in /config directory; (4) application.yml in classpath root; (5) @PropertySource; (6) Defaults in code. Profile-specific files (application-prod.yml) override the base file within the same precedence level. This allows secrets to come from env vars at runtime, overriding yaml defaults.`
+              },
+              {
+                q: `How do Spring profiles work and how do you activate them?`,
+                a: `Profiles group beans and configuration for different environments. Beans annotated @Profile("prod") are only registered when "prod" profile is active. @Profile("!local") means "all profiles except local". Profile-specific property files (application-prod.yml) are loaded on top of base application.yml. Activate via: SPRING_PROFILES_ACTIVE=prod env var, --spring.profiles.active=prod CLI arg, or spring.profiles.active in application.yml. Multiple profiles can be active simultaneously.`
+              },
+              {
+                q: `How does relaxed binding work in Spring Boot property names?`,
+                a: `Spring Boot accepts multiple naming conventions for the same property. app.myApiUrl in code binds to all of: app.my-api-url (kebab-case, recommended), app.myApiUrl (camelCase), app.my_api_url (snake_case), APP_MY_API_URL (SCREAMING_SNAKE, for env vars). This means you can use environment variables that don't support hyphens/dots (Kubernetes env vars, Docker env) to override yaml properties without any code change.`
+              },
+              {
+                q: `How do you validate @ConfigurationProperties at startup?`,
+                a: `Add @Validated to the @ConfigurationProperties class and use Jakarta Bean Validation annotations on fields: @NotBlank, @Positive, @Min/@Max, @Pattern, @Valid for nested objects. Add spring-boot-starter-validation to the classpath. If any constraint fails at startup, Spring Boot throws a BindException with all violations — the application refuses to start rather than silently running with bad config. This fail-fast behaviour prevents misconfigured deployments.`
+              }
+            ]
+          },
+          {
+            title: `Custom Auto-Configuration & Spring Boot Starters`,
+            notes: `## Custom Auto-Configuration & Spring Boot Starters
 
 ### Starter Structure
 
@@ -20951,8 +22676,8 @@ class NotificationAutoConfigurationTest {
     }
 }
 \`\`\``,
-          code: [
-            `import org.springframework.boot.autoconfigure.*;
+            code: [
+              `import org.springframework.boot.autoconfigure.*;
 import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.boot.context.properties.*;
 import org.springframework.context.annotation.*;
@@ -21002,7 +22727,7 @@ class AutoConfigDemo {
         System.out.println("Can proceed: " + limiter.tryAcquire());
     }
 }`,
-            `import org.springframework.boot.test.context.*;
+              `import org.springframework.boot.test.context.*;
 import org.springframework.boot.autoconfigure.*;
 
 // Testing auto-configuration with ApplicationContextRunner
@@ -21052,26 +22777,40 @@ class AutoConfigTest {
         RateLimiter customLimiter() { return new RateLimiter(999); }
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What are the two modules that make up a Spring Boot starter?', a: 'An autoconfigure module (e.g. mylib-spring-boot-autoconfigure) containing the @AutoConfiguration classes, @ConfigurationProperties, and META-INF/spring/AutoConfiguration.imports registration. A starter module (mylib-spring-boot-starter) which is just a POM that depends on autoconfigure + the underlying library. Users add only the starter. This separation allows using the library without auto-config (add autoconfigure directly) and keeps the autoconfigure module thin.' },
-            { q: 'How do you test a custom auto-configuration?', a: 'Use ApplicationContextRunner (lightweight, no web server): new ApplicationContextRunner().withConfiguration(AutoConfigurations.of(MyAutoConfiguration.class)).withPropertyValues("key=value").run(ctx -> { assertThat(ctx).hasSingleBean(MyService.class); }). This is much faster than @SpringBootTest. Test: normal conditions register beans, disabled property skips beans, user-provided bean triggers backoff (@ConditionalOnMissingBean). Use FilteredClassLoader to simulate missing classpath dependencies.' },
-            { q: 'What is spring-boot-configuration-processor and why should you add it to a starter?', a: 'A compile-time annotation processor that reads @ConfigurationProperties classes and generates META-INF/spring-configuration-metadata.json. This JSON file tells IDEs about your custom properties — IntelliJ and VS Code show autocomplete, type information, deprecation warnings, and documentation tooltips when users type your properties in application.yml. Add it as an optional compile-time dependency so it doesn\'t leak into users\' runtime classpaths.' },
-            { q: 'What is @AutoConfiguration vs @Configuration in a starter?', a: '@AutoConfiguration (Spring Boot 2.7+) is a specialised @Configuration for auto-configuration classes. It is loaded after all user @Configuration classes, which ensures user beans are registered first and @ConditionalOnMissingBean works correctly. It also excludes the class from component scanning (auto-configs must be listed in AutoConfiguration.imports, not discovered via @ComponentScan). Use @Configuration for your own app code; use @AutoConfiguration for library auto-config classes.' },
-            { q: 'How do you make a bean conditional on a property value?', a: '@ConditionalOnProperty(name="feature.enabled", havingValue="true", matchIfMissing=false). matchIfMissing=false means the bean is NOT created if the property is absent (default). matchIfMissing=true means the bean IS created when the property is absent (opt-out pattern). Can also use prefix: @ConditionalOnProperty(prefix="app.cache", name="enabled"). Can check value equality: havingValue="redis" to match app.cache.type=redis.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '3.3',
-      title: 'Transactions, AOP & @Transactional',
-      hours: 3,
-      sections: [
-        {
-          title: '@Transactional Internals — Proxy Mechanics & Pitfalls',
-          notes: `## @Transactional Internals — Proxy Mechanics & Pitfalls
+            ],
+            flashcards: [
+              {
+                q: `What are the two modules that make up a Spring Boot starter?`,
+                a: `An autoconfigure module (e.g. mylib-spring-boot-autoconfigure) containing the @AutoConfiguration classes, @ConfigurationProperties, and META-INF/spring/AutoConfiguration.imports registration. A starter module (mylib-spring-boot-starter) which is just a POM that depends on autoconfigure + the underlying library. Users add only the starter. This separation allows using the library without auto-config (add autoconfigure directly) and keeps the autoconfigure module thin.`
+              },
+              {
+                q: `How do you test a custom auto-configuration?`,
+                a: `Use ApplicationContextRunner (lightweight, no web server): new ApplicationContextRunner().withConfiguration(AutoConfigurations.of(MyAutoConfiguration.class)).withPropertyValues("key=value").run(ctx -> { assertThat(ctx).hasSingleBean(MyService.class); }). This is much faster than @SpringBootTest. Test: normal conditions register beans, disabled property skips beans, user-provided bean triggers backoff (@ConditionalOnMissingBean). Use FilteredClassLoader to simulate missing classpath dependencies.`
+              },
+              {
+                q: `What is spring-boot-configuration-processor and why should you add it to a starter?`,
+                a: `A compile-time annotation processor that reads @ConfigurationProperties classes and generates META-INF/spring-configuration-metadata.json. This JSON file tells IDEs about your custom properties — IntelliJ and VS Code show autocomplete, type information, deprecation warnings, and documentation tooltips when users type your properties in application.yml. Add it as an optional compile-time dependency so it doesn't leak into users' runtime classpaths.`
+              },
+              {
+                q: `What is @AutoConfiguration vs @Configuration in a starter?`,
+                a: `@AutoConfiguration (Spring Boot 2.7+) is a specialised @Configuration for auto-configuration classes. It is loaded after all user @Configuration classes, which ensures user beans are registered first and @ConditionalOnMissingBean works correctly. It also excludes the class from component scanning (auto-configs must be listed in AutoConfiguration.imports, not discovered via @ComponentScan). Use @Configuration for your own app code; use @AutoConfiguration for library auto-config classes.`
+              },
+              {
+                q: `How do you make a bean conditional on a property value?`,
+                a: `@ConditionalOnProperty(name="feature.enabled", havingValue="true", matchIfMissing=false). matchIfMissing=false means the bean is NOT created if the property is absent (default). matchIfMissing=true means the bean IS created when the property is absent (opt-out pattern). Can also use prefix: @ConditionalOnProperty(prefix="app.cache", name="enabled"). Can check value equality: havingValue="redis" to match app.cache.type=redis.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `3.3`,
+        title: `Transactions, AOP & @Transactional`,
+        hours: 3,
+        sections: [
+          {
+            title: `@Transactional Internals — Proxy Mechanics & Pitfalls`,
+            notes: `## @Transactional Internals — Proxy Mechanics & Pitfalls
 
 > [!TIP]
 > **Big picture — read this first.** \`@Transactional\` doesn't change your method's code. Instead, Spring wraps your bean in an invisible stand-in (a *proxy*) that says "open a database transaction → call your real method → commit (or roll back if it threw)". Every caller actually talks to the proxy, not to you directly. This single fact explains the two most-asked Spring gotchas in interviews: (1) calling \`this.otherTransactionalMethod()\` from inside the same class **skips the proxy**, so no new transaction starts; and (2) by default Spring only rolls back on *unchecked* exceptions. Keep the proxy picture in your head and the pitfalls below stop being surprising. The runnable proxy demo in the **Code** tab lets you watch this happen on a bare JVM.
@@ -21189,8 +22928,8 @@ public class MyService {
     public void publicMethod() { ... }  // CORRECT — always public
 }
 \`\`\``,
-          code: [
-            `import java.lang.reflect.*;
+            code: [
+              `import java.lang.reflect.*;
 import java.lang.annotation.*;
 import java.util.*;
 
@@ -21258,7 +22997,7 @@ public class TxProxyDemo {
         catch (Exception e) { System.out.println("   caught: " + e.getMessage()); }
     }
 }`,
-            `import org.springframework.transaction.annotation.Transactional;
+              `import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.*;
 import org.springframework.beans.factory.annotation.*;
 
@@ -21313,7 +23052,7 @@ public class AccountService {
         if (payment.amount() <= 0) throw new IllegalArgumentException("Invalid amount");
     }
 }`,
-            `// Rollback scenarios
+              `// Rollback scenarios
 @Service
 public class OrderService {
     private final OrderRepository orderRepo;
@@ -21354,18 +23093,33 @@ public class OrderService {
     @Transactional(timeout = 30)
     public void longRunningOperation() { /* ... */ }
 }`
-          ],
-          flashcards: [
-            { q: 'How does Spring\'s @Transactional work under the hood?', a: 'Spring creates a JDK proxy (if interface exists) or CGLib proxy around your bean. The proxy intercepts method calls: before calling the actual method, it gets a transaction from the TransactionManager (begins if needed per propagation rules). After the method returns normally, it commits. If a RuntimeException (or Error) escapes, it rolls back. The @Transactional annotation is read at proxy creation time — it is only effective on proxied method calls from OUTSIDE the bean.' },
-            { q: 'What is the self-invocation problem and how do you fix it?', a: 'When a method inside a @Service calls another @Transactional method on "this", it bypasses the proxy — the transaction on the inner method is ignored. Example: method A (non-transactional) calls this.methodB() where methodB is @Transactional — methodB runs WITHOUT a transaction. Fix (preferred): extract methodB into a separate @Service bean, so the call goes through a proxy. Fix (code smell): self-inject the bean via @Autowired @Lazy MyService self and call self.methodB().' },
-            { q: 'What exceptions trigger a rollback in @Transactional by default?', a: 'By default, @Transactional rolls back on RuntimeException and Error (unchecked exceptions). Checked exceptions (Exception subclasses that are not RuntimeException) do NOT trigger rollback by default — the transaction commits even if a checked exception is thrown. Override with: rollbackFor = Exception.class (rollback on all exceptions) or rollbackFor = MyCheckedException.class (specific). Best practice: use RuntimeException for domain errors to get automatic rollback.' },
-            { q: 'Why does @Transactional on private methods not work?', a: 'Spring AOP proxies (both JDK and CGLib) can only intercept public method calls from outside the bean. Private methods can\'t be overridden by proxies. Even with CGLib (which can technically intercept protected), the self-invocation issue means the proxy is never in the call path for internal calls. Rule: always put @Transactional on public methods. If you need a private method to be transactional, make it public and move it to a separate service.' },
-            { q: 'What happens if you swallow an exception inside a @Transactional method?', a: 'The transaction commits as if nothing went wrong. If method code catches a RuntimeException and logs it without rethrowing: the transaction sees a clean return, commits all database changes made before the exception. This is a dangerous pattern — partial writes can be committed even though the operation logically failed. Either rethrow the exception (ensuring rollback), or manually call TransactionAspectSupport.currentTransactionStatus().setRollbackOnly() to mark for rollback without rethrowing.' }
-          ]
-        },
-        {
-          title: 'Transaction Propagation & Isolation Levels',
-          notes: `## Transaction Propagation & Isolation Levels
+            ],
+            flashcards: [
+              {
+                q: `How does Spring's @Transactional work under the hood?`,
+                a: `Spring creates a JDK proxy (if interface exists) or CGLib proxy around your bean. The proxy intercepts method calls: before calling the actual method, it gets a transaction from the TransactionManager (begins if needed per propagation rules). After the method returns normally, it commits. If a RuntimeException (or Error) escapes, it rolls back. The @Transactional annotation is read at proxy creation time — it is only effective on proxied method calls from OUTSIDE the bean.`
+              },
+              {
+                q: `What is the self-invocation problem and how do you fix it?`,
+                a: `When a method inside a @Service calls another @Transactional method on "this", it bypasses the proxy — the transaction on the inner method is ignored. Example: method A (non-transactional) calls this.methodB() where methodB is @Transactional — methodB runs WITHOUT a transaction. Fix (preferred): extract methodB into a separate @Service bean, so the call goes through a proxy. Fix (code smell): self-inject the bean via @Autowired @Lazy MyService self and call self.methodB().`
+              },
+              {
+                q: `What exceptions trigger a rollback in @Transactional by default?`,
+                a: `By default, @Transactional rolls back on RuntimeException and Error (unchecked exceptions). Checked exceptions (Exception subclasses that are not RuntimeException) do NOT trigger rollback by default — the transaction commits even if a checked exception is thrown. Override with: rollbackFor = Exception.class (rollback on all exceptions) or rollbackFor = MyCheckedException.class (specific). Best practice: use RuntimeException for domain errors to get automatic rollback.`
+              },
+              {
+                q: `Why does @Transactional on private methods not work?`,
+                a: `Spring AOP proxies (both JDK and CGLib) can only intercept public method calls from outside the bean. Private methods can't be overridden by proxies. Even with CGLib (which can technically intercept protected), the self-invocation issue means the proxy is never in the call path for internal calls. Rule: always put @Transactional on public methods. If you need a private method to be transactional, make it public and move it to a separate service.`
+              },
+              {
+                q: `What happens if you swallow an exception inside a @Transactional method?`,
+                a: `The transaction commits as if nothing went wrong. If method code catches a RuntimeException and logs it without rethrowing: the transaction sees a clean return, commits all database changes made before the exception. This is a dangerous pattern — partial writes can be committed even though the operation logically failed. Either rethrow the exception (ensuring rollback), or manually call TransactionAspectSupport.currentTransactionStatus().setRollbackOnly() to mark for rollback without rethrowing.`
+              }
+            ]
+          },
+          {
+            title: `Transaction Propagation & Isolation Levels`,
+            notes: `## Transaction Propagation & Isolation Levels
 
 ### Propagation Modes
 
@@ -21505,8 +23259,8 @@ public class ProductService {
     public Product create(ProductRequest req) { return repo.save(new Product(req)); }
 }
 \`\`\``,
-          code: [
-            `import org.springframework.transaction.annotation.*;
+            code: [
+              `import org.springframework.transaction.annotation.*;
 import org.springframework.stereotype.*;
 
 // Propagation in action: outer rollback doesn't affect REQUIRES_NEW
@@ -21551,7 +23305,7 @@ class AuditService {
         auditRepo.save(new AuditEntry(event, accountId, amount, java.time.Instant.now()));
     }
 }`,
-            `import org.springframework.transaction.annotation.*;
+              `import org.springframework.transaction.annotation.*;
 import org.springframework.stereotype.*;
 import java.util.*;
 
@@ -21592,18 +23346,33 @@ public class ReportService {
         orderRepo.saveAll(old);
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is transaction propagation and what does REQUIRED vs REQUIRES_NEW mean?', a: 'Propagation defines how a @Transactional method behaves when called within an existing transaction. REQUIRED (default): if a transaction already exists, join it; if not, create one. The inner method shares the outer transaction — if the inner throws, the outer also rolls back. REQUIRES_NEW: always suspend the current transaction and start a fresh one. The inner transaction commits or rolls back independently. Use REQUIRES_NEW for audit logging, where you want the audit record to persist even if the outer operation fails.' },
-            { q: 'What are dirty reads, non-repeatable reads, and phantom reads?', a: 'Dirty read: tx A reads data written by tx B before B commits — if B rolls back, A read data that never existed. Non-repeatable read: tx A reads a row twice; between the reads tx B commits an UPDATE — A sees different values for the same row. Phantom read: tx A executes a range query twice; between the reads tx B commits an INSERT — A sees a new "phantom" row. Default isolation (READ_COMMITTED) prevents dirty reads. REPEATABLE_READ also prevents non-repeatable reads. SERIALIZABLE prevents all three.' },
-            { q: 'What does @Transactional(readOnly = true) do and why use it?', a: 'Marks a transaction as read-only. Hibernate/JPA disables dirty checking (no entity snapshots needed — significant performance gain when loading many entities). Some DB drivers/routers use this hint to route queries to a read replica. The method will throw if it tries to flush writes. Best practice: annotate the @Service class with @Transactional(readOnly = true) as the default, then override individual write methods with @Transactional (which defaults readOnly to false).' },
-            { q: 'When would you use Propagation.MANDATORY vs NEVER?', a: 'MANDATORY: the method REQUIRES an active transaction — throws IllegalTransactionStateException if called outside one. Use when the method is a helper that must be part of the caller\'s unit of work (e.g. an internal repository helper that should never run standalone). NEVER: the method must NOT be called inside a transaction — throws if one is active. Use for operations that explicitly must not participate in a transaction (e.g. a utility that starts its own JDBC connection and would conflict with JPA transaction management).' },
-            { q: 'What is NESTED propagation and how does it differ from REQUIRES_NEW?', a: 'NESTED creates a savepoint within the outer transaction (using JDBC savepoints). If the nested method fails, it rolls back to the savepoint — the outer transaction continues with the changes made before the savepoint. If the outer tx fails, the entire tx including the nested work rolls back. REQUIRES_NEW is completely independent — it commits or rolls back separately. NESTED is supported by Spring with JdbcTransactionManager or when the underlying DB supports savepoints. Use NESTED when you want partial rollback within one overall transaction.' }
-          ]
-        },
-        {
-          title: 'AOP Concepts & Spring AOP',
-          notes: `## AOP Concepts & Spring AOP
+            ],
+            flashcards: [
+              {
+                q: `What is transaction propagation and what does REQUIRED vs REQUIRES_NEW mean?`,
+                a: `Propagation defines how a @Transactional method behaves when called within an existing transaction. REQUIRED (default): if a transaction already exists, join it; if not, create one. The inner method shares the outer transaction — if the inner throws, the outer also rolls back. REQUIRES_NEW: always suspend the current transaction and start a fresh one. The inner transaction commits or rolls back independently. Use REQUIRES_NEW for audit logging, where you want the audit record to persist even if the outer operation fails.`
+              },
+              {
+                q: `What are dirty reads, non-repeatable reads, and phantom reads?`,
+                a: `Dirty read: tx A reads data written by tx B before B commits — if B rolls back, A read data that never existed. Non-repeatable read: tx A reads a row twice; between the reads tx B commits an UPDATE — A sees different values for the same row. Phantom read: tx A executes a range query twice; between the reads tx B commits an INSERT — A sees a new "phantom" row. Default isolation (READ_COMMITTED) prevents dirty reads. REPEATABLE_READ also prevents non-repeatable reads. SERIALIZABLE prevents all three.`
+              },
+              {
+                q: `What does @Transactional(readOnly = true) do and why use it?`,
+                a: `Marks a transaction as read-only. Hibernate/JPA disables dirty checking (no entity snapshots needed — significant performance gain when loading many entities). Some DB drivers/routers use this hint to route queries to a read replica. The method will throw if it tries to flush writes. Best practice: annotate the @Service class with @Transactional(readOnly = true) as the default, then override individual write methods with @Transactional (which defaults readOnly to false).`
+              },
+              {
+                q: `When would you use Propagation.MANDATORY vs NEVER?`,
+                a: `MANDATORY: the method REQUIRES an active transaction — throws IllegalTransactionStateException if called outside one. Use when the method is a helper that must be part of the caller's unit of work (e.g. an internal repository helper that should never run standalone). NEVER: the method must NOT be called inside a transaction — throws if one is active. Use for operations that explicitly must not participate in a transaction (e.g. a utility that starts its own JDBC connection and would conflict with JPA transaction management).`
+              },
+              {
+                q: `What is NESTED propagation and how does it differ from REQUIRES_NEW?`,
+                a: `NESTED creates a savepoint within the outer transaction (using JDBC savepoints). If the nested method fails, it rolls back to the savepoint — the outer transaction continues with the changes made before the savepoint. If the outer tx fails, the entire tx including the nested work rolls back. REQUIRES_NEW is completely independent — it commits or rolls back separately. NESTED is supported by Spring with JdbcTransactionManager or when the underlying DB supports savepoints. Use NESTED when you want partial rollback within one overall transaction.`
+              }
+            ]
+          },
+          {
+            title: `AOP Concepts & Spring AOP`,
+            notes: `## AOP Concepts & Spring AOP
 
 Aspect-Oriented Programming (AOP) separates cross-cutting concerns (logging, security, transactions, caching) from business logic.
 
@@ -21729,8 +23498,8 @@ public class AuditAspect {
     }
 }
 \`\`\``,
-          code: [
-            `import org.aspectj.lang.annotation.*;
+            code: [
+              `import org.aspectj.lang.annotation.*;
 import org.aspectj.lang.*;
 import org.springframework.stereotype.*;
 import java.lang.annotation.*;
@@ -21792,7 +23561,7 @@ class ProductService {
         try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 }`,
-            `import org.aspectj.lang.annotation.*;
+              `import org.aspectj.lang.annotation.*;
 import org.aspectj.lang.*;
 import java.lang.annotation.*;
 
@@ -21844,26 +23613,40 @@ class UserService {
         return "User#" + id;
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What are the five core AOP concepts: Aspect, Joinpoint, Pointcut, Advice, Weaving?', a: 'Aspect: the module holding cross-cutting logic (e.g. LoggingAspect). Joinpoint: a specific moment during execution where advice can be applied — in Spring AOP this is always a method call. Pointcut: an expression that selects which joinpoints to intercept (e.g. execution(* com.example.service.*.*(..))). Advice: the actual code that runs at a matched joinpoint (@Before, @After, @Around). Weaving: the process of linking aspects to target objects — Spring does this at runtime via dynamic proxies (JDK or CGLib).' },
-            { q: 'What is the difference between @Before, @After, @Around, @AfterReturning, @AfterThrowing?', a: '@Before: runs before the method. @AfterReturning: runs after the method returns normally; can access the return value. @AfterThrowing: runs when the method throws an exception; can access the exception. @After: runs after the method regardless of outcome (like finally). @Around: surrounds the method call — must call pjp.proceed() to invoke the actual method; most powerful, can modify inputs/outputs, suppress exceptions. @Around can replace all others but is also most risky (forgetting proceed() silently skips the method).' },
-            { q: 'How does the execution() pointcut expression work?', a: 'execution(modifiers? return-type declaring-type? method-name(params) throws?) where * is a wildcard and .. means zero or more. Examples: execution(* com.example.service.*.*(..)) — any method in any class in service package; execution(public * save*(..)) — any public method starting with "save"; execution(* OrderService.*(..)) — any method on OrderService. Combine with &&, ||, !: execution(* service.*.*(..)) && !execution(* get*(..)) — service methods excluding getters.' },
-            { q: 'What is @annotation pointcut and how does it enable custom cross-cutting behaviour?', a: '@annotation(myAnnotation) matches methods annotated with that annotation. This pattern lets you define custom annotations (@Audited, @Timed, @RateLimited) that carry configuration data, then write aspects that intercept those annotations: @Around("@annotation(audited)") public Object audit(ProceedingJoinPoint pjp, Audited audited). Business code declares what it wants (@Audited(action="SAVE")) and the aspect provides the behaviour — clean separation.' },
-            { q: 'What are the limitations of Spring AOP vs AspectJ?', a: 'Spring AOP is proxy-based and has key limitations: (1) Only intercepts public method calls; (2) Self-invocation bypasses the proxy — this.method() inside the same class is not intercepted; (3) Only works on Spring-managed beans; (4) Only method-level join points (no field access, constructor interception). AspectJ does compile-time or load-time weaving with bytecode modification — intercepts any join point including field access, constructors, private methods. AspectJ is more powerful but adds build complexity. Spring AOP covers 90% of production needs.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '3.4',
-      title: 'Spring Data JPA — Repositories, JPQL & Performance',
-      hours: 4,
-      sections: [
-        {
-          title: 'Repository Pattern & JpaRepository',
-          notes: `## Repository Pattern & JpaRepository
+            ],
+            flashcards: [
+              {
+                q: `What are the five core AOP concepts: Aspect, Joinpoint, Pointcut, Advice, Weaving?`,
+                a: `Aspect: the module holding cross-cutting logic (e.g. LoggingAspect). Joinpoint: a specific moment during execution where advice can be applied — in Spring AOP this is always a method call. Pointcut: an expression that selects which joinpoints to intercept (e.g. execution(* com.example.service.*.*(..))). Advice: the actual code that runs at a matched joinpoint (@Before, @After, @Around). Weaving: the process of linking aspects to target objects — Spring does this at runtime via dynamic proxies (JDK or CGLib).`
+              },
+              {
+                q: `What is the difference between @Before, @After, @Around, @AfterReturning, @AfterThrowing?`,
+                a: `@Before: runs before the method. @AfterReturning: runs after the method returns normally; can access the return value. @AfterThrowing: runs when the method throws an exception; can access the exception. @After: runs after the method regardless of outcome (like finally). @Around: surrounds the method call — must call pjp.proceed() to invoke the actual method; most powerful, can modify inputs/outputs, suppress exceptions. @Around can replace all others but is also most risky (forgetting proceed() silently skips the method).`
+              },
+              {
+                q: `How does the execution() pointcut expression work?`,
+                a: `execution(modifiers? return-type declaring-type? method-name(params) throws?) where * is a wildcard and .. means zero or more. Examples: execution(* com.example.service.*.*(..)) — any method in any class in service package; execution(public * save*(..)) — any public method starting with "save"; execution(* OrderService.*(..)) — any method on OrderService. Combine with &&, ||, !: execution(* service.*.*(..)) && !execution(* get*(..)) — service methods excluding getters.`
+              },
+              {
+                q: `What is @annotation pointcut and how does it enable custom cross-cutting behaviour?`,
+                a: `@annotation(myAnnotation) matches methods annotated with that annotation. This pattern lets you define custom annotations (@Audited, @Timed, @RateLimited) that carry configuration data, then write aspects that intercept those annotations: @Around("@annotation(audited)") public Object audit(ProceedingJoinPoint pjp, Audited audited). Business code declares what it wants (@Audited(action="SAVE")) and the aspect provides the behaviour — clean separation.`
+              },
+              {
+                q: `What are the limitations of Spring AOP vs AspectJ?`,
+                a: `Spring AOP is proxy-based and has key limitations: (1) Only intercepts public method calls; (2) Self-invocation bypasses the proxy — this.method() inside the same class is not intercepted; (3) Only works on Spring-managed beans; (4) Only method-level join points (no field access, constructor interception). AspectJ does compile-time or load-time weaving with bytecode modification — intercepts any join point including field access, constructors, private methods. AspectJ is more powerful but adds build complexity. Spring AOP covers 90% of production needs.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `3.4`,
+        title: `Spring Data JPA — Repositories, JPQL & Performance`,
+        hours: 4,
+        sections: [
+          {
+            title: `Repository Pattern & JpaRepository`,
+            notes: `## Repository Pattern & JpaRepository
 
 > [!TIP]
 > **Big picture — read this first.** You declare an *interface* — \`interface UserRepository extends JpaRepository<User, Long>\` — and never write a single line of its implementation. At startup Spring Data reads the method names (\`findByEmailAndActiveTrue\`), translates them into SQL/JPQL, and generates a class that runs them. So the mental model is: **you describe the query in the method name or \`@Query\`, Spring writes the boring DAO code.** The catch that interviewers love: because the SQL is generated and lazy-loaded, it's easy to accidentally fire one query per row (the **N+1 problem**) or hit a \`LazyInitializationException\` after the transaction closed. The runnable demo in the **Code** tab simulates N+1 vs a join-fetch on a plain JVM so you can *see* the query count.
@@ -21971,8 +23754,8 @@ repository.getReferenceById(1L);     // lazy proxy — doesn't hit DB until acce
 repository.findAll(Sort.by("name"));
 repository.findAll(PageRequest.of(0, 20, Sort.by("createdAt").descending()));
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.stream.*;
 
 // ✅ RUNNABLE on a bare JDK — no Spring/JPA needed. This simulates the N+1
@@ -22014,7 +23797,7 @@ public class NPlusOneDemo {
         System.out.println("\\nLesson: lazy associations in a loop = N+1. Fix with JOIN FETCH, @EntityGraph, or a batch size.");
     }
 }`,
-            `import jakarta.persistence.*;
+              `import jakarta.persistence.*;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import java.time.Instant;
@@ -22077,7 +23860,7 @@ class ProductService {
         System.out.println("Total: " + page.getTotalElements() + " pages: " + page.getTotalPages());
     }
 }`,
-            `import org.springframework.data.jpa.repository.*;
+              `import org.springframework.data.jpa.repository.*;
 import org.springframework.data.domain.*;
 import java.util.*;
 import java.time.Instant;
@@ -22122,18 +23905,33 @@ class CustomOrderRepositoryImpl implements CustomOrderRepository {
         return em.createQuery(cq).getResultList();
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What are derived query methods and how does Spring Data parse them?', a: 'Spring Data parses the method name to generate a JPQL query automatically. Pattern: findBy{Criteria}(params). Subject keywords: find, count, exists, delete. Predicate keywords: And, Or, Between, LessThan, GreaterThan, Like, Containing, IsNull, OrderBy, etc. Examples: findByCustomerIdAndStatus(String id, Status s) → WHERE customer_id=? AND status=?; findTop5ByCategoryOrderByPriceAsc(String cat) → WHERE category=? ORDER BY price ASC LIMIT 5. Parsed at startup — method name errors are compile-safe thanks to Spring Data\'s parsing.' },
-            { q: 'What is the difference between findById and getReferenceById?', a: 'findById executes a SELECT immediately and returns Optional<T> — the entity is in memory with all fields populated. getReferenceById returns a Hibernate proxy (lazy reference) without hitting the database — useful when you only need the ID for a foreign key association (e.g. setting order.setCustomer(customerRepo.getReferenceById(id)) avoids a DB round-trip). getReferenceById throws EntityNotFoundException if you access a property on the proxy and the entity doesn\'t exist.' },
-            { q: 'How do you implement pagination with Spring Data JPA?', a: 'Accept a Pageable parameter in the repository method: Page<Order> findByStatus(OrderStatus status, Pageable pageable). Call with: PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending()). The return type Page<T> has: getContent() (the list), getTotalElements(), getTotalPages(), hasNext(), hasPrevious(). Spring Data executes two queries: one for the data (LIMIT/OFFSET) and one COUNT query for total elements. Use Slice<T> instead of Page<T> to skip the COUNT query when you only need hasNext().' },
-            { q: 'What is the repository fragment pattern and when do you use it?', a: 'When derived queries or @Query aren\'t enough (e.g. dynamic Criteria API queries, stored procedures, bulk operations), define a custom interface (CustomOrderRepository) with the methods you need. Create an implementation class named {InterfaceName}Impl. Make your main repository extend both JpaRepository AND your custom interface. Spring Data detects the Impl class automatically and delegates those methods. You get full EntityManager access while keeping Spring Data\'s generated methods.' },
-            { q: 'What is an interface projection in Spring Data JPA?', a: 'Instead of returning full entities, define an interface with getter methods matching entity field names: interface OrderSummary { Long getId(); String getCustomerId(); }. Spring Data generates a proxy that only SELECTs the requested columns — avoiding the overhead of loading the entire entity. Declare: List<OrderSummary> findByCustomerId(String id). Useful when you need only a subset of fields for DTOs or API responses. Class projections (records) require a @Query with a constructor expression: new com.example.OrderDto(o.id, o.customerId).' }
-          ]
-        },
-        {
-          title: 'JPQL, @Query & Native Queries',
-          notes: `## JPQL, @Query & Native Queries
+            ],
+            flashcards: [
+              {
+                q: `What are derived query methods and how does Spring Data parse them?`,
+                a: `Spring Data parses the method name to generate a JPQL query automatically. Pattern: findBy{Criteria}(params). Subject keywords: find, count, exists, delete. Predicate keywords: And, Or, Between, LessThan, GreaterThan, Like, Containing, IsNull, OrderBy, etc. Examples: findByCustomerIdAndStatus(String id, Status s) → WHERE customer_id=? AND status=?; findTop5ByCategoryOrderByPriceAsc(String cat) → WHERE category=? ORDER BY price ASC LIMIT 5. Parsed at startup — method name errors are compile-safe thanks to Spring Data's parsing.`
+              },
+              {
+                q: `What is the difference between findById and getReferenceById?`,
+                a: `findById executes a SELECT immediately and returns Optional<T> — the entity is in memory with all fields populated. getReferenceById returns a Hibernate proxy (lazy reference) without hitting the database — useful when you only need the ID for a foreign key association (e.g. setting order.setCustomer(customerRepo.getReferenceById(id)) avoids a DB round-trip). getReferenceById throws EntityNotFoundException if you access a property on the proxy and the entity doesn't exist.`
+              },
+              {
+                q: `How do you implement pagination with Spring Data JPA?`,
+                a: `Accept a Pageable parameter in the repository method: Page<Order> findByStatus(OrderStatus status, Pageable pageable). Call with: PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending()). The return type Page<T> has: getContent() (the list), getTotalElements(), getTotalPages(), hasNext(), hasPrevious(). Spring Data executes two queries: one for the data (LIMIT/OFFSET) and one COUNT query for total elements. Use Slice<T> instead of Page<T> to skip the COUNT query when you only need hasNext().`
+              },
+              {
+                q: `What is the repository fragment pattern and when do you use it?`,
+                a: `When derived queries or @Query aren't enough (e.g. dynamic Criteria API queries, stored procedures, bulk operations), define a custom interface (CustomOrderRepository) with the methods you need. Create an implementation class named {InterfaceName}Impl. Make your main repository extend both JpaRepository AND your custom interface. Spring Data detects the Impl class automatically and delegates those methods. You get full EntityManager access while keeping Spring Data's generated methods.`
+              },
+              {
+                q: `What is an interface projection in Spring Data JPA?`,
+                a: `Instead of returning full entities, define an interface with getter methods matching entity field names: interface OrderSummary { Long getId(); String getCustomerId(); }. Spring Data generates a proxy that only SELECTs the requested columns — avoiding the overhead of loading the entire entity. Declare: List<OrderSummary> findByCustomerId(String id). Useful when you need only a subset of fields for DTOs or API responses. Class projections (records) require a @Query with a constructor expression: new com.example.OrderDto(o.id, o.customerId).`
+              }
+            ]
+          },
+          {
+            title: `JPQL, @Query & Native Queries`,
+            notes: `## JPQL, @Query & Native Queries
 
 ### JPQL — Java Persistence Query Language
 
@@ -22220,8 +24018,8 @@ Derived method   → simple single-entity queries, no joins needed
 Criteria API     → fully dynamic queries (varies at runtime)
 Specifications   → composable query predicates (spring-data-jpa Specification<T>)
 \`\`\``,
-          code: [
-            `import org.springframework.data.jpa.repository.*;
+            code: [
+              `import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.domain.*;
 import java.time.Instant;
@@ -22288,7 +24086,7 @@ class QueryDemo {
         System.out.println("Page 1 of " + page.getTotalPages());
     }
 }`,
-            `import org.springframework.data.jpa.domain.Specification;
+              `import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.*;
 import jakarta.persistence.criteria.*;
 import java.util.*;
@@ -22340,18 +24138,33 @@ class ProductSearchService {
         return repo.findAll(spec, org.springframework.data.domain.Sort.by("name"));
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is JPQL and how does it differ from SQL?', a: 'JPQL (Java Persistence Query Language) operates on entity objects and their fields — not database tables and columns. Entity class names and Java field names are used (case-sensitive). JPQL is portable: the same query works across MySQL, PostgreSQL, H2, etc. Hibernate translates it to the target dialect. Key differences: FROM Order o (not FROM orders), o.customerId (not o.customer_id), JOIN o.items (navigation via entity association, not explicit FK). Cannot use DB-specific functions (window functions, CTEs) — use native queries for those.' },
-            { q: 'When do you need @Modifying and what does clearAutomatically do?', a: '@Modifying is required on any @Query that executes an UPDATE or DELETE (not a SELECT). Without it, Spring Data treats the query as a SELECT and throws an exception. clearAutomatically = true (default in Spring Data 3+) clears Hibernate\'s first-level (L1) cache after the bulk operation — preventing stale entity reads. flushAutomatically = true ensures pending changes are flushed before the bulk query runs. Always pair @Modifying with @Transactional.' },
-            { q: 'What is a Spring Data Specification and what problem does it solve?', a: 'Specification<T> is a predicate for composable dynamic queries. Implement: (root, query, cb) -> cb.equal(root.get("status"), status). Compose with .and(), .or(), .not(). Repository extends JpaSpecificationExecutor<T>, then call repo.findAll(spec). Solves the problem of building dynamic queries (optional filters at runtime) without string concatenation or dozens of derived query permutations. Each Specification is independently testable. Equivalent to builder pattern for WHERE clauses.' },
-            { q: 'When should you use @Query native SQL vs JPQL?', a: 'Use JPQL for: standard filtering, joins between mapped entities, aggregations, constructor projections — portable, type-checked at startup with spring.jpa.properties.hibernate.query.validation_mode. Use native SQL for: database-specific features (PostgreSQL window functions, JSONB operators, full-text search, CTEs), performance-critical queries that need a specific execution plan, or raw DML not expressible in JPQL. Native queries are not portable and column names must match the DB schema exactly.' },
-            { q: 'What is a constructor expression in JPQL and why use it?', a: 'new com.example.dto.OrderSummary(o.id, o.customerId, SUM(i.price)) in a SELECT clause. Spring creates DTO instances directly from the query results instead of loading full entities. Benefits: SELECT only needed columns (performance), get immutable DTO/record types back instead of managed entities, avoid memory overhead of loading associated collections. The DTO class must have a matching constructor. Works with records (Java 16+). For complex projections, interface projections are simpler (no constructor needed).' }
-          ]
-        },
-        {
-          title: 'N+1 Problem, EntityGraph & Performance',
-          notes: `## N+1 Problem, EntityGraph & Performance
+            ],
+            flashcards: [
+              {
+                q: `What is JPQL and how does it differ from SQL?`,
+                a: `JPQL (Java Persistence Query Language) operates on entity objects and their fields — not database tables and columns. Entity class names and Java field names are used (case-sensitive). JPQL is portable: the same query works across MySQL, PostgreSQL, H2, etc. Hibernate translates it to the target dialect. Key differences: FROM Order o (not FROM orders), o.customerId (not o.customer_id), JOIN o.items (navigation via entity association, not explicit FK). Cannot use DB-specific functions (window functions, CTEs) — use native queries for those.`
+              },
+              {
+                q: `When do you need @Modifying and what does clearAutomatically do?`,
+                a: `@Modifying is required on any @Query that executes an UPDATE or DELETE (not a SELECT). Without it, Spring Data treats the query as a SELECT and throws an exception. clearAutomatically = true (default in Spring Data 3+) clears Hibernate's first-level (L1) cache after the bulk operation — preventing stale entity reads. flushAutomatically = true ensures pending changes are flushed before the bulk query runs. Always pair @Modifying with @Transactional.`
+              },
+              {
+                q: `What is a Spring Data Specification and what problem does it solve?`,
+                a: `Specification<T> is a predicate for composable dynamic queries. Implement: (root, query, cb) -> cb.equal(root.get("status"), status). Compose with .and(), .or(), .not(). Repository extends JpaSpecificationExecutor<T>, then call repo.findAll(spec). Solves the problem of building dynamic queries (optional filters at runtime) without string concatenation or dozens of derived query permutations. Each Specification is independently testable. Equivalent to builder pattern for WHERE clauses.`
+              },
+              {
+                q: `When should you use @Query native SQL vs JPQL?`,
+                a: `Use JPQL for: standard filtering, joins between mapped entities, aggregations, constructor projections — portable, type-checked at startup with spring.jpa.properties.hibernate.query.validation_mode. Use native SQL for: database-specific features (PostgreSQL window functions, JSONB operators, full-text search, CTEs), performance-critical queries that need a specific execution plan, or raw DML not expressible in JPQL. Native queries are not portable and column names must match the DB schema exactly.`
+              },
+              {
+                q: `What is a constructor expression in JPQL and why use it?`,
+                a: `new com.example.dto.OrderSummary(o.id, o.customerId, SUM(i.price)) in a SELECT clause. Spring creates DTO instances directly from the query results instead of loading full entities. Benefits: SELECT only needed columns (performance), get immutable DTO/record types back instead of managed entities, avoid memory overhead of loading associated collections. The DTO class must have a matching constructor. Works with records (Java 16+). For complex projections, interface projections are simpler (no constructor needed).`
+              }
+            ]
+          },
+          {
+            title: `N+1 Problem, EntityGraph & Performance`,
+            notes: `## N+1 Problem, EntityGraph & Performance
 
 The N+1 query problem is the most common JPA performance issue. It occurs when fetching a collection triggers a separate query per element.
 
@@ -22470,8 +24283,8 @@ Order order = repo.findById(id).orElseThrow(() -> new OrderNotFoundException(id)
 @org.hibernate.annotations.Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
 public class Category { ... }
 \`\`\``,
-          code: [
-            `import org.springframework.data.jpa.repository.*;
+            code: [
+              `import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.domain.*;
 import jakarta.persistence.*;
@@ -22521,7 +24334,7 @@ interface BlogPostRepository extends JpaRepository<BlogPost, Long> {
            "GROUP BY p.id, p.title, u.name")
     Page<Object> findSummaries(Pageable pageable);
 }`,
-            `import jakarta.persistence.*;
+              `import jakarta.persistence.*;
 import org.springframework.stereotype.*;
 import org.springframework.transaction.annotation.*;
 import java.util.*;
@@ -22566,37 +24379,48 @@ class InventoryBulkService {
 
     private Object createProduct(Object[] row) { return new Object(); }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the N+1 query problem and how do you detect it?', a: 'N+1 occurs when loading N entities triggers N additional queries for a lazy-loaded association. Loading 100 orders then accessing order.getCustomer() triggers 100 more SELECT queries — 101 total instead of 1. Detect with: spring.jpa.show-sql=true and count the queries; spring.jpa.properties.hibernate.generate_statistics=true for query counts; Hibernate Hypersistence Optimizer (library) automatically detects N+1 in tests; p6spy library to intercept JDBC calls.' },
-            { q: 'What are the three main solutions to the N+1 problem?', a: '(1) JOIN FETCH in @Query: SELECT DISTINCT o FROM Order o JOIN FETCH o.customer — fetches associations in one SQL JOIN. Cannot be used with Pageable (causes in-memory pagination). (2) @EntityGraph: attribute paths specify which associations to eager-load. Works with pagination. Ad-hoc: @EntityGraph(attributePaths={"customer","items"}) on the repo method. (3) DTO projection: @Query with constructor expression returns only needed fields — no entity, no lazy loading, no N+1 possible.' },
-            { q: 'Why can\'t you use JOIN FETCH with Pageable (pagination)?', a: 'JOIN FETCH with a @OneToMany produces a result set with duplicate parent rows (one per child). SQL LIMIT/OFFSET would cut through the middle of a parent\'s children, returning wrong data. Hibernate detects this and issues a warning: "HHH90003004: firstResult/maxResults specified with collection fetch; applying in memory!" — it loads ALL rows into memory then paginates in Java. This can cause OutOfMemoryError on large datasets. Fix: use @EntityGraph instead of JOIN FETCH for paginated queries.' },
-            { q: 'What is hibernate.default_batch_fetch_size and how does it help?', a: 'Setting spring.jpa.properties.hibernate.default_batch_fetch_size=25 enables Hibernate batch fetching. Instead of issuing 1 SELECT per lazy-loaded association (N+1), Hibernate collects IDs and fetches them in batches using IN (...): SELECT * FROM customers WHERE id IN (1,2,3,...,25). For 100 orders: 1 order query + 4 batch queries = 5 total instead of 101. Not as fast as JOIN FETCH for a single large result, but very effective for mixed access patterns and works seamlessly with existing code.' },
-            { q: 'What is the difference between FetchType.EAGER and FetchType.LAZY and which should you default to?', a: 'EAGER: the association is loaded immediately when the parent entity is loaded — always. This causes joins even when the association is not needed. @ManyToOne defaults to EAGER which is often problematic. LAZY: the association is loaded only when first accessed (proxy is returned). Lazy loading requires an active Hibernate session — access outside a transaction causes LazyInitializationException. Default: use LAZY everywhere. Add JOIN FETCH or @EntityGraph on the specific repository methods that actually need the association. Never use @OneToMany(fetch=EAGER).' }
-          ]
-        }
-      ]
-    },
-
-
-  ]
-},
-
-/* ===================== PHASE 4: Databases ===================== */
-{
-  id: 'p4',
-  title: 'Databases & Persistence',
-  icon: 'database',
-  blurb: 'SQL mastery, indexing, transaction isolation & anomalies, and SQL-vs-NoSQL trade-offs.',
-  modules: [
-    {
-      id: '4.1',
-      title: 'SQL Mastery & Joins',
-      hours: 3,
-      sections: [
-        {
-          title: 'JOIN Types — INNER, OUTER, CROSS & Self',
-          notes: `## JOIN Types — INNER, OUTER, CROSS & Self
+            ],
+            flashcards: [
+              {
+                q: `What is the N+1 query problem and how do you detect it?`,
+                a: `N+1 occurs when loading N entities triggers N additional queries for a lazy-loaded association. Loading 100 orders then accessing order.getCustomer() triggers 100 more SELECT queries — 101 total instead of 1. Detect with: spring.jpa.show-sql=true and count the queries; spring.jpa.properties.hibernate.generate_statistics=true for query counts; Hibernate Hypersistence Optimizer (library) automatically detects N+1 in tests; p6spy library to intercept JDBC calls.`
+              },
+              {
+                q: `What are the three main solutions to the N+1 problem?`,
+                a: `(1) JOIN FETCH in @Query: SELECT DISTINCT o FROM Order o JOIN FETCH o.customer — fetches associations in one SQL JOIN. Cannot be used with Pageable (causes in-memory pagination). (2) @EntityGraph: attribute paths specify which associations to eager-load. Works with pagination. Ad-hoc: @EntityGraph(attributePaths={"customer","items"}) on the repo method. (3) DTO projection: @Query with constructor expression returns only needed fields — no entity, no lazy loading, no N+1 possible.`
+              },
+              {
+                q: `Why can't you use JOIN FETCH with Pageable (pagination)?`,
+                a: `JOIN FETCH with a @OneToMany produces a result set with duplicate parent rows (one per child). SQL LIMIT/OFFSET would cut through the middle of a parent's children, returning wrong data. Hibernate detects this and issues a warning: "HHH90003004: firstResult/maxResults specified with collection fetch; applying in memory!" — it loads ALL rows into memory then paginates in Java. This can cause OutOfMemoryError on large datasets. Fix: use @EntityGraph instead of JOIN FETCH for paginated queries.`
+              },
+              {
+                q: `What is hibernate.default_batch_fetch_size and how does it help?`,
+                a: `Setting spring.jpa.properties.hibernate.default_batch_fetch_size=25 enables Hibernate batch fetching. Instead of issuing 1 SELECT per lazy-loaded association (N+1), Hibernate collects IDs and fetches them in batches using IN (...): SELECT * FROM customers WHERE id IN (1,2,3,...,25). For 100 orders: 1 order query + 4 batch queries = 5 total instead of 101. Not as fast as JOIN FETCH for a single large result, but very effective for mixed access patterns and works seamlessly with existing code.`
+              },
+              {
+                q: `What is the difference between FetchType.EAGER and FetchType.LAZY and which should you default to?`,
+                a: `EAGER: the association is loaded immediately when the parent entity is loaded — always. This causes joins even when the association is not needed. @ManyToOne defaults to EAGER which is often problematic. LAZY: the association is loaded only when first accessed (proxy is returned). Lazy loading requires an active Hibernate session — access outside a transaction causes LazyInitializationException. Default: use LAZY everywhere. Add JOIN FETCH or @EntityGraph on the specific repository methods that actually need the association. Never use @OneToMany(fetch=EAGER).`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p4`,
+    title: `Databases & Persistence`,
+    icon: `database`,
+    blurb: `SQL mastery, indexing, transaction isolation & anomalies, and SQL-vs-NoSQL trade-offs.`,
+    modules: [
+      {
+        id: `4.1`,
+        title: `SQL Mastery & Joins`,
+        hours: 3,
+        sections: [
+          {
+            title: `JOIN Types — INNER, OUTER, CROSS & Self`,
+            notes: `## JOIN Types — INNER, OUTER, CROSS & Self
 
 ### Data Setup
 
@@ -22684,8 +24508,8 @@ FROM employees e
 LEFT JOIN employees m ON e.manager_id = m.id;
 -- Dev→CTO, CTO→CEO, CEO→(NULL manager)
 \`\`\``,
-          code: [
-            `-- Practice queries: joins with real scenarios
+            code: [
+              `-- Practice queries: joins with real scenarios
 
 -- 1. Show each customer's total spend and order count
 SELECT
@@ -22728,7 +24552,7 @@ SELECT path, level FROM org ORDER BY path;
 
 -- 5. CROSS JOIN use: generate all date-country combinations
 -- SELECT d.date, c.country FROM dates d CROSS JOIN countries c;`,
-            `-- Anti-join, semi-join patterns
+              `-- Anti-join, semi-join patterns
 -- 5. Anti-join: customers who NEVER placed an order
 SELECT c.name
 FROM customers c
@@ -22760,18 +24584,33 @@ JOIN LATERAL (
     WHERE customer_id = c.id
     ORDER BY id DESC LIMIT 1
 ) AS latest ON true;`
-          ],
-          flashcards: [
-            { q: 'What is the difference between INNER JOIN and LEFT JOIN?', a: 'INNER JOIN returns only rows where the join condition matches in BOTH tables — unmatched rows from either side are excluded. LEFT JOIN (LEFT OUTER JOIN) returns ALL rows from the left table, with matching right-table data if available, or NULL for the right columns if no match. Use LEFT JOIN to include all records from the primary entity (customers) even when the related table (orders) has no match. The classic "find records with no match" pattern: LEFT JOIN … WHERE right.id IS NULL.' },
-            { q: 'When would you use a CROSS JOIN?', a: 'CROSS JOIN produces the Cartesian product — every row in table A paired with every row in table B (M × N rows). Use cases: generating all combinations (e.g. all products × all dates for a report), generating test data, "seed" queries like SELECT date FROM calendar CROSS JOIN stores for filling sparse data. Always limit CROSS JOIN with WHERE clauses or the result set can be enormous. CROSS JOIN without a WHERE clause on a 1000-row × 1000-row table produces 1 million rows.' },
-            { q: 'What is a self JOIN and give a practical example?', a: 'A self JOIN joins a table to itself using two different aliases. Used for hierarchical/relationship data stored in one table. Example: employees table with manager_id column pointing to another row in the same table. SELECT e.name AS employee, m.name AS manager FROM employees e LEFT JOIN employees m ON e.manager_id = m.id. Other uses: finding duplicate rows (self JOIN on non-key columns), comparing rows within the same set (pairs, previous/next values).' },
-            { q: 'What is the difference between EXISTS (semi-join) and IN for subqueries?', a: 'EXISTS evaluates to true/false based on whether the subquery returns ANY row — SELECT 1 is conventional. IN retrieves the full set from the subquery and checks membership. For correlated subqueries (referencing outer query), EXISTS is typically faster because it short-circuits after finding the first match. Anti-join: NOT EXISTS (or LEFT JOIN … WHERE NULL) finds records with no related records — often more efficient than NOT IN (which fails on NULLs in the subquery result).' },
-            { q: 'What is a LATERAL JOIN (or APPLY in SQL Server)?', a: 'LATERAL (PostgreSQL, MySQL 8+) / APPLY (SQL Server) allows a subquery in the FROM clause to reference columns from preceding FROM items — like a correlated subquery but as a table. Use case: "get the N most recent orders per customer" without window functions: FROM customers JOIN LATERAL (SELECT * FROM orders WHERE customer_id = c.id ORDER BY created_at DESC LIMIT 3) latest ON true. Enables "top-N per group" patterns efficiently.' }
-          ]
-        },
-        {
-          title: 'Aggregations, GROUP BY & Window Functions',
-          notes: `## Aggregations, GROUP BY & Window Functions
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between INNER JOIN and LEFT JOIN?`,
+                a: `INNER JOIN returns only rows where the join condition matches in BOTH tables — unmatched rows from either side are excluded. LEFT JOIN (LEFT OUTER JOIN) returns ALL rows from the left table, with matching right-table data if available, or NULL for the right columns if no match. Use LEFT JOIN to include all records from the primary entity (customers) even when the related table (orders) has no match. The classic "find records with no match" pattern: LEFT JOIN … WHERE right.id IS NULL.`
+              },
+              {
+                q: `When would you use a CROSS JOIN?`,
+                a: `CROSS JOIN produces the Cartesian product — every row in table A paired with every row in table B (M × N rows). Use cases: generating all combinations (e.g. all products × all dates for a report), generating test data, "seed" queries like SELECT date FROM calendar CROSS JOIN stores for filling sparse data. Always limit CROSS JOIN with WHERE clauses or the result set can be enormous. CROSS JOIN without a WHERE clause on a 1000-row × 1000-row table produces 1 million rows.`
+              },
+              {
+                q: `What is a self JOIN and give a practical example?`,
+                a: `A self JOIN joins a table to itself using two different aliases. Used for hierarchical/relationship data stored in one table. Example: employees table with manager_id column pointing to another row in the same table. SELECT e.name AS employee, m.name AS manager FROM employees e LEFT JOIN employees m ON e.manager_id = m.id. Other uses: finding duplicate rows (self JOIN on non-key columns), comparing rows within the same set (pairs, previous/next values).`
+              },
+              {
+                q: `What is the difference between EXISTS (semi-join) and IN for subqueries?`,
+                a: `EXISTS evaluates to true/false based on whether the subquery returns ANY row — SELECT 1 is conventional. IN retrieves the full set from the subquery and checks membership. For correlated subqueries (referencing outer query), EXISTS is typically faster because it short-circuits after finding the first match. Anti-join: NOT EXISTS (or LEFT JOIN … WHERE NULL) finds records with no related records — often more efficient than NOT IN (which fails on NULLs in the subquery result).`
+              },
+              {
+                q: `What is a LATERAL JOIN (or APPLY in SQL Server)?`,
+                a: `LATERAL (PostgreSQL, MySQL 8+) / APPLY (SQL Server) allows a subquery in the FROM clause to reference columns from preceding FROM items — like a correlated subquery but as a table. Use case: "get the N most recent orders per customer" without window functions: FROM customers JOIN LATERAL (SELECT * FROM orders WHERE customer_id = c.id ORDER BY created_at DESC LIMIT 3) latest ON true. Enables "top-N per group" patterns efficiently.`
+              }
+            ]
+          },
+          {
+            title: `Aggregations, GROUP BY & Window Functions`,
+            notes: `## Aggregations, GROUP BY & Window Functions
 
 ### GROUP BY & HAVING
 
@@ -22889,8 +24728,8 @@ SELECT
 FROM employees;
 -- Note: LAST_VALUE needs explicit frame or it only looks at current row
 \`\`\``,
-          code: [
-            `-- Window function mastery — classic interview patterns
+            code: [
+              `-- Window function mastery — classic interview patterns
 
 -- 1. Running total and moving average
 SELECT
@@ -22942,7 +24781,7 @@ SELECT order_date,
        order_date - LAG(order_date) OVER (PARTITION BY customer_id ORDER BY order_date) AS gap_days
 FROM orders
 HAVING gap_days > 7;`,
-            `-- CTEs (Common Table Expressions) + complex queries
+              `-- CTEs (Common Table Expressions) + complex queries
 
 -- 1. Recursive CTE: organizational hierarchy with depth
 WITH RECURSIVE org AS (
@@ -22990,18 +24829,33 @@ SELECT
     SUM(CASE WHEN status='PENDING'   THEN total ELSE 0 END) AS pending_revenue,
     COUNT(CASE WHEN status='CANCELLED' THEN 1 END)          AS cancellations
 FROM orders GROUP BY customer_id;`
-          ],
-          flashcards: [
-            { q: 'What is the difference between WHERE and HAVING?', a: 'WHERE filters rows BEFORE grouping — it acts on individual rows and cannot reference aggregate functions. HAVING filters groups AFTER the GROUP BY — it can reference aggregate functions. Example: WHERE total > 100 filters individual orders before grouping; HAVING COUNT(*) > 5 filters groups (customers) that have more than 5 orders. Performance: WHERE filters reduce the rows that need to be aggregated; HAVING filters the result of aggregation.' },
-            { q: 'What is a window function and how does PARTITION BY differ from GROUP BY?', a: 'Window functions compute an aggregate over a "window" of rows related to the current row — but unlike GROUP BY, they do NOT collapse rows. Every row remains in the result. PARTITION BY in a window function defines the window (like GROUP BY defines groups) but keeps all rows. Example: AVG(salary) OVER (PARTITION BY department) adds the department average to EACH employee row. GROUP BY collapses to one row per department. Window functions appear in SELECT, not WHERE (window is evaluated after WHERE).' },
-            { q: 'What is the difference between RANK, DENSE_RANK, and ROW_NUMBER?', a: 'All three assign positions based on ORDER BY. For tied values (score 90, 90): ROW_NUMBER assigns unique sequential numbers (1,2,3,4) — arbitrary tie-breaking. RANK assigns the same rank to ties but skips the next ranks (1,2,2,4) — like sports rankings. DENSE_RANK assigns the same rank to ties without skipping (1,2,2,3). Use ROW_NUMBER for "top-N per group" patterns (WHERE rn <= 3) since it guarantees exactly N rows per partition.' },
-            { q: 'What is a CTE and when would you use it instead of a subquery?', a: 'A CTE (Common Table Expression) is a named temporary result set defined with WITH name AS (...) before the main query. Benefits over subqueries: readability (name makes intent clear), reuse within the same query (reference the CTE multiple times without repeating the logic), recursive queries (WITH RECURSIVE). Recursive CTEs process hierarchical data (org charts, bill of materials). Performance: in most databases CTEs are inlined (like subqueries), not materialized — check EXPLAIN if you need the CTE results cached.' },
-            { q: 'What are LAG and LEAD window functions used for?', a: 'LAG(column, n) accesses the value n rows BEFORE the current row in the window order. LEAD(column, n) accesses n rows AFTER. Both take an optional default for when the row doesn\'t exist (e.g. first row has no LAG). Use cases: calculate month-over-month difference (revenue - LAG(revenue) OVER (ORDER BY month)), detect gaps in sequences, compare current vs previous/next values, session analysis. Syntax: LAG(salary, 1, 0) OVER (PARTITION BY dept ORDER BY hire_date).' }
-          ]
-        },
-        {
-          title: 'Subqueries, CTEs & Advanced Patterns',
-          notes: `## Subqueries, CTEs & Advanced Patterns
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between WHERE and HAVING?`,
+                a: `WHERE filters rows BEFORE grouping — it acts on individual rows and cannot reference aggregate functions. HAVING filters groups AFTER the GROUP BY — it can reference aggregate functions. Example: WHERE total > 100 filters individual orders before grouping; HAVING COUNT(*) > 5 filters groups (customers) that have more than 5 orders. Performance: WHERE filters reduce the rows that need to be aggregated; HAVING filters the result of aggregation.`
+              },
+              {
+                q: `What is a window function and how does PARTITION BY differ from GROUP BY?`,
+                a: `Window functions compute an aggregate over a "window" of rows related to the current row — but unlike GROUP BY, they do NOT collapse rows. Every row remains in the result. PARTITION BY in a window function defines the window (like GROUP BY defines groups) but keeps all rows. Example: AVG(salary) OVER (PARTITION BY department) adds the department average to EACH employee row. GROUP BY collapses to one row per department. Window functions appear in SELECT, not WHERE (window is evaluated after WHERE).`
+              },
+              {
+                q: `What is the difference between RANK, DENSE_RANK, and ROW_NUMBER?`,
+                a: `All three assign positions based on ORDER BY. For tied values (score 90, 90): ROW_NUMBER assigns unique sequential numbers (1,2,3,4) — arbitrary tie-breaking. RANK assigns the same rank to ties but skips the next ranks (1,2,2,4) — like sports rankings. DENSE_RANK assigns the same rank to ties without skipping (1,2,2,3). Use ROW_NUMBER for "top-N per group" patterns (WHERE rn <= 3) since it guarantees exactly N rows per partition.`
+              },
+              {
+                q: `What is a CTE and when would you use it instead of a subquery?`,
+                a: `A CTE (Common Table Expression) is a named temporary result set defined with WITH name AS (...) before the main query. Benefits over subqueries: readability (name makes intent clear), reuse within the same query (reference the CTE multiple times without repeating the logic), recursive queries (WITH RECURSIVE). Recursive CTEs process hierarchical data (org charts, bill of materials). Performance: in most databases CTEs are inlined (like subqueries), not materialized — check EXPLAIN if you need the CTE results cached.`
+              },
+              {
+                q: `What are LAG and LEAD window functions used for?`,
+                a: `LAG(column, n) accesses the value n rows BEFORE the current row in the window order. LEAD(column, n) accesses n rows AFTER. Both take an optional default for when the row doesn't exist (e.g. first row has no LAG). Use cases: calculate month-over-month difference (revenue - LAG(revenue) OVER (ORDER BY month)), detect gaps in sequences, compare current vs previous/next values, session analysis. Syntax: LAG(salary, 1, 0) OVER (PARTITION BY dept ORDER BY hire_date).`
+              }
+            ]
+          },
+          {
+            title: `Subqueries, CTEs & Advanced Patterns`,
+            notes: `## Subqueries, CTEs & Advanced Patterns
 
 ### Types of Subqueries
 
@@ -23112,8 +24966,8 @@ SELECT SUM(revenue) / NULLIF(SUM(costs), 0) AS roi FROM financials;
 SELECT COUNT(*), COUNT(email), AVG(score) FROM users;
 -- AVG ignores NULLs — 3 rows with scores 10, NULL, 20 → AVG = 15 (not 10)
 \`\`\``,
-          code: [
-            `-- Advanced SQL patterns for interview problems
+            code: [
+              `-- Advanced SQL patterns for interview problems
 
 -- 1. Median (without MEDIAN function)
 SELECT AVG(salary) AS median FROM (
@@ -23165,7 +25019,7 @@ SELECT product_id, revenue,
            ELSE 'C'
        END AS abc_class
 FROM ranked ORDER BY revenue DESC;`,
-            `-- String functions, date functions & type casting
+              `-- String functions, date functions & type casting
 
 -- String functions
 SELECT
@@ -23206,26 +25060,40 @@ SELECT
     data->'address'->>'city' AS city,    -- nested path
     jsonb_array_length(data->'tags')     -- array length
 FROM users WHERE data @> '{"active": true}';  -- contains`
-          ],
-          flashcards: [
-            { q: 'What is a correlated subquery and when should you replace it?', a: 'A correlated subquery references a column from the outer query and is re-executed for EACH row of the outer query. Example: WHERE (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) > 5 — runs a subquery per customer. This scales as O(N) subquery executions. Replace with: a JOIN + GROUP BY (usually most efficient), or a window function (AVG(o.total) OVER (PARTITION BY o.customer_id)), or a CTE. Keep correlated subqueries only when there\'s no cleaner alternative and the dataset is small.' },
-            { q: 'What does COALESCE do and what is NULLIF used for?', a: 'COALESCE(a, b, c) returns the first non-NULL argument. Used for default values and fallback chains: COALESCE(phone, email, \'no-contact\'). NULLIF(a, b) returns NULL if a equals b, otherwise returns a. Primary use: avoid division by zero: total / NULLIF(count, 0) — if count is 0, NULLIF returns NULL, and dividing by NULL gives NULL instead of a runtime error. Also: NULLIF can turn "empty" values into NULL: NULLIF(name, \'\').' },
-            { q: 'What is the difference between UNION and UNION ALL?', a: 'UNION ALL combines the result sets of two queries including all duplicate rows — fast (just concatenates). UNION deduplicates after combining — slower because it requires sorting or hashing to find duplicates. Use UNION ALL when you know there are no duplicates (or don\'t care) for better performance. Both require the same number of columns with compatible types. Column names come from the first query. INTERSECT and EXCEPT implicitly deduplicate (like UNION, not UNION ALL).' },
-            { q: 'How do you handle NULL in SQL comparisons and aggregations?', a: 'NULL represents unknown — any comparison with NULL (=, <>, <, >) evaluates to NULL (not true/false), so WHERE col = NULL never matches. Use IS NULL / IS NOT NULL. In aggregations: COUNT(*) counts all rows; COUNT(col) skips NULLs; SUM/AVG/MIN/MAX all ignore NULLs. AVG of (10, NULL, 20) = 15, not 10. In JOINs: NULL ≠ NULL, so NULL foreign keys never match. In ORDER BY: NULLs sort last by default (NULLS FIRST/LAST to control).' },
-            { q: 'How do you write a "top N per group" query?', a: 'Use ROW_NUMBER() window function: SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY total DESC) AS rn FROM orders) t WHERE rn <= 3. This gives exactly 3 rows per customer. Alternative: RANK() returns all rows with the same rank (could give >3 if there are ties). In PostgreSQL you can also use LATERAL JOIN: FROM customers JOIN LATERAL (SELECT * FROM orders WHERE customer_id=c.id ORDER BY total DESC LIMIT 3) o ON true.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '4.2',
-      title: 'Indexing & Query Performance',
-      hours: 3,
-      sections: [
-        {
-          title: 'B-Tree Indexes — How Indexes Work',
-          notes: `## B-Tree Indexes — How Indexes Work
+            ],
+            flashcards: [
+              {
+                q: `What is a correlated subquery and when should you replace it?`,
+                a: `A correlated subquery references a column from the outer query and is re-executed for EACH row of the outer query. Example: WHERE (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) > 5 — runs a subquery per customer. This scales as O(N) subquery executions. Replace with: a JOIN + GROUP BY (usually most efficient), or a window function (AVG(o.total) OVER (PARTITION BY o.customer_id)), or a CTE. Keep correlated subqueries only when there's no cleaner alternative and the dataset is small.`
+              },
+              {
+                q: `What does COALESCE do and what is NULLIF used for?`,
+                a: `COALESCE(a, b, c) returns the first non-NULL argument. Used for default values and fallback chains: COALESCE(phone, email, 'no-contact'). NULLIF(a, b) returns NULL if a equals b, otherwise returns a. Primary use: avoid division by zero: total / NULLIF(count, 0) — if count is 0, NULLIF returns NULL, and dividing by NULL gives NULL instead of a runtime error. Also: NULLIF can turn "empty" values into NULL: NULLIF(name, '').`
+              },
+              {
+                q: `What is the difference between UNION and UNION ALL?`,
+                a: `UNION ALL combines the result sets of two queries including all duplicate rows — fast (just concatenates). UNION deduplicates after combining — slower because it requires sorting or hashing to find duplicates. Use UNION ALL when you know there are no duplicates (or don't care) for better performance. Both require the same number of columns with compatible types. Column names come from the first query. INTERSECT and EXCEPT implicitly deduplicate (like UNION, not UNION ALL).`
+              },
+              {
+                q: `How do you handle NULL in SQL comparisons and aggregations?`,
+                a: `NULL represents unknown — any comparison with NULL (=, <>, <, >) evaluates to NULL (not true/false), so WHERE col = NULL never matches. Use IS NULL / IS NOT NULL. In aggregations: COUNT(*) counts all rows; COUNT(col) skips NULLs; SUM/AVG/MIN/MAX all ignore NULLs. AVG of (10, NULL, 20) = 15, not 10. In JOINs: NULL ≠ NULL, so NULL foreign keys never match. In ORDER BY: NULLs sort last by default (NULLS FIRST/LAST to control).`
+              },
+              {
+                q: `How do you write a "top N per group" query?`,
+                a: `Use ROW_NUMBER() window function: SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY total DESC) AS rn FROM orders) t WHERE rn <= 3. This gives exactly 3 rows per customer. Alternative: RANK() returns all rows with the same rank (could give >3 if there are ties). In PostgreSQL you can also use LATERAL JOIN: FROM customers JOIN LATERAL (SELECT * FROM orders WHERE customer_id=c.id ORDER BY total DESC LIMIT 3) o ON true.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `4.2`,
+        title: `Indexing & Query Performance`,
+        hours: 3,
+        sections: [
+          {
+            title: `B-Tree Indexes — How Indexes Work`,
+            notes: `## B-Tree Indexes — How Indexes Work
 
 ### What is an Index?
 
@@ -23318,8 +25186,8 @@ WHERE status = 'COMPLETE' AND created_at > '...'  -- skips 1st column → likely
 WHERE customer_id = 1 AND status > 'C'             -- uses 1st col fully, 2nd partially
 WHERE customer_id = 1 AND created_at > '2024'      -- uses only 1st col (skips status)
 \`\`\``,
-          code: [
-            `-- EXPLAIN ANALYZE: reading the query plan
+            code: [
+              `-- EXPLAIN ANALYZE: reading the query plan
 
 -- Step 1: Run EXPLAIN (PostgreSQL syntax)
 EXPLAIN SELECT * FROM orders WHERE customer_id = 123;
@@ -23355,7 +25223,7 @@ FROM pg_stat_statements
 WHERE mean_time > 100   -- queries averaging >100ms
 ORDER BY mean_time DESC
 LIMIT 20;`,
-            `-- Index design patterns
+              `-- Index design patterns
 
 -- 1. Covering index: avoid heap fetches by including all needed columns
 -- Without covering index:
@@ -23389,18 +25257,33 @@ CREATE INDEX idx_users_email_lower ON users(LOWER(email));
 -- Without: JOINing orders to customers does a full scan of orders for each customer
 CREATE INDEX idx_orders_customer_id ON orders(customer_id);
 -- Every FK column that appears in WHERE or JOIN should have an index`
-          ],
-          flashcards: [
-            { q: 'How does a B-Tree index work and what is its time complexity?', a: 'A B-Tree index is a balanced tree where internal nodes hold key ranges and leaf nodes hold (key, row_pointer) pairs in sorted order. The tree is kept balanced — all leaves are at the same depth. Finding a row: traverse from root to leaf using key comparisons (O(log N)). For a 10-million-row table with ~1000 entries per page, depth is ~3-4 levels = 3-4 I/Os vs 10 million I/Os for a full scan. Leaf nodes are linked for efficient range scans.' },
-            { q: 'What is the "left-prefix rule" for composite indexes?', a: 'A composite index (a, b, c) can be used for queries that filter on a prefix of the indexed columns — starting from the leftmost. Usable prefixes: (a), (a,b), (a,b,c). Unusable: (b), (c), (b,c) — skipping the first column means the index can\'t be used for those columns. Range on the middle column stops further index use: WHERE a=1 AND b>5 can use both columns but won\'t use c even if present. Design composite indexes with the most selective equality columns first, range columns last.' },
-            { q: 'What are the common causes of an index NOT being used?', a: '(1) Function on indexed column: WHERE YEAR(created_at)=2024 — fix: range condition on raw column. (2) Leading wildcard: LIKE \'%end\' — fix: use LIKE \'start%\' or full-text search. (3) Implicit type conversion: WHERE int_col = \'123\' (string vs int) — match types. (4) NOT/!=/NOT IN: planner may prefer full scan for low selectivity. (5) OR with non-indexed columns. (6) Very low selectivity: if column has only 2 distinct values, planner may choose full scan as faster.' },
-            { q: 'What is a covering index and what is an index-only scan?', a: 'A covering index contains all columns needed by a query — the database never needs to visit the actual table (heap). This is the fastest type of index access: Index Only Scan. Example: query SELECT total, status FROM orders WHERE customer_id=X. Create: CREATE INDEX idx ON orders(customer_id) INCLUDE (total, status). PostgreSQL\'s INCLUDE allows adding non-key columns that aren\'t part of the B-Tree sort order but are stored in leaf pages. Result: one fast index lookup, zero heap reads.' },
-            { q: 'What is the trade-off of adding too many indexes?', a: 'Read performance improves with indexes but write performance degrades. Every INSERT, UPDATE, DELETE must update ALL relevant indexes — more indexes = more I/O per write. Indexes also consume disk space and buffer pool memory (reducing space for actual data pages). In OLTP (many writes): keep indexes minimal and focused. In OLAP/reporting (few writes, many reads): denormalize and index aggressively. Identify unused indexes with pg_stat_user_indexes (idx_scan = 0) and drop them.' }
-          ]
-        },
-        {
-          title: 'EXPLAIN, Query Optimization & Common Pitfalls',
-          notes: `## EXPLAIN, Query Optimization & Common Pitfalls
+            ],
+            flashcards: [
+              {
+                q: `How does a B-Tree index work and what is its time complexity?`,
+                a: `A B-Tree index is a balanced tree where internal nodes hold key ranges and leaf nodes hold (key, row_pointer) pairs in sorted order. The tree is kept balanced — all leaves are at the same depth. Finding a row: traverse from root to leaf using key comparisons (O(log N)). For a 10-million-row table with ~1000 entries per page, depth is ~3-4 levels = 3-4 I/Os vs 10 million I/Os for a full scan. Leaf nodes are linked for efficient range scans.`
+              },
+              {
+                q: `What is the "left-prefix rule" for composite indexes?`,
+                a: `A composite index (a, b, c) can be used for queries that filter on a prefix of the indexed columns — starting from the leftmost. Usable prefixes: (a), (a,b), (a,b,c). Unusable: (b), (c), (b,c) — skipping the first column means the index can't be used for those columns. Range on the middle column stops further index use: WHERE a=1 AND b>5 can use both columns but won't use c even if present. Design composite indexes with the most selective equality columns first, range columns last.`
+              },
+              {
+                q: `What are the common causes of an index NOT being used?`,
+                a: `(1) Function on indexed column: WHERE YEAR(created_at)=2024 — fix: range condition on raw column. (2) Leading wildcard: LIKE '%end' — fix: use LIKE 'start%' or full-text search. (3) Implicit type conversion: WHERE int_col = '123' (string vs int) — match types. (4) NOT/!=/NOT IN: planner may prefer full scan for low selectivity. (5) OR with non-indexed columns. (6) Very low selectivity: if column has only 2 distinct values, planner may choose full scan as faster.`
+              },
+              {
+                q: `What is a covering index and what is an index-only scan?`,
+                a: `A covering index contains all columns needed by a query — the database never needs to visit the actual table (heap). This is the fastest type of index access: Index Only Scan. Example: query SELECT total, status FROM orders WHERE customer_id=X. Create: CREATE INDEX idx ON orders(customer_id) INCLUDE (total, status). PostgreSQL's INCLUDE allows adding non-key columns that aren't part of the B-Tree sort order but are stored in leaf pages. Result: one fast index lookup, zero heap reads.`
+              },
+              {
+                q: `What is the trade-off of adding too many indexes?`,
+                a: `Read performance improves with indexes but write performance degrades. Every INSERT, UPDATE, DELETE must update ALL relevant indexes — more indexes = more I/O per write. Indexes also consume disk space and buffer pool memory (reducing space for actual data pages). In OLTP (many writes): keep indexes minimal and focused. In OLAP/reporting (few writes, many reads): denormalize and index aggressively. Identify unused indexes with pg_stat_user_indexes (idx_scan = 0) and drop them.`
+              }
+            ]
+          },
+          {
+            title: `EXPLAIN, Query Optimization & Common Pitfalls`,
+            notes: `## EXPLAIN, Query Optimization & Common Pitfalls
 
 ### Reading EXPLAIN Output
 
@@ -23504,8 +25387,8 @@ WHERE tablename = 'orders';
 -- Correlation: 0.0 = random (random heap access — expensive)
 -- For low-correlation columns: CLUSTER table by index to improve physical ordering
 \`\`\``,
-          code: [
-            `-- Optimization exercises: before/after
+            code: [
+              `-- Optimization exercises: before/after
 
 -- SLOW: function on indexed column
 -- BEFORE (no index use):
@@ -23544,7 +25427,7 @@ WHERE o.customer_id IS NULL;
 -- Or: NOT EXISTS (also safe):
 SELECT * FROM customers c
 WHERE NOT EXISTS (SELECT 1 FROM orders WHERE customer_id = c.id);`,
-            `-- Connection pooling and JDBC performance
+              `-- Connection pooling and JDBC performance
 
 -- Query performance checklist (application side):
 
@@ -23580,26 +25463,40 @@ WHERE NOT EXISTS (SELECT 1 FROM orders WHERE customer_id = c.id);`,
 -- connectionTimeout: 30000   (30s to get a connection from pool)
 -- idleTimeout: 600000        (10min before removing idle connection)
 -- maxLifetime: 1800000       (30min max connection age)`
-          ],
-          flashcards: [
-            { q: 'How do you read EXPLAIN ANALYZE output and what are the key warning signs?', a: 'Key fields: cost=startup..total (planner estimate in page units), rows (estimated vs actual), loops. Warning signs: "Seq Scan" on a large table — needs an index. "Rows Removed by Filter: N" where N is huge — means scanning millions of rows to return few. Large discrepancy between estimated rows and actual rows — stale statistics (run ANALYZE). "Hash Batches > 1" — hash join spilled to disk (increase work_mem). "Sort Method: external merge" — sort spilled to disk.' },
-            { q: 'What are the three join strategies and when does the planner choose each?', a: 'Nested Loop: for each outer row, look up matching inner rows via index. Best when outer result is small and inner has an index. Hash Join: build a hash table of the smaller table, probe with larger. Best for large tables without join-column indexes. Needs work_mem to hold the hash table. Merge Join: both inputs must be sorted by join key; merges two sorted streams. Best when inputs are already sorted (e.g. from an index) or when output needs to be sorted. Planner chooses based on cost estimates — force with enable_nestloop/enable_hashjoin for testing.' },
-            { q: 'Why is NOT IN with a subquery dangerous when the subquery can return NULLs?', a: 'NOT IN uses the logic: "value is not equal to ANY of these." In SQL, NULL = anything evaluates to NULL (unknown), not false. So if the subquery returns any NULL, NOT IN evaluates to NULL for every row — returning NO results. Example: WHERE id NOT IN (SELECT customer_id FROM orders) — if any order has NULL customer_id, the whole query returns 0 rows. Fix: use NOT EXISTS (handles NULLs correctly) or LEFT JOIN … WHERE IS NULL, or ensure the subquery column is NOT NULL.' },
-            { q: 'How do batch inserts work and why are they faster?', a: 'Individual inserts: each INSERT requires a round-trip to the DB server (network latency), statement parse, plan, execute, and potentially a fsync. For 10,000 rows: 10,000 round-trips. Batch insert: groups multiple rows into one statement (JDBC addBatch() / executeBatch(), or multi-row INSERT VALUES (a),(b),(c)). Reduces: round-trips, parsing/planning overhead, transaction overhead. In Hibernate: configure spring.jpa.properties.hibernate.jdbc.batch_size=50. Typically 10-100x faster for bulk operations.' },
-            { q: 'What is database connection pooling and what happens without it?', a: 'Establishing a DB connection involves: TCP handshake, authentication, session initialization — takes 20-100ms per connection. Without pooling: each request opens/closes a connection → unacceptable latency, exhausted DB connection limits. With pooling (HikariCP): a pool of pre-established connections is reused. App borrows a connection, runs query, returns it. Key settings: maximumPoolSize (max concurrent connections to DB), connectionTimeout (how long to wait for a connection from pool), maxLifetime (recycle connections to avoid stale state).' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '4.3',
-      title: 'Transactions, ACID & Isolation Levels',
-      hours: 2,
-      sections: [
-        {
-          title: 'ACID Properties & Transaction Fundamentals',
-          notes: `## ACID Properties & Transaction Fundamentals
+            ],
+            flashcards: [
+              {
+                q: `How do you read EXPLAIN ANALYZE output and what are the key warning signs?`,
+                a: `Key fields: cost=startup..total (planner estimate in page units), rows (estimated vs actual), loops. Warning signs: "Seq Scan" on a large table — needs an index. "Rows Removed by Filter: N" where N is huge — means scanning millions of rows to return few. Large discrepancy between estimated rows and actual rows — stale statistics (run ANALYZE). "Hash Batches > 1" — hash join spilled to disk (increase work_mem). "Sort Method: external merge" — sort spilled to disk.`
+              },
+              {
+                q: `What are the three join strategies and when does the planner choose each?`,
+                a: `Nested Loop: for each outer row, look up matching inner rows via index. Best when outer result is small and inner has an index. Hash Join: build a hash table of the smaller table, probe with larger. Best for large tables without join-column indexes. Needs work_mem to hold the hash table. Merge Join: both inputs must be sorted by join key; merges two sorted streams. Best when inputs are already sorted (e.g. from an index) or when output needs to be sorted. Planner chooses based on cost estimates — force with enable_nestloop/enable_hashjoin for testing.`
+              },
+              {
+                q: `Why is NOT IN with a subquery dangerous when the subquery can return NULLs?`,
+                a: `NOT IN uses the logic: "value is not equal to ANY of these." In SQL, NULL = anything evaluates to NULL (unknown), not false. So if the subquery returns any NULL, NOT IN evaluates to NULL for every row — returning NO results. Example: WHERE id NOT IN (SELECT customer_id FROM orders) — if any order has NULL customer_id, the whole query returns 0 rows. Fix: use NOT EXISTS (handles NULLs correctly) or LEFT JOIN … WHERE IS NULL, or ensure the subquery column is NOT NULL.`
+              },
+              {
+                q: `How do batch inserts work and why are they faster?`,
+                a: `Individual inserts: each INSERT requires a round-trip to the DB server (network latency), statement parse, plan, execute, and potentially a fsync. For 10,000 rows: 10,000 round-trips. Batch insert: groups multiple rows into one statement (JDBC addBatch() / executeBatch(), or multi-row INSERT VALUES (a),(b),(c)). Reduces: round-trips, parsing/planning overhead, transaction overhead. In Hibernate: configure spring.jpa.properties.hibernate.jdbc.batch_size=50. Typically 10-100x faster for bulk operations.`
+              },
+              {
+                q: `What is database connection pooling and what happens without it?`,
+                a: `Establishing a DB connection involves: TCP handshake, authentication, session initialization — takes 20-100ms per connection. Without pooling: each request opens/closes a connection → unacceptable latency, exhausted DB connection limits. With pooling (HikariCP): a pool of pre-established connections is reused. App borrows a connection, runs query, returns it. Key settings: maximumPoolSize (max concurrent connections to DB), connectionTimeout (how long to wait for a connection from pool), maxLifetime (recycle connections to avoid stale state).`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `4.3`,
+        title: `Transactions, ACID & Isolation Levels`,
+        hours: 2,
+        sections: [
+          {
+            title: `ACID Properties & Transaction Fundamentals`,
+            notes: `## ACID Properties & Transaction Fundamentals
 
 A **transaction** is a sequence of database operations that executes as a single unit — either all succeed or all fail.
 
@@ -23687,8 +25584,8 @@ COMMIT;
 -- Or per session
 SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
 \`\`\``,
-          code: [
-            `-- Transaction patterns in SQL
+            code: [
+              `-- Transaction patterns in SQL
 
 -- 1. Basic atomicity: bank transfer
 BEGIN;
@@ -23736,7 +25633,7 @@ UPDATE products
 SET stock = 9, version = 4
 WHERE id = 7 AND version = 3;
 -- If 0 rows affected → someone else updated first → retry`,
-            `-- Isolation level demonstration
+              `-- Isolation level demonstration
 
 -- Session A (REPEATABLE READ)
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -23767,37 +25664,48 @@ FROM pg_stat_activity
 WHERE state != 'idle'
   AND (now() - pg_stat_activity.query_start) > INTERVAL '5 seconds'
 ORDER BY duration DESC;`
-          ],
-          flashcards: [
-            { q: 'What does ACID stand for and give a one-line definition of each?', a: 'Atomicity: all operations in a transaction succeed or none are applied (all-or-nothing). Consistency: a transaction moves the database from one valid state to another — constraints, triggers, rules are enforced. Isolation: concurrent transactions appear to execute one at a time — intermediate state is not visible to others. Durability: once a transaction commits, changes survive crashes (written to WAL/redo log before acknowledging to client).' },
-            { q: 'What are the four isolation anomalies and which isolation level prevents each?', a: 'Dirty read: reading another transaction\'s uncommitted data — prevented by READ COMMITTED+. Non-repeatable read: same row returns different values in two reads within one transaction — prevented by REPEATABLE READ+. Phantom read: a range query returns different rows on second read (new rows inserted by another transaction) — prevented only by SERIALIZABLE. Lost update: two transactions read-modify-write the same row, one overwrites the other — prevented by FOR UPDATE locking or optimistic locking (version column).' },
-            { q: 'How does Write-Ahead Logging (WAL) ensure durability?', a: 'Before modifying data files, the database writes the change to a sequential WAL (Write-Ahead Log). On COMMIT, the WAL record is flushed to disk (fsync), then the client receives "committed." Actual data file updates can happen later. On crash after COMMIT: WAL replay re-applies committed changes. On crash before COMMIT: WAL shows the transaction was incomplete — it\'s discarded (rolled back). Sequential WAL writes are fast; random data file writes are batched. This is how PostgreSQL\'s pg_wal and MySQL\'s ib_logfile work.' },
-            { q: 'What is optimistic locking and when do you use it instead of pessimistic locking?', a: 'Optimistic locking: read data with a version number, update only if version hasn\'t changed (UPDATE … WHERE id=X AND version=N). If 0 rows affected → conflict → retry. Pessimistic locking: lock rows on read (SELECT … FOR UPDATE) — other transactions must wait. Use optimistic when: conflicts are rare (most reads succeed without conflict), high concurrency where holding locks would cause bottlenecks, or across service boundaries (can\'t hold a DB lock across an HTTP call). Use pessimistic when conflicts are common or critical sections are short.' },
-            { q: 'What is the default isolation level in PostgreSQL and MySQL, and what does that mean practically?', a: 'PostgreSQL default: READ COMMITTED — each statement within a transaction sees a fresh snapshot of committed data. A second SELECT in the same transaction CAN see data committed by other transactions between the two reads (non-repeatable reads). MySQL InnoDB default: REPEATABLE READ — the transaction takes a snapshot at the first read and consistently sees that snapshot for all subsequent reads. Additionally, MySQL uses gap locks to prevent phantom reads in most cases, making REPEATABLE READ nearly serializable. For financial operations, always explicitly set the required isolation level.' }
-          ]
-        }
-      ]
-    },
-
-
-  ]
-},
-
-/* ===================== PHASE 5: System Design ===================== */
-{
-  id: 'p5',
-  title: 'System Design',
-  icon: 'network',
-  blurb: 'Scalability, caching, load balancing, API design, and the microservice patterns interviewers probe.',
-  modules: [
-    {
-      id: '5.1',
-      title: 'Scalability Fundamentals',
-      hours: 3,
-      sections: [
-        {
-          title: 'Vertical vs Horizontal Scaling & Load Balancing',
-          notes: `## Vertical vs Horizontal Scaling & Load Balancing
+            ],
+            flashcards: [
+              {
+                q: `What does ACID stand for and give a one-line definition of each?`,
+                a: `Atomicity: all operations in a transaction succeed or none are applied (all-or-nothing). Consistency: a transaction moves the database from one valid state to another — constraints, triggers, rules are enforced. Isolation: concurrent transactions appear to execute one at a time — intermediate state is not visible to others. Durability: once a transaction commits, changes survive crashes (written to WAL/redo log before acknowledging to client).`
+              },
+              {
+                q: `What are the four isolation anomalies and which isolation level prevents each?`,
+                a: `Dirty read: reading another transaction's uncommitted data — prevented by READ COMMITTED+. Non-repeatable read: same row returns different values in two reads within one transaction — prevented by REPEATABLE READ+. Phantom read: a range query returns different rows on second read (new rows inserted by another transaction) — prevented only by SERIALIZABLE. Lost update: two transactions read-modify-write the same row, one overwrites the other — prevented by FOR UPDATE locking or optimistic locking (version column).`
+              },
+              {
+                q: `How does Write-Ahead Logging (WAL) ensure durability?`,
+                a: `Before modifying data files, the database writes the change to a sequential WAL (Write-Ahead Log). On COMMIT, the WAL record is flushed to disk (fsync), then the client receives "committed." Actual data file updates can happen later. On crash after COMMIT: WAL replay re-applies committed changes. On crash before COMMIT: WAL shows the transaction was incomplete — it's discarded (rolled back). Sequential WAL writes are fast; random data file writes are batched. This is how PostgreSQL's pg_wal and MySQL's ib_logfile work.`
+              },
+              {
+                q: `What is optimistic locking and when do you use it instead of pessimistic locking?`,
+                a: `Optimistic locking: read data with a version number, update only if version hasn't changed (UPDATE … WHERE id=X AND version=N). If 0 rows affected → conflict → retry. Pessimistic locking: lock rows on read (SELECT … FOR UPDATE) — other transactions must wait. Use optimistic when: conflicts are rare (most reads succeed without conflict), high concurrency where holding locks would cause bottlenecks, or across service boundaries (can't hold a DB lock across an HTTP call). Use pessimistic when conflicts are common or critical sections are short.`
+              },
+              {
+                q: `What is the default isolation level in PostgreSQL and MySQL, and what does that mean practically?`,
+                a: `PostgreSQL default: READ COMMITTED — each statement within a transaction sees a fresh snapshot of committed data. A second SELECT in the same transaction CAN see data committed by other transactions between the two reads (non-repeatable reads). MySQL InnoDB default: REPEATABLE READ — the transaction takes a snapshot at the first read and consistently sees that snapshot for all subsequent reads. Additionally, MySQL uses gap locks to prevent phantom reads in most cases, making REPEATABLE READ nearly serializable. For financial operations, always explicitly set the required isolation level.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p5`,
+    title: `System Design`,
+    icon: `network`,
+    blurb: `Scalability, caching, load balancing, API design, and the microservice patterns interviewers probe.`,
+    modules: [
+      {
+        id: `5.1`,
+        title: `Scalability Fundamentals`,
+        hours: 3,
+        sections: [
+          {
+            title: `Vertical vs Horizontal Scaling & Load Balancing`,
+            notes: `## Vertical vs Horizontal Scaling & Load Balancing
 
 ### Scaling Dimensions
 
@@ -23882,8 +25790,8 @@ AP systems (prefer Availability):   Cassandra, DynamoDB, CouchDB
 
 Most SQL databases: CA (single node) or CP with replicas
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
@@ -23950,23 +25858,36 @@ public class LoadBalancerDemo {
         System.out.println("Round Robin:");
         for (int i = 0; i < 6; i++) System.out.print(rr.next().id() + " ");
 
-        System.out.println("\nConsistent Hash:");
+        System.out.println("
+Consistent Hash:");
         var ch = new ConsistentHash(servers);
         List.of("user:1", "user:2", "user:3", "session:abc").forEach(k ->
             System.out.printf("  %s → %s%n", k, ch.route(k).id()));
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between vertical and horizontal scaling?', a: 'Vertical scaling (scale up): add more resources to a single machine — more CPU, RAM, disk. Simple (no code changes) but has a hardware ceiling and is a single point of failure. Horizontal scaling (scale out): add more machines of the same size. Requires stateless design (no in-memory session state), but is near-unlimited and redundant. In practice: vertical scaling is the first step (easier); horizontal scaling is needed at internet scale. Cloud: vertical = larger instance type; horizontal = more instances behind a load balancer.' },
-            { q: 'What does stateless design mean and why is it required for horizontal scaling?', a: 'Stateless: each request contains all information needed to process it — the server holds no per-user in-memory state between requests. A load balancer can send any request to any server and it works correctly. Stateful: the server stores session/cart/user data in its own memory — the next request MUST hit the same server (sticky sessions) or data is lost. To go stateless: move session state to a shared store (Redis, DB) or encode it in a signed token (JWT). Stateless enables horizontal scaling, rolling deploys without dropping sessions, and fault tolerance.' },
-            { q: 'What is the CAP theorem and what does "P is non-negotiable" mean?', a: 'CAP: a distributed system can guarantee at most 2 of: Consistency (every read returns the latest write), Availability (every request gets a response), Partition Tolerance (system works despite network splits). P (Partition Tolerance) is non-negotiable because network partitions happen in real distributed systems — machines lose connectivity. So the real choice is CP (prefer consistency — reject writes/reads during partition to avoid stale data; e.g. HBase, ZooKeeper) vs AP (prefer availability — serve possibly stale data rather than error; e.g. Cassandra, DynamoDB).' },
-            { q: 'What are the main load balancing algorithms and their trade-offs?', a: 'Round Robin: distributes evenly in rotation — best for uniform request sizes. Least Connections: next request to server with fewest active connections — better for variable request duration. IP Hash/Sticky: same client always hits same server — maintains affinity but can cause hot spots. Weighted: servers get traffic proportional to weight — useful for heterogeneous server sizes. For stateless apps: round robin or least connections. For stateful apps that can\'t use shared session storage: IP hash (sticky sessions), but this limits horizontal scaling.' }
-          ]
-        },
-        {
-          title: 'Database Scaling — Read Replicas, Sharding & Caching',
-          notes: `## Database Scaling — Read Replicas, Sharding & Caching
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between vertical and horizontal scaling?`,
+                a: `Vertical scaling (scale up): add more resources to a single machine — more CPU, RAM, disk. Simple (no code changes) but has a hardware ceiling and is a single point of failure. Horizontal scaling (scale out): add more machines of the same size. Requires stateless design (no in-memory session state), but is near-unlimited and redundant. In practice: vertical scaling is the first step (easier); horizontal scaling is needed at internet scale. Cloud: vertical = larger instance type; horizontal = more instances behind a load balancer.`
+              },
+              {
+                q: `What does stateless design mean and why is it required for horizontal scaling?`,
+                a: `Stateless: each request contains all information needed to process it — the server holds no per-user in-memory state between requests. A load balancer can send any request to any server and it works correctly. Stateful: the server stores session/cart/user data in its own memory — the next request MUST hit the same server (sticky sessions) or data is lost. To go stateless: move session state to a shared store (Redis, DB) or encode it in a signed token (JWT). Stateless enables horizontal scaling, rolling deploys without dropping sessions, and fault tolerance.`
+              },
+              {
+                q: `What is the CAP theorem and what does "P is non-negotiable" mean?`,
+                a: `CAP: a distributed system can guarantee at most 2 of: Consistency (every read returns the latest write), Availability (every request gets a response), Partition Tolerance (system works despite network splits). P (Partition Tolerance) is non-negotiable because network partitions happen in real distributed systems — machines lose connectivity. So the real choice is CP (prefer consistency — reject writes/reads during partition to avoid stale data; e.g. HBase, ZooKeeper) vs AP (prefer availability — serve possibly stale data rather than error; e.g. Cassandra, DynamoDB).`
+              },
+              {
+                q: `What are the main load balancing algorithms and their trade-offs?`,
+                a: `Round Robin: distributes evenly in rotation — best for uniform request sizes. Least Connections: next request to server with fewest active connections — better for variable request duration. IP Hash/Sticky: same client always hits same server — maintains affinity but can cause hot spots. Weighted: servers get traffic proportional to weight — useful for heterogeneous server sizes. For stateless apps: round robin or least connections. For stateful apps that can't use shared session storage: IP hash (sticky sessions), but this limits horizontal scaling.`
+              }
+            ]
+          },
+          {
+            title: `Database Scaling — Read Replicas, Sharding & Caching`,
+            notes: `## Database Scaling — Read Replicas, Sharding & Caching
 
 The database is usually the bottleneck at scale. Strategies from simplest to most complex:
 
@@ -24051,8 +25972,8 @@ Too much data       Table partitioning       Single DB still viable
 Too much data       Sharding                After partitioning fails
 Cross-region        Multi-region replicas    Global users
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
@@ -24109,30 +26030,39 @@ public class ShardingDemo {
 
         // Read replica routing
         var replica = new ReplicaRouter();
-        System.out.println("\nRequest routing:");
+        System.out.println("
+Request routing:");
         System.out.println("  SELECT → " + replica.routeRead());
         System.out.println("  INSERT → " + replica.routeWrite());
         System.out.println("  SELECT → " + replica.routeRead());
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is a read replica and what is its main limitation?', a: 'A read replica is a copy of the primary database that accepts only SELECT queries. Writes go to the primary, which replicates changes asynchronously to replicas. Benefit: read traffic (typically 80-90% of DB load) is distributed across replicas. Limitation: replication lag — replicas may be 10ms to several seconds behind the primary. Reading your own writes after a write may return stale data ("read-your-write" problem). Fix: route writes and their immediate reads to the primary; use replicas for background/reporting reads.' },
-            { q: 'What is database sharding and what makes a good shard key?', a: 'Sharding splits data across multiple databases by a shard key. Each shard is an independent DB — 1/N the data and load. Good shard key: high cardinality (many values), uniform distribution (no hot shards), always present in queries (otherwise cross-shard scatter queries). Bad shard key: sequential IDs (all new writes go to one shard — hot spot), low cardinality (status enum). Sharding prevents JOINs across shards, makes transactions spanning shards very complex. Use only when single-DB partitioning is insufficient.' },
-            { q: 'What is CQRS and what problem does it solve?', a: 'CQRS (Command Query Responsibility Segregation) uses separate models for writes and reads. Write model: normalised relational DB optimised for correctness (ACID). Read model: denormalised store optimised for queries (Elasticsearch, Redis, materialised views) — pre-joined, pre-aggregated, instantly searchable. The read model is updated asynchronously from write events. Solves: the read model can scale independently from writes; complex read queries don\'t slow down writes; each side uses the best data store for its access pattern. Trade-off: eventual consistency between write and read models.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '5.3',
-      title: 'API Design: REST, gRPC & Idempotency',
-      hours: 3,
-      sections: [
-        {
-          title: 'REST API Design — Principles & Best Practices',
-          notes: `## REST API Design — Principles & Best Practices
+            ],
+            flashcards: [
+              {
+                q: `What is a read replica and what is its main limitation?`,
+                a: `A read replica is a copy of the primary database that accepts only SELECT queries. Writes go to the primary, which replicates changes asynchronously to replicas. Benefit: read traffic (typically 80-90% of DB load) is distributed across replicas. Limitation: replication lag — replicas may be 10ms to several seconds behind the primary. Reading your own writes after a write may return stale data ("read-your-write" problem). Fix: route writes and their immediate reads to the primary; use replicas for background/reporting reads.`
+              },
+              {
+                q: `What is database sharding and what makes a good shard key?`,
+                a: `Sharding splits data across multiple databases by a shard key. Each shard is an independent DB — 1/N the data and load. Good shard key: high cardinality (many values), uniform distribution (no hot shards), always present in queries (otherwise cross-shard scatter queries). Bad shard key: sequential IDs (all new writes go to one shard — hot spot), low cardinality (status enum). Sharding prevents JOINs across shards, makes transactions spanning shards very complex. Use only when single-DB partitioning is insufficient.`
+              },
+              {
+                q: `What is CQRS and what problem does it solve?`,
+                a: `CQRS (Command Query Responsibility Segregation) uses separate models for writes and reads. Write model: normalised relational DB optimised for correctness (ACID). Read model: denormalised store optimised for queries (Elasticsearch, Redis, materialised views) — pre-joined, pre-aggregated, instantly searchable. The read model is updated asynchronously from write events. Solves: the read model can scale independently from writes; complex read queries don't slow down writes; each side uses the best data store for its access pattern. Trade-off: eventual consistency between write and read models.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `5.3`,
+        title: `API Design: REST, gRPC & Idempotency`,
+        hours: 3,
+        sections: [
+          {
+            title: `REST API Design — Principles & Best Practices`,
+            notes: `## REST API Design — Principles & Best Practices
 
 ### REST Constraints
 
@@ -24265,8 +26195,8 @@ public class OrderController {
     }
 }
 \`\`\``,
-          code: [
-            `import org.springframework.web.bind.annotation.*;
+            code: [
+              `import org.springframework.web.bind.annotation.*;
 import org.springframework.http.*;
 import jakarta.validation.constraints.*;
 import java.util.*;
@@ -24349,7 +26279,7 @@ record ProductDto(Long id, String name, double price) {}
 record CreateProductRequest(@NotBlank String name, @Positive double price) {}
 record PageResponse<T>(List<T> content, int page, long totalElements) {}
 class productService { static Object list(Object...a){return null;} static java.util.Optional<ProductDto> findById(Long id){return java.util.Optional.empty();} static ProductDto create(CreateProductRequest r){return null;} static java.util.Optional<ProductDto> patch(Long id,Map<String,Object> u){return java.util.Optional.empty();} static void delete(Long id){} }`,
-            `// Idempotency keys — safe retries for non-idempotent operations
+              `// Idempotency keys — safe retries for non-idempotent operations
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -24398,35 +26328,48 @@ public class IdempotencyDemo {
         System.out.println("Payment: " + r1.paymentId() + " $" + r1.amount());
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What are the HTTP methods and their expected behaviour (safe vs idempotent)?', a: 'GET: safe + idempotent — read only, no side effects, can be cached. HEAD: safe + idempotent — like GET but no body. OPTIONS: safe + idempotent — describe allowed methods. PUT: idempotent — replace resource; calling twice has same result as once. DELETE: idempotent — same result whether called once or multiple times (404 on second call is acceptable). POST: neither safe nor idempotent — creates a new resource each call; use idempotency keys for safe retries. PATCH: not necessarily idempotent — depends on implementation (absolute vs relative changes).' },
-            { q: 'What is the difference between 401 and 403?', a: '401 Unauthorized: the request lacks valid authentication credentials — the client is not identified. Despite the name, it means "not authenticated." Response should include WWW-Authenticate header. The client should re-authenticate (login, refresh token). 403 Forbidden: the client IS authenticated but does NOT have permission to access the resource. Re-authenticating won\'t help. Example: logged-in user trying to access another user\'s data.' },
-            { q: 'What is an idempotency key and why is it critical for POST /payments?', a: 'An idempotency key is a client-generated unique ID (UUID) sent in a header (Idempotency-Key: <uuid>) that makes a non-idempotent operation safe to retry. The server stores the key + result; on retry, it returns the cached result instead of processing again. Critical for POST /payments: if the client times out after sending but before receiving the response, it doesn\'t know if the payment was processed. Without idempotency keys, a retry charges twice. Standard: client generates one UUID per operation intent, reuses it on all retries.' },
-            { q: 'How should you version a REST API and what constitutes a breaking change?', a: 'Most common: URL versioning (/api/v1/, /api/v2/) — explicit, cacheable, easy to test. Alternative: header versioning (API-Version: 2 or Accept: application/vnd.app.v2+json) — cleaner URLs. Breaking changes requiring a new version: removing a field, changing a field\'s type, removing an endpoint, changing URL structure, changing error format. Non-breaking (can do in same version): adding optional request fields, adding response fields, adding new endpoints. Strategy: run multiple versions in parallel, set a deprecation timeline (6-12 months), inform clients via deprecation headers.' },
-            { q: 'What should a REST API error response contain?', a: 'Minimum: HTTP status code (in the response status line, not just a 200 with "error" body), machine-readable error code (string like "INSUFFICIENT_FUNDS" — for programmatic handling), human-readable message (for developers), traceId/requestId (to correlate with server logs). For validation errors: a list of field-level errors with field name and message. Avoid: returning 200 for errors, revealing stack traces in production, using generic "error: true" without code, changing error shape between endpoints. Consistent error envelope across ALL endpoints is critical.' }
-          ]
-        }
-      ]
-    },
-  ],
-},
-
-/* ===================== PHASE 6: Distributed Systems & Messaging ===================== */
-{
-  id: 'p6',
-  title: 'Distributed Systems & Messaging',
-  icon: 'share-2',
-  blurb: 'Microservice decomposition, Apache Kafka event streaming, and the saga pattern for distributed transactions.',
-  modules: [
-    {
-      id: '6.1',
-      title: 'Microservice Patterns',
-      hours: 4,
-      sections: [
-        {
-          title: 'Microservice Architecture — Core Patterns',
-          notes: `## Microservice Architecture — Core Patterns
+            ],
+            flashcards: [
+              {
+                q: `What are the HTTP methods and their expected behaviour (safe vs idempotent)?`,
+                a: `GET: safe + idempotent — read only, no side effects, can be cached. HEAD: safe + idempotent — like GET but no body. OPTIONS: safe + idempotent — describe allowed methods. PUT: idempotent — replace resource; calling twice has same result as once. DELETE: idempotent — same result whether called once or multiple times (404 on second call is acceptable). POST: neither safe nor idempotent — creates a new resource each call; use idempotency keys for safe retries. PATCH: not necessarily idempotent — depends on implementation (absolute vs relative changes).`
+              },
+              {
+                q: `What is the difference between 401 and 403?`,
+                a: `401 Unauthorized: the request lacks valid authentication credentials — the client is not identified. Despite the name, it means "not authenticated." Response should include WWW-Authenticate header. The client should re-authenticate (login, refresh token). 403 Forbidden: the client IS authenticated but does NOT have permission to access the resource. Re-authenticating won't help. Example: logged-in user trying to access another user's data.`
+              },
+              {
+                q: `What is an idempotency key and why is it critical for POST /payments?`,
+                a: `An idempotency key is a client-generated unique ID (UUID) sent in a header (Idempotency-Key: <uuid>) that makes a non-idempotent operation safe to retry. The server stores the key + result; on retry, it returns the cached result instead of processing again. Critical for POST /payments: if the client times out after sending but before receiving the response, it doesn't know if the payment was processed. Without idempotency keys, a retry charges twice. Standard: client generates one UUID per operation intent, reuses it on all retries.`
+              },
+              {
+                q: `How should you version a REST API and what constitutes a breaking change?`,
+                a: `Most common: URL versioning (/api/v1/, /api/v2/) — explicit, cacheable, easy to test. Alternative: header versioning (API-Version: 2 or Accept: application/vnd.app.v2+json) — cleaner URLs. Breaking changes requiring a new version: removing a field, changing a field's type, removing an endpoint, changing URL structure, changing error format. Non-breaking (can do in same version): adding optional request fields, adding response fields, adding new endpoints. Strategy: run multiple versions in parallel, set a deprecation timeline (6-12 months), inform clients via deprecation headers.`
+              },
+              {
+                q: `What should a REST API error response contain?`,
+                a: `Minimum: HTTP status code (in the response status line, not just a 200 with "error" body), machine-readable error code (string like "INSUFFICIENT_FUNDS" — for programmatic handling), human-readable message (for developers), traceId/requestId (to correlate with server logs). For validation errors: a list of field-level errors with field name and message. Avoid: returning 200 for errors, revealing stack traces in production, using generic "error: true" without code, changing error shape between endpoints. Consistent error envelope across ALL endpoints is critical.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p6`,
+    title: `Distributed Systems & Messaging`,
+    icon: `share-2`,
+    blurb: `Microservice decomposition, Apache Kafka event streaming, and the saga pattern for distributed transactions.`,
+    modules: [
+      {
+        id: `6.1`,
+        title: `Microservice Patterns`,
+        hours: 4,
+        sections: [
+          {
+            title: `Microservice Architecture — Core Patterns`,
+            notes: `## Microservice Architecture — Core Patterns
 
 ### Monolith vs Microservices
 
@@ -24541,8 +26484,8 @@ Route via API Gateway/reverse proxy
 Never big-bang rewrite — too risky
 Extract high-change or high-scale components first
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
@@ -24619,7 +26562,7 @@ public class CircuitBreakerDemo {
         }
     }
 }`,
-            `// Service mesh concepts + health checks pattern
+              `// Service mesh concepts + health checks pattern
 import org.springframework.boot.actuate.health.*;
 import org.springframework.web.client.RestTemplate;
 import java.util.*;
@@ -24657,25 +26600,36 @@ class DependencyHealthIndicator implements HealthIndicator {
             : Health.down().withDetails(details).build();
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What are the main trade-offs of microservices vs a monolith?', a: 'Monolith advantages: simple local calls, easy ACID transactions, one codebase to understand, no network latency overhead. Microservices advantages: independent deployment/scaling, team autonomy, polyglot freedom, fault isolation. Microservices add: network calls between services (latency, failure), distributed data management (no easy joins, eventual consistency), complex infrastructure (service discovery, load balancing, tracing), and operational overhead. Recommendation: start with a well-structured monolith; extract services when scaling or team structure demands it.' },
-            { q: 'What is the Circuit Breaker pattern and what problem does it solve?', a: 'Circuit Breaker prevents cascading failures. Without it: Service A calls Service B repeatedly even when B is down — threads pile up waiting for timeouts → A runs out of threads → A crashes → C which calls A also crashes. Circuit Breaker states: CLOSED (calls pass through), OPEN (calls fail fast after N failures — no network call), HALF-OPEN (try one probe call after cooldown). Fallback provides graceful degradation (cached data, default values, queue for retry). Libraries: Resilience4j (Java), Hystrix (deprecated).' },
-            { q: 'What is the API Gateway pattern and what responsibilities does it take on?', a: 'API Gateway is the single entry point for all clients. Handles cross-cutting concerns so individual services don\'t have to: authentication/JWT validation, rate limiting, SSL termination, request routing, response aggregation (BFF pattern — Backend for Frontend), protocol translation (REST → gRPC), logging and distributed tracing. Clients see one endpoint; internal service topology is hidden. Trade-off: it\'s a potential single point of failure and a bottleneck (must be highly available and fast). Popular: Kong, AWS API Gateway, Spring Cloud Gateway, Nginx.' },
-            { q: 'What is the Strangler Fig pattern for microservice migration?', a: 'The Strangler Fig incrementally replaces a monolith by building new services alongside it, routing traffic slice by slice. Step 1: put a proxy (API Gateway) in front of the monolith — it routes all traffic to the monolith unchanged. Step 2: implement the User Service, route /api/users/* to it; monolith handles everything else. Step 3: extract more services one at a time. Never: big-bang rewrite (too risky, diverges from production behaviour). This way the monolith "strangled" — slowly replaced without a cutover. Always extract high-change or high-scale components first.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '6.2',
-      title: 'Apache Kafka & Event Streaming',
-      hours: 4,
-      sections: [
-        {
-          title: 'Kafka Architecture — Topics, Partitions & Consumer Groups',
-          notes: `## Kafka Architecture — Topics, Partitions & Consumer Groups
+            ],
+            flashcards: [
+              {
+                q: `What are the main trade-offs of microservices vs a monolith?`,
+                a: `Monolith advantages: simple local calls, easy ACID transactions, one codebase to understand, no network latency overhead. Microservices advantages: independent deployment/scaling, team autonomy, polyglot freedom, fault isolation. Microservices add: network calls between services (latency, failure), distributed data management (no easy joins, eventual consistency), complex infrastructure (service discovery, load balancing, tracing), and operational overhead. Recommendation: start with a well-structured monolith; extract services when scaling or team structure demands it.`
+              },
+              {
+                q: `What is the Circuit Breaker pattern and what problem does it solve?`,
+                a: `Circuit Breaker prevents cascading failures. Without it: Service A calls Service B repeatedly even when B is down — threads pile up waiting for timeouts → A runs out of threads → A crashes → C which calls A also crashes. Circuit Breaker states: CLOSED (calls pass through), OPEN (calls fail fast after N failures — no network call), HALF-OPEN (try one probe call after cooldown). Fallback provides graceful degradation (cached data, default values, queue for retry). Libraries: Resilience4j (Java), Hystrix (deprecated).`
+              },
+              {
+                q: `What is the API Gateway pattern and what responsibilities does it take on?`,
+                a: `API Gateway is the single entry point for all clients. Handles cross-cutting concerns so individual services don't have to: authentication/JWT validation, rate limiting, SSL termination, request routing, response aggregation (BFF pattern — Backend for Frontend), protocol translation (REST → gRPC), logging and distributed tracing. Clients see one endpoint; internal service topology is hidden. Trade-off: it's a potential single point of failure and a bottleneck (must be highly available and fast). Popular: Kong, AWS API Gateway, Spring Cloud Gateway, Nginx.`
+              },
+              {
+                q: `What is the Strangler Fig pattern for microservice migration?`,
+                a: `The Strangler Fig incrementally replaces a monolith by building new services alongside it, routing traffic slice by slice. Step 1: put a proxy (API Gateway) in front of the monolith — it routes all traffic to the monolith unchanged. Step 2: implement the User Service, route /api/users/* to it; monolith handles everything else. Step 3: extract more services one at a time. Never: big-bang rewrite (too risky, diverges from production behaviour). This way the monolith "strangled" — slowly replaced without a cutover. Always extract high-change or high-scale components first.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `6.2`,
+        title: `Apache Kafka & Event Streaming`,
+        hours: 4,
+        sections: [
+          {
+            title: `Kafka Architecture — Topics, Partitions & Consumer Groups`,
+            notes: `## Kafka Architecture — Topics, Partitions & Consumer Groups
 
 ### Core Concepts
 
@@ -24782,8 +26736,8 @@ Use cases for replay:
 # Reset consumer group to beginning
 kafka-consumer-groups.sh --reset-offsets --to-earliest --group my-group --topic my-topic
 \`\`\``,
-          code: [
-            `import org.apache.kafka.clients.producer.*;
+            code: [
+              `import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.serialization.*;
 import java.util.*;
@@ -24805,7 +26759,7 @@ public class KafkaRawDemo {
         try (var producer = new KafkaProducer<String, String>(props)) {
             for (int i = 0; i < 10; i++) {
                 String key = "customer-" + (i % 3);   // 3 customers → 3 partitions used
-                String value = "{\"orderId\":" + i + ",\"total\":" + (i * 10.0) + "}";
+                String value = "{"orderId":" + i + ","total":" + (i * 10.0) + "}";
                 var record = new ProducerRecord<>(TOPIC, key, value);
                 producer.send(record, (meta, ex) -> {
                     if (ex != null) System.err.println("Error: " + ex.getMessage());
@@ -24839,7 +26793,7 @@ public class KafkaRawDemo {
         }
     }
 }`,
-            `// Spring Kafka — producer + consumer with dead letter topic
+              `// Spring Kafka — producer + consumer with dead letter topic
 import org.springframework.kafka.annotation.*;
 import org.springframework.kafka.core.*;
 import org.springframework.kafka.support.*;
@@ -24890,25 +26844,36 @@ class OrderConsumer {
 
     private void processOrder(OrderEvent e) { System.out.println("Processing: " + e.orderId()); }
 }`
-          ],
-          flashcards: [
-            { q: 'What is a Kafka partition and why does it matter for ordering and parallelism?', a: 'A partition is an ordered, immutable sequence of records within a topic. Records with the same key always go to the same partition (hash(key) % numPartitions), ensuring ordering per key. Partitions enable parallelism: each partition is consumed by exactly one consumer in a group, so throughput scales with partition count. Adding consumers beyond partition count: extra consumers are idle (no partition). Rule: choose partitions as the max parallelism you\'ll ever need — increasing partitions later is possible but disrupts key-based ordering.' },
-            { q: 'What is a consumer group and how does it enable both queue and pub-sub semantics?', a: 'A consumer group is a set of consumers that collectively consume a topic — each partition assigned to one consumer in the group (competing consumers / queue semantics). Multiple groups can read the same topic independently, each getting all messages (pub-sub semantics). Example: "order-processor" group handles fulfillment; "analytics" group reads same events for reporting. Each group maintains its own offset — they progress independently. Add consumers to a group to scale throughput; add groups to fan-out to new consumers.' },
-            { q: 'What is the difference between at-most-once, at-least-once, and exactly-once delivery in Kafka?', a: 'At-most-once: auto-commit offset before processing — if processing fails, message is lost (no retry). At-least-once: commit offset only after successful processing — if processing succeeds but commit fails, message is redelivered (processed twice). Requires idempotent consumers (deduplication by message ID). Exactly-once: Kafka\'s transactional API (enable.idempotence=true, transactions across produce+commit) — no duplicates and no loss, but lower throughput. Most production systems use at-least-once + idempotent consumers.' },
-            { q: 'What is a Dead Letter Topic (DLT) and when should you use one?', a: 'A DLT is a separate topic where messages are sent when they fail processing after all retries. Without DLT: a poison pill message (one that always fails) blocks the consumer forever — that partition stops progressing. With DLT: after N retries, the message is moved to orders.DLT, the consumer acknowledges and continues. A separate consumer (or human process) handles DLT messages: alert, save to error DB, manual fix. Configure with Spring Kafka: @RetryableTopic(attempts=3, dltStrategy=DltStrategy.FAIL_ON_ERROR).' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '6.3',
-      title: 'Saga Pattern & Distributed Transactions',
-      hours: 3,
-      sections: [
-        {
-          title: 'Saga Pattern — Choreography vs Orchestration',
-          notes: `## Saga Pattern — Choreography vs Orchestration
+            ],
+            flashcards: [
+              {
+                q: `What is a Kafka partition and why does it matter for ordering and parallelism?`,
+                a: `A partition is an ordered, immutable sequence of records within a topic. Records with the same key always go to the same partition (hash(key) % numPartitions), ensuring ordering per key. Partitions enable parallelism: each partition is consumed by exactly one consumer in a group, so throughput scales with partition count. Adding consumers beyond partition count: extra consumers are idle (no partition). Rule: choose partitions as the max parallelism you'll ever need — increasing partitions later is possible but disrupts key-based ordering.`
+              },
+              {
+                q: `What is a consumer group and how does it enable both queue and pub-sub semantics?`,
+                a: `A consumer group is a set of consumers that collectively consume a topic — each partition assigned to one consumer in the group (competing consumers / queue semantics). Multiple groups can read the same topic independently, each getting all messages (pub-sub semantics). Example: "order-processor" group handles fulfillment; "analytics" group reads same events for reporting. Each group maintains its own offset — they progress independently. Add consumers to a group to scale throughput; add groups to fan-out to new consumers.`
+              },
+              {
+                q: `What is the difference between at-most-once, at-least-once, and exactly-once delivery in Kafka?`,
+                a: `At-most-once: auto-commit offset before processing — if processing fails, message is lost (no retry). At-least-once: commit offset only after successful processing — if processing succeeds but commit fails, message is redelivered (processed twice). Requires idempotent consumers (deduplication by message ID). Exactly-once: Kafka's transactional API (enable.idempotence=true, transactions across produce+commit) — no duplicates and no loss, but lower throughput. Most production systems use at-least-once + idempotent consumers.`
+              },
+              {
+                q: `What is a Dead Letter Topic (DLT) and when should you use one?`,
+                a: `A DLT is a separate topic where messages are sent when they fail processing after all retries. Without DLT: a poison pill message (one that always fails) blocks the consumer forever — that partition stops progressing. With DLT: after N retries, the message is moved to orders.DLT, the consumer acknowledges and continues. A separate consumer (or human process) handles DLT messages: alert, save to error DB, manual fix. Configure with Spring Kafka: @RetryableTopic(attempts=3, dltStrategy=DltStrategy.FAIL_ON_ERROR).`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `6.3`,
+        title: `Saga Pattern & Distributed Transactions`,
+        hours: 3,
+        sections: [
+          {
+            title: `Saga Pattern — Choreography vs Orchestration`,
+            notes: `## Saga Pattern — Choreography vs Orchestration
 
 ### Why Distributed Transactions Are Hard
 
@@ -25033,8 +26998,8 @@ public void relay() {
 }
 // Tools: Debezium (CDC — captures DB changes via WAL), Transactional Outbox libraries
 \`\`\``,
-          code: [
-            `import java.util.*;
+            code: [
+              `import java.util.*;
 import java.util.concurrent.*;
 
 // Saga orchestration simulation
@@ -25100,45 +27065,57 @@ public class SagaDemo {
     public static void main(String[] args) {
         // Success case
         var r1 = executeSaga(new CreateOrderCmd("ORD-001","PROD-A",5,150.0,"CUST-1"));
-        System.out.println("Result: " + r1 + "\n");
+        System.out.println("Result: " + r1 + "
+");
 
         // Payment failure — inventory must be released
         var r2 = executeSaga(new CreateOrderCmd("ORD-002","PROD-B",2,15000.0,"CUST-2"));
-        System.out.println("Result: " + r2 + "\n");
+        System.out.println("Result: " + r2 + "
+");
 
         // Inventory failure — nothing to compensate
         var r3 = executeSaga(new CreateOrderCmd("ORD-003","PROD-C",200,50.0,"CUST-3"));
         System.out.println("Result: " + r3);
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the Saga pattern and why is it needed in microservices?', a: 'In microservices each service owns its database — traditional ACID transactions spanning multiple services aren\'t possible (or practical with 2PC). Saga solves this: a saga is a sequence of local transactions, one per service. Each step publishes an event/message triggering the next. On failure, compensating transactions undo previous steps (e.g. refund payment, release inventory). Two styles: Choreography (services react to each other\'s events — decoupled), Orchestration (central coordinator explicitly calls each service — clearer control flow).' },
-            { q: 'What is the difference between choreography and orchestration sagas?', a: 'Choreography: each service listens for events and reacts — no central controller. Order Service publishes "OrderCreated" → Inventory Service listens and reserves stock → publishes "StockReserved" → Payment Service listens and charges. Pros: loose coupling, no SPOF. Cons: hard to see the overall flow, failure handling scattered. Orchestration: a central Saga Orchestrator service explicitly calls each step and handles failures. Pros: clear flow in one place, easy debugging. Cons: orchestrator is a SPOF (must be resilient), more coupling. Use orchestration for complex multi-step processes.' },
-            { q: 'What is the Outbox pattern and what problem does it solve?', a: 'Problem: you need to both save to your DB AND publish an event to Kafka atomically. If you save to DB then publish, and Kafka fails → DB has data but no event. If you publish then save → process crashes → event without data. Outbox solution: write the event to an outbox table in the SAME DB transaction as your business data. A separate relay process (or Debezium CDC) reads the outbox and publishes to Kafka, marking entries as published. If the relay fails, it retries (idempotent). Guaranteed: event is published if and only if the DB transaction committed.' },
-            { q: 'What are compensating transactions and what are their limitations?', a: 'Compensating transactions undo the effect of a completed local transaction. Examples: if inventory was reserved → release it; if payment was charged → refund it. Limitations: they are not instant rollbacks — the original transaction already committed and side effects occurred. Between the original action and the compensation, other processes may have acted on that data. Compensation may itself fail (what if refund fails?). Time window between forward and compensating tx creates temporary inconsistency. Compensations must be idempotent (safe to call multiple times). Not all operations can be compensated (e.g. an email was sent).' }
-          ]
-        }
-      ]
-    },
-  ],
-},
-
-/* ===================== PHASE 7: DevOps — Docker, Kubernetes & Helm ===================== */
-{
-  id: 'p7',
-  title: 'DevOps: Docker, Kubernetes & Helm',
-  icon: 'ship',
-  blurb: 'Containers, Kubernetes core resources, Helm from zero to advanced, and CI/CD with GitOps.',
-  modules: [
-    {
-      id: '7.1',
-      title: 'Docker & Containers',
-      hours: 3,
-      sections: [
-        {
-          title: 'Docker Fundamentals — Images, Containers & Networking',
-          notes: `## Docker Fundamentals — Images, Containers & Networking
+            ],
+            flashcards: [
+              {
+                q: `What is the Saga pattern and why is it needed in microservices?`,
+                a: `In microservices each service owns its database — traditional ACID transactions spanning multiple services aren't possible (or practical with 2PC). Saga solves this: a saga is a sequence of local transactions, one per service. Each step publishes an event/message triggering the next. On failure, compensating transactions undo previous steps (e.g. refund payment, release inventory). Two styles: Choreography (services react to each other's events — decoupled), Orchestration (central coordinator explicitly calls each service — clearer control flow).`
+              },
+              {
+                q: `What is the difference between choreography and orchestration sagas?`,
+                a: `Choreography: each service listens for events and reacts — no central controller. Order Service publishes "OrderCreated" → Inventory Service listens and reserves stock → publishes "StockReserved" → Payment Service listens and charges. Pros: loose coupling, no SPOF. Cons: hard to see the overall flow, failure handling scattered. Orchestration: a central Saga Orchestrator service explicitly calls each step and handles failures. Pros: clear flow in one place, easy debugging. Cons: orchestrator is a SPOF (must be resilient), more coupling. Use orchestration for complex multi-step processes.`
+              },
+              {
+                q: `What is the Outbox pattern and what problem does it solve?`,
+                a: `Problem: you need to both save to your DB AND publish an event to Kafka atomically. If you save to DB then publish, and Kafka fails → DB has data but no event. If you publish then save → process crashes → event without data. Outbox solution: write the event to an outbox table in the SAME DB transaction as your business data. A separate relay process (or Debezium CDC) reads the outbox and publishes to Kafka, marking entries as published. If the relay fails, it retries (idempotent). Guaranteed: event is published if and only if the DB transaction committed.`
+              },
+              {
+                q: `What are compensating transactions and what are their limitations?`,
+                a: `Compensating transactions undo the effect of a completed local transaction. Examples: if inventory was reserved → release it; if payment was charged → refund it. Limitations: they are not instant rollbacks — the original transaction already committed and side effects occurred. Between the original action and the compensation, other processes may have acted on that data. Compensation may itself fail (what if refund fails?). Time window between forward and compensating tx creates temporary inconsistency. Compensations must be idempotent (safe to call multiple times). Not all operations can be compensated (e.g. an email was sent).`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p7`,
+    title: `DevOps: Docker, Kubernetes & Helm`,
+    icon: `ship`,
+    blurb: `Containers, Kubernetes core resources, Helm from zero to advanced, and CI/CD with GitOps.`,
+    modules: [
+      {
+        id: `7.1`,
+        title: `Docker & Containers`,
+        hours: 3,
+        sections: [
+          {
+            title: `Docker Fundamentals — Images, Containers & Networking`,
+            notes: `## Docker Fundamentals — Images, Containers & Networking
 
 ### What is a Container?
 
@@ -25248,8 +27225,8 @@ services:
 volumes:
   postgres_data:
 \`\`\``,
-          code: [
-            `# Dockerfile best practices — Spring Boot optimised
+            code: [
+              `# Dockerfile best practices — Spring Boot optimised
 
 # =======================================================
 # OPTION A: Simple single-stage (for quick demos)
@@ -25259,11 +27236,7 @@ WORKDIR /app
 ARG JAR_FILE=target/*.jar
 COPY \${JAR_FILE} app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", \
-  "-XX:+UseContainerSupport", \
-  "-XX:MaxRAMPercentage=75.0", \
-  "-Djava.security.egd=file:/dev/./urandom", \
-  "-jar", "app.jar"]
+ENTRYPOINT ["java",   "-XX:+UseContainerSupport",   "-XX:MaxRAMPercentage=75.0",   "-Djava.security.egd=file:/dev/./urandom",   "-jar", "app.jar"]
 
 # =======================================================
 # OPTION B: Multi-stage with Spring Boot layers (best)
@@ -25287,32 +27260,40 @@ COPY --from=builder /build/target/extracted/snapshot-dependencies/ ./
 COPY --from=builder /build/target/extracted/application/ ./
 USER appuser
 EXPOSE 8080
-ENTRYPOINT ["java", \
-  "-XX:+UseContainerSupport", \
-  "-XX:MaxRAMPercentage=75.0", \
-  "org.springframework.boot.loader.launch.JarLauncher"]
+ENTRYPOINT ["java",   "-XX:+UseContainerSupport",   "-XX:MaxRAMPercentage=75.0",   "org.springframework.boot.loader.launch.JarLauncher"]
 
 # WHY LAYERS: most rebuilds only change the 'application' layer (~50KB)
 # dependencies layer (~200MB) is cached and reused → fast builds`
-          ],
-          flashcards: [
-            { q: 'What is the difference between a Docker image and a container?', a: 'An image is a read-only, layered snapshot — a blueprint. It contains the filesystem, app binaries, libraries, and metadata (ENTRYPOINT, ENV, EXPOSE). Images are built from Dockerfiles and stored in registries. A container is a running instance of an image — it adds a thin writable layer on top of the image layers. Multiple containers can share the same image. "docker run" creates a container from an image. Containers are ephemeral — stopping and removing them destroys the writable layer; the image remains.' },
-            { q: 'What is a multi-stage Docker build and why should you use it for Java?', a: 'Multi-stage builds use multiple FROM instructions. The first stage uses a full JDK + Maven to compile and build. The second stage uses only a JRE (no compiler, no build tools). COPY --from=builder copies just the built artifact. Benefits: final image is much smaller (JRE ~100MB vs JDK ~500MB), no build tools or source code in production image (security), build dependencies don\'t bloat runtime image. For Spring Boot: use jarmode=layertools to extract layers — enables Docker layer caching so rebuilds only re-copy the changed application layer.' },
-            { q: 'What are Docker volumes and why use them for databases?', a: 'Volumes persist data outside the container\'s writable layer — data survives container restarts, replacements, and upgrades. Without a volume: stopping and removing a postgres container deletes all data. With a named volume (postgres_data:/var/lib/postgresql/data): data is stored on the host, container mounts it. Types: named volumes (docker manages location), bind mounts (specific host path, e.g. /host/data:/app/data — good for dev, bad for production portability). Use volumes for: databases, file uploads, log files that must survive container lifecycle.' },
-            { q: 'Why run containers as a non-root user?', a: 'By default containers run as root (UID 0). If the app is compromised, the attacker has root inside the container and may escape to the host or mount sensitive host paths. Running as a non-root user limits the blast radius: the attacker has minimal permissions. Add to Dockerfile: RUN useradd -r appuser && USER appuser. Many container security policies (Kubernetes PodSecurityPolicy, OpenShift) REQUIRE non-root. Also: the user inside the container doesn\'t need write access to its own binary — read-only root filesystem is even more secure.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '7.2',
-      title: 'Kubernetes Core Concepts',
-      hours: 4,
-      sections: [
-        {
-          title: 'Kubernetes Architecture & Core Resources',
-          notes: `## Kubernetes Architecture & Core Resources
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between a Docker image and a container?`,
+                a: `An image is a read-only, layered snapshot — a blueprint. It contains the filesystem, app binaries, libraries, and metadata (ENTRYPOINT, ENV, EXPOSE). Images are built from Dockerfiles and stored in registries. A container is a running instance of an image — it adds a thin writable layer on top of the image layers. Multiple containers can share the same image. "docker run" creates a container from an image. Containers are ephemeral — stopping and removing them destroys the writable layer; the image remains.`
+              },
+              {
+                q: `What is a multi-stage Docker build and why should you use it for Java?`,
+                a: `Multi-stage builds use multiple FROM instructions. The first stage uses a full JDK + Maven to compile and build. The second stage uses only a JRE (no compiler, no build tools). COPY --from=builder copies just the built artifact. Benefits: final image is much smaller (JRE ~100MB vs JDK ~500MB), no build tools or source code in production image (security), build dependencies don't bloat runtime image. For Spring Boot: use jarmode=layertools to extract layers — enables Docker layer caching so rebuilds only re-copy the changed application layer.`
+              },
+              {
+                q: `What are Docker volumes and why use them for databases?`,
+                a: `Volumes persist data outside the container's writable layer — data survives container restarts, replacements, and upgrades. Without a volume: stopping and removing a postgres container deletes all data. With a named volume (postgres_data:/var/lib/postgresql/data): data is stored on the host, container mounts it. Types: named volumes (docker manages location), bind mounts (specific host path, e.g. /host/data:/app/data — good for dev, bad for production portability). Use volumes for: databases, file uploads, log files that must survive container lifecycle.`
+              },
+              {
+                q: `Why run containers as a non-root user?`,
+                a: `By default containers run as root (UID 0). If the app is compromised, the attacker has root inside the container and may escape to the host or mount sensitive host paths. Running as a non-root user limits the blast radius: the attacker has minimal permissions. Add to Dockerfile: RUN useradd -r appuser && USER appuser. Many container security policies (Kubernetes PodSecurityPolicy, OpenShift) REQUIRE non-root. Also: the user inside the container doesn't need write access to its own binary — read-only root filesystem is even more secure.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `7.2`,
+        title: `Kubernetes Core Concepts`,
+        hours: 4,
+        sections: [
+          {
+            title: `Kubernetes Architecture & Core Resources`,
+            notes: `## Kubernetes Architecture & Core Resources
 
 ### Why Kubernetes?
 
@@ -25438,8 +27419,8 @@ kubectl rollout status deployment/myapp
 kubectl rollout undo deployment/myapp   # rollback
 kubectl port-forward pod/myapp-abc123 8080:8080  # local debugging
 \`\`\``,
-          code: [
-            `# Full Spring Boot deployment manifest
+            code: [
+              `# Full Spring Boot deployment manifest
 # Includes: ConfigMap, Secret, Deployment, Service, HPA, Ingress
 ---
 apiVersion: v1
@@ -25557,25 +27538,36 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70  # scale up when avg CPU > 70%`
-          ],
-          flashcards: [
-            { q: 'What is the difference between a Pod, Deployment, and Service in Kubernetes?', a: 'Pod: the smallest deployable unit — wraps one or more containers that share network/storage. Pods are ephemeral; when they die, they\'re replaced with a new IP. Deployment: manages a set of identical pods via a ReplicaSet. Ensures N replicas are always running, handles rolling updates and rollbacks. You never manage pods directly in production — use a Deployment. Service: a stable endpoint (DNS name + virtual IP) that load-balances traffic across pods. Because pod IPs change, other services talk to the Service, not directly to pods. Types: ClusterIP (internal), NodePort (external via port), LoadBalancer (cloud-provisioned LB).' },
-            { q: 'What is the difference between a readinessProbe and a livenessProbe?', a: 'ReadinessProbe: "is this pod ready to serve traffic?" If it fails, the pod is removed from the Service endpoints — it won\'t receive requests, but it\'s not killed. Useful during startup (waiting for DB connection, cache warmup) and for temporary overload. LivenessProbe: "is this pod still alive?" If it fails (N times), kubelet restarts the container. Catches deadlocks or crashes that leave a process running but not processing. Rule: always have both for Spring Boot. Use /actuator/health/readiness and /actuator/health/liveness respectively. Set initialDelaySeconds to allow startup time.' },
-            { q: 'What are resource requests and limits in Kubernetes and why do they matter?', a: 'Requests: the minimum CPU/memory guaranteed to the pod. The scheduler uses requests to decide which node to place the pod on — it won\'t schedule a pod on a node without enough free capacity. Limits: the maximum. CPU is throttled if exceeded (not killed). Memory: if a pod exceeds its memory limit, it\'s OOMKilled (Out of Memory Killed) and restarted. Rule: always set both. Without requests: pods get scheduled on overloaded nodes. Without limits: one runaway pod starves others. Common ratio: limit = 2× request. Memory limit should match JVM -Xmx setting.' },
-            { q: 'What is a HorizontalPodAutoscaler (HPA) and how does it work?', a: 'HPA automatically adjusts replica count based on metrics (typically CPU or memory). It reads metrics from the Metrics Server every 15 seconds, compares against the target (e.g., 70% avg CPU), and scales the Deployment\'s replicas between minReplicas and maxReplicas. Scale-up is fast (default ~3 min stabilization); scale-down is slow (default ~5 min to avoid flapping). Prerequisites: resource requests must be set (HPA calculates utilization as actual/request %). Custom metrics (RPS, queue depth) possible with KEDA or Prometheus adapter. Combine with PodDisruptionBudgets (PDB) to ensure minimum pods stay up during scale-down.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '7.3',
-      title: 'Helm: Zero to Advanced',
-      hours: 3,
-      sections: [
-        {
-          title: 'Helm — Kubernetes Package Manager',
-          notes: `## Helm — Kubernetes Package Manager
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between a Pod, Deployment, and Service in Kubernetes?`,
+                a: `Pod: the smallest deployable unit — wraps one or more containers that share network/storage. Pods are ephemeral; when they die, they're replaced with a new IP. Deployment: manages a set of identical pods via a ReplicaSet. Ensures N replicas are always running, handles rolling updates and rollbacks. You never manage pods directly in production — use a Deployment. Service: a stable endpoint (DNS name + virtual IP) that load-balances traffic across pods. Because pod IPs change, other services talk to the Service, not directly to pods. Types: ClusterIP (internal), NodePort (external via port), LoadBalancer (cloud-provisioned LB).`
+              },
+              {
+                q: `What is the difference between a readinessProbe and a livenessProbe?`,
+                a: `ReadinessProbe: "is this pod ready to serve traffic?" If it fails, the pod is removed from the Service endpoints — it won't receive requests, but it's not killed. Useful during startup (waiting for DB connection, cache warmup) and for temporary overload. LivenessProbe: "is this pod still alive?" If it fails (N times), kubelet restarts the container. Catches deadlocks or crashes that leave a process running but not processing. Rule: always have both for Spring Boot. Use /actuator/health/readiness and /actuator/health/liveness respectively. Set initialDelaySeconds to allow startup time.`
+              },
+              {
+                q: `What are resource requests and limits in Kubernetes and why do they matter?`,
+                a: `Requests: the minimum CPU/memory guaranteed to the pod. The scheduler uses requests to decide which node to place the pod on — it won't schedule a pod on a node without enough free capacity. Limits: the maximum. CPU is throttled if exceeded (not killed). Memory: if a pod exceeds its memory limit, it's OOMKilled (Out of Memory Killed) and restarted. Rule: always set both. Without requests: pods get scheduled on overloaded nodes. Without limits: one runaway pod starves others. Common ratio: limit = 2× request. Memory limit should match JVM -Xmx setting.`
+              },
+              {
+                q: `What is a HorizontalPodAutoscaler (HPA) and how does it work?`,
+                a: `HPA automatically adjusts replica count based on metrics (typically CPU or memory). It reads metrics from the Metrics Server every 15 seconds, compares against the target (e.g., 70% avg CPU), and scales the Deployment's replicas between minReplicas and maxReplicas. Scale-up is fast (default ~3 min stabilization); scale-down is slow (default ~5 min to avoid flapping). Prerequisites: resource requests must be set (HPA calculates utilization as actual/request %). Custom metrics (RPS, queue depth) possible with KEDA or Prometheus adapter. Combine with PodDisruptionBudgets (PDB) to ensure minimum pods stay up during scale-down.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `7.3`,
+        title: `Helm: Zero to Advanced`,
+        hours: 3,
+        sections: [
+          {
+            title: `Helm — Kubernetes Package Manager`,
+            notes: `## Helm — Kubernetes Package Manager
 
 ### What is Helm?
 
@@ -25702,8 +27694,8 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           command: ["java", "-jar", "app.jar", "--migrate-only"]
 \`\`\``,
-          code: [
-            `# Helm cheat sheet — most-used commands
+            code: [
+              `# Helm cheat sheet — most-used commands
 
 # Install / Upgrade
 helm install my-app ./mychart                         # first install
@@ -25743,24 +27735,32 @@ helm push mychart-0.1.0.tgz oci://myregistry.io/charts
 # Uninstall
 helm uninstall my-app                        # removes all resources
 helm uninstall my-app --keep-history         # remove but keep history for rollback`
-          ],
-          flashcards: [
-            { q: 'What is Helm and what problem does it solve in Kubernetes?', a: 'Helm is the package manager for Kubernetes. Without Helm: deploying to dev/staging/prod means maintaining near-identical YAML files for each environment — changing a label or image tag requires editing multiple files, drift creeps in. Helm: templates the YAML with Go templating; a values.yaml provides defaults; per-environment values files (values-prod.yaml) override just what differs. helm upgrade --install is idempotent (install if not present, upgrade if present). Also enables: rollback (helm rollback), release history, sharing via registries (like bitnami charts for postgres, redis).' },
-            { q: 'What is the difference between helm install and helm upgrade?', a: 'helm install: creates a brand new release. Fails if the release already exists. helm upgrade: updates an existing release to a new chart version or new values. Fails if the release doesn\'t exist. helm upgrade --install: idempotent — installs if missing, upgrades if present. This is what CI/CD pipelines use. Each upgrade creates a new revision. helm rollback my-app reverts to the previous revision. helm rollback my-app 3 reverts to a specific revision. Revision history is stored as Secrets in the same namespace.' },
-            { q: 'How do Helm hooks work and why is pre-upgrade used for DB migrations?', a: 'Helm hooks are resources with "helm.sh/hook" annotations that run at specific lifecycle points: pre-install, post-install, pre-upgrade, post-upgrade, pre-delete, post-delete. pre-upgrade: runs BEFORE the new Deployment is rolled out — perfect for DB migrations. If the migration Job fails, the upgrade aborts — the old version keeps running. Without hooks: migration runs as an init container (same rollout, race condition) or separately (deployment order not guaranteed). "helm.sh/hook-delete-policy": hook-succeeded cleans up completed Jobs. "helm.sh/hook-weight" orders multiple hooks.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '7.4',
-      title: 'CI/CD & GitOps',
-      hours: 3,
-      sections: [
-        {
-          title: 'CI/CD Pipelines & GitOps with GitHub Actions',
-          notes: `## CI/CD Pipelines & GitOps with GitHub Actions
+            ],
+            flashcards: [
+              {
+                q: `What is Helm and what problem does it solve in Kubernetes?`,
+                a: `Helm is the package manager for Kubernetes. Without Helm: deploying to dev/staging/prod means maintaining near-identical YAML files for each environment — changing a label or image tag requires editing multiple files, drift creeps in. Helm: templates the YAML with Go templating; a values.yaml provides defaults; per-environment values files (values-prod.yaml) override just what differs. helm upgrade --install is idempotent (install if not present, upgrade if present). Also enables: rollback (helm rollback), release history, sharing via registries (like bitnami charts for postgres, redis).`
+              },
+              {
+                q: `What is the difference between helm install and helm upgrade?`,
+                a: `helm install: creates a brand new release. Fails if the release already exists. helm upgrade: updates an existing release to a new chart version or new values. Fails if the release doesn't exist. helm upgrade --install: idempotent — installs if missing, upgrades if present. This is what CI/CD pipelines use. Each upgrade creates a new revision. helm rollback my-app reverts to the previous revision. helm rollback my-app 3 reverts to a specific revision. Revision history is stored as Secrets in the same namespace.`
+              },
+              {
+                q: `How do Helm hooks work and why is pre-upgrade used for DB migrations?`,
+                a: `Helm hooks are resources with "helm.sh/hook" annotations that run at specific lifecycle points: pre-install, post-install, pre-upgrade, post-upgrade, pre-delete, post-delete. pre-upgrade: runs BEFORE the new Deployment is rolled out — perfect for DB migrations. If the migration Job fails, the upgrade aborts — the old version keeps running. Without hooks: migration runs as an init container (same rollout, race condition) or separately (deployment order not guaranteed). "helm.sh/hook-delete-policy": hook-succeeded cleans up completed Jobs. "helm.sh/hook-weight" orders multiple hooks.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `7.4`,
+        title: `CI/CD & GitOps`,
+        hours: 3,
+        sections: [
+          {
+            title: `CI/CD Pipelines & GitOps with GitHub Actions`,
+            notes: `## CI/CD Pipelines & GitOps with GitHub Actions
 
 ### CI/CD Philosophy
 
@@ -25815,7 +27815,7 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -t myapp:\${{ github.sha }} .
-          echo "IMAGE_TAG=\${{ github.sha }}" >> \$GITHUB_ENV
+          echo "IMAGE_TAG=\${{ github.sha }}" >> $GITHUB_ENV
 
       - name: Push to registry
         if: github.ref == 'refs/heads/main'
@@ -25834,10 +27834,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Deploy to staging
         run: |
-          helm upgrade --install myapp ./helm/mychart \
-            -f helm/values-staging.yaml \
-            --set image.tag=\${{ github.sha }} \
-            --namespace staging
+          helm upgrade --install myapp ./helm/mychart             -f helm/values-staging.yaml             --set image.tag=\${{ github.sha }}             --namespace staging
         env:
           KUBECONFIG: \${{ secrets.STAGING_KUBECONFIG }}
 \`\`\`
@@ -25880,8 +27877,8 @@ spec:
       prune: true     # delete resources removed from git
       selfHeal: true  # revert manual kubectl changes
 \`\`\``,
-          code: [
-            `# Complete GitHub Actions CI/CD pipeline for Spring Boot + Docker + Kubernetes
+            code: [
+              `# Complete GitHub Actions CI/CD pipeline for Spring Boot + Docker + Kubernetes
 
 name: CI/CD Pipeline
 
@@ -25996,45 +27993,46 @@ jobs:
 
       - name: Deploy via Helm
         run: |
-          helm upgrade --install myapp ./helm/mychart \
-            --namespace production \
-            --create-namespace \
-            -f helm/values-prod.yaml \
-            --set image.tag=sha-\${{ github.sha }} \
-            --wait \
-            --timeout 5m
+          helm upgrade --install myapp ./helm/mychart             --namespace production             --create-namespace             -f helm/values-prod.yaml             --set image.tag=sha-\${{ github.sha }}             --wait             --timeout 5m
 
       - name: Smoke test
         run: |
           kubectl rollout status deployment/myapp -n production --timeout=5m
           curl -f https://myapp.example.com/actuator/health || exit 1`
-          ],
-          flashcards: [
-            { q: 'What is the difference between CI, CD (Delivery), and CD (Deployment)?', a: 'Continuous Integration: every push triggers automated build + tests — fast feedback on integration issues. Continuous Delivery: every green CI build produces a deployable artifact; deployment to production is triggered manually (one click). Suitable when production deployment needs human sign-off or change approval. Continuous Deployment: every green CI build is automatically deployed to production with no human gate. Requires high confidence in the test suite and feature flags for risky changes. Most enterprises use Continuous Delivery. SaaS/startups often use Continuous Deployment.' },
-            { q: 'What is GitOps and how is it different from traditional CI/CD deployment?', a: 'Traditional CD: the CI pipeline pushes directly to the cluster (kubectl apply, SSH, or Helm from the CI runner). The cluster state diverges from what\'s in git — hard to audit, rollback = re-run pipeline. GitOps: Git is the single source of truth. Tools like ArgoCD or Flux watch the git repo and continuously sync cluster state to match. Developer pushes code → CI builds image → CI updates the image tag in the git config repo → ArgoCD sees the change and deploys. Rollback = git revert. Drift detection: ArgoCD can auto-correct manual kubectl changes (selfHeal). CI pipeline never has cluster credentials.' },
-            { q: 'How do you pass secrets securely in GitHub Actions?', a: 'Store in GitHub Secrets (repository or environment-level): Settings → Secrets and Variables → Actions. Reference in workflow as ${{ secrets.MY_SECRET }}. Secrets are masked in logs and never exposed to forks (PRs from forks don\'t get secrets by default). Environment secrets: attach to an environment (e.g. "production") and require manual approval gate before that job runs. Never: hardcode secrets in YAML, print them with echo, store in repo files. For external secret managers: Vault, AWS Secrets Manager, or Kubernetes External Secrets Operator pull secrets at deploy time rather than storing them in GitHub.' }
-          ]
-        }
-      ]
-    },
-  ],
-},
-
-/* ===================== PHASE 8: Camunda & Process Orchestration ===================== */
-{
-  id: 'p8',
-  title: 'Camunda & Process Orchestration',
-  icon: 'workflow',
-  blurb: 'BPMN fundamentals and Camunda 7 vs 8 (Zeebe) with Spring Boot integration.',
-  modules: [
-    {
-      id: '8.1',
-      title: 'BPMN & Workflow Fundamentals',
-      hours: 3,
-      sections: [
-        {
-          title: 'BPMN 2.0 — Business Process Model & Notation',
-          notes: `## BPMN 2.0 — Business Process Model & Notation
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between CI, CD (Delivery), and CD (Deployment)?`,
+                a: `Continuous Integration: every push triggers automated build + tests — fast feedback on integration issues. Continuous Delivery: every green CI build produces a deployable artifact; deployment to production is triggered manually (one click). Suitable when production deployment needs human sign-off or change approval. Continuous Deployment: every green CI build is automatically deployed to production with no human gate. Requires high confidence in the test suite and feature flags for risky changes. Most enterprises use Continuous Delivery. SaaS/startups often use Continuous Deployment.`
+              },
+              {
+                q: `What is GitOps and how is it different from traditional CI/CD deployment?`,
+                a: `Traditional CD: the CI pipeline pushes directly to the cluster (kubectl apply, SSH, or Helm from the CI runner). The cluster state diverges from what's in git — hard to audit, rollback = re-run pipeline. GitOps: Git is the single source of truth. Tools like ArgoCD or Flux watch the git repo and continuously sync cluster state to match. Developer pushes code → CI builds image → CI updates the image tag in the git config repo → ArgoCD sees the change and deploys. Rollback = git revert. Drift detection: ArgoCD can auto-correct manual kubectl changes (selfHeal). CI pipeline never has cluster credentials.`
+              },
+              {
+                q: `How do you pass secrets securely in GitHub Actions?`,
+                a: `Store in GitHub Secrets (repository or environment-level): Settings → Secrets and Variables → Actions. Reference in workflow as \${{ secrets.MY_SECRET }}. Secrets are masked in logs and never exposed to forks (PRs from forks don't get secrets by default). Environment secrets: attach to an environment (e.g. "production") and require manual approval gate before that job runs. Never: hardcode secrets in YAML, print them with echo, store in repo files. For external secret managers: Vault, AWS Secrets Manager, or Kubernetes External Secrets Operator pull secrets at deploy time rather than storing them in GitHub.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p8`,
+    title: `Camunda & Process Orchestration`,
+    icon: `workflow`,
+    blurb: `BPMN fundamentals and Camunda 7 vs 8 (Zeebe) with Spring Boot integration.`,
+    modules: [
+      {
+        id: `8.1`,
+        title: `BPMN & Workflow Fundamentals`,
+        hours: 3,
+        sections: [
+          {
+            title: `BPMN 2.0 — Business Process Model & Notation`,
+            notes: `## BPMN 2.0 — Business Process Model & Notation
 
 ### What is BPMN?
 
@@ -26139,8 +28137,8 @@ Subprocesses:
   </process>
 </definitions>
 \`\`\``,
-          code: [
-            `import org.camunda.bpm.engine.delegate.*;
+            code: [
+              `import org.camunda.bpm.engine.delegate.*;
 import org.springframework.stereotype.*;
 
 // Camunda JavaDelegate — implements a Service Task in BPMN
@@ -26195,24 +28193,32 @@ class InventoryDelegate implements JavaDelegate {
         }
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What are the three types of BPMN gateways and when do you use each?', a: 'Exclusive (XOR) gateway: exactly ONE outgoing path is taken based on a condition — like an if/else. Each outgoing sequence flow has a condition expression; the first matching one wins. Use for branching decisions (is payment approved?). Parallel (AND) gateway: ALL outgoing paths execute simultaneously — like fork/join. Use when multiple steps can happen concurrently (send email AND notify warehouse at the same time). A matching join gateway waits for ALL branches before continuing. Inclusive (OR) gateway: ONE OR MORE paths execute based on conditions — like multiple if statements where several can be true. More flexible than XOR but complex to reason about; use sparingly.' },
-            { q: 'What is a Service Task in BPMN and how does it execute in Camunda?', a: 'A Service Task is an automated step — no human interaction. In Camunda it can be implemented three ways: (1) JavaDelegate: implement JavaDelegate interface, annotate with @Component, reference via camunda:delegateExpression="${myBean}". Most common in Spring. (2) Class: camunda:class="com.example.MyDelegate" — Camunda instantiates the class directly, no Spring injection. (3) External Task: camunda engine creates a job, a separate worker polls and completes it (good for polyglot, works across network). JavaDelegate gets a DelegateExecution to read/write process variables and query task metadata.' },
-            { q: 'Why use a workflow engine (Camunda/Flowable) instead of just code?', a: 'Regular code: long-running processes (e.g. order → payment → shipping → delivery over days) require complex state management. If the server restarts, in-memory state is lost. Manual retry logic for failures. No visibility into where a process is stuck. Workflow engine solves this: state is persisted to DB after each step — processes survive restarts. Visual: business analysts can read and edit the BPMN diagram. Audit log: every task completion is recorded with timestamps. Human tasks: user tasks assign work items to people via a task inbox. Timers: "escalate if not approved within 48h." SLAs and monitoring built in.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '8.2',
-      title: 'Camunda 7 vs 8 & Spring Integration',
-      hours: 4,
-      sections: [
-        {
-          title: 'Camunda 7 vs 8 & Spring Boot Integration',
-          notes: `## Camunda 7 vs 8 & Spring Boot Integration
+            ],
+            flashcards: [
+              {
+                q: `What are the three types of BPMN gateways and when do you use each?`,
+                a: `Exclusive (XOR) gateway: exactly ONE outgoing path is taken based on a condition — like an if/else. Each outgoing sequence flow has a condition expression; the first matching one wins. Use for branching decisions (is payment approved?). Parallel (AND) gateway: ALL outgoing paths execute simultaneously — like fork/join. Use when multiple steps can happen concurrently (send email AND notify warehouse at the same time). A matching join gateway waits for ALL branches before continuing. Inclusive (OR) gateway: ONE OR MORE paths execute based on conditions — like multiple if statements where several can be true. More flexible than XOR but complex to reason about; use sparingly.`
+              },
+              {
+                q: `What is a Service Task in BPMN and how does it execute in Camunda?`,
+                a: `A Service Task is an automated step — no human interaction. In Camunda it can be implemented three ways: (1) JavaDelegate: implement JavaDelegate interface, annotate with @Component, reference via camunda:delegateExpression="\${myBean}". Most common in Spring. (2) Class: camunda:class="com.example.MyDelegate" — Camunda instantiates the class directly, no Spring injection. (3) External Task: camunda engine creates a job, a separate worker polls and completes it (good for polyglot, works across network). JavaDelegate gets a DelegateExecution to read/write process variables and query task metadata.`
+              },
+              {
+                q: `Why use a workflow engine (Camunda/Flowable) instead of just code?`,
+                a: `Regular code: long-running processes (e.g. order → payment → shipping → delivery over days) require complex state management. If the server restarts, in-memory state is lost. Manual retry logic for failures. No visibility into where a process is stuck. Workflow engine solves this: state is persisted to DB after each step — processes survive restarts. Visual: business analysts can read and edit the BPMN diagram. Audit log: every task completion is recorded with timestamps. Human tasks: user tasks assign work items to people via a task inbox. Timers: "escalate if not approved within 48h." SLAs and monitoring built in.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `8.2`,
+        title: `Camunda 7 vs 8 & Spring Integration`,
+        hours: 4,
+        sections: [
+          {
+            title: `Camunda 7 vs 8 & Spring Boot Integration`,
+            notes: `## Camunda 7 vs 8 & Spring Boot Integration
 
 ### Camunda 7 vs Camunda 8
 
@@ -26344,8 +28350,8 @@ public class ValidateOrderWorker {
     }
 }
 \`\`\``,
-          code: [
-            `// Full Camunda 7 + Spring Boot example
+            code: [
+              `// Full Camunda 7 + Spring Boot example
 // Assumes BPMN file "order-fulfillment.bpmn" in src/main/resources/
 import org.camunda.bpm.engine.*;
 import org.camunda.bpm.engine.runtime.*;
@@ -26427,33 +28433,40 @@ class OrderProcessListener implements org.camunda.bpm.engine.delegate.ExecutionL
         }
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What are the main architectural differences between Camunda 7 and Camunda 8?', a: 'Camunda 7: engine runs embedded INSIDE your Spring Boot app. Shares your RDBMS (ACT_* tables). JavaDelegate beans are Spring-injected. Simple to add to existing apps. Good for most enterprise Java shops. Camunda 8 (Zeebe): standalone cluster (Zeebe broker + Operate + Tasklist). Your app connects via gRPC. No shared DB — Zeebe has an internal distributed log. Workers are separate services polling for jobs. No Spring injection in workers — they\'re independent processes. Designed for horizontal scale (millions of process instances). Choose C7 for embedded simplicity; C8 for cloud-native high throughput.' },
-            { q: 'What are the key Camunda 7 engine services and what does each do?', a: 'RuntimeService: start process instances, get active instances, set/get variables, send signals and messages. RepositoryService: deploy BPMN files, query deployed process definitions. TaskService: query user tasks, assign, claim, and complete them — the human inbox. HistoryService: query completed process instances, completed tasks, audit log. ManagementService: manage jobs (timers, async tasks), retries for failed jobs. IdentityService: user/group management (if using Camunda\'s identity). FormService: render forms for user tasks. All accessible as Spring beans when using camunda-bpm-spring-boot-starter.' },
-            { q: 'How do you pass data between BPMN steps in Camunda?', a: 'Process variables: stored in the engine DB, scoped to the process instance. Set on start: runtimeService.startProcessInstanceByKey(key, businessKey, variablesMap). Set in delegate: execution.setVariable("key", value). Read in delegate: execution.getVariable("key"). Gateway conditions use EL (Expression Language): ${stockAvailable == true}. Scoping: by default variables are process-instance scoped (all tasks in the process can read them). Local variables: execution.setVariableLocal() — only visible in the current task scope. Large data: don\'t store blobs in variables — store an ID and look up from DB.' }
-          ]
-        }
-      ]
-    },
-  ],
-},
-
-/* ===================== PHASE 9: Linux, Networking & Observability ===================== */
-{
-  id: 'p9',
-  title: 'Linux, Networking & Observability',
-  icon: 'terminal',
-  blurb: 'Shell and process fundamentals, TCP/HTTP networking, and the three pillars of observability.',
-  modules: [
-    {
-      id: '9.1',
-      title: 'Linux Essentials & Shell',
-      hours: 3,
-      sections: [
-        {
-          title: 'Linux for Java Developers — Commands, Processes & Shell',
-          notes: `## Linux for Java Developers — Commands, Processes & Shell
+            ],
+            flashcards: [
+              {
+                q: `What are the main architectural differences between Camunda 7 and Camunda 8?`,
+                a: `Camunda 7: engine runs embedded INSIDE your Spring Boot app. Shares your RDBMS (ACT_* tables). JavaDelegate beans are Spring-injected. Simple to add to existing apps. Good for most enterprise Java shops. Camunda 8 (Zeebe): standalone cluster (Zeebe broker + Operate + Tasklist). Your app connects via gRPC. No shared DB — Zeebe has an internal distributed log. Workers are separate services polling for jobs. No Spring injection in workers — they're independent processes. Designed for horizontal scale (millions of process instances). Choose C7 for embedded simplicity; C8 for cloud-native high throughput.`
+              },
+              {
+                q: `What are the key Camunda 7 engine services and what does each do?`,
+                a: `RuntimeService: start process instances, get active instances, set/get variables, send signals and messages. RepositoryService: deploy BPMN files, query deployed process definitions. TaskService: query user tasks, assign, claim, and complete them — the human inbox. HistoryService: query completed process instances, completed tasks, audit log. ManagementService: manage jobs (timers, async tasks), retries for failed jobs. IdentityService: user/group management (if using Camunda's identity). FormService: render forms for user tasks. All accessible as Spring beans when using camunda-bpm-spring-boot-starter.`
+              },
+              {
+                q: `How do you pass data between BPMN steps in Camunda?`,
+                a: `Process variables: stored in the engine DB, scoped to the process instance. Set on start: runtimeService.startProcessInstanceByKey(key, businessKey, variablesMap). Set in delegate: execution.setVariable("key", value). Read in delegate: execution.getVariable("key"). Gateway conditions use EL (Expression Language): \${stockAvailable == true}. Scoping: by default variables are process-instance scoped (all tasks in the process can read them). Local variables: execution.setVariableLocal() — only visible in the current task scope. Large data: don't store blobs in variables — store an ID and look up from DB.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p9`,
+    title: `Linux, Networking & Observability`,
+    icon: `terminal`,
+    blurb: `Shell and process fundamentals, TCP/HTTP networking, and the three pillars of observability.`,
+    modules: [
+      {
+        id: `9.1`,
+        title: `Linux Essentials & Shell`,
+        hours: 3,
+        sections: [
+          {
+            title: `Linux for Java Developers — Commands, Processes & Shell`,
+            notes: `## Linux for Java Developers — Commands, Processes & Shell
 
 ### Essential Commands for Production Debugging
 
@@ -26528,11 +28541,7 @@ start() {
         echo "Already running: $(cat $PID_FILE)"
         exit 1
     fi
-    java -Xms256m -Xmx512m \
-         -XX:+UseG1GC \
-         -Dspring.profiles.active=prod \
-         -jar "$JAR_FILE" \
-         > "$LOG_DIR/app.log" 2>&1 &
+    java -Xms256m -Xmx512m          -XX:+UseG1GC          -Dspring.profiles.active=prod          -jar "$JAR_FILE"          > "$LOG_DIR/app.log" 2>&1 &
     echo $! > "$PID_FILE"
     echo "Started: $(cat $PID_FILE)"
 }
@@ -26573,8 +28582,8 @@ jstat -gc $(pgrep -f myapp.jar) 1000  # every 1 second
 # Check JVM flags actually used
 java -XX:+PrintFlagsFinal -version 2>&1 | grep MaxHeapSize
 \`\`\``,
-          code: [
-            `#!/bin/bash
+            code: [
+              `#!/bin/bash
 # Useful one-liners for Spring Boot operations — runnable on any Linux server
 
 # 1. Find Java process and its args
@@ -26633,24 +28642,32 @@ EOF
 
 # Enable and start:
 # systemctl enable myapp && systemctl start myapp`
-          ],
-          flashcards: [
-            { q: 'How do you take a thread dump from a running Java process on Linux?', a: 'Method 1: kill -3 <pid> — sends SIGQUIT, JVM prints thread dump to stdout (useful if you can see the process output). Method 2: jstack <pid> > thread.txt — Oracle\'s tool, outputs to a file. Method 3: jcmd <pid> Thread.print > thread.txt — newer, more features. Method 4: /actuator/threaddump endpoint if Spring Boot Actuator is enabled. A thread dump shows all threads: name, state (RUNNABLE, WAITING, BLOCKED), stack trace. Analyse: look for BLOCKED threads waiting for a lock held by another BLOCKED thread → deadlock. Also useful for diagnosing "why is CPU at 100%?" — find threads in RUNNABLE state with hot stack frames.' },
-            { q: 'What does kill -15 vs kill -9 do and which should you use to stop a Spring Boot app?', a: 'kill -15 (SIGTERM): graceful shutdown. JVM catches this signal, runs shutdown hooks — Spring Boot stops accepting new requests, drains in-flight requests (Tomcat graceful shutdown), flushes buffers, closes DB connections cleanly. Preferred. kill -9 (SIGKILL): force kill — OS immediately terminates the process, bypasses JVM and shutdown hooks. Risk: in-flight transactions left open, DB connections leaked, write buffers not flushed, possible data corruption. Use -9 only as a last resort when -15 doesn\'t work after a timeout. Spring Boot graceful shutdown config: server.shutdown=graceful + spring.lifecycle.timeout-per-shutdown-phase=30s.' },
-            { q: 'What do the columns in jstat -gc output mean and what should you watch for?', a: 'jstat -gc <pid> <intervalMs> shows GC stats every N ms. Key columns: S0C/S1C: survivor 0/1 capacity. EC: Eden capacity. OC: Old gen capacity. YGC/YGCT: young GC count/time. FGC/FGCT: full GC count/time. GCT: total GC time. Watch for: FGC climbing continuously → full GCs happening → possible memory leak or heap too small. YGCT high → too many young GCs → allocation rate too high (object creation rate). OC usage near 100% with frequent FGC → heap exhaustion → OOMKill imminent. Rule of thumb: occasional young GC is fine; frequent full GCs need investigation.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '9.2',
-      title: 'Networking & HTTP',
-      hours: 3,
-      sections: [
-        {
-          title: 'Networking & HTTP — What Java Developers Must Know',
-          notes: `## Networking & HTTP — What Java Developers Must Know
+            ],
+            flashcards: [
+              {
+                q: `How do you take a thread dump from a running Java process on Linux?`,
+                a: `Method 1: kill -3 <pid> — sends SIGQUIT, JVM prints thread dump to stdout (useful if you can see the process output). Method 2: jstack <pid> > thread.txt — Oracle's tool, outputs to a file. Method 3: jcmd <pid> Thread.print > thread.txt — newer, more features. Method 4: /actuator/threaddump endpoint if Spring Boot Actuator is enabled. A thread dump shows all threads: name, state (RUNNABLE, WAITING, BLOCKED), stack trace. Analyse: look for BLOCKED threads waiting for a lock held by another BLOCKED thread → deadlock. Also useful for diagnosing "why is CPU at 100%?" — find threads in RUNNABLE state with hot stack frames.`
+              },
+              {
+                q: `What does kill -15 vs kill -9 do and which should you use to stop a Spring Boot app?`,
+                a: `kill -15 (SIGTERM): graceful shutdown. JVM catches this signal, runs shutdown hooks — Spring Boot stops accepting new requests, drains in-flight requests (Tomcat graceful shutdown), flushes buffers, closes DB connections cleanly. Preferred. kill -9 (SIGKILL): force kill — OS immediately terminates the process, bypasses JVM and shutdown hooks. Risk: in-flight transactions left open, DB connections leaked, write buffers not flushed, possible data corruption. Use -9 only as a last resort when -15 doesn't work after a timeout. Spring Boot graceful shutdown config: server.shutdown=graceful + spring.lifecycle.timeout-per-shutdown-phase=30s.`
+              },
+              {
+                q: `What do the columns in jstat -gc output mean and what should you watch for?`,
+                a: `jstat -gc <pid> <intervalMs> shows GC stats every N ms. Key columns: S0C/S1C: survivor 0/1 capacity. EC: Eden capacity. OC: Old gen capacity. YGC/YGCT: young GC count/time. FGC/FGCT: full GC count/time. GCT: total GC time. Watch for: FGC climbing continuously → full GCs happening → possible memory leak or heap too small. YGCT high → too many young GCs → allocation rate too high (object creation rate). OC usage near 100% with frequent FGC → heap exhaustion → OOMKill imminent. Rule of thumb: occasional young GC is fine; frequent full GCs need investigation.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `9.2`,
+        title: `Networking & HTTP`,
+        hours: 3,
+        sections: [
+          {
+            title: `Networking & HTTP — What Java Developers Must Know`,
+            notes: `## Networking & HTTP — What Java Developers Must Know
 
 ### TCP/IP — How HTTP Works Under the Hood
 
@@ -26659,7 +28676,10 @@ HTTP request journey:
 1. DNS resolution: "api.example.com" → 93.184.216.34 (IP lookup)
 2. TCP 3-way handshake: SYN → SYN-ACK → ACK (establish connection)
 3. TLS handshake (HTTPS): certificate exchange, cipher negotiation
-4. HTTP request sent: "GET /api/users HTTP/1.1\r\nHost: api.example.com\r\n\r\n"
+4. HTTP request sent: "GET /api/users HTTP/1.1\r
+Host: api.example.com\r
+\r
+"
 5. Server processes request, sends HTTP response
 6. TCP connection: closed (HTTP/1.0) or kept alive (HTTP/1.1 keep-alive)
 
@@ -26760,8 +28780,8 @@ Service mesh (Envoy/Istio): sidecar proxy per pod handles:
   - Observability (request tracing)
   - Traffic shifting (canary, blue-green)
 \`\`\``,
-          code: [
-            `import org.springframework.web.client.*;
+            code: [
+              `import org.springframework.web.client.*;
 import org.springframework.http.*;
 import java.util.*;
 import java.time.*;
@@ -26833,24 +28853,32 @@ class WebClientWrapper {
 
 record UserDto(Long id, String name, String email) {}
 record CreateUserRequest(String name, String email) {}`
-          ],
-          flashcards: [
-            { q: 'What happens at the network level when a browser calls an HTTPS API?', a: '1. DNS resolution: browser looks up hostname → IP address (checks local cache first, then recursive DNS). 2. TCP 3-way handshake: SYN → SYN-ACK → ACK to establish connection to IP:443. 3. TLS handshake: client sends supported cipher suites; server sends its certificate; client verifies certificate against trusted CAs; both derive a shared symmetric session key (via ECDHE). 4. HTTP request sent encrypted over TLS. 5. Server processes, sends encrypted response. 6. Connection kept alive (HTTP/1.1+) for subsequent requests. Total latency: new connection ~100-300ms (DNS + TCP + TLS). Subsequent requests on same connection: just the request/response time.' },
-            { q: 'What is the difference between HTTP/1.1, HTTP/2, and HTTP/3?', a: 'HTTP/1.1: persistent connections (multiple requests on one TCP connection), but head-of-line blocking (second request waits for first to complete on same connection). HTTP/2: binary protocol. Multiplexing: multiple concurrent requests on ONE connection with no head-of-line blocking. Header compression (HPACK). Server push (server can send resources before client asks). Major perf improvement for many small requests. HTTP/3: QUIC protocol (UDP-based). Eliminates TCP head-of-line blocking at transport layer. Built-in TLS 1.3. Better on lossy connections (mobile). Faster connection establishment (0-RTT). Still maturing in production use.' },
-            { q: 'Why must you always set timeouts on HTTP clients in Java?', a: 'Default RestTemplate has NO timeout — a slow upstream service causes the calling thread to block forever. In a Tomcat server with 200 threads: if all threads are waiting on a slow API, the entire application stops responding to all other requests (cascade failure). Connect timeout: max time to establish the TCP connection (2-5s typically). Read timeout: max time to wait for data after connection established (5-30s depending on the API). Without these: one slow dependency can bring down your whole service. Also: set circuit breakers (Resilience4j) to open after N timeouts, preventing all threads from queuing up.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '9.3',
-      title: 'Observability: Logs, Metrics, Traces',
-      hours: 4,
-      sections: [
-        {
-          title: 'The Three Pillars of Observability',
-          notes: `## The Three Pillars of Observability
+            ],
+            flashcards: [
+              {
+                q: `What happens at the network level when a browser calls an HTTPS API?`,
+                a: `1. DNS resolution: browser looks up hostname → IP address (checks local cache first, then recursive DNS). 2. TCP 3-way handshake: SYN → SYN-ACK → ACK to establish connection to IP:443. 3. TLS handshake: client sends supported cipher suites; server sends its certificate; client verifies certificate against trusted CAs; both derive a shared symmetric session key (via ECDHE). 4. HTTP request sent encrypted over TLS. 5. Server processes, sends encrypted response. 6. Connection kept alive (HTTP/1.1+) for subsequent requests. Total latency: new connection ~100-300ms (DNS + TCP + TLS). Subsequent requests on same connection: just the request/response time.`
+              },
+              {
+                q: `What is the difference between HTTP/1.1, HTTP/2, and HTTP/3?`,
+                a: `HTTP/1.1: persistent connections (multiple requests on one TCP connection), but head-of-line blocking (second request waits for first to complete on same connection). HTTP/2: binary protocol. Multiplexing: multiple concurrent requests on ONE connection with no head-of-line blocking. Header compression (HPACK). Server push (server can send resources before client asks). Major perf improvement for many small requests. HTTP/3: QUIC protocol (UDP-based). Eliminates TCP head-of-line blocking at transport layer. Built-in TLS 1.3. Better on lossy connections (mobile). Faster connection establishment (0-RTT). Still maturing in production use.`
+              },
+              {
+                q: `Why must you always set timeouts on HTTP clients in Java?`,
+                a: `Default RestTemplate has NO timeout — a slow upstream service causes the calling thread to block forever. In a Tomcat server with 200 threads: if all threads are waiting on a slow API, the entire application stops responding to all other requests (cascade failure). Connect timeout: max time to establish the TCP connection (2-5s typically). Read timeout: max time to wait for data after connection established (5-30s depending on the API). Without these: one slow dependency can bring down your whole service. Also: set circuit breakers (Resilience4j) to open after N timeouts, preventing all threads from queuing up.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `9.3`,
+        title: `Observability: Logs, Metrics, Traces`,
+        hours: 4,
+        sections: [
+          {
+            title: `The Three Pillars of Observability`,
+            notes: `## The Three Pillars of Observability
 
 ### Logs, Metrics, and Traces — Why All Three?
 
@@ -26977,8 +29005,8 @@ Modern simplification — Grafana stack:
   Loki (logs) + Prometheus (metrics) + Tempo (traces) → all in Grafana
   Correlate: click a log line → see the trace for that request
 \`\`\``,
-          code: [
-            `import io.micrometer.core.instrument.*;
+            code: [
+              `import io.micrometer.core.instrument.*;
 import org.slf4j.*;
 import org.springframework.stereotype.*;
 import java.time.*;
@@ -27065,7 +29093,7 @@ public class OrderServiceWithObservability {
     record CreateOrderRequest(String customerId, String productId, int quantity) {}
     record OrderResult(String orderId, String status) {}
 }`,
-            `# Prometheus alerting rules (prometheus/alerts.yml)
+              `# Prometheus alerting rules (prometheus/alerts.yml)
 # These fire when metrics cross thresholds
 
 groups:
@@ -27113,33 +29141,40 @@ groups:
           severity: critical
         annotations:
           summary: "Service is DOWN"`
-          ],
-          flashcards: [
-            { q: 'What are the three pillars of observability and what question does each answer?', a: 'Logs: what happened? — timestamped events with context (user IDs, order IDs, stack traces). Best for debugging specific errors. Structured JSON logs + MDC (request ID, user ID in every line) make them searchable. Metrics: how much/often? — numeric time-series data (request rate, error rate, latency percentiles, heap usage). Aggregated and queryable over time. Drives dashboards and alerts. Traces: where did time go? — records the journey of one request through multiple services. Shows which service was slow or errored. Uses TraceId/SpanId propagated via headers. Need all three: metrics tell you something is wrong; logs tell you what the error was; traces tell you where in the system it happened.' },
-            { q: 'What is MDC (Mapped Diagnostic Context) and why is it critical for logs?', a: 'MDC is a per-thread key-value store that SLF4J automatically includes in every log line. You set it once per request (e.g. in a filter or interceptor): MDC.put("requestId", uuid); MDC.put("userId", "42"). Then EVERY log statement from that thread — across all classes — automatically includes requestId and userId in the output, without passing them through method parameters. Critical for production: when debugging an issue for a specific user or request, you can grep/filter by requestId and see all log lines for exactly that request across all service layers. Always clear MDC after the request (MDC.clear() in a finally block or afterCompletion).' },
-            { q: 'What is the difference between a Counter, Timer, and Gauge in Micrometer?', a: 'Counter: monotonically increasing number — only goes up. Use for: requests processed, errors occurred, payments charged. Rate of change (requests per second) calculated by Prometheus. Timer: records both count AND duration of events. Use for: latency of operations. Automatically tracks count, total time, and histogram buckets (for percentile calculation). Publish p50/p95/p99 for latency SLOs. Gauge: a current value that can go up or down. Use for: active connections, queue depth, JVM heap usage, thread pool size. Sampled at query time. Rule: most things are Counters or Timers; Gauges are for "how many right now" questions.' }
-          ]
-        }
-      ]
-    },
-  ],
-},
-
-/* ===================== PHASE 10: Behavioral & EU Interview Strategy ===================== */
-{
-  id: 'p10',
-  title: 'Behavioral & EU Interview Strategy',
-  icon: 'users',
-  blurb: 'STAR storytelling, system-design communication, and the European visa-sponsorship interview playbook.',
-  modules: [
-    {
-      id: '10.1',
-      title: 'STAR Stories & Behavioral Rounds',
-      hours: 2,
-      sections: [
-        {
-          title: 'Behavioral Interviews — STAR Framework & Common Questions',
-          notes: `## Behavioral Interviews — STAR Framework & Common Questions
+            ],
+            flashcards: [
+              {
+                q: `What are the three pillars of observability and what question does each answer?`,
+                a: `Logs: what happened? — timestamped events with context (user IDs, order IDs, stack traces). Best for debugging specific errors. Structured JSON logs + MDC (request ID, user ID in every line) make them searchable. Metrics: how much/often? — numeric time-series data (request rate, error rate, latency percentiles, heap usage). Aggregated and queryable over time. Drives dashboards and alerts. Traces: where did time go? — records the journey of one request through multiple services. Shows which service was slow or errored. Uses TraceId/SpanId propagated via headers. Need all three: metrics tell you something is wrong; logs tell you what the error was; traces tell you where in the system it happened.`
+              },
+              {
+                q: `What is MDC (Mapped Diagnostic Context) and why is it critical for logs?`,
+                a: `MDC is a per-thread key-value store that SLF4J automatically includes in every log line. You set it once per request (e.g. in a filter or interceptor): MDC.put("requestId", uuid); MDC.put("userId", "42"). Then EVERY log statement from that thread — across all classes — automatically includes requestId and userId in the output, without passing them through method parameters. Critical for production: when debugging an issue for a specific user or request, you can grep/filter by requestId and see all log lines for exactly that request across all service layers. Always clear MDC after the request (MDC.clear() in a finally block or afterCompletion).`
+              },
+              {
+                q: `What is the difference between a Counter, Timer, and Gauge in Micrometer?`,
+                a: `Counter: monotonically increasing number — only goes up. Use for: requests processed, errors occurred, payments charged. Rate of change (requests per second) calculated by Prometheus. Timer: records both count AND duration of events. Use for: latency of operations. Automatically tracks count, total time, and histogram buckets (for percentile calculation). Publish p50/p95/p99 for latency SLOs. Gauge: a current value that can go up or down. Use for: active connections, queue depth, JVM heap usage, thread pool size. Sampled at query time. Rule: most things are Counters or Timers; Gauges are for "how many right now" questions.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p10`,
+    title: `Behavioral & EU Interview Strategy`,
+    icon: `users`,
+    blurb: `STAR storytelling, system-design communication, and the European visa-sponsorship interview playbook.`,
+    modules: [
+      {
+        id: `10.1`,
+        title: `STAR Stories & Behavioral Rounds`,
+        hours: 2,
+        sections: [
+          {
+            title: `Behavioral Interviews — STAR Framework & Common Questions`,
+            notes: `## Behavioral Interviews — STAR Framework & Common Questions
 
 ### The STAR Framework
 
@@ -27221,8 +29256,8 @@ Deliver Results:     "Tell me about a time you delivered under a tight deadline"
 
 Prepare 5-6 stories that each cover MULTIPLE principles.
 \`\`\``,
-          code: [
-            `// STAR Stories Worksheet — fill this in before each interview
+            code: [
+              `// STAR Stories Worksheet — fill this in before each interview
 // This is JavaScript for the interview hub, but treat it as a prep template
 
 const starStories = [
@@ -27276,24 +29311,32 @@ const starStories = [
 
 console.log("STAR Stories loaded:", starStories.length);
 starStories.forEach(s => console.log(" -", s.title, "→", s.principles.join(", ")));`
-          ],
-          flashcards: [
-            { q: 'What is the STAR framework and how should you time each section?', a: 'STAR: Situation (10-15s) — brief context, company/team/product background. Task (5-10s) — what YOU were responsible for solving. Action (45-60s) — what YOU specifically did; focus on your decisions and reasoning, not the team. Use "I proposed, I implemented, I negotiated" not "we did." Result (15-20s) — quantified outcome: percentages, time saved, incidents avoided, users affected. Total target: 90-120 seconds. Under 60s = too vague. Over 2 minutes = lose the interviewer. Practice aloud until you can hit the target every time.' },
-            { q: 'How do you structure a "tell me about a failure" answer without looking bad?', a: 'Interviewers are testing self-awareness and learning, not looking for perfect records. Formula: (1) Be specific and honest about what failed — don\'t minimize it. (2) Own your part clearly: "I made the decision to X without validating Y." (3) Explain how you identified the failure and what you did to recover. (4) State what you changed as a result — a process, a habit, a technical practice. (5) If possible, show you applied the learning later. Red flags: blaming others, vague failures, saying "we" to diffuse responsibility, or claiming nothing went wrong. Saying "I would have done X differently" shows growth.' },
-            { q: 'How do you prepare stories that cover multiple behavioral competencies?', a: 'Each strong story should cover 2-4 competencies simultaneously. Example: a story about debugging a production incident covers: Dive Deep (systematic investigation), Ownership (took responsibility beyond your ticket), Customer Obsession (urgency because users were affected), Deliver Results (resolved within SLA). Prepare 5-6 core stories, each with multiple tags. When the interviewer asks about "ownership," mentally scan your tagged stories and pick the best fit. This lets you answer 15-20 different questions with 5-6 prepared stories. Avoid preparing one story per question — you\'ll run out and become rigid.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '10.2',
-      title: 'System Design Communication',
-      hours: 3,
-      sections: [
-        {
-          title: 'System Design Interviews — Framework & Common Questions',
-          notes: `## System Design Interviews — Framework & Communication
+            ],
+            flashcards: [
+              {
+                q: `What is the STAR framework and how should you time each section?`,
+                a: `STAR: Situation (10-15s) — brief context, company/team/product background. Task (5-10s) — what YOU were responsible for solving. Action (45-60s) — what YOU specifically did; focus on your decisions and reasoning, not the team. Use "I proposed, I implemented, I negotiated" not "we did." Result (15-20s) — quantified outcome: percentages, time saved, incidents avoided, users affected. Total target: 90-120 seconds. Under 60s = too vague. Over 2 minutes = lose the interviewer. Practice aloud until you can hit the target every time.`
+              },
+              {
+                q: `How do you structure a "tell me about a failure" answer without looking bad?`,
+                a: `Interviewers are testing self-awareness and learning, not looking for perfect records. Formula: (1) Be specific and honest about what failed — don't minimize it. (2) Own your part clearly: "I made the decision to X without validating Y." (3) Explain how you identified the failure and what you did to recover. (4) State what you changed as a result — a process, a habit, a technical practice. (5) If possible, show you applied the learning later. Red flags: blaming others, vague failures, saying "we" to diffuse responsibility, or claiming nothing went wrong. Saying "I would have done X differently" shows growth.`
+              },
+              {
+                q: `How do you prepare stories that cover multiple behavioral competencies?`,
+                a: `Each strong story should cover 2-4 competencies simultaneously. Example: a story about debugging a production incident covers: Dive Deep (systematic investigation), Ownership (took responsibility beyond your ticket), Customer Obsession (urgency because users were affected), Deliver Results (resolved within SLA). Prepare 5-6 core stories, each with multiple tags. When the interviewer asks about "ownership," mentally scan your tagged stories and pick the best fit. This lets you answer 15-20 different questions with 5-6 prepared stories. Avoid preparing one story per question — you'll run out and become rigid.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `10.2`,
+        title: `System Design Communication`,
+        hours: 3,
+        sections: [
+          {
+            title: `System Design Interviews — Framework & Common Questions`,
+            notes: `## System Design Interviews — Framework & Communication
 
 ### The RADAD Framework
 
@@ -27392,8 +29435,8 @@ Examples:
    Trade-off: writes become slightly more complex and data duplication requires
    a sync job."
 \`\`\``,
-          code: [
-            `// System Design Cheat Sheet — key numbers to memorise
+            code: [
+              `// System Design Cheat Sheet — key numbers to memorise
 // Use these in back-of-envelope calculations
 
 const NUMBERS_TO_KNOW = {
@@ -27463,33 +29506,40 @@ const tradeoffPhrases = [
 
 console.log("System Design Framework loaded");
 console.log("Key steps:", Object.keys(systemDesignTemplate).join(" → "));`
-          ],
-          flashcards: [
-            { q: 'What questions should you always ask before designing a system?', a: 'Functional: What are the core user actions? Who are the users? What are the read vs write patterns? Are there media uploads? Real-time requirements? Non-functional (these drive architecture choices): Scale — DAU, RPS, data size? Latency — P99 < X ms? Availability — 99.9% vs 99.99%? Consistency — strong (banking) or eventual (social feed)? Geography — single region or global? Rule: spend 5 minutes on requirements. Designs that skip this phase fail because they optimize for the wrong thing. Say explicitly: "Let me make sure I understand the requirements before designing."' },
-            { q: 'How do you calculate RPS from DAU in a back-of-envelope estimate?', a: 'Formula: RPS = (DAU × actions_per_user_per_day) / 86400. Example: 10M DAU, 10 reads per user per day → 100M reads/day ÷ 86400 ≈ 1,200 read RPS. 1 write per user → 115 write RPS. Quick rule: 1M daily events ≈ 12 RPS. Storage: RPS × payload_size × seconds_per_day × retention_days. Use these to justify: "1,200 RPS is within a single Postgres read replica\'s capacity, so we don\'t need sharding initially." Interviewers value the reasoning, not the exact number. Say your assumptions aloud.' },
-            { q: 'What is the CAP theorem and how should you apply it in a system design interview?', a: 'CAP: a distributed system can guarantee at most 2 of 3: Consistency (all nodes return same data), Availability (every request gets a response), Partition tolerance (system works despite network splits). Network partitions WILL happen — so the real choice is CP vs AP. CP (Consistency + Partition tolerance): on partition, refuse requests rather than return stale data. Use for: banking, inventory (correctness > availability). Example: Zookeeper, HBase. AP (Availability + Partition tolerance): on partition, serve stale data rather than fail. Use for: social feeds, shopping carts (availability > strong consistency). Example: DynamoDB, Cassandra. In interviews: state your choice and justify it based on the requirements you clarified.' }
-          ]
-        }
-      ]
-    },
-  ],
-},
-
-/* ===================== PHASE 11: Real-World Java Backend Architecture ===================== */
-{
-  id: 'p11',
-  title: 'Real-World Java Backend Architecture',
-  icon: 'building-2',
-  blurb: 'A multi-module Maven monolith, production deploy on Docker + Caddy + VPS, and Spring Security with OAuth2.',
-  modules: [
-    {
-      id: '11.1',
-      title: 'Multi-Module Maven Monolith Design',
-      hours: 3,
-      sections: [
-        {
-          title: 'Maven Multi-Module Architecture — Design & Best Practices',
-          notes: `## Maven Multi-Module Architecture — Design & Best Practices
+            ],
+            flashcards: [
+              {
+                q: `What questions should you always ask before designing a system?`,
+                a: `Functional: What are the core user actions? Who are the users? What are the read vs write patterns? Are there media uploads? Real-time requirements? Non-functional (these drive architecture choices): Scale — DAU, RPS, data size? Latency — P99 < X ms? Availability — 99.9% vs 99.99%? Consistency — strong (banking) or eventual (social feed)? Geography — single region or global? Rule: spend 5 minutes on requirements. Designs that skip this phase fail because they optimize for the wrong thing. Say explicitly: "Let me make sure I understand the requirements before designing."`
+              },
+              {
+                q: `How do you calculate RPS from DAU in a back-of-envelope estimate?`,
+                a: `Formula: RPS = (DAU × actions_per_user_per_day) / 86400. Example: 10M DAU, 10 reads per user per day → 100M reads/day ÷ 86400 ≈ 1,200 read RPS. 1 write per user → 115 write RPS. Quick rule: 1M daily events ≈ 12 RPS. Storage: RPS × payload_size × seconds_per_day × retention_days. Use these to justify: "1,200 RPS is within a single Postgres read replica's capacity, so we don't need sharding initially." Interviewers value the reasoning, not the exact number. Say your assumptions aloud.`
+              },
+              {
+                q: `What is the CAP theorem and how should you apply it in a system design interview?`,
+                a: `CAP: a distributed system can guarantee at most 2 of 3: Consistency (all nodes return same data), Availability (every request gets a response), Partition tolerance (system works despite network splits). Network partitions WILL happen — so the real choice is CP vs AP. CP (Consistency + Partition tolerance): on partition, refuse requests rather than return stale data. Use for: banking, inventory (correctness > availability). Example: Zookeeper, HBase. AP (Availability + Partition tolerance): on partition, serve stale data rather than fail. Use for: social feeds, shopping carts (availability > strong consistency). Example: DynamoDB, Cassandra. In interviews: state your choice and justify it based on the requirements you clarified.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: `p11`,
+    title: `Real-World Java Backend Architecture`,
+    icon: `building-2`,
+    blurb: `A multi-module Maven monolith, production deploy on Docker + Caddy + VPS, and Spring Security with OAuth2.`,
+    modules: [
+      {
+        id: `11.1`,
+        title: `Multi-Module Maven Monolith Design`,
+        hours: 3,
+        sections: [
+          {
+            title: `Maven Multi-Module Architecture — Design & Best Practices`,
+            notes: `## Maven Multi-Module Architecture — Design & Best Practices
 
 ### Why Multi-Module Maven?
 
@@ -27627,8 +29677,8 @@ public void domainShouldNotDependOnSpring() {
         .check(classes);
 }
 \`\`\``,
-          code: [
-            `// ArchUnit — architecture tests to enforce module layering
+            code: [
+              `// ArchUnit — architecture tests to enforce module layering
 // Add to test dependencies: com.tngtech.archunit:archunit-junit5
 
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -27687,24 +29737,32 @@ public class ArchitectureTest {
             .check(allClasses);
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between dependencyManagement and dependencies in a Maven parent POM?', a: 'dependencyManagement: declares versions and scope but does NOT add the dependency to any module. Child modules that declare the same dependency (without version) inherit the managed version. Use this in the parent to centralise version control without forcing the dependency on all children. dependencies (in parent): actually adds the dependency to ALL child modules — every module inherits it regardless of whether they need it. Rule: put shared test utils (JUnit, Mockito) in parent dependencies if truly universal. Put all other dependencies in dependencyManagement so each module explicitly declares what it needs — avoids implicit transitive pollution.' },
-            { q: 'What is a Maven BOM (Bill of Materials) and when do you use one?', a: 'A BOM is a POM with packaging=pom that contains only dependencyManagement — it declares versions for a related set of artifacts. Importing a BOM (scope=import, type=pom in dependencyManagement) gives you all its version declarations without adding transitive deps. Spring Boot provides spring-boot-dependencies BOM: import it in parent → all Spring/Spring Boot dependency versions are controlled centrally. You never specify versions for spring-boot-starter-web, jackson, hibernate, etc. — the BOM sets them. Benefits: consistent, tested version combinations; upgrade Spring Boot version in one place and all 30+ deps update together.' },
-            { q: 'How do you enforce module boundaries in a multi-module Maven project?', a: 'Option 1: Maven module structure itself. Web module\'s pom.xml only declares dependencies on Application module — it physically cannot import classes from Infrastructure unless it adds that dependency. Misuse creates a compile error. Option 2: maven-enforcer-plugin with banned dependencies rule — CI fails if web declares a direct dependency on infrastructure. Option 3: ArchUnit (architecture tests) — write JUnit tests that assert no class in the web package imports from the infrastructure package. Runs as part of normal test suite. Best practice: combine all three — Maven structure prevents most violations, ArchUnit catches any sneaky attempts via transitive imports.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '11.2',
-      title: 'Production Infrastructure: Docker, Caddy & VPS',
-      hours: 3,
-      sections: [
-        {
-          title: 'Production Deployment — Docker Compose + Caddy + Hetzner VPS',
-          notes: `## Production Deployment — Docker Compose + Caddy + Hetzner VPS
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between dependencyManagement and dependencies in a Maven parent POM?`,
+                a: `dependencyManagement: declares versions and scope but does NOT add the dependency to any module. Child modules that declare the same dependency (without version) inherit the managed version. Use this in the parent to centralise version control without forcing the dependency on all children. dependencies (in parent): actually adds the dependency to ALL child modules — every module inherits it regardless of whether they need it. Rule: put shared test utils (JUnit, Mockito) in parent dependencies if truly universal. Put all other dependencies in dependencyManagement so each module explicitly declares what it needs — avoids implicit transitive pollution.`
+              },
+              {
+                q: `What is a Maven BOM (Bill of Materials) and when do you use one?`,
+                a: `A BOM is a POM with packaging=pom that contains only dependencyManagement — it declares versions for a related set of artifacts. Importing a BOM (scope=import, type=pom in dependencyManagement) gives you all its version declarations without adding transitive deps. Spring Boot provides spring-boot-dependencies BOM: import it in parent → all Spring/Spring Boot dependency versions are controlled centrally. You never specify versions for spring-boot-starter-web, jackson, hibernate, etc. — the BOM sets them. Benefits: consistent, tested version combinations; upgrade Spring Boot version in one place and all 30+ deps update together.`
+              },
+              {
+                q: `How do you enforce module boundaries in a multi-module Maven project?`,
+                a: `Option 1: Maven module structure itself. Web module's pom.xml only declares dependencies on Application module — it physically cannot import classes from Infrastructure unless it adds that dependency. Misuse creates a compile error. Option 2: maven-enforcer-plugin with banned dependencies rule — CI fails if web declares a direct dependency on infrastructure. Option 3: ArchUnit (architecture tests) — write JUnit tests that assert no class in the web package imports from the infrastructure package. Runs as part of normal test suite. Best practice: combine all three — Maven structure prevents most violations, ArchUnit catches any sneaky attempts via transitive imports.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `11.2`,
+        title: `Production Infrastructure: Docker, Caddy & VPS`,
+        hours: 3,
+        sections: [
+          {
+            title: `Production Deployment — Docker Compose + Caddy + Hetzner VPS`,
+            notes: `## Production Deployment — Docker Compose + Caddy + Hetzner VPS
 
 ### Architecture Overview
 
@@ -27849,8 +29907,8 @@ GOOGLE_CLIENT_SECRET=GOCSPX-xxx
 # chmod 600 /opt/app/.env  — owner-only read
 # docker compose reads .env automatically
 \`\`\``,
-          code: [
-            `#!/bin/bash
+            code: [
+              `#!/bin/bash
 # deploy.sh — one-command deploy to VPS
 # Usage: ./deploy.sh 1.5.3
 # Or:    ./deploy.sh (uses current git SHA)
@@ -27894,7 +29952,7 @@ if [ "$HEALTH" != "UP" ]; then
 fi
 
 echo "=== Deploy complete: $VERSION is UP ==="`,
-            `# Caddyfile — production-grade with security headers, rate limiting, compression
+              `# Caddyfile — production-grade with security headers, rate limiting, compression
 
 myapp.example.com {
     # Compression
@@ -27956,24 +30014,32 @@ myapp.example.com {
         format json
     }
 }`
-          ],
-          flashcards: [
-            { q: 'Why use Caddy instead of Nginx for a VPS deployment?', a: 'Caddy\'s killer feature: automatic HTTPS via Let\'s Encrypt with zero configuration. No need to: install certbot, write cron jobs for renewal, configure SSL certificate paths, handle renewal failures. Caddy auto-obtains and renews TLS certificates. Caddyfile syntax is dramatically simpler than Nginx config — 10 lines vs 50 lines for the same setup. Caddy also handles HTTP/2 and HTTP/3 by default. Trade-offs: Nginx has wider ecosystem, better documented edge cases, more community examples, proven performance at extreme scale. For a VPS / small team / side project: Caddy wins on simplicity and zero-ops TLS.' },
-            { q: 'How does Docker Compose healthcheck + depends_on ensure database-ready startup?', a: 'Without healthcheck: depends_on: db just waits for the db CONTAINER to start — not for Postgres to be ready to accept connections. The Spring Boot app starts, tries to connect to Postgres, fails (pg is still initializing), and crashes. With healthcheck on db service: pg_isready -U user runs every 10s; Compose marks db as "healthy" only when it returns 0. depends_on with condition: service_healthy makes the app wait until db is truly ready before starting. This eliminates the startup race condition. Spring Boot then connects successfully on first attempt.' },
-            { q: 'What is the .env file pattern for Docker Compose secrets and what are its limitations?', a: 'Docker Compose automatically reads a .env file in the same directory and substitutes $VAR or \${VAR} in docker-compose.yml. Production workflow: .env is .gitignored, manually maintained on the VPS with chmod 600, contains DB passwords, JWT secrets, API keys. Limitations: .env is a plain text file on disk — if the server is compromised, all secrets are exposed. Better alternatives: Docker Swarm secrets (encrypted), Kubernetes Secrets (base64, mountable), cloud secret managers (AWS Secrets Manager, HashiCorp Vault) which inject secrets at runtime. For personal projects and small teams: .env + chmod 600 + disk encryption (most VPS providers offer) is acceptable. For enterprise: use a proper secret store.' }
-          ]
-        }
-      ]
-    },
-
-    {
-      id: '11.3',
-      title: 'Spring Security, OAuth2 & Per-User Data Isolation',
-      hours: 4,
-      sections: [
-        {
-          title: 'Spring Security — JWT, OAuth2 & Multi-Tenant Isolation',
-          notes: `## Spring Security — JWT, OAuth2 & Multi-Tenant Isolation
+            ],
+            flashcards: [
+              {
+                q: `Why use Caddy instead of Nginx for a VPS deployment?`,
+                a: `Caddy's killer feature: automatic HTTPS via Let's Encrypt with zero configuration. No need to: install certbot, write cron jobs for renewal, configure SSL certificate paths, handle renewal failures. Caddy auto-obtains and renews TLS certificates. Caddyfile syntax is dramatically simpler than Nginx config — 10 lines vs 50 lines for the same setup. Caddy also handles HTTP/2 and HTTP/3 by default. Trade-offs: Nginx has wider ecosystem, better documented edge cases, more community examples, proven performance at extreme scale. For a VPS / small team / side project: Caddy wins on simplicity and zero-ops TLS.`
+              },
+              {
+                q: `How does Docker Compose healthcheck + depends_on ensure database-ready startup?`,
+                a: `Without healthcheck: depends_on: db just waits for the db CONTAINER to start — not for Postgres to be ready to accept connections. The Spring Boot app starts, tries to connect to Postgres, fails (pg is still initializing), and crashes. With healthcheck on db service: pg_isready -U user runs every 10s; Compose marks db as "healthy" only when it returns 0. depends_on with condition: service_healthy makes the app wait until db is truly ready before starting. This eliminates the startup race condition. Spring Boot then connects successfully on first attempt.`
+              },
+              {
+                q: `What is the .env file pattern for Docker Compose secrets and what are its limitations?`,
+                a: `Docker Compose automatically reads a .env file in the same directory and substitutes $VAR or \${VAR} in docker-compose.yml. Production workflow: .env is .gitignored, manually maintained on the VPS with chmod 600, contains DB passwords, JWT secrets, API keys. Limitations: .env is a plain text file on disk — if the server is compromised, all secrets are exposed. Better alternatives: Docker Swarm secrets (encrypted), Kubernetes Secrets (base64, mountable), cloud secret managers (AWS Secrets Manager, HashiCorp Vault) which inject secrets at runtime. For personal projects and small teams: .env + chmod 600 + disk encryption (most VPS providers offer) is acceptable. For enterprise: use a proper secret store.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `11.3`,
+        title: `Spring Security, OAuth2 & Per-User Data Isolation`,
+        hours: 4,
+        sections: [
+          {
+            title: `Spring Security — JWT, OAuth2 & Multi-Tenant Isolation`,
+            notes: `## Spring Security — JWT, OAuth2 & Multi-Tenant Isolation
 
 ### Spring Security Architecture
 
@@ -28106,8 +30172,8 @@ public class AdminService {
     public void deleteUser(Long userId) { ... }
 }
 \`\`\``,
-          code: [
-            `import io.jsonwebtoken.*;
+            code: [
+              `import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.security.core.*;
 import org.springframework.security.authentication.*;
@@ -28194,7 +30260,7 @@ class JwtAuthenticationFilter extends OncePerRequestFilter {
         chain.doFilter(req, res);
     }
 }`,
-            `import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+              `import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.*;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.*;
@@ -28241,12 +30307,12 @@ public class SecurityConfig {
                 .authenticationEntryPoint((req, res, e) -> {
                     res.setStatus(401);
                     res.setContentType("application/json");
-                    res.getWriter().write("{\"error\":\"Unauthorized\"}");
+                    res.getWriter().write("{"error":"Unauthorized"}");
                 })
                 .accessDeniedHandler((req, res, e) -> {
                     res.setStatus(403);
                     res.setContentType("application/json");
-                    res.getWriter().write("{\"error\":\"Forbidden\"}");
+                    res.getWriter().write("{"error":"Forbidden"}");
                 })
             )
             .build();
@@ -28267,16 +30333,24 @@ public class SecurityConfig {
         };
     }
 }`
-          ],
-          flashcards: [
-            { q: 'What is the difference between authentication and authorization in Spring Security?', a: 'Authentication: verifying WHO you are — "is this user who they claim to be?" Spring Security handles this via AuthenticationManager, supporting: username/password (UserDetailsService), JWT (BearerTokenAuthenticationFilter), OAuth2 (social login). Result: a populated SecurityContext with an Authentication object. Authorization: verifying WHAT you\'re allowed to do — "can this authenticated user access this resource?" Spring enforces this via: URL patterns (authorizeHttpRequests), method annotations (@PreAuthorize), domain object security (@PostAuthorize). 401 = not authenticated. 403 = authenticated but not authorized.' },
-            { q: 'What are the security trade-offs of JWT vs server-side sessions?', a: 'JWT (stateless): server stores nothing — scales horizontally easily, no shared session store needed. Trade-off: can\'t revoke a JWT before expiry. If a JWT is stolen or user is banned, the token remains valid until expiry. Mitigation: short expiry (15-60 min) + refresh tokens stored in DB (can be revoked). Server-side sessions (stateful): server stores session in DB/Redis — can revoke instantly (delete session), but requires sticky sessions or shared session store in multi-node deployments. For most APIs: JWT with short expiry + refresh token rotation is the right choice. For high-security (banking): server-side sessions or short JWT + refresh token revocation list.' },
-            { q: 'How do you implement per-user data isolation in a multi-tenant Spring Boot app?', a: 'Three layers of defense: (1) Query-level: always filter by userId in repository methods — findByIdAndUserId() not findById(). Inject current user from SecurityContextHolder, never trust userId from request body. (2) Service-level: extract userId from SecurityContext in service methods. Return 404 (not 403) if a user tries to access another user\'s resource — don\'t reveal existence. (3) Database-level (optional): PostgreSQL Row Level Security (RLS) — CREATE POLICY on tables that automatically filters by current_setting(\'app.user_id\'). Even a flawed query can\'t leak cross-tenant data. Method security (@PreAuthorize) provides a fourth layer for admin operations.' }
-          ]
-        }
-      ]
-    },
-
-  ]
-},
+            ],
+            flashcards: [
+              {
+                q: `What is the difference between authentication and authorization in Spring Security?`,
+                a: `Authentication: verifying WHO you are — "is this user who they claim to be?" Spring Security handles this via AuthenticationManager, supporting: username/password (UserDetailsService), JWT (BearerTokenAuthenticationFilter), OAuth2 (social login). Result: a populated SecurityContext with an Authentication object. Authorization: verifying WHAT you're allowed to do — "can this authenticated user access this resource?" Spring enforces this via: URL patterns (authorizeHttpRequests), method annotations (@PreAuthorize), domain object security (@PostAuthorize). 401 = not authenticated. 403 = authenticated but not authorized.`
+              },
+              {
+                q: `What are the security trade-offs of JWT vs server-side sessions?`,
+                a: `JWT (stateless): server stores nothing — scales horizontally easily, no shared session store needed. Trade-off: can't revoke a JWT before expiry. If a JWT is stolen or user is banned, the token remains valid until expiry. Mitigation: short expiry (15-60 min) + refresh tokens stored in DB (can be revoked). Server-side sessions (stateful): server stores session in DB/Redis — can revoke instantly (delete session), but requires sticky sessions or shared session store in multi-node deployments. For most APIs: JWT with short expiry + refresh token rotation is the right choice. For high-security (banking): server-side sessions or short JWT + refresh token revocation list.`
+              },
+              {
+                q: `How do you implement per-user data isolation in a multi-tenant Spring Boot app?`,
+                a: `Three layers of defense: (1) Query-level: always filter by userId in repository methods — findByIdAndUserId() not findById(). Inject current user from SecurityContextHolder, never trust userId from request body. (2) Service-level: extract userId from SecurityContext in service methods. Return 404 (not 403) if a user tries to access another user's resource — don't reveal existence. (3) Database-level (optional): PostgreSQL Row Level Security (RLS) — CREATE POLICY on tables that automatically filters by current_setting('app.user_id'). Even a flawed query can't leak cross-tenant data. Method security (@PreAuthorize) provides a fourth layer for admin operations.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
 ];
