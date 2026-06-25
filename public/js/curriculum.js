@@ -46733,184 +46733,884 @@ kubectl exec deploy/order-service -n orders-prod -- \\
       {
         id: `8.1`,
         title: `BPMN & Workflow Fundamentals`,
-        hours: 3,
+        hours: 4,
         sections: [
           {
-            title: `BPMN 2.0 — Business Process Model & Notation`,
-            notes: `## BPMN 2.0 — Business Process Model & Notation
+            id: `8.1.1`,
+            title: `Why Process Orchestration`,
+            notes: `## Orchestration vs Choreography
 
-### What is BPMN?
+In the **saga module** you saw two ways to coordinate a distributed business transaction:
 
-\`\`\`
-BPMN (Business Process Model and Notation) is a standard for visually describing
-business processes. Bridges the gap between business analysts and developers.
+- **Choreography** — each service reacts to events and emits its own. No central brain. Great for loose coupling, *terrible* for visibility: the end-to-end flow exists only as an emergent property of who-listens-to-what. "Where is order #4711 stuck?" has no single owner.
+- **Orchestration** — a central component (the *orchestrator*) explicitly drives the steps: call A, then B, if B fails compensate A. The flow is a first-class, inspectable artifact.
 
-Why use it?
-  - Visual → business stakeholders and developers read the same diagram
-  - Standard → tools like Camunda, Flowable, jBPM all execute BPMN XML
-  - Durable → long-running processes survive server restarts (state in DB)
-  - Auditable → each step is logged (when, who, how long)
-\`\`\`
+A **workflow engine** (Camunda, Temporal, Flowable, zeebe) is an orchestrator that *persists* the state of every running instance and survives restarts. That persistence is the whole point.
 
-### Core BPMN Elements
+> [!TIP]
+> The senior framing: a workflow engine is a **durable state machine as a service**. You hand it a graph (BPMN) and it guarantees that a token started at "Order Received" will eventually reach "Order Shipped" or a defined error end — across crashes, redeploys, and multi-day waits.
 
-\`\`\`
-Events (circles):
-  ○ Start Event        — where the process begins
-  ◎ Intermediate Event — something happens mid-process (timer, message, signal)
-  ● End Event          — where the process ends
+### What orchestration buys you
 
-Tasks (rectangles):
-  [Service Task]   — automated step (Java code / API call)
-  [User Task]      — human completes a form in a UI
-  [Script Task]    — inline script (Groovy/JS)
-  [Send Task]      — sends a message (email, Kafka)
-  [Receive Task]   — waits for an incoming message
+| Capability | Hand-rolled services | Workflow engine |
+|---|---|---|
+| End-to-end visibility | Build it yourself (tracing + dashboards) | Built-in (Operate / Cockpit shows live token position) |
+| Long-running waits (days) | Cron + DB flags + careful idempotency | Native timers; instance sleeps cheaply |
+| Human tasks (approvals) | Custom task table + UI | Native user tasks + Tasklist |
+| Compensation / rollback | Manual saga code | Compensation events wired into the model |
+| Retry & incident handling | Per-service plumbing | Engine retries jobs, raises *incidents* on exhaustion |
+| Versioning live instances | Migration scripts | First-class instance migration |
 
-Gateways (diamonds):
-  ◇ Exclusive (XOR) — exactly ONE path based on condition (if/else)
-  ◈ Parallel  (AND) — ALL paths execute simultaneously
-  ⊕ Inclusive (OR)  — ONE OR MORE paths based on conditions
+### Long-running processes are the killer use case
 
-Subprocesses:
-  [+Subprocess]    — group of tasks collapsed into one box
-  ⟳ Multi-instance — repeat subprocess per item in a collection (like a for-each)
-\`\`\`
+A synchronous request/response lives milliseconds. A *business* process — onboarding, claims, loan approval, order fulfilment — lives **hours to weeks** and interleaves automated steps, timeouts, and humans. You cannot hold a thread or a DB transaction open for three days. The engine models that wait as a persisted token sitting on a *receive* or *timer* event, consuming no thread.
 
-### Sample Process: Order Fulfillment
+> [!WARNING]
+> Orchestration centralizes coordination logic, not business logic. If your service tasks start containing the *rules* of each domain, you've recreated a monolith with extra latency. Keep service tasks thin: they call a domain service and return.
 
-\`\`\`
-○ Order Received
-    │
-[Service] Validate Order ────(fail)──→ ● Order Rejected
-    │(pass)
-[Service] Reserve Inventory
-    │
-◇ Stock Available?
-  ├─(yes)─→ [Service] Charge Payment
-  │              │
-  │          ◇ Payment OK?
-  │            ├─(yes)─→ [Service] Ship Order → ● Order Complete
-  │            └─(no) ─→ [Service] Release Stock → ● Order Failed
-  └─(no) ─→ [User] Notify Customer → [Receive] Wait for Response
-                 │
-             ◇ Customer wants backorder?
-               ├─(yes)→ [Service] Create Backorder → ● Backordered
-               └─(no) → ● Order Cancelled
+### The orchestrator pattern, drawn
+
+\`\`\`mermaid
+flowchart LR
+  S((Start)) --> R[Reserve Inventory]
+  R --> P[Charge Payment]
+  P --> G{Payment OK?}
+  G -->|yes| Sh[Ship Order]
+  G -->|no| C[Compensate: Release Inventory]
+  Sh --> E((End: Fulfilled))
+  C --> EF((End: Cancelled))
 \`\`\`
 
-### BPMN in XML (Camunda compatible)
+The engine owns this graph. Each box is a call out to a service; the diamond is a decision the engine evaluates; the engine persists which box the token sits on after every step.
 
-\`\`\`xml
-<?xml version="1.0" encoding="UTF-8"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
-             targetNamespace="http://mycompany.com/processes">
-
-  <process id="order-fulfillment" name="Order Fulfillment" isExecutable="true">
-
-    <startEvent id="start" name="Order Received">
-      <outgoing>flow1</outgoing>
-    </startEvent>
-
-    <serviceTask id="validate" name="Validate Order"
-                 camunda:class="com.company.delegate.ValidateOrderDelegate">
-      <incoming>flow1</incoming>
-      <outgoing>flow2</outgoing>
-    </serviceTask>
-
-    <exclusiveGateway id="gw-stock" name="Stock Available?">
-      <incoming>flow2</incoming>
-      <outgoing>flow-yes</outgoing>
-      <outgoing>flow-no</outgoing>
-    </exclusiveGateway>
-
-    <sequenceFlow id="flow-yes" sourceRef="gw-stock" targetRef="charge-payment">
-      <conditionExpression>\${stockAvailable == true}</conditionExpression>
-    </sequenceFlow>
-
-    <serviceTask id="charge-payment" name="Charge Payment"
-                 camunda:delegateExpression="\${paymentDelegate}">
-      <incoming>flow-yes</incoming>
-      <outgoing>flow3</outgoing>
-    </serviceTask>
-
-    <endEvent id="end-complete" name="Order Complete">
-      <incoming>flow3</incoming>
-    </endEvent>
-
-  </process>
-</definitions>
-\`\`\``,
+> [!SUCCESS]
+> Rule of thumb: reach for orchestration when the *coordination* is the hard part — many steps, long waits, humans, compensation, and someone (ops, support, compliance) needs to ask "what is the state of instance X right now?"`,
             code: [
-              `import org.camunda.bpm.engine.delegate.*;
-import org.springframework.stereotype.*;
+              {
+                lang: `text`,
+                title: `Choreography vs orchestration — the same flow, two shapes`,
+                runnable: false,
+                note: `Conceptual. Choreography = services + a broker; orchestration = one engine owning the graph.`,
+                code: `CHOREOGRAPHY (no central owner)
+  OrderService      --OrderPlaced-->        (topic)
+  InventoryService  <--OrderPlaced  ; emits InventoryReserved
+  PaymentService    <--InventoryReserved ; emits PaymentCaptured
+  ShippingService   <--PaymentCaptured ; emits OrderShipped
+  -> Where is order 4711? Reconstruct from logs/events across 4 services.
 
-// Camunda JavaDelegate — implements a Service Task in BPMN
-@Component("validateOrderDelegate")
-public class ValidateOrderDelegate implements JavaDelegate {
-
-    @Override
-    public void execute(DelegateExecution execution) throws Exception {
-        // Read process variables (set when process started)
-        String orderId = (String) execution.getVariable("orderId");
-        Long customerId = (Long) execution.getVariable("customerId");
-        Double amount = (Double) execution.getVariable("amount");
-
-        System.out.println("[BPMN] Validating order: " + orderId);
-
-        // Business logic
-        boolean valid = orderId != null
-            && customerId != null
-            && amount != null
-            && amount > 0;
-
-        // Set output variables — used by gateways and later tasks
-        execution.setVariable("orderValid", valid);
-
-        if (!valid) {
-            execution.setVariable("rejectReason", "Missing required fields or invalid amount");
-            System.out.println("[BPMN] Order invalid: " + execution.getVariable("rejectReason"));
-        } else {
-            System.out.println("[BPMN] Order valid — amount: " + amount);
-        }
-    }
-}
-
-// Inventory check delegate
-@Component("inventoryDelegate")
-class InventoryDelegate implements JavaDelegate {
-    @Override
-    public void execute(DelegateExecution execution) throws Exception {
-        String productId = (String) execution.getVariable("productId");
-        int qty = ((Number) execution.getVariable("quantity")).intValue();
-
-        // Check stock (simplified)
-        int available = 50; // would query DB in real code
-        boolean inStock = available >= qty;
-
-        execution.setVariable("stockAvailable", inStock);
-        if (inStock) {
-            execution.setVariable("reservationId", "RES-" + productId + "-" + qty);
-            System.out.println("[BPMN] Reserved " + qty + " units of " + productId);
-        } else {
-            System.out.println("[BPMN] Out of stock: " + productId + " needs " + qty);
-        }
-    }
-}`
+ORCHESTRATION (engine owns the graph)
+  WorkflowEngine drives:
+    reserve() -> capture() -> ship()
+    on capture() failure -> releaseInventory() (compensation)
+  -> Where is order 4711? Ask the engine: "token is on 'Charge Payment', retry 2/3".`
+              }
             ],
             flashcards: [
               {
-                q: `What are the three types of BPMN gateways and when do you use each?`,
-                a: `Exclusive (XOR) gateway: exactly ONE outgoing path is taken based on a condition — like an if/else. Each outgoing sequence flow has a condition expression; the first matching one wins. Use for branching decisions (is payment approved?). Parallel (AND) gateway: ALL outgoing paths execute simultaneously — like fork/join. Use when multiple steps can happen concurrently (send email AND notify warehouse at the same time). A matching join gateway waits for ALL branches before continuing. Inclusive (OR) gateway: ONE OR MORE paths execute based on conditions — like multiple if statements where several can be true. More flexible than XOR but complex to reason about; use sparingly.`
+                q: `Define orchestration vs choreography in one sentence each.`,
+                a: `Orchestration: a central component explicitly drives the steps and holds the flow as a first-class artifact. Choreography: services react to and emit events with no central coordinator, so the flow is emergent.`
               },
               {
-                q: `What is a Service Task in BPMN and how does it execute in Camunda?`,
-                a: `A Service Task is an automated step — no human interaction. In Camunda it can be implemented three ways: (1) JavaDelegate: implement JavaDelegate interface, annotate with @Component, reference via camunda:delegateExpression="\${myBean}". Most common in Spring. (2) Class: camunda:class="com.example.MyDelegate" — Camunda instantiates the class directly, no Spring injection. (3) External Task: camunda engine creates a job, a separate worker polls and completes it (good for polyglot, works across network). JavaDelegate gets a DelegateExecution to read/write process variables and query task metadata.`
+                q: `What is the single most important thing a workflow engine adds over a plain orchestrator service?`,
+                a: `Durable persistence of every running instance’s state, so a process survives crashes, redeploys, and multi-day waits without holding threads or open transactions.`
               },
               {
-                q: `Why use a workflow engine (Camunda/Flowable) instead of just code?`,
-                a: `Regular code: long-running processes (e.g. order → payment → shipping → delivery over days) require complex state management. If the server restarts, in-memory state is lost. Manual retry logic for failures. No visibility into where a process is stuck. Workflow engine solves this: state is persisted to DB after each step — processes survive restarts. Visual: business analysts can read and edit the BPMN diagram. Audit log: every task completion is recorded with timestamps. Human tasks: user tasks assign work items to people via a task inbox. Timers: "escalate if not approved within 48h." SLAs and monitoring built in.`
+                q: `Why can’t you model a 3-day approval wait with a thread or DB transaction?`,
+                a: `Threads and transactions are scarce and time-bounded; holding either open for days exhausts pools and locks. The engine persists a token on a receive/timer event consuming no thread until the wait ends.`
+              },
+              {
+                q: `Senior framing: "a workflow engine is a ___ as a service."`,
+                a: `A durable state machine as a service — you give it a graph (BPMN) and it guarantees the token reaches an end state across failures.`
+              },
+              {
+                q: `What is the visibility problem with choreography?`,
+                a: `No single component knows the end-to-end flow; answering "where is instance X stuck?" requires reconstructing state from events/logs across many services.`
+              },
+              {
+                q: `Name three capabilities orchestration gives you cheaply that are painful by hand.`,
+                a: `Long-running timers (days), native human/user tasks with approvals, and built-in compensation/retry/incident handling with live instance visibility.`
+              },
+              {
+                q: `What is the anti-pattern when adopting orchestration?`,
+                a: `Letting service tasks accumulate domain business logic, recreating a monolith inside the engine. Keep service tasks thin: call a domain service and return.`
+              },
+              {
+                q: `When is orchestration the wrong tool?`,
+                a: `Short synchronous request/response, a single step, or simple fire-and-forget eventing — the engine’s persistence and coordination overhead buys nothing.`
+              },
+              {
+                q: `Why is "the flow as a first-class artifact" valuable to non-engineers?`,
+                a: `Ops, support, and compliance can see and query the live position of any instance and the model itself, instead of relying on engineers to reconstruct it.`
+              },
+              {
+                q: `What is an "incident" in workflow-engine terms?`,
+                a: `A persisted record that a step failed its retries and now needs human/operator attention — the engine surfaces it instead of silently dropping work.`
+              },
+              {
+                q: `How does the orchestrator pattern relate to the saga pattern?`,
+                a: `An orchestrated saga uses a central coordinator (the engine) to run forward steps and trigger compensations on failure, versus a choreographed saga where each service compensates by reacting to events.`
+              }
+            ]
+          },
+          {
+            id: `8.1.2`,
+            title: `BPMN 2.0 Core Elements & Token Flow`,
+            notes: `## BPMN 2.0: the elements you must know cold
+
+BPMN (Business Process Model and Notation) 2.0 is an OMG standard with an XML serialization. Execution semantics are described with **tokens**: a process instance starts when the engine drops a token on a start event; the token moves along **sequence flows**; an element "executes" when a token arrives; the instance ends when no tokens remain.
+
+### Element categories
+
+| Category | Elements | Role |
+|---|---|---|
+| **Events** | start, end, intermediate (catch/throw), boundary | Something *happens* — trigger, wait, signal completion |
+| **Activities (tasks)** | service, user, script, send, receive, business-rule, manual | Work *gets done* |
+| **Gateways** | exclusive (XOR), parallel (AND), inclusive (OR), event-based | Routing / token split & merge |
+| **Connecting** | sequence flow, message flow, association | How elements link |
+| **Swimlanes** | pool, lane | Who/what owns the work |
+| **Data** | data object, data store | Data the flow reads/writes |
+
+### Events
+
+- **Start** — creates the instance + initial token. Variants: none, message (started by a message), timer (started on a schedule), signal.
+- **End** — consumes a token. Variants: none, error (throws a BPMN error), terminate (kills *all* tokens in the instance), message.
+- **Intermediate** — sits *in* the flow. **Catching** (wait): timer (wait 2 days), message (wait for receipt), signal. **Throwing** (emit): message, signal.
+- **Boundary** — attached to an activity’s edge. **Interrupting** (cancels the activity when it fires — e.g. a timeout) or **non-interrupting** (spawns a parallel path, activity keeps running).
+
+### Tasks
+
+- **Service task** — automated work the engine delegates to your code (a delegate, an external task, or a job worker).
+- **User task** — waits for a human; appears in a task list.
+- **Script task** — inline script (FEEL/Groovy/JS). Use sparingly; logic-in-model rots.
+- **Send / Receive task** — send a message / block waiting for one.
+- **Business-rule task** — evaluates a DMN decision table.
+
+### Gateways — the part people get wrong
+
+| Gateway | Symbol | Split behaviour | Merge behaviour |
+|---|---|---|---|
+| **Exclusive (XOR)** | × | Takes **exactly one** outgoing flow (first condition true, or default) | Pass-through: each arriving token proceeds; no sync |
+| **Parallel (AND)** | + | Activates **all** outgoing flows (token splits into N) | **Waits** for a token on every incoming flow, then merges to one |
+| **Inclusive (OR)** | ○ in × | Activates **every** outgoing flow whose condition is true (≥1) | Waits for all *active* incoming branches (the tricky one) |
+| **Event-based** | pentagon | Routes to whichever *event* fires first (message vs timer race) | n/a |
+
+> [!DANGER]
+> The classic deadlock: split with a **parallel** gateway, merge with an **exclusive** gateway. The parallel split creates 2 tokens; the exclusive merge passes each one through → you fire the downstream path **twice**. Conversely, split exclusive + merge parallel → the parallel join waits forever for a token that never comes → stuck instance. **Match your split and join gateway types.**
+
+> [!TIP]
+> Exclusive gateway evaluates conditions **top-to-bottom** and takes the first true one; always set a **default flow** or an instance can fail with "no outgoing flow could be selected".
+
+### Token flow, visualized
+
+\`\`\`mermaid
+flowchart LR
+  S((Start)) --> A[Validate Order]
+  A --> X1{Amount > 10k?}
+  X1 -->|yes| AP[Manager Approval]
+  X1 -->|no default| P1
+  AP --> P1
+  P1{{Parallel split}} --> R[Reserve Stock]
+  P1 --> N[Notify Warehouse]
+  R --> P2{{Parallel join}}
+  N --> P2
+  P2 --> Sh[Ship]
+  Sh --> E((End))
+\`\`\`
+
+Trace it: 1 token at Start → Validate → the XOR sends it down exactly one branch → the parallel split (P1) turns 1 token into 2 (Reserve + Notify run concurrently) → the parallel join (P2) waits for **both** then merges back to 1 → Ship → End.
+
+### Pools & lanes
+
+A **pool** is a participant (your company; the bank). A **lane** subdivides a pool by role/system (Sales, Warehouse). Cross-pool communication is via **message flows** (dashed), never sequence flows — you don’t share a token across organizational boundaries.
+
+> [!SUCCESS]
+> If you can read a BPMN diagram and predict exactly how many tokens exist at each step and where they wait, you understand BPMN. Everything else is XML.`,
+            code: [
+              {
+                lang: `text`,
+                title: `BPMN 2.0 XML — exclusive gateway with a default flow`,
+                runnable: false,
+                note: `Real BPMN serialization. Note conditionExpression on flows and the default attribute on the gateway.`,
+                code: `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             targetNamespace="urn:orders">
+  <process id="orderProcess" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow sourceRef="start" targetRef="validate"/>
+
+    <serviceTask id="validate" name="Validate Order"
+                 camunda:type="external" camunda:topic="validate-order"/>
+    <sequenceFlow sourceRef="validate" targetRef="amountGw"/>
+
+    <exclusiveGateway id="amountGw" default="flowSmall"/>
+    <sequenceFlow id="flowBig" sourceRef="amountGw" targetRef="approve">
+      <conditionExpression xsi:type="tFormalExpression">
+        \${amount &gt; 10000}
+      </conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flowSmall" sourceRef="amountGw" targetRef="ship"/>
+
+    <userTask id="approve" name="Manager Approval"/>
+    <sequenceFlow sourceRef="approve" targetRef="ship"/>
+
+    <serviceTask id="ship" name="Ship Order"
+                 camunda:type="external" camunda:topic="ship-order"/>
+    <sequenceFlow sourceRef="ship" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+</definitions>`
+              },
+              {
+                lang: `java`,
+                title: `Self-contained token-flow interpreter (no libraries, runnable)`,
+                runnable: true,
+                note: `A toy engine: nodes, sequence flows, an exclusive gateway and a parallel split/join. Demonstrates token semantics. java TokenFlowDemo`,
+                code: `import java.util.*;
+import java.util.function.Predicate;
+
+/**
+ * A ~120-line toy process interpreter that models BPMN token flow:
+ * tasks, an EXCLUSIVE gateway (one outgoing flow) and a PARALLEL
+ * split/join (fan-out into N tokens, join waits for all N).
+ *
+ * It is deliberately tiny: no persistence, no async. The point is the
+ * SEMANTICS — how many tokens exist and where they wait.
+ */
+public class TokenFlowDemo {
+
+  enum Kind { START, TASK, XOR, PAR_SPLIT, PAR_JOIN, END }
+
+  static final class Node {
+    final String id; final Kind kind;
+    final List<Flow> out = new ArrayList<>();
+    int joinArrived = 0;           // for PAR_JOIN: how many tokens have arrived
+    int joinExpected = 0;          // set when wiring
+    Node(String id, Kind kind) { this.id = id; this.kind = kind; }
+  }
+
+  static final class Flow {
+    final Node target; final Predicate<Map<String,Object>> cond; final boolean isDefault;
+    Flow(Node t, Predicate<Map<String,Object>> c, boolean d) { target=t; cond=c; isDefault=d; }
+  }
+
+  static void to(Node from, Node target) { from.out.add(new Flow(target, v -> true, false)); }
+  static void when(Node from, Node target, Predicate<Map<String,Object>> c) {
+    from.out.add(new Flow(target, c, false));
+  }
+  static void def(Node from, Node target) { from.out.add(new Flow(target, v -> false, true)); }
+
+  /** Run one instance, printing token movement. Returns reached end ids. */
+  static List<String> run(Node start, Map<String,Object> vars) {
+    Deque<Node> tokens = new ArrayDeque<>();
+    tokens.push(start);
+    List<String> ended = new ArrayList<>();
+    int liveTokens = 1;
+
+    while (!tokens.isEmpty()) {
+      Node n = tokens.pop();
+      System.out.println("  token at [" + n.kind + "] " + n.id + "  (live=" + liveTokens + ")");
+
+      switch (n.kind) {
+        case END -> { ended.add(n.id); liveTokens--; }
+        case PAR_SPLIT -> {
+          liveTokens--;                              // this token is consumed...
+          for (Flow f : n.out) { tokens.push(f.target); liveTokens++; }  // ...replaced by N
+        }
+        case PAR_JOIN -> {
+          n.joinArrived++;
+          liveTokens--;
+          if (n.joinArrived == n.joinExpected) {     // all branches in: emit one token
+            n.joinArrived = 0;
+            tokens.push(n.out.get(0).target); liveTokens++;
+          } // else: this token waits (is absorbed) until siblings arrive
+        }
+        case XOR -> {
+          Flow chosen = null;
+          for (Flow f : n.out) if (!f.isDefault && f.cond.test(vars)) { chosen = f; break; }
+          if (chosen == null) for (Flow f : n.out) if (f.isDefault) { chosen = f; break; }
+          if (chosen == null) throw new IllegalStateException("XOR " + n.id + ": no flow selectable");
+          System.out.println("    XOR -> " + chosen.target.id);
+          tokens.push(chosen.target);
+        }
+        default -> {                                  // START, TASK: pass token along single flow
+          if (n.out.isEmpty()) { liveTokens--; }
+          else tokens.push(n.out.get(0).target);
+        }
+      }
+    }
+    return ended;
+  }
+
+  public static void main(String[] args) {
+    Node start = new Node("start", Kind.START);
+    Node validate = new Node("validate", Kind.TASK);
+    Node xor = new Node("amountGw", Kind.XOR);
+    Node approve = new Node("approve", Kind.TASK);
+    Node split = new Node("split", Kind.PAR_SPLIT);
+    Node reserve = new Node("reserve", Kind.TASK);
+    Node notify = new Node("notify", Kind.TASK);
+    Node join = new Node("join", Kind.PAR_JOIN); join.joinExpected = 2;
+    Node ship = new Node("ship", Kind.TASK);
+    Node end = new Node("end", Kind.END);
+
+    to(start, validate);
+    to(validate, xor);
+    when(xor, approve, v -> ((int) v.get("amount")) > 10_000);
+    def(xor, split);
+    to(approve, split);
+    to(split, reserve); to(split, notify);
+    to(reserve, join);  to(notify, join);
+    to(join, ship);
+    to(ship, end);
+
+    System.out.println("== small order (amount=500): skips approval ==");
+    System.out.println("ended at: " + run(start, new HashMap<>(Map.of("amount", 500))));
+
+    join.joinArrived = 0;
+    System.out.println("\\n== big order (amount=50000): manager approval ==");
+    System.out.println("ended at: " + run(start, new HashMap<>(Map.of("amount", 50_000))));
+  }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `In BPMN execution semantics, what starts and ends a process instance?`,
+                a: `A start event drops the initial token (instance begins); the instance ends when no tokens remain (typically when all reach end events).`
+              },
+              {
+                q: `Exclusive gateway split vs merge behaviour?`,
+                a: `Split: takes exactly one outgoing flow (first true condition, else default). Merge: pass-through — each arriving token proceeds independently, no synchronization.`
+              },
+              {
+                q: `Parallel gateway split vs merge behaviour?`,
+                a: `Split: activates all outgoing flows, turning one token into N. Merge (join): waits until a token has arrived on every incoming flow, then emits one token.`
+              },
+              {
+                q: `What deadlock do you get from parallel-split + exclusive-merge, and from exclusive-split + parallel-merge?`,
+                a: `Parallel-split + exclusive-merge: exclusive merge passes each token through, so the downstream runs twice (duplicate execution). Exclusive-split + parallel-merge: the parallel join waits forever for a token from the un-taken branch — stuck instance.`
+              },
+              {
+                q: `Inclusive (OR) gateway semantics?`,
+                a: `Split: activates every outgoing flow whose condition is true (one or more). Merge: synchronizes only the branches that are actually active — harder to reason about, which is why XOR/AND are preferred.`
+              },
+              {
+                q: `What is an event-based gateway used for?`,
+                a: `Racing events: the token waits and routes to whichever catching event fires first (e.g. message received vs timer expired), enabling timeout-or-response patterns.`
+              },
+              {
+                q: `Interrupting vs non-interrupting boundary event?`,
+                a: `Interrupting cancels the attached activity when it fires (e.g. a timeout aborts the task). Non-interrupting leaves the activity running and spawns a parallel token down the boundary path.`
+              },
+              {
+                q: `Difference between a terminate end event and a none end event?`,
+                a: `A none end event consumes only its own token. A terminate end event kills ALL tokens in the instance immediately, ending the whole process even if other branches are mid-flight.`
+              },
+              {
+                q: `Catching vs throwing intermediate events?`,
+                a: `Catching events wait (timer, message-receive, signal-catch) and hold the token. Throwing events emit something (message-throw, signal-throw) and let the token pass immediately.`
+              },
+              {
+                q: `Why must an exclusive gateway have a default flow?`,
+                a: `Conditions are evaluated top-to-bottom and the first true one wins; if none match and there is no default, the instance fails with "no outgoing sequence flow could be selected".`
+              },
+              {
+                q: `How do two pools communicate in BPMN, and how do they not?`,
+                a: `Across pools you use message flows (dashed); you never connect them with sequence flows because a token does not cross an organizational/participant boundary.`
+              },
+              {
+                q: `Why prefer external service tasks / job workers over script tasks for logic?`,
+                a: `Script tasks embed business logic in the model where it is hard to test, version, and review; external tasks/workers keep logic in your codebase under normal CI/CD.`
+              }
+            ]
+          },
+          {
+            id: `8.1.3`,
+            title: `Process Patterns (Timers, Messages, Errors, Compensation, Multi-Instance, Sub-processes)`,
+            notes: `## The patterns that show up in real models
+
+### Timers
+- **Timer start** — schedule a process (cron-like).
+- **Intermediate timer (catch)** — "wait 2 days then continue."
+- **Boundary timer (interrupting)** — SLA/escalation: if a user task isn’t done in 24h, cancel it and route to escalation.
+- **Boundary timer (non-interrupting)** — "after 24h send a reminder, but keep waiting."
+
+ISO-8601: \`PT2H\` (duration, 2 hours), \`R3/PT10M\` (3 repetitions every 10 min), \`2026-12-31T23:59:59Z\` (date).
+
+### Message & signal events
+- **Message** — 1:1, correlated to **one** instance (by a correlation key, e.g. orderId). "PaymentConfirmed for order 4711."
+- **Signal** — 1:N broadcast, no correlation. "MarketClosed" fans out to *every* waiting instance. Use signals sparingly; correlation bugs hide here.
+
+> [!WARNING]
+> Message correlation is the #1 source of stuck instances. If the inbound message’s correlation key doesn’t match exactly one waiting instance, the message is dropped (or errors). Make correlation keys business-unique and log non-correlations.
+
+### Error & compensation events — saga-as-BPMN
+- **Error event** — a *business* error (not an exception): "InsufficientFunds". A throwing error end / boundary error event propagates up to a catching boundary error event on an enclosing activity/sub-process.
+- **Compensation** — *undo already-completed work*. You attach a **compensation boundary event** + a **compensation handler** to each step that has a side effect. When something later fails, a **compensation throw** (or error handler) triggers handlers for all completed steps **in reverse order**. This is exactly the saga compensating-transaction pattern, expressed in the model.
+
+\`\`\`mermaid
+flowchart LR
+  S((Start)) --> R[Reserve Stock]
+  R --> P[Capture Payment]
+  P --> Sh[Ship]
+  Sh --> E((End))
+  R -. compensate .-> RC[Release Stock]
+  P -. compensate .-> PC[Refund Payment]
+  P --> X{Capture failed?}
+  X -->|business error| CT[[Throw Compensation]]
+  CT --> EF((End: Cancelled))
+\`\`\`
+
+If payment capture raises a business error, the engine throws compensation: it runs *Refund Payment* (if capture partially happened) and *Release Stock* — only for steps that actually completed, in reverse order. No manual rollback bookkeeping.
+
+> [!TIP]
+> Compensation handlers must be **idempotent and tolerant**: they may run for a step that half-completed, and (with retries) may run more than once. "Release stock" should no-op if already released.
+
+### Multi-instance activities
+- **Parallel multi-instance** — run a task once per item in a collection, concurrently (fan-out to N suppliers). Completion condition can finish early ("3 of 5 quotes is enough").
+- **Sequential multi-instance** — one item at a time (rate-limited calls).
+
+### Sub-processes & call activities
+- **Embedded sub-process** — a grouped scope *inside* the same model. Useful for attaching a single boundary event (timer/error) over several steps.
+- **Event sub-process** — triggered by an event inside its parent scope; used for interrupt handling (cancel, error) without cluttering the main flow.
+- **Call activity** — invokes a **separate, reusable process definition** by id. This is how you compose and version sub-flows independently (the "shared library" of BPMN).
+
+| Construct | Lives where | Reusable? | Own version? | Typical use |
+|---|---|---|---|---|
+| Embedded sub-process | Inline | No | No (parent’s) | Group steps under one boundary event |
+| Event sub-process | Inline | No | No | Interrupt/error handling for a scope |
+| Call activity | Separate definition | Yes | Yes | Reusable sub-flow, independent deploy/version |
+
+> [!SUCCESS]
+> The saga compensation pattern is the single most asked BPMN interview pattern for backend seniors. Be able to draw: forward steps, compensation boundary + handler on each side-effecting step, and a compensation throw on the failure path — and explain reverse-order, idempotent execution.`,
+            code: [
+              {
+                lang: `text`,
+                title: `BPMN XML — boundary timer (SLA escalation) on a user task`,
+                runnable: false,
+                note: `Interrupting boundary timer cancels the task after the ISO-8601 duration and routes to escalation.`,
+                code: `<userTask id="review" name="Review Claim"/>
+<boundaryEvent id="slaTimer" attachedToRef="review" cancelActivity="true">
+  <timerEventDefinition>
+    <timeDuration xsi:type="tFormalExpression">PT24H</timeDuration>
+  </timerEventDefinition>
+</boundaryEvent>
+<sequenceFlow sourceRef="review"   targetRef="approve"/>
+<sequenceFlow sourceRef="slaTimer" targetRef="escalate"/>
+
+<!-- Non-interrupting reminder: keeps the task open, fires every 8h, max 3x -->
+<boundaryEvent id="reminder" attachedToRef="review" cancelActivity="false">
+  <timerEventDefinition>
+    <timeCycle xsi:type="tFormalExpression">R3/PT8H</timeCycle>
+  </timerEventDefinition>
+</boundaryEvent>
+<sequenceFlow sourceRef="reminder" targetRef="sendReminder"/>`
+              },
+              {
+                lang: `text`,
+                title: `BPMN XML — compensation boundary + handler (saga undo)`,
+                runnable: false,
+                note: `Each side-effecting task gets a compensation boundary event wired to an undo handler; a compensation throw triggers all completed handlers in reverse order.`,
+                code: `<serviceTask id="reserveStock" name="Reserve Stock" camunda:type="external" camunda:topic="reserve"/>
+<boundaryEvent id="reserveComp" attachedToRef="reserveStock">
+  <compensateEventDefinition/>
+</boundaryEvent>
+<serviceTask id="releaseStock" name="Release Stock" isForCompensation="true"
+             camunda:type="external" camunda:topic="release"/>
+<association associationDirection="One" sourceRef="reserveComp" targetRef="releaseStock"/>
+
+<serviceTask id="capture" name="Capture Payment" camunda:type="external" camunda:topic="capture"/>
+<boundaryEvent id="captureErr" attachedToRef="capture">
+  <errorEventDefinition errorRef="InsufficientFunds"/>
+</boundaryEvent>
+<sequenceFlow sourceRef="captureErr" targetRef="throwComp"/>
+
+<!-- Throwing compensation: runs ALL completed compensation handlers in reverse order -->
+<intermediateThrowEvent id="throwComp">
+  <compensateEventDefinition/>
+</intermediateThrowEvent>
+<sequenceFlow sourceRef="throwComp" targetRef="cancelled"/>
+<endEvent id="cancelled"/>`
+              },
+              {
+                lang: `java`,
+                title: `Idempotent compensation handler (worker side)`,
+                runnable: false,
+                note: `needs Camunda/Spring. Compensation handlers run in reverse order and may run more than once — they must be idempotent.`,
+                code: `// External-task worker that UNDOES a reservation. Must tolerate:
+//  - being called for a reservation that was never created (no-op)
+//  - being called twice (retry) — second call must also no-op.
+@Component
+public class ReleaseStockWorker {
+
+  private final InventoryService inventory;
+
+  public ReleaseStockWorker(InventoryService inventory) { this.inventory = inventory; }
+
+  // topic "release" wired from the compensation handler service task
+  public void handle(ExternalTask task, ExternalTaskService svc) {
+    String reservationId = task.getVariable("reservationId");
+    try {
+      // releaseIfHeld returns false when there is nothing to release — idempotent.
+      boolean released = inventory.releaseIfHeld(reservationId);
+      log.info("compensation release reservation={} released={}", reservationId, released);
+      svc.complete(task);
+    } catch (TransientException e) {
+      // let the engine retry with backoff; after retries are exhausted -> incident
+      svc.handleFailure(task, e.getMessage(), stack(e), task.getRetries() == null ? 3 : task.getRetries() - 1, 30_000L);
+    }
+  }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Message event vs signal event — cardinality and correlation?`,
+                a: `Message: 1:1, correlated to exactly one instance by a key (e.g. orderId). Signal: 1:N broadcast with no correlation, delivered to all waiting catchers.`
+              },
+              {
+                q: `Why are stuck instances often a message-correlation problem?`,
+                a: `If the inbound message’s correlation key matches zero or more-than-one waiting instance, it cannot be delivered to a single instance and is dropped or errors — leaving the instance waiting forever.`
+              },
+              {
+                q: `Difference between a BPMN error event and a thrown Java exception?`,
+                a: `A BPMN error is a modeled business outcome (e.g. InsufficientFunds) that propagates to a catching boundary error event; a Java exception is a technical failure that triggers engine retries and ultimately an incident.`
+              },
+              {
+                q: `How does BPMN compensation implement the saga pattern?`,
+                a: `Each side-effecting step has a compensation boundary event linked to an undo handler; on failure a compensation throw runs the handlers for completed steps in reverse order — the compensating-transaction saga, in the model.`
+              },
+              {
+                q: `In what order do compensation handlers execute, and which ones run?`,
+                a: `Reverse order of completion, and only for activities that actually completed successfully — the engine tracks which side effects occurred.`
+              },
+              {
+                q: `Why must compensation handlers be idempotent?`,
+                a: `They may run for a step that only half-completed and, due to engine retries, may run more than once; the undo must be safe to repeat (e.g. "release if held").`
+              },
+              {
+                q: `Parallel vs sequential multi-instance — when to use each?`,
+                a: `Parallel multi-instance fans out one token per collection item concurrently (e.g. quote N suppliers); sequential processes items one at a time (e.g. rate-limited external calls).`
+              },
+              {
+                q: `What is a multi-instance completion condition good for?`,
+                a: `Finishing early — e.g. "stop once 3 of 5 suppliers respond" — without waiting for all instances.`
+              },
+              {
+                q: `Embedded sub-process vs call activity?`,
+                a: `Embedded sub-process is an inline scope sharing the parent’s version (group steps under one boundary event); a call activity invokes a separate, independently deployable and versionable process definition for reuse.`
+              },
+              {
+                q: `What problem does an event sub-process solve?`,
+                a: `It handles interrupting/non-interrupting events (cancel, error, timer) for a scope without cluttering the main happy-path flow.`
+              },
+              {
+                q: `Give the ISO-8601 for "every 10 minutes, three times".`,
+                a: `R3/PT10M — R = repeating, 3 = repetitions, PT10M = period of 10 minutes.`
+              },
+              {
+                q: `Interrupting vs non-interrupting boundary timer use cases?`,
+                a: `Interrupting: SLA breach — cancel the task and escalate. Non-interrupting: reminder — keep the task open and fire a side action (send nudge) on the timer.`
+              }
+            ]
+          },
+          {
+            id: `8.1.4`,
+            title: `Modeling Well: Idempotency, Boundaries, Incidents, Versioning`,
+            notes: `## Modeling for production, not for the demo
+
+### Idempotent service tasks (non-negotiable)
+The engine guarantees **at-least-once** execution of a job. A worker can complete its side effect, then the engine crashes before recording the ack → on recovery the job runs **again**. Therefore every service task that has a side effect must be idempotent: dedupe by a business key or an idempotency key passed as a process variable.
+
+> [!DANGER]
+> "We charged the card twice" is the canonical workflow-engine production incident. The engine is at-least-once; your payment call must carry an idempotency key so the provider collapses the duplicate.
+
+### Async boundaries = transaction boundaries
+In Camunda 7 the engine executes a "burst" of steps in **one DB transaction**, from one wait state to the next. An **async-before / async-after** flag breaks that burst, committing engine state and handing the work to the **JobExecutor** to run in a *new* transaction.
+
+Why you need them:
+- **Retry granularity** — without an async boundary a failure rolls the whole burst back to the last commit; with one, only the failed step retries.
+- **Avoid long transactions** — a chain of heavy service tasks in one TX holds DB locks and risks timeouts.
+- **Save points before/after risky external calls** — you don’t want a downstream failure to undo an already-sent email.
+
+> [!TIP]
+> Heuristic: put an **async-before** on every service task that calls an external system. State is saved before the call; on failure only that task retries; the external call won’t be re-driven by an unrelated rollback.
+
+### Incidents & retries
+- A job fails → engine decrements retries and reschedules with backoff.
+- Retries hit 0 → the engine creates an **incident** (no more automatic retries). The instance pauses at that step.
+- Ops resolves: fix data / redeploy / bump retries in Cockpit/Operate → the job runs again.
+
+Configure \`retryTimeCycle\` (e.g. \`R5/PT1M\`) so transient failures self-heal and only persistent ones become incidents and pages.
+
+### Versioning long-running instances
+Deploy a new process definition → the engine assigns a **new version**. By default:
+- **Running instances keep running on the version they started on** (you don’t rewrite history mid-flight).
+- **New instances** start on the latest version.
+
+For a process that lives weeks, you will have many versions live simultaneously. When you *must* move running instances to a new version (e.g. you removed a step they’re stuck on), you run an **instance migration**: a mapping of old activity ids → new activity ids. Migrating a token sitting on a removed/renamed node requires an explicit mapping or it fails.
+
+> [!WARNING]
+> Don’t casually rename or delete activities in a long-running process. A token parked on \`reviewClaim\` cannot be migrated to a version where that id no longer exists without a mapping. Treat activity ids as a stable contract.
+
+> [!SUCCESS]
+> Production checklist for a process model: (1) every side-effecting task is idempotent, (2) async-before on every external call, (3) retryTimeCycle set, (4) incidents monitored/paged, (5) activity ids stable, (6) a versioning/migration plan for long-lived instances.`,
+            code: [
+              {
+                lang: `text`,
+                title: `Camunda 7 — async boundary + retry cycle on a service task`,
+                runnable: false,
+                note: `asyncBefore creates a transaction/save point before the call; retryTimeCycle controls automatic retries before an incident.`,
+                code: `<serviceTask id="capturePayment" name="Capture Payment"
+             camunda:asyncBefore="true"
+             camunda:exclusive="true"
+             camunda:type="external" camunda:topic="capture-payment"
+             camunda:failedJobRetryTimeCycle="R5/PT1M"/>
+<!-- async-before: engine commits state, JobExecutor runs the call in a NEW tx.
+     On failure only THIS job retries (5x, 1 min apart) before raising an incident.
+     exclusive=true: jobs of the same instance don't run concurrently (avoids OLE). -->`
+              },
+              {
+                lang: `java`,
+                title: `Idempotent service task via an idempotency key process variable`,
+                runnable: false,
+                note: `needs Camunda/Spring. The engine is at-least-once; the worker must dedupe with a stable key.`,
+                code: `@Component
+public class CapturePaymentWorker {
+  private final PaymentGateway gateway;
+  public CapturePaymentWorker(PaymentGateway g) { this.gateway = g; }
+
+  public void handle(ExternalTask task, ExternalTaskService svc) {
+    String orderId = task.getVariable("orderId");
+    // Stable, business-derived key. The SAME (orderId, step) always yields the SAME key,
+    // so a re-driven job after a crash collapses to the original charge at the provider.
+    String idempotencyKey = "capture:" + orderId;
+    long amount = task.getVariable("amountCents");
+
+    try {
+      ChargeResult r = gateway.charge(amount, idempotencyKey); // provider dedupes by key
+      svc.complete(task, Map.of("chargeId", r.id(), "captured", true));
+    } catch (BusinessDeclineException e) {
+      // model this as a BPMN error -> caught by a boundary error event (no retries)
+      svc.handleBpmnError(task, "InsufficientFunds", e.getMessage());
+    } catch (TransientException e) {
+      // technical failure -> let retryTimeCycle drive retries, then incident
+      Integer retries = task.getRetries();
+      svc.handleFailure(task, "capture failed", stack(e),
+          retries == null ? 4 : retries - 1, 60_000L);
+    }
+  }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Camunda 7 — migrating running instances to a new version`,
+                runnable: false,
+                note: `needs Camunda/Spring. Map old activity ids to new ones; tokens on unmapped/removed activities fail to migrate.`,
+                code: `// Move all running instances of v3 onto v4. Activity ids that are unchanged
+// can be auto-mapped; renamed/moved ones need explicit instructions.
+ProcessDefinition v3 = repositoryService.createProcessDefinitionQuery()
+    .processDefinitionKey("orderProcess").processDefinitionVersion(3).singleResult();
+ProcessDefinition v4 = repositoryService.createProcessDefinitionQuery()
+    .processDefinitionKey("orderProcess").processDefinitionVersion(4).singleResult();
+
+MigrationPlan plan = runtimeService.createMigrationPlan(v3.getId(), v4.getId())
+    .mapEqualActivities()                                  // same id -> same id
+    .mapActivities("reviewClaim", "reviewClaimV2")         // renamed activity, explicit map
+    .build();
+
+runtimeService.newMigration(plan)
+    .processInstanceQuery(
+        runtimeService.createProcessInstanceQuery().processDefinitionId(v3.getId()))
+    .execute(); // tokens parked on a removed-and-unmapped activity -> migration fails`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What execution guarantee does a workflow engine give a job, and what does it force you to do?`,
+                a: `At-least-once: a job may run again after a crash that lost the ack. Every side-effecting service task must therefore be idempotent (dedupe by a business/idempotency key).`
+              },
+              {
+                q: `What is the canonical at-least-once production bug, and the fix?`,
+                a: `Charging the card twice. Fix: pass a stable idempotency key to the payment provider so a re-driven job collapses to the original charge.`
+              },
+              {
+                q: `In Camunda 7, what does an async-before flag actually do?`,
+                a: `It breaks the synchronous transaction burst: the engine commits its state and hands the activity to the JobExecutor, which runs it in a new transaction — creating a save point and a retry boundary.`
+              },
+              {
+                q: `Why put async-before on every external-system call?`,
+                a: `State is committed before the call, so failures retry only that step and an unrelated downstream rollback cannot re-drive an already-performed external side effect.`
+              },
+              {
+                q: `What happens when a job exhausts its retries?`,
+                a: `The engine creates an incident (stops auto-retrying) and the instance pauses at that activity until an operator resolves it (fix data, bump retries, redeploy).`
+              },
+              {
+                q: `What is retryTimeCycle and why set it?`,
+                a: `It configures automatic retry count and backoff (e.g. R5/PT1M); transient failures self-heal and only persistent ones escalate to incidents/pages.`
+              },
+              {
+                q: `When you deploy a new process version, what happens to already-running instances?`,
+                a: `By default they keep running on the version they started on; only new instances start on the latest version.`
+              },
+              {
+                q: `What is instance migration and when do you need it?`,
+                a: `Explicitly moving running instances to a new definition version via an old-activity-id → new-activity-id mapping — needed when you must move stuck/long-lived instances onto a changed model.`
+              },
+              {
+                q: `Why are activity ids effectively a stable contract in long-running processes?`,
+                a: `A token parked on an activity can only be migrated to a version that has that id (or an explicit remap); renaming/deleting ids breaks migration of in-flight tokens.`
+              },
+              {
+                q: `Why mark a job camunda:exclusive=true?`,
+                a: `It prevents concurrent jobs of the same process instance from running simultaneously, avoiding OptimisticLockingExceptions from concurrent state updates.`
+              },
+              {
+                q: `Give the six-point production checklist for a process model.`,
+                a: `Idempotent side-effecting tasks; async-before on external calls; retryTimeCycle set; incidents monitored/paged; stable activity ids; a versioning/migration plan for long-lived instances.`
+              },
+              {
+                q: `Why model a payment decline as a BPMN error rather than retrying it?`,
+                a: `A decline is a deterministic business outcome, not a transient fault — retrying just re-declines; routing it to a boundary error event lets the model handle it (cancel, alternate payment).`
+              }
+            ]
+          },
+          {
+            id: `8.1.5`,
+            title: `Engine vs State Machine vs Saga Library: Choosing`,
+            notes: `## Workflow engine vs hand-rolled state machine vs saga library
+
+Three tools for "coordinate a multi-step process." They are not interchangeable; the cost curves differ.
+
+### The three options
+
+**1. Hand-rolled state machine** — a \`status\` column + a switch, or a small library (Spring StateMachine). You own persistence, transitions, retries, timers, visibility.
+
+**2. Saga library** (Axon, Eventuate, NServiceBus, narayana-LRA) — framework support specifically for distributed transactions with compensation, usually event/choreography-oriented, embedded in your services.
+
+**3. Workflow/orchestration engine** (Camunda, Temporal, Flowable, Zeebe) — durable graph executor with timers, human tasks, incidents, visibility tooling.
+
+### Trade-off table
+
+| Dimension | Hand-rolled state machine | Saga library | Workflow engine |
+|---|---|---|---|
+| Steps | Few, stable | Moderate, distributed TX | Many, evolving |
+| Long waits / timers | DIY (cron, scheduler) | Limited | Native, cheap |
+| Human tasks | Build a UI + table | No | Native (Tasklist) |
+| Visibility | Build dashboards | Limited | Built-in (Operate/Cockpit) |
+| Compensation | Manual | First-class | First-class (compensation events) |
+| Versioning live instances | Manual migration | Manual | First-class migration |
+| Operational weight | Lowest | Low–medium | Highest (engine to run/operate) |
+| Business/analyst visibility of flow | None | None | The BPMN diagram is the spec |
+| Learning curve | Low | Medium | Medium–high |
+
+### Decision guide
+
+> [!TIP]
+> Choose a **hand-rolled state machine** when: the flow is small and stable (3–5 states), no long waits or human tasks, and you want zero new infrastructure. Don’t pull in an engine to track \`PENDING → PAID → SHIPPED\`.
+
+> [!TIP]
+> Choose a **saga library** when: your core need is *distributed-transaction compensation* across services you already build with that framework (e.g. Axon + event sourcing), you’re choreography-minded, and you don’t need human tasks or a visual ops tool.
+
+> [!TIP]
+> Choose a **workflow engine** when several of these hold: many steps that change often; multi-day waits/timers; human approvals; explicit compensation; *and* non-engineers (ops, compliance, support) need to see and query the live flow. The model-as-spec and built-in visibility are the differentiators.
+
+### Costs that bite later
+
+> [!WARNING]
+> The hand-rolled path is cheapest on day 1 and most expensive on day 300. Each new requirement — a timeout, a reminder, a compensation, "why is order 4711 stuck?" — reimplements a feature the engine ships. Teams routinely rebuild 60% of a workflow engine, badly, before adopting one.
+
+> [!DANGER]
+> The engine path has real operational cost: another stateful system (DB or Zeebe cluster + Elasticsearch), a new failure mode (incidents), and a modeling skill the team must learn. Don’t adopt it for a two-step flow — you’ll pay the tax with no payoff.
+
+> [!SUCCESS]
+> Senior answer to "engine or not?": orient on **coordination complexity × time horizon × who needs visibility**. Low-low-engineers-only → state machine. High distributed-TX, framework-native → saga library. High-coordination, long-lived, business-visible → workflow engine. State the trade-off explicitly; don’t default to the shiny tool.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Hand-rolled state machine (enum transitions) — when this is enough`,
+                runnable: true,
+                note: `A minimal, persistable state machine. Fine for short, stable flows with no long waits or human tasks. java MiniStateMachine`,
+                code: `import java.util.*;
+
+/** A tiny enum-based order state machine: the "good enough" alternative to an engine. */
+public class MiniStateMachine {
+
+  enum State { CREATED, RESERVED, PAID, SHIPPED, CANCELLED }
+  enum Event { RESERVE, PAY, SHIP, CANCEL }
+
+  // allowed transitions: state -> (event -> next state)
+  static final Map<State, Map<Event, State>> T = Map.of(
+      State.CREATED,  Map.of(Event.RESERVE, State.RESERVED, Event.CANCEL, State.CANCELLED),
+      State.RESERVED, Map.of(Event.PAY,     State.PAID,     Event.CANCEL, State.CANCELLED),
+      State.PAID,     Map.of(Event.SHIP,    State.SHIPPED,  Event.CANCEL, State.CANCELLED),
+      State.SHIPPED,  Map.of(),
+      State.CANCELLED,Map.of()
+  );
+
+  static State on(State current, Event e) {
+    State next = T.getOrDefault(current, Map.of()).get(e);
+    if (next == null) throw new IllegalStateException("illegal " + e + " in " + current);
+    return next;
+  }
+
+  public static void main(String[] args) {
+    State s = State.CREATED;
+    for (Event e : List.of(Event.RESERVE, Event.PAY, Event.SHIP)) {
+      State prev = s; s = on(s, e);
+      System.out.println(prev + " --" + e + "--> " + s);
+    }
+    System.out.println("final: " + s);
+    try { on(s, Event.PAY); } catch (IllegalStateException ex) {
+      System.out.println("rejected: " + ex.getMessage());  // no PAY from SHIPPED
+    }
+    // What you'd have to ADD to reach engine parity: durable persistence, retries,
+    // timers/escalation, compensation, human tasks, live ops visibility, versioning.
+  }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Name the three tools for coordinating a multi-step process.`,
+                a: `A hand-rolled state machine (status column / Spring StateMachine), a saga library (Axon, Eventuate, LRA), and a workflow/orchestration engine (Camunda, Temporal, Zeebe).`
+              },
+              {
+                q: `When is a hand-rolled state machine the right call?`,
+                a: `Small, stable flow (a few states), no long waits, no human tasks, and you want zero new infrastructure — e.g. PENDING → PAID → SHIPPED.`
+              },
+              {
+                q: `When is a saga library the better fit than an engine?`,
+                a: `When the core need is distributed-transaction compensation across services already built on that framework, you are choreography-minded, and you need neither human tasks nor a visual ops tool.`
+              },
+              {
+                q: `Give three signals that justify a full workflow engine.`,
+                a: `Many frequently-changing steps; multi-day waits/timers and human approvals; explicit compensation; and non-engineers needing to see/query the live flow.`
+              },
+              {
+                q: `What is the day-1 vs day-300 cost trade-off of the hand-rolled path?`,
+                a: `Cheapest on day 1, most expensive later: each new need (timeout, reminder, compensation, visibility) reimplements an engine feature — teams often rebuild much of an engine, badly, before adopting one.`
+              },
+              {
+                q: `What real costs does adopting a workflow engine add?`,
+                a: `Another stateful system to operate (DB or Zeebe + Elasticsearch), a new failure mode (incidents), and a modeling skill the team must learn.`
+              },
+              {
+                q: `What three axes should drive the engine-or-not decision?`,
+                a: `Coordination complexity × time horizon × who needs visibility. Low/low/engineers → state machine; high distributed-TX framework-native → saga library; high/long-lived/business-visible → engine.`
+              },
+              {
+                q: `Why is "the model is the spec" a differentiator for engines?`,
+                a: `The BPMN diagram is both executable and readable by ops/compliance/analysts, giving shared, queryable visibility no code-only state machine provides.`
+              },
+              {
+                q: `What capabilities would you have to build to bring a hand-rolled state machine to engine parity?`,
+                a: `Durable persistence, retries/incidents, timers and escalation, compensation, human tasks, live operational visibility, and instance versioning/migration.`
+              },
+              {
+                q: `Why is "default to the engine" a poor senior answer?`,
+                a: `It ignores operational cost and complexity; for a two-step flow the engine tax buys nothing. The senior move is to state the trade-off explicitly and match the tool to coordination complexity.`
               }
             ]
           }
@@ -46922,235 +47622,854 @@ class InventoryDelegate implements JavaDelegate {
         hours: 4,
         sections: [
           {
-            title: `Camunda 7 vs 8 & Spring Boot Integration`,
-            notes: `## Camunda 7 vs 8 & Spring Boot Integration
+            id: `8.2.1`,
+            title: `Camunda 7 Architecture (Embedded Engine, Shared DB, JobExecutor)`,
+            notes: `## Camunda 7: an engine that lives *inside* your app
 
-### Camunda 7 vs Camunda 8
+Camunda 7 (the classic, "Camunda Platform 7" / Activiti lineage) is a **Java library**. You add a dependency and the **process engine runs in-process**, in the same JVM as your Spring Boot application, sharing its data source and (often) its transactions.
 
-\`\`\`
-Camunda 7 (embedded):
-  ├── Engine runs INSIDE your Spring Boot application
-  ├── Uses your application's database (tables: ACT_*)
-  ├── Spring bean injection works in delegates
-  ├── Simple to start: add spring-boot-starter to pom.xml
-  ├── Task management: Spring @Transactional + engine transaction
-  └── Free for community use; Enterprise for advanced features
+### The pieces
 
-Camunda 8 (Zeebe — standalone):
-  ├── Separate gRPC-based cluster (Zeebe broker, Operate, Tasklist)
-  ├── No shared database — Zeebe has its own event log
-  ├── Delegates replaced by: Job Workers (external tasks via gRPC)
-  ├── No Spring bean injection in workers (separate service)
-  ├── SaaS: Camunda Cloud; Self-managed: Helm charts
-  └── Designed for high throughput, cloud-native
+- **Process engine** — a POJO-ish object that parses BPMN, manages instances, and exposes services: \`RuntimeService\` (start/signal), \`TaskService\` (user tasks), \`RepositoryService\` (deploy), \`ManagementService\` (jobs/incidents), \`HistoryService\` (audit).
+- **Relational database** — the engine’s **entire state** is rows in ~tens of tables (ACT_RU_* runtime, ACT_HI_* history, ACT_RE_* repository). It supports Postgres, Oracle, SQL Server, MySQL, H2. This DB *is* the engine’s memory.
+- **JobExecutor** — a thread pool that polls the DB for **async jobs** (async-continuations, timers, message jobs), locks a batch, and runs them. This is how timers fire and async-before steps execute. Multiple app nodes share the DB and **compete** for jobs via row locks.
+- **Cockpit / Tasklist / Admin** — the web apps for ops, human tasks, and user/group admin.
 
-Choose Camunda 7: existing Spring monolith, RDBMS, team knows it
-Choose Camunda 8: new greenfield, cloud-native, high scale (100k+ processes/day)
-\`\`\`
+### The defining trait: shared DB, transactional with your app
 
-### Camunda 7 — Spring Boot Setup
+Because the engine shares your data source, a service task that writes to your business tables and the engine’s own state update can commit in **the same transaction**. That’s the superpower (strong consistency, simple local transactions) and the scaling ceiling (everything funnels through one RDBMS).
 
-\`\`\`xml
-<!-- pom.xml -->
-<dependency>
-  <groupId>org.camunda.bpm.springboot</groupId>
-  <artifactId>camunda-bpm-spring-boot-starter</artifactId>
-  <version>7.21.0</version>
-</dependency>
-<dependency>
-  <groupId>org.camunda.bpm.springboot</groupId>
-  <artifactId>camunda-bpm-spring-boot-starter-rest</artifactId>
-  <version>7.21.0</version>
-</dependency>
-<!-- Database: H2 for dev, PostgreSQL for prod -->
+\`\`\`mermaid
+flowchart TB
+  subgraph App1["Spring Boot node 1 (JVM)"]
+    E1[Process Engine] --- J1[JobExecutor pool]
+  end
+  subgraph App2["Spring Boot node 2 (JVM)"]
+    E2[Process Engine] --- J2[JobExecutor pool]
+  end
+  E1 <--> DB[(Shared RDBMS\\nACT_RU/HI/RE_*)]
+  E2 <--> DB
+  J1 -. poll+lock jobs .-> DB
+  J2 -. poll+lock jobs .-> DB
 \`\`\`
 
-\`\`\`yaml
-# application.yml
-camunda.bpm:
-  admin-user:
-    id: admin
-    password: admin
-  history-level: full              # audit log detail
-  auto-deployment-enabled: true    # deploy BPMN from classpath on startup
-  database:
-    schema-update: true            # create ACT_* tables automatically
-\`\`\`
+### Deployment models
+- **Embedded** (most common): engine inside your Spring Boot app via the spring-boot-starter.
+- **Shared / remote**: a standalone Camunda runtime that apps talk to via REST.
 
-### Starting and Querying Processes
+> [!TIP]
+> Camunda 7’s embedded model is fantastic for a monolith or a single bounded context: one JVM, one DB, transactional service tasks, trivial local testing. The friction starts when you want many independent services and high throughput — they all converge on the shared DB.
 
-\`\`\`java
-@Service
-public class OrderProcessService {
-    private final RuntimeService runtimeService;
-    private final TaskService taskService;
-    private final HistoryService historyService;
+> [!WARNING]
+> The shared DB is the bottleneck and the coupling point. The JobExecutor’s row-locking polling does not scale horizontally without limit; high job volume turns the database into the hot spot. This pressure is exactly why Camunda 8 exists.
 
-    // Start a process instance
-    public String startOrderProcess(Order order) {
-        Map<String, Object> variables = Map.of(
-            "orderId",    order.getId(),
-            "customerId", order.getCustomerId(),
-            "amount",     order.getAmount(),
-            "productId",  order.getProductId(),
-            "quantity",   order.getQuantity()
-        );
-        ProcessInstance instance = runtimeService.startProcessInstanceByKey(
-            "order-fulfillment",   // process id in BPMN
-            order.getId(),         // business key (unique per process)
-            variables
-        );
-        return instance.getId();
-    }
+> [!EU]
+> Camunda is a German (Berlin) company; Camunda 7 can run fully **on-prem / self-hosted** with no cloud dependency, which matters for EU data-residency and air-gapped environments — a frequent reason teams stay on 7 or self-host 8.
 
-    // Query where a process is now
-    public String getProcessStatus(String processInstanceId) {
-        // Active instance
-        ProcessInstance pi = runtimeService.createProcessInstanceQuery()
-            .processInstanceId(processInstanceId)
-            .singleResult();
-        if (pi != null) {
-            // Get current activity
-            List<String> activities = runtimeService.getActiveActivityIds(processInstanceId);
-            return "RUNNING at: " + activities;
-        }
-        // Completed instance — query history
-        HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
-            .processInstanceId(processInstanceId)
-            .singleResult();
-        return hpi != null ? "COMPLETED: " + hpi.getEndTime() : "NOT FOUND";
-    }
-
-    // Complete a User Task (from a human)
-    public void completeUserTask(String taskId, Map<String, Object> variables) {
-        Task task = taskService.createTaskQuery()
-            .taskId(taskId).singleResult();
-        if (task == null) throw new IllegalArgumentException("Task not found: " + taskId);
-        taskService.complete(taskId, variables);
-    }
-}
-\`\`\`
-
-### Camunda 8 — Job Worker Pattern
-
-\`\`\`java
-// Camunda 8 — no embedded engine; workers poll via gRPC
-@Component
-public class ValidateOrderWorker {
-    @JobWorker(type = "validate-order")
-    public void handleValidation(final JobClient client, final ActivatedJob job) {
-        String orderId = job.getVariable("orderId").toString();
-        boolean valid = orderId != null && !orderId.isEmpty();
-
-        if (valid) {
-            client.newCompleteCommand(job.getKey())
-                .variable("orderValid", true)
-                .send().join();
-        } else {
-            client.newFailCommand(job.getKey())
-                .retries(0)
-                .errorMessage("Invalid orderId")
-                .send().join();
-        }
-    }
-}
-\`\`\``,
+> [!SUCCESS]
+> One-liner: Camunda 7 is an **embeddable engine whose state is a relational database**, polled by a JobExecutor. Strong local transactions, simple ops, but it scales with your RDBMS.`,
             code: [
-              `// Full Camunda 7 + Spring Boot example
-// Assumes BPMN file "order-fulfillment.bpmn" in src/main/resources/
-import org.camunda.bpm.engine.*;
-import org.camunda.bpm.engine.runtime.*;
-import org.camunda.bpm.engine.task.*;
-import org.camunda.bpm.engine.delegate.*;
-import org.springframework.stereotype.*;
-import org.springframework.web.bind.annotation.*;
-import java.util.*;
+              {
+                lang: `java`,
+                title: `Camunda 7 — core engine services you call from Spring`,
+                runnable: false,
+                note: `needs Camunda/Spring. The seven engine services exposed by the embedded engine.`,
+                code: `@Service
+public class OrderFacade {
+  private final RuntimeService runtimeService;       // start / signal / correlate
+  private final TaskService taskService;             // user tasks
+  private final RepositoryService repositoryService; // deploy / query definitions
+  private final ManagementService managementService; // jobs, incidents, retries
+  private final HistoryService historyService;       // audit / completed instances
 
-// 1. Process starter
-@RestController @RequestMapping("/api/orders")
-class OrderProcessController {
-    private final RuntimeService runtimeService;
-    private final TaskService taskService;
+  public OrderFacade(RuntimeService r, TaskService t, RepositoryService rp,
+                     ManagementService m, HistoryService h) {
+    this.runtimeService = r; this.taskService = t; this.repositoryService = rp;
+    this.managementService = m; this.historyService = h;
+  }
 
-    OrderProcessController(RuntimeService rs, TaskService ts) {
-        this.runtimeService = rs;
-        this.taskService = ts;
-    }
+  public String startOrder(String orderId, long amountCents) {
+    ProcessInstance pi = runtimeService.startProcessInstanceByKey(
+        "orderProcess",
+        orderId,                                   // businessKey (your correlation handle)
+        Map.of("orderId", orderId, "amountCents", amountCents));
+    return pi.getId();
+  }
 
-    @PostMapping("/start")
-    Map<String, String> startProcess(@RequestBody Map<String, Object> req) {
-        ProcessInstance pi = runtimeService.startProcessInstanceByKey(
-            "order-fulfillment",
-            req.get("orderId").toString(),
-            req
-        );
-        return Map.of("processInstanceId", pi.getId(), "businessKey", pi.getBusinessKey());
-    }
-
-    @GetMapping("/{businessKey}/tasks")
-    List<Map<String, Object>> getPendingTasks(@PathVariable String businessKey) {
-        return taskService.createTaskQuery()
-            .processInstanceBusinessKey(businessKey)
-            .list()
-            .stream()
-            .map(t -> Map.of("taskId", t.getId(), "name", t.getName(),
-                "assignee", t.getAssignee() != null ? t.getAssignee() : "unassigned"))
-            .toList();
-    }
-
-    @PostMapping("/tasks/{taskId}/complete")
-    void completeTask(@PathVariable String taskId,
-                      @RequestBody Map<String, Object> variables) {
-        taskService.complete(taskId, variables);
-    }
-}
-
-// 2. Service Task Delegate
-@Component("paymentDelegate")
-class PaymentDelegate implements JavaDelegate {
-    @Override
-    public void execute(DelegateExecution ex) throws Exception {
-        Double amount = (Double) ex.getVariable("amount");
-        String customerId = (String) ex.getVariable("customerId");
-
-        // Simulate payment
-        boolean success = amount < 10000;
-        ex.setVariable("paymentSuccessful", success);
-        if (success) {
-            ex.setVariable("paymentId", "PAY-" + customerId + "-" + (int)(amount*100));
-            System.out.println("[DELEGATE] Payment charged: " + amount);
-        } else {
-            ex.setVariable("paymentError", "Exceeds daily limit");
-            System.out.println("[DELEGATE] Payment rejected: " + amount);
-        }
-    }
-}
-
-// 3. Process Event Listener
-@Component
-class OrderProcessListener implements org.camunda.bpm.engine.delegate.ExecutionListener {
-    @Override
-    public void notify(DelegateExecution ex) throws Exception {
-        if ("end".equals(ex.getEventName())) {
-            System.out.println("[LISTENER] Process ended: " + ex.getProcessInstanceId()
-                + " | orderValid=" + ex.getVariable("orderValid")
-                + " | paymentSuccessful=" + ex.getVariable("paymentSuccessful"));
-        }
-    }
+  // Deliver a correlated message into exactly one waiting instance (e.g. payment webhook)
+  public void onPaymentConfirmed(String orderId) {
+    runtimeService.createMessageCorrelation("PaymentConfirmed")
+        .processInstanceBusinessKey(orderId)
+        .correlateExclusive();
+  }
 }`
+              },
+              {
+                lang: `yaml`,
+                title: `Camunda 7 — JobExecutor & data source config (application.yaml)`,
+                runnable: false,
+                note: `needs Camunda/Spring. Tuning the JobExecutor that polls the shared DB for async jobs/timers.`,
+                code: `spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/camunda
+    username: camunda
+    password: \${DB_PASSWORD}
+camunda:
+  bpm:
+    database:
+      schema-update: true            # let the engine create ACT_* tables (dev only)
+    job-execution:
+      enabled: true
+      core-pool-size: 5              # JobExecutor worker threads per node
+      max-pool-size: 10
+      queue-capacity: 20
+      max-jobs-per-acquisition: 3    # jobs locked per DB poll (tune for throughput)
+      wait-time-in-millis: 5000      # idle backoff between polls
+    history-level: audit             # none|activity|audit|full — governs ACT_HI_* volume
+    generic-properties:
+      properties:
+        jobExecutorAcquireExclusiveOverProcessHierarchies: true`
+              }
             ],
             flashcards: [
               {
-                q: `What are the main architectural differences between Camunda 7 and Camunda 8?`,
-                a: `Camunda 7: engine runs embedded INSIDE your Spring Boot app. Shares your RDBMS (ACT_* tables). JavaDelegate beans are Spring-injected. Simple to add to existing apps. Good for most enterprise Java shops. Camunda 8 (Zeebe): standalone cluster (Zeebe broker + Operate + Tasklist). Your app connects via gRPC. No shared DB — Zeebe has an internal distributed log. Workers are separate services polling for jobs. No Spring injection in workers — they're independent processes. Designed for horizontal scale (millions of process instances). Choose C7 for embedded simplicity; C8 for cloud-native high throughput.`
+                q: `Where does the Camunda 7 process engine run?`,
+                a: `Embedded in your application JVM as a Java library — typically in-process with your Spring Boot app, sharing its data source.`
               },
               {
-                q: `What are the key Camunda 7 engine services and what does each do?`,
-                a: `RuntimeService: start process instances, get active instances, set/get variables, send signals and messages. RepositoryService: deploy BPMN files, query deployed process definitions. TaskService: query user tasks, assign, claim, and complete them — the human inbox. HistoryService: query completed process instances, completed tasks, audit log. ManagementService: manage jobs (timers, async tasks), retries for failed jobs. IdentityService: user/group management (if using Camunda's identity). FormService: render forms for user tasks. All accessible as Spring beans when using camunda-bpm-spring-boot-starter.`
+                q: `Where does Camunda 7 store all of its state?`,
+                a: `In a relational database — runtime (ACT_RU_*), history (ACT_HI_*), and repository (ACT_RE_*) tables. The RDBMS is the engine’s entire memory.`
               },
               {
-                q: `How do you pass data between BPMN steps in Camunda?`,
-                a: `Process variables: stored in the engine DB, scoped to the process instance. Set on start: runtimeService.startProcessInstanceByKey(key, businessKey, variablesMap). Set in delegate: execution.setVariable("key", value). Read in delegate: execution.getVariable("key"). Gateway conditions use EL (Expression Language): \${stockAvailable == true}. Scoping: by default variables are process-instance scoped (all tasks in the process can read them). Local variables: execution.setVariableLocal() — only visible in the current task scope. Large data: don't store blobs in variables — store an ID and look up from DB.`
+                q: `What is the JobExecutor and what does it do?`,
+                a: `A thread pool in each node that polls the shared DB for async jobs (async-continuations, timers, message jobs), locks a batch via row locks, and executes them — it is how timers fire and async steps run.`
+              },
+              {
+                q: `Name the core engine services Camunda 7 exposes.`,
+                a: `RuntimeService, TaskService, RepositoryService, ManagementService, HistoryService (plus IdentityService, FormService, DecisionService).`
+              },
+              {
+                q: `What is the superpower of Camunda 7’s shared-DB model?`,
+                a: `A service task’s business-table write and the engine’s state update can commit in the same local transaction — strong consistency with no distributed-transaction machinery.`
+              },
+              {
+                q: `What is the scaling ceiling of Camunda 7?`,
+                a: `Everything funnels through one shared RDBMS; the JobExecutor’s row-lock polling and write volume make the database the bottleneck under high throughput.`
+              },
+              {
+                q: `How do multiple Camunda 7 app nodes coordinate work?`,
+                a: `They share the same database and compete for jobs by acquiring row locks during JobExecutor polling — there is no separate broker.`
+              },
+              {
+                q: `Embedded vs shared/remote Camunda 7 deployment?`,
+                a: `Embedded runs the engine inside your Spring Boot app (most common); shared/remote runs a standalone Camunda runtime that apps call via REST.`
+              },
+              {
+                q: `What does history-level control, and why tune it?`,
+                a: `How much audit data lands in ACT_HI_* tables (none/activity/audit/full); higher levels give richer audit/reporting but add write load and storage — a common DB-pressure tuning knob.`
+              },
+              {
+                q: `Why is Camunda 7 a good fit for a monolith or single bounded context?`,
+                a: `One JVM, one DB, transactional service tasks, and trivial local testing — minimal operational surface area when you do not need independent-service scaling.`
+              },
+              {
+                q: `Why does on-prem capability keep teams on Camunda 7 (or self-hosted)?`,
+                a: `It runs fully self-hosted with no cloud dependency, satisfying EU data-residency and air-gapped requirements.`
+              },
+              {
+                q: `Give the one-line summary of Camunda 7’s architecture.`,
+                a: `An embeddable engine whose state is a relational database, polled by a JobExecutor — strong local transactions and simple ops, scaling with the RDBMS.`
+              }
+            ]
+          },
+          {
+            id: `8.2.2`,
+            title: `Camunda 8 Architecture (Zeebe, gRPC, Job Workers, Exporters)`,
+            notes: `## Camunda 8: a distributed engine, re-architected for scale
+
+Camunda 8 replaces the embedded-engine-on-a-shared-RDBMS model with **Zeebe**, a purpose-built **distributed workflow engine**. The engine is no longer a library in your app; it is a **cluster you talk to over the network**.
+
+### Why they re-architected (the core insight)
+
+Camunda 7’s state is in an RDBMS, and the JobExecutor coordinates via DB row locks. That model is **vertically** scalable (bigger DB) but hits a wall: the database is a single point of contention. To scale **horizontally** to very high throughput (millions of instances), they removed the shared RDBMS entirely and rebuilt the engine around ideas from distributed log systems (Kafka-like).
+
+### Zeebe internals
+
+- **Event-sourced + partitioned log** — process state is an append-only event stream. The stream is split into **partitions**; each partition is an independent, totally-ordered shard. Throughput scales by adding partitions/brokers.
+- **Raft replication** — each partition is replicated across brokers via the **Raft** consensus protocol (a leader + followers). Survives broker loss without a shared DB.
+- **RocksDB** — each broker keeps local materialized state in embedded RocksDB (not a shared RDBMS). No central database to contend on.
+- **gRPC API** — clients (your services) talk to the **gateway** over gRPC (deploy, create instance, activate jobs, complete/fail job, publish message).
+- **Job workers** — your code no longer runs inside the engine. Workers **poll/stream jobs** of a given **type** from the gateway, do the work, and report back. Pure pull, no engine-embedded delegates.
+- **Exporters → Elasticsearch/OpenSearch** — Zeebe brokers stay lean; they **export** the processed event stream to an exporter. The default exporter writes to **Elasticsearch**, which powers **Operate** (monitoring), **Tasklist** (human tasks), and **Optimize** (analytics). Zeebe itself does not serve queries/history.
+
+\`\`\`mermaid
+flowchart TB
+  subgraph Yours["Your services (any language)"]
+    W1[Job Worker type=capture]
+    W2[Job Worker type=ship]
+    APP[App: deploy / createInstance / publishMessage]
+  end
+  subgraph Cluster["Zeebe cluster"]
+    GW[[gRPC Gateway]]
+    subgraph Brokers["Brokers (partitioned + Raft)"]
+      P1[(Partition 1\\nRocksDB)]
+      P2[(Partition 2\\nRocksDB)]
+      P3[(Partition 3\\nRocksDB)]
+    end
+  end
+  APP -- gRPC --> GW
+  W1 -- activate/complete jobs --> GW
+  W2 -- activate/complete jobs --> GW
+  GW --> P1 & P2 & P3
+  P1 & P2 & P3 -- exporter --> ES[(Elasticsearch)]
+  ES --> OP[Operate] & TL[Tasklist] & OPT[Optimize]
+\`\`\`
+
+### Consequences of the redesign
+
+| Aspect | Camunda 7 | Camunda 8 (Zeebe) |
+|---|---|---|
+| State store | Shared RDBMS | Partitioned event log + RocksDB + Raft |
+| Your code runs | In-process delegates | Out-of-process job workers (gRPC) |
+| Engine–app coupling | Same JVM/TX | Network boundary, language-agnostic |
+| History/monitoring | SQL ACT_HI_* | Exported to Elasticsearch (Operate/Tasklist) |
+| Scaling | Vertical (DB) | Horizontal (partitions/brokers) |
+| Transaction with your DB | Possible (shared DS) | Not possible — must use idempotency |
+
+> [!DANGER]
+> The biggest mental shift: in Camunda 8 there is **no shared transaction** between the engine and your database. A job worker completes its business write and then acks the job over gRPC as two separate steps. The ack can fail after the write succeeds → the job is re-activated → your worker runs again. **At-least-once is now unavoidable; idempotent workers are mandatory, not optional.**
+
+> [!TIP]
+> "Why two products?" Camunda 7 = strong consistency, embedded, on-prem-easy, RDBMS-bound scale. Camunda 8 = horizontal scale, polyglot workers, SaaS-first, but you operate (or buy) a Zeebe + Elasticsearch stack and give up shared transactions.
+
+> [!EU]
+> Camunda 8 is offered both as **SaaS** (managed clusters) and **Self-Managed** (run the cluster yourself, on-prem or your own cloud). EU teams with data-residency constraints typically choose Self-Managed; SaaS regions and processing locations are a due-diligence item.
+
+> [!SUCCESS]
+> Summary: Zeebe is a horizontally-scalable, event-sourced, partitioned, Raft-replicated engine with gRPC clients and out-of-process job workers, materializing read models into Elasticsearch — the shared RDBMS is gone, and so are shared transactions.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Camunda 8 — a job worker (spring-zeebe @JobWorker)`,
+                runnable: false,
+                note: `needs Camunda/Spring (spring-zeebe). Workers poll jobs of a "type" over gRPC; no in-engine delegate.`,
+                code: `@Component
+public class CaptureWorker {
+
+  private final PaymentGateway gateway;
+  public CaptureWorker(PaymentGateway g) { this.gateway = g; }
+
+  // Polls the gateway for jobs of type "capture-payment". Runs OUT of the engine, over gRPC.
+  @JobWorker(type = "capture-payment", autoComplete = true)
+  public Map<String, Object> capture(ActivatedJob job) {
+    var vars = job.getVariablesAsType(OrderVars.class);
+
+    // At-least-once: this job may be re-activated after a network blip. The key makes
+    // the provider collapse a duplicate charge — idempotency is MANDATORY in Zeebe.
+    String idemKey = "capture:" + vars.orderId();
+    ChargeResult r = gateway.charge(vars.amountCents(), idemKey);
+
+    // autoComplete=true: returning a map completes the job and merges these variables.
+    return Map.of("chargeId", r.id(), "captured", true);
+  }
+
+  record OrderVars(String orderId, long amountCents) {}
+}`
+              },
+              {
+                lang: `yaml`,
+                title: `Camunda 8 — client config (Self-Managed and SaaS)`,
+                runnable: false,
+                note: `needs Camunda/Spring. Self-Managed points at your gateway; SaaS adds OAuth client credentials.`,
+                code: `# --- Self-Managed (you run the Zeebe cluster) ---
+zeebe:
+  client:
+    broker:
+      gateway-address: zeebe-gateway:26500   # gRPC, plaintext inside the cluster
+    security:
+      plaintext: true
+    worker:
+      max-jobs-active: 32                     # how many jobs a worker holds at once
+      threads: 8
+
+# --- SaaS (managed cluster, OAuth2 client credentials) ---
+# zeebe:
+#   client:
+#     cloud:
+#       cluster-id: \${CAMUNDA_CLUSTER_ID}
+#       client-id: \${CAMUNDA_CLIENT_ID}
+#       client-secret: \${CAMUNDA_CLIENT_SECRET}
+#       region: bru-2                         # EU region example`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What replaced the embedded engine + shared RDBMS in Camunda 8?`,
+                a: `Zeebe — a distributed, event-sourced, partitioned workflow engine you talk to over gRPC; it keeps state in a replicated event log + local RocksDB, not a shared relational database.`
+              },
+              {
+                q: `Why did Camunda re-architect for version 8?`,
+                a: `The Camunda 7 shared-RDBMS + DB-row-lock model scales only vertically and contends on a single database; Zeebe removes the shared DB to scale horizontally to very high throughput.`
+              },
+              {
+                q: `How does Zeebe achieve horizontal scale and fault tolerance?`,
+                a: `It partitions the event log into independent shards (add partitions/brokers for throughput) and replicates each partition across brokers via the Raft consensus protocol.`
+              },
+              {
+                q: `Where does a Zeebe broker keep its local state?`,
+                a: `In embedded RocksDB per broker (a materialized view of the event stream) — no central/shared database.`
+              },
+              {
+                q: `How do clients and workers talk to Zeebe?`,
+                a: `Over gRPC through the gateway — deploy, create instance, activate/complete/fail jobs, publish messages — making it language-agnostic.`
+              },
+              {
+                q: `What is a job worker in Camunda 8, and how does it differ from a Camunda 7 delegate?`,
+                a: `An out-of-process client that polls/streams jobs of a given type over gRPC, does the work, and reports back — versus a Camunda 7 delegate that runs in-process inside the engine JVM.`
+              },
+              {
+                q: `What role does Elasticsearch play in Camunda 8?`,
+                a: `Zeebe brokers stay lean and export the processed event stream to Elasticsearch, which powers Operate (monitoring), Tasklist (human tasks), and Optimize (analytics); Zeebe itself does not serve history/queries.`
+              },
+              {
+                q: `Why is idempotency mandatory (not optional) in Camunda 8?`,
+                a: `There is no shared transaction between worker and your DB; the business write and the gRPC job ack are separate steps, so an ack failure re-activates the job — at-least-once is unavoidable.`
+              },
+              {
+                q: `What capability did Camunda 8 give up versus Camunda 7?`,
+                a: `Shared local transactions between the engine and your business database — the network boundary makes engine state and your DB independently committed.`
+              },
+              {
+                q: `Self-Managed vs SaaS Camunda 8, and the EU angle?`,
+                a: `Self-Managed runs the Zeebe + Elasticsearch cluster yourself (on-prem/your cloud), preferred for EU data-residency; SaaS is a managed cluster where region/processing location must be vetted.`
+              },
+              {
+                q: `What does max-jobs-active control on a Zeebe worker?`,
+                a: `How many jobs a single worker activates and holds concurrently — a key throughput/back-pressure knob.`
+              },
+              {
+                q: `In one line, summarize Zeebe’s architecture.`,
+                a: `A horizontally-scalable, event-sourced, partitioned, Raft-replicated engine with gRPC clients and out-of-process job workers, materializing read models into Elasticsearch — no shared RDBMS, no shared transactions.`
+              }
+            ]
+          },
+          {
+            id: `8.2.3`,
+            title: `Camunda 7 vs 8: The Decision Table`,
+            notes: `## Camunda 7 vs 8 — picking with eyes open
+
+These are **not** "old vs new where new always wins." They are two architectures with different sweet spots; both are actively supported.
+
+### Head-to-head
+
+| Dimension | Camunda 7 | Camunda 8 (Zeebe) |
+|---|---|---|
+| Engine location | Embedded in your JVM (library) | Separate cluster, gRPC clients |
+| State store | Shared RDBMS (ACT_* tables) | Event log + RocksDB + Raft, read models in Elasticsearch |
+| Scaling model | Vertical (bigger DB) | Horizontal (partitions/brokers) |
+| Peak throughput | Moderate, DB-bound | Very high (millions of instances) |
+| Latency profile | Low per-step (in-process, local TX) | Network hop per job; great aggregate throughput |
+| Transaction with your DB | Yes — shared data source | No — idempotency required |
+| Worker model | In-process delegates **or** external tasks | Out-of-process job workers (gRPC), polyglot |
+| Operational footprint | One app + one RDBMS | Zeebe cluster + Elasticsearch + Operate/Tasklist |
+| On-prem | Native, simple, air-gap friendly | Self-Managed (heavier) or SaaS |
+| SaaS option | No (self-host only) | Yes (Camunda Cloud) |
+| Monitoring tooling | Cockpit (SQL-backed) | Operate/Tasklist/Optimize (Elasticsearch-backed) |
+| Migration of running instances | Mature MigrationPlan API | Supported, evolving |
+| Language reach | Java-centric (JVM) | Any language (gRPC clients) |
+| Maturity | Very mature, large install base | Mature, the strategic platform going forward |
+
+### Decision heuristics
+
+> [!TIP]
+> Lean **Camunda 7** when: you have a JVM monolith or a single service; you want **transactional** service tasks against your own DB; throughput is moderate; you need dead-simple **on-prem/air-gapped** deployment; the team is Java and wants minimal new infrastructure.
+
+> [!TIP]
+> Lean **Camunda 8** when: you need **horizontal scale** / very high instance volume; you want **polyglot** workers (Go, Node, .NET) not just Java; you want **SaaS** (no engine to operate) or you’re already a Kubernetes/Elasticsearch shop; you’re green-field and want Camunda’s strategic direction.
+
+> [!WARNING]
+> Migration cost from 7 → 8 is **not** a version bump. Different execution model (no shared TX), different worker API (gRPC job workers vs delegates), different querying (Elasticsearch not SQL), and BPMN feature differences (Zeebe historically supported a subset; FEEL replaces JUEL expressions). Treat it as a re-platform with a re-test of every process, not an upgrade.
+
+> [!DANGER]
+> Don’t pick Camunda 8 for a low-volume internal monolith just because it’s newer. You’ll operate a Zeebe + Elasticsearch cluster and lose shared transactions to solve a scaling problem you don’t have. Conversely, don’t force Camunda 7 to do 10k+ instances/sec — you’ll be tuning a database into the ground.
+
+> [!SUCCESS]
+> The senior framing for "7 or 8?": **scale + polyglot + deployment model** drive it. Need shared transactions, on-prem-simple, Java, moderate volume → 7. Need horizontal scale, polyglot, SaaS-or-K8s → 8. Name the lost capability (shared TX) and the gained operational cost explicitly.`,
+            code: [
+              {
+                lang: `text`,
+                title: `A 60-second triage you can recite in an interview`,
+                runnable: false,
+                note: `Decision flow as plain text — the verbal answer to "which Camunda?"`,
+                code: `Q1: Do you need shared transactions between the engine and your own DB?
+      yes -> Camunda 7 (embedded, one data source).         [STOP]
+      no  -> continue.
+
+Q2: Do you need very high throughput / horizontal scale (>~ thousands inst/sec)?
+      yes -> Camunda 8 (Zeebe partitions).                  [STOP]
+      no  -> continue.
+
+Q3: Do you need polyglot workers (Go/Node/.NET) or SaaS (no engine to run)?
+      yes -> Camunda 8.                                     [STOP]
+      no  -> continue.
+
+Q4: Is dead-simple on-prem / air-gapped, Java-only, moderate volume the goal?
+      yes -> Camunda 7.                                     [STOP]
+
+Default (greenfield, no constraints, strategic): Camunda 8.
+Always state the trade-off you accept:
+  7 -> RDBMS-bound scale.   8 -> operate Zeebe+Elasticsearch, no shared TX.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Is Camunda 8 simply "newer and better" than 7?`,
+                a: `No — they are two architectures with different sweet spots; both are supported. 8 trades shared transactions and operational simplicity for horizontal scale and polyglot workers.`
+              },
+              {
+                q: `Which Camunda version supports a shared transaction with your business DB, and why does that matter?`,
+                a: `Camunda 7 (embedded, shared data source); it lets a service task’s business write and engine state commit atomically, removing the need for idempotency in that step.`
+              },
+              {
+                q: `What is the scaling model difference between 7 and 8?`,
+                a: `Camunda 7 scales vertically (bigger shared RDBMS); Camunda 8/Zeebe scales horizontally by adding partitions and brokers.`
+              },
+              {
+                q: `Why is a 7 → 8 migration a re-platform, not an upgrade?`,
+                a: `Different execution model (no shared TX), different worker API (gRPC job workers vs delegates), Elasticsearch instead of SQL querying, FEEL instead of JUEL, and BPMN feature differences — every process must be re-tested.`
+              },
+              {
+                q: `When does Camunda 7 remain the right choice?`,
+                a: `JVM monolith/single service, transactional service tasks against your own DB, moderate throughput, simple on-prem/air-gapped deployment, Java team minimizing new infrastructure.`
+              },
+              {
+                q: `When is Camunda 8 the right choice?`,
+                a: `Need horizontal scale / very high instance volume, polyglot workers, SaaS or an existing Kubernetes/Elasticsearch platform, or greenfield aligned with Camunda’s strategic direction.`
+              },
+              {
+                q: `What operational components does Camunda 8 require that 7 does not?`,
+                a: `A Zeebe broker cluster plus Elasticsearch (and Operate/Tasklist/Optimize) — versus 7’s single app + one RDBMS.`
+              },
+              {
+                q: `What is the latency trade-off between 7 and 8?`,
+                a: `Camunda 7 has low per-step latency (in-process, local TX); Camunda 8 adds a network hop per job but delivers far higher aggregate throughput.`
+              },
+              {
+                q: `How does language reach differ between 7 and 8?`,
+                a: `Camunda 7 is JVM/Java-centric; Camunda 8 exposes gRPC clients so workers can be written in any language (Go, Node, .NET, etc.).`
+              },
+              {
+                q: `What expression language change accompanies the move to Zeebe?`,
+                a: `Zeebe uses FEEL for expressions, replacing Camunda 7’s JUEL/EL — a concrete reason process definitions must be rewritten and retested.`
+              },
+              {
+                q: `Give the three axes that drive the 7-vs-8 decision.`,
+                a: `Scale (vertical vs horizontal), polyglot needs, and deployment model (on-prem-simple/transactional vs SaaS/K8s + Elasticsearch).`
+              }
+            ]
+          },
+          {
+            id: `8.2.4`,
+            title: `Spring Boot Integration (Camunda 7 starter & Camunda 8 spring-zeebe)`,
+            notes: `## Wiring Camunda into Spring Boot
+
+### Camunda 7: the spring-boot-starter
+Add \`camunda-bpm-spring-boot-starter\` (+ a webapp/REST starter if you want Cockpit/REST). On startup it bootstraps an **embedded engine** on your data source and **auto-deploys** BPMN files found on the classpath (\`src/main/resources/*.bpmn\`).
+
+You implement service tasks three ways:
+1. **JavaDelegate** — a bean implementing \`JavaDelegate.execute(DelegateExecution)\`. Referenced from BPMN by \`camunda:delegateExpression="\${myDelegate}"\`. Runs **in-process**, can share the transaction.
+2. **Expression / method** — \`camunda:expression="\${bean.method(execution)}"\`.
+3. **External task worker** — BPMN marks the task \`camunda:type="external" camunda:topic="..."\`; a worker (same app or separate) **polls** the topic via the External Task API. This decouples the worker from the engine even in Camunda 7 — the conceptual bridge to Camunda 8’s job workers.
+
+> [!TIP]
+> Use **delegates** when you want transactional, in-process work and a Java monolith. Use **external tasks** when you want to decouple/scale workers independently, use a non-Java worker, or you’re planning a path to Camunda 8 (external task ≈ job worker).
+
+### Camunda 8: spring-zeebe (spring-boot-starter-camunda-sdk)
+Add the Spring Zeebe starter, annotate the app with \`@Deployment(resources = "classpath:*.bpmn")\` to auto-deploy, and implement workers with \`@JobWorker(type = "...")\`. The starter manages the gRPC client, polling, retries, and back-pressure handling. There are **no JavaDelegates** — everything is an out-of-process worker.
+
+\`\`\`mermaid
+flowchart LR
+  subgraph C7["Camunda 7 (embedded)"]
+    BPMN7[BPMN: delegateExpression] --> DEL[JavaDelegate bean - in-process, shared TX]
+    BPMN7b[BPMN: external topic] -. poll .-> EXT[External Task Worker]
+  end
+  subgraph C8["Camunda 8 (Zeebe)"]
+    ENG[(Zeebe gateway)] -. gRPC activate jobs .-> JW["@JobWorker bean"]
+    JW -. complete/fail .-> ENG
+  end
+\`\`\`
+
+> [!WARNING]
+> A JavaDelegate that throws an unchecked exception **rolls back the engine transaction** to the last commit — if there’s no async boundary before it, you can roll back more than the failed step. External tasks/job workers fail explicitly (\`handleFailure\`/throwing), giving precise retry control. Prefer explicit failure handling for anything that calls out.
+
+> [!SUCCESS]
+> Mapping to remember: Camunda 7 **JavaDelegate** (in-process, shared TX) ≈ a monolith pattern; Camunda 7 **external task** and Camunda 8 **@JobWorker** (out-of-process, pull-based, at-least-once) ≈ the distributed pattern. The external-task API is the migration bridge between the two worlds.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Camunda 7 — JavaDelegate service task (in-process, shared TX)`,
+                runnable: false,
+                note: `needs Camunda/Spring. Referenced from BPMN via camunda:delegateExpression="\${captureDelegate}".`,
+                code: `@Component("captureDelegate")
+public class CaptureDelegate implements JavaDelegate {
+  private final PaymentGateway gateway;
+  public CaptureDelegate(PaymentGateway g) { this.gateway = g; }
+
+  @Override
+  public void execute(DelegateExecution execution) {
+    String orderId = (String) execution.getVariable("orderId");
+    long amount    = (long)   execution.getVariable("amountCents");
+
+    try {
+      ChargeResult r = gateway.charge(amount, "capture:" + orderId);
+      execution.setVariable("chargeId", r.id());
+    } catch (BusinessDeclineException e) {
+      // model declines as a BPMN error -> caught by a boundary error event
+      throw new BpmnError("InsufficientFunds", e.getMessage());
+    }
+    // Any RuntimeException here rolls back to the last async boundary -> put
+    // camunda:asyncBefore="true" on this task so only it retries.
+  }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Camunda 7 — external task worker (pull-based, the C8 bridge)`,
+                runnable: false,
+                note: `needs Camunda/Spring (camunda-bpm-spring-boot-starter-external-task-client). Polls a topic; explicit complete/failure.`,
+                code: `@Configuration
+@EnableExternalTaskClient(baseUrl = "http://localhost:8080/engine-rest")
+class ExternalClientConfig {}
+
+@Component
+class CaptureExternalWorker {
+  private final PaymentGateway gateway;
+  CaptureExternalWorker(PaymentGateway g) { this.gateway = g; }
+
+  @ExternalTaskSubscription(topicName = "capture-payment", lockDuration = 20_000)
+  public ExternalTaskHandler handler() {
+    return (task, svc) -> {
+      String orderId = task.getVariable("orderId");
+      long amount    = task.getVariable("amountCents");
+      try {
+        ChargeResult r = gateway.charge(amount, "capture:" + orderId); // idempotent
+        svc.complete(task, Map.of("chargeId", r.id()));
+      } catch (BusinessDeclineException e) {
+        svc.handleBpmnError(task, "InsufficientFunds", e.getMessage());
+      } catch (TransientException e) {
+        Integer retries = task.getRetries();
+        svc.handleFailure(task, "capture failed", stack(e),
+            retries == null ? 4 : retries - 1, 60_000L);   // explicit retry control
+      }
+    };
+  }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Camunda 8 — spring-zeebe app: auto-deploy + @JobWorker`,
+                runnable: false,
+                note: `needs Camunda/Spring (spring-boot-starter-camunda-sdk). No delegates; everything is an out-of-process worker.`,
+                code: `@SpringBootApplication
+@Deployment(resources = "classpath:order-process.bpmn")  // auto-deploy on startup
+public class OrderApp {
+  public static void main(String[] args) { SpringApplication.run(OrderApp.class, args); }
+}
+
+@Component
+class ShipWorker {
+  private final ShippingService shipping;
+  ShipWorker(ShippingService s) { this.shipping = s; }
+
+  @JobWorker(type = "ship-order")            // autoComplete defaults to true
+  public Map<String, Object> ship(ActivatedJob job) {
+    var v = job.getVariablesAsType(OrderVars.class);
+    String tracking = shipping.dispatch(v.orderId(), "ship:" + v.orderId()); // idempotent
+    return Map.of("tracking", tracking);
+  }
+  record OrderVars(String orderId) {}
+}`
+              },
+              {
+                lang: `java`,
+                title: `Camunda 7 — starting an instance & correlating a message`,
+                runnable: false,
+                note: `needs Camunda/Spring. RuntimeService is the entry point in the embedded engine.`,
+                code: `@Service
+class OrderService {
+  private final RuntimeService runtimeService;
+  OrderService(RuntimeService r) { this.runtimeService = r; }
+
+  public void placeOrder(String orderId, long amountCents) {
+    runtimeService.startProcessInstanceByKey(
+        "orderProcess", orderId /* businessKey */,
+        Map.of("orderId", orderId, "amountCents", amountCents));
+  }
+
+  // webhook handler delivers a correlated message to the waiting instance
+  public void paymentWebhook(String orderId) {
+    runtimeService.createMessageCorrelation("PaymentConfirmed")
+        .processInstanceBusinessKey(orderId)
+        .correlateWithResult();
+  }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does the Camunda 7 spring-boot-starter do on startup?`,
+                a: `Bootstraps an embedded process engine on your Spring data source and auto-deploys BPMN files found on the classpath (src/main/resources/*.bpmn).`
+              },
+              {
+                q: `Name the three ways to implement a Camunda 7 service task.`,
+                a: `A JavaDelegate bean (delegateExpression), a Spring expression/method (camunda:expression), or an external task worker that polls a topic via the External Task API.`
+              },
+              {
+                q: `JavaDelegate vs external task — key behavioural difference?`,
+                a: `A JavaDelegate runs in-process and can share the engine transaction (and rolls it back on unchecked exception); an external task worker is pull-based, runs out-of-process, and fails explicitly with precise retry control.`
+              },
+              {
+                q: `Why is the Camunda 7 external task the conceptual bridge to Camunda 8?`,
+                a: `It is pull-based, out-of-process, at-least-once, and decoupled from the engine — the same model as Camunda 8 @JobWorker, so designing with external tasks eases a future migration.`
+              },
+              {
+                q: `How do you implement a service task in Camunda 8 with spring-zeebe?`,
+                a: `Annotate a bean method with @JobWorker(type = "..."); the starter manages the gRPC client, polling, retries, and back-pressure. There are no JavaDelegates.`
+              },
+              {
+                q: `How do you auto-deploy a process in a spring-zeebe app?`,
+                a: `Annotate the application with @Deployment(resources = "classpath:*.bpmn") so the BPMN is deployed to the Zeebe cluster on startup.`
+              },
+              {
+                q: `What happens when a JavaDelegate throws an unchecked exception?`,
+                a: `The engine transaction rolls back to the last commit/async boundary; without an async-before on the task, more than the failed step can be rolled back — hence prefer explicit failure handling for outbound calls.`
+              },
+              {
+                q: `How do you signal a business error vs a technical failure from a Camunda 7 delegate?`,
+                a: `Throw a BpmnError("code", msg) for a modeled business error (caught by a boundary error event); let a RuntimeException (or external-task handleFailure) drive technical retries/incidents.`
+              },
+              {
+                q: `What does autoComplete=true mean on a @JobWorker?`,
+                a: `Returning normally (optionally a variables map) automatically completes the job and merges the returned variables; throwing fails the job for retry.`
+              },
+              {
+                q: `Which Camunda 7 service starts a process instance and correlates messages?`,
+                a: `RuntimeService — startProcessInstanceByKey(...) to start, and createMessageCorrelation(...) to deliver a correlated message to a waiting instance.`
+              },
+              {
+                q: `What is lockDuration on an external task subscription?`,
+                a: `How long the worker exclusively holds (locks) a fetched task before the engine considers it abandoned and makes it available again — set it above your expected processing time.`
+              },
+              {
+                q: `Mapping to remember between delegate, external task, and job worker?`,
+                a: `JavaDelegate = in-process, shared TX (monolith pattern); Camunda 7 external task and Camunda 8 @JobWorker = out-of-process, pull-based, at-least-once (distributed pattern).`
+              }
+            ]
+          },
+          {
+            id: `8.2.5`,
+            title: `Production Concerns (Idempotency, Retries/Incidents, Migration, Testing, Observability)`,
+            notes: `## Running Camunda in anger
+
+### Idempotent workers (again, because it matters most)
+Both engines are **at-least-once**. In Camunda 8 there is no shared TX so it’s unavoidable; in Camunda 7 a crash between side effect and commit re-drives the job. **Every worker that mutates external state must dedupe** — idempotency key to the downstream, or an "already processed?" check keyed by a stable business id.
+
+> [!DANGER]
+> Test for it explicitly: kill the worker (or the engine) **after** the side effect but **before** the ack, restart, and assert the side effect happened exactly once. If you haven’t run that test, assume you have a double-charge bug.
+
+### Retries, incidents, and back-pressure
+- **Retries**: configure count + backoff (\`retryTimeCycle\` in 7; worker/job retries in 8). Transient faults self-heal.
+- **Incidents**: retries exhausted → incident; the instance pauses. Monitor incident counts and **alert** — an incident is unhandled work, often a downstream outage or a bad payload.
+- **Back-pressure (Camunda 8 specifically)**: if brokers can’t keep up, the gateway **rejects** commands with a back-pressure (RESOURCE_EXHAUSTED) error. Clients must **retry with backoff**, not hammer. The spring-zeebe client handles much of this; your own command callers (createInstance, publishMessage) must handle the rejection.
+
+> [!WARNING]
+> Don’t set retries to a huge number to "hide" failures — you just delay the incident and keep re-driving a broken downstream. Set sane retries (e.g. 3–5 with exponential backoff) and let real failures surface as incidents you can see and act on.
+
+### Versioning & migrating running instances
+- New deploy → new version; **running instances stay on their version** (both engines).
+- Long-lived instances mean **many versions live at once** — keep old definitions deployable.
+- To move running instances onto a new version, use **migration**: Camunda 7 \`MigrationPlan\` (mature), Camunda 8 migration (supported, evolving). A token on a removed/renamed activity needs an explicit mapping or migration fails.
+- Keep **activity ids stable**; treat them as API.
+
+### Testing process definitions
+- **Camunda 7**: \`@Deployment\` + an in-memory H2 engine (camunda-bpm-assert / process-test-coverage). Start an instance, drive it, assert it waited at / completed the right activities; mock delegates/workers.
+- **Camunda 8**: **zeebe-process-test** spins up an in-memory/embedded Zeebe engine; you deploy, create an instance, complete jobs programmatically, and assert the process state. Test the **happy path, every error/compensation branch, and timer/boundary events**.
+
+> [!TIP]
+> Process tests catch the gateway-mismatch deadlocks and missing-default-flow bugs *before* production. A model without a test for each branch is a model with untested branches — which is most production incidents.
+
+### Observability
+- **Operate (8) / Cockpit (7)** — live instances, token position, incidents.
+- **Metrics** — export engine metrics (jobs completed, incidents, queue depth, broker back-pressure) to Prometheus; dashboard + alert.
+- **Tracing** — propagate a trace/correlation id as a process variable so a workflow ties into your distributed traces; log it in every worker.
+- **History/audit** — 7: ACT_HI_* (tune history-level); 8: Elasticsearch via exporter (size/retain it). Both can grow unbounded — plan retention/cleanup.
+
+\`\`\`mermaid
+flowchart LR
+  ENG[Engine: Camunda 7 / Zeebe] --> M[Metrics: jobs, incidents, backpressure]
+  ENG --> HIS[History: ACT_HI_* / Elasticsearch]
+  M --> PROM[(Prometheus)] --> GRAF[Grafana + Alerts]
+  HIS --> OPS[Operate / Cockpit]
+  ENG -. trace id as var .-> TRC[(Distributed tracing)]
+\`\`\`
+
+> [!SUCCESS]
+> Production checklist: idempotent workers (crash-tested), sane retries + incident alerting, back-pressure handling (C8), stable activity ids + a migration plan, a process test per branch (happy/error/compensation/timer), metrics + tracing + history retention.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Idempotent worker via a processed-keys table (works on 7 or 8)`,
+                runnable: false,
+                note: `needs Camunda/Spring. Dedupe on a stable key so a re-driven job is a no-op.`,
+                code: `@Component
+class IdempotentShipWorker {
+  private final ProcessedKeys processed;   // unique index on key; insert-or-ignore
+  private final ShippingService shipping;
+  IdempotentShipWorker(ProcessedKeys p, ShippingService s) { processed = p; shipping = s; }
+
+  public ShipResult ship(String orderId) {
+    String key = "ship:" + orderId;        // stable, deterministic per (order, step)
+    if (!processed.claim(key)) {           // false => already done by a prior (re)run
+      return ShipResult.alreadyDone(processed.resultFor(key));
+    }
+    ShipResult r = shipping.dispatch(orderId);
+    processed.recordResult(key, r);        // store outcome for future duplicate calls
+    return r;
+  }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Camunda 7 — process test (camunda-bpm-assert, in-memory H2)`,
+                runnable: false,
+                note: `needs Camunda/Spring (camunda-bpm-junit5 + assert). Asserts token path; mocks the worker.`,
+                code: `@ExtendWith(ProcessEngineExtension.class)
+class OrderProcessTest {
+
+  @Test
+  @Deployment(resources = "order-process.bpmn")
+  void bigOrderRequiresApprovalThenShips() {
+    Mocks.register("captureDelegate", (JavaDelegate) exec -> exec.setVariable("captured", true));
+
+    ProcessInstance pi = runtimeService().startProcessInstanceByKey(
+        "orderProcess", Map.of("orderId", "o1", "amountCents", 5_000_000L));
+
+    assertThat(pi).isWaitingAt("approve");          // big order parked at user task
+    complete(task());                                // approve it
+    assertThat(pi).hasPassed("ship").isEnded();      // then ships and ends
+  }
+
+  @Test
+  @Deployment(resources = "order-process.bpmn")
+  void declineTriggersCompensation() {
+    Mocks.register("captureDelegate",
+        (JavaDelegate) exec -> { throw new BpmnError("InsufficientFunds"); });
+    ProcessInstance pi = runtimeService().startProcessInstanceByKey(
+        "orderProcess", Map.of("orderId", "o2", "amountCents", 500L));
+    assertThat(pi).hasPassed("releaseStock").isEnded();  // compensation ran
+  }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Camunda 8 — process test (zeebe-process-test, embedded engine)`,
+                runnable: false,
+                note: `needs Camunda/Spring (zeebe-process-test). Deploy, create instance, complete jobs, assert.`,
+                code: `@ZeebeProcessTest
+class OrderZeebeTest {
+  private ZeebeTestEngine engine;
+  private ZeebeClient client;
+
+  @Test
+  void shipsAfterCapture() throws Exception {
+    client.newDeployResourceCommand()
+        .addResourceFromClasspath("order-process.bpmn").send().join();
+
+    var instance = client.newCreateInstanceCommand()
+        .bpmnProcessId("orderProcess").latestVersion()
+        .variables(Map.of("orderId", "o1", "amountCents", 500))
+        .send().join();
+
+    // complete the "capture-payment" job programmatically
+    completeJobOfType(engine, client, "capture-payment", Map.of("captured", true));
+    completeJobOfType(engine, client, "ship-order", Map.of("tracking", "T-1"));
+
+    BpmnAssert.assertThat(instance).isCompleted().hasVariableWithValue("tracking", "T-1");
+  }
+}`
+              },
+              {
+                lang: `yaml`,
+                title: `Observability — Prometheus metrics + history retention notes`,
+                runnable: false,
+                note: `needs Camunda/Spring. Scrape engine metrics; cap history growth.`,
+                code: `management:
+  endpoints:
+    web:
+      exposure:
+        include: [health, prometheus, metrics]
+  metrics:
+    tags:
+      application: order-orchestrator
+# Camunda 7: schedule history cleanup so ACT_HI_* doesn't grow unbounded
+camunda:
+  bpm:
+    history-level: audit
+    generic-properties:
+      properties:
+        historyCleanupBatchWindowStartTime: "02:00"
+        historyTimeToLive: "P30D"          # default TTL for finished instances
+# Camunda 8: set an ILM/retention policy on the Zeebe Elasticsearch indices instead.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the single most important production property of a Camunda worker, and how do you test it?`,
+                a: `Idempotency. Test by killing the worker/engine after the side effect but before the ack, restarting, and asserting the side effect happened exactly once.`
+              },
+              {
+                q: `What is an incident and how should you treat it operationally?`,
+                a: `A paused instance whose job exhausted retries — unhandled work, often a downstream outage or bad payload. Monitor incident counts and alert on them.`
+              },
+              {
+                q: `What is back-pressure in Camunda 8 and how must clients respond?`,
+                a: `When brokers can’t keep up, the gateway rejects commands (RESOURCE_EXHAUSTED); clients must retry with backoff rather than hammer the gateway.`
+              },
+              {
+                q: `Why is setting retries very high an anti-pattern?`,
+                a: `It hides failures and keeps re-driving a broken downstream; set sane retries (3–5 with backoff) so genuine failures surface as visible, actionable incidents.`
+              },
+              {
+                q: `What happens to running instances when you deploy a new process version?`,
+                a: `They keep running on the version they started on (both 7 and 8); only new instances use the latest version, so many versions can be live at once.`
+              },
+              {
+                q: `How do you move running instances onto a new version, and what breaks it?`,
+                a: `Instance migration (Camunda 7 MigrationPlan; Camunda 8 migration) with an old→new activity-id mapping; a token on a removed/renamed activity with no mapping fails migration.`
+              },
+              {
+                q: `How do you test a Camunda 7 process definition?`,
+                a: `With @Deployment + an in-memory H2 engine (camunda-bpm-assert), starting an instance, mocking delegates, and asserting it is waiting at / has passed the expected activities.`
+              },
+              {
+                q: `How do you test a Camunda 8 process definition?`,
+                a: `With zeebe-process-test’s embedded engine: deploy the BPMN, create an instance, complete jobs programmatically, and assert process state with BpmnAssert.`
+              },
+              {
+                q: `Which process branches must your tests cover?`,
+                a: `The happy path plus every error/compensation branch and timer/boundary event — untested branches are where most production incidents live (gateway mismatches, missing default flows).`
+              },
+              {
+                q: `How do you tie a workflow into distributed tracing?`,
+                a: `Propagate a trace/correlation id as a process variable and log it in every worker so the workflow appears in your distributed traces.`
+              },
+              {
+                q: `How does engine history grow and how do you bound it?`,
+                a: `Camunda 7 writes ACT_HI_* (tune history-level; schedule cleanup with historyTimeToLive); Camunda 8 exports to Elasticsearch (set an ILM/retention policy). Both grow unbounded without a retention plan.`
+              },
+              {
+                q: `What engine metrics should you export and alert on?`,
+                a: `Jobs completed/failed, incident count, job/queue depth, and (Camunda 8) broker back-pressure — scraped to Prometheus and dashboarded/alerted in Grafana.`
               }
             ]
           }
