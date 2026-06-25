@@ -210,7 +210,7 @@
           <h2 class="text-sm font-semibold text-slate-300 mb-5 flex items-center gap-2">
             <i data-lucide="target" class="w-4 h-4 text-brand"></i> Progress by phase
           </h2>
-          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-y-7 gap-x-3">
+          <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-y-6 gap-x-2">
             ${CURRICULUM.map(p => {
               const pp = phaseProgress(p);
               return ring(pp.pct, p.title, `${pp.completed}/${pp.total} · ${pp.totalHours}h`);
@@ -453,11 +453,11 @@
         </div>` : ''}
 
         <!-- content tabs -->
-        <div class="flex items-center gap-1 border-b border-slate-800 mb-6 text-sm">
-          <button data-tab="notes" class="tab-btn active px-4 py-2.5 font-medium text-slate-400">📘 Study Guide</button>
-          <button data-tab="sandbox" class="tab-btn px-4 py-2.5 font-medium text-slate-400">⚡ Code Sandbox</button>
-          <button data-tab="cards" class="tab-btn px-4 py-2.5 font-medium text-slate-400">🃏 Flashcards</button>
-          <button data-tab="mynotes" class="tab-btn px-4 py-2.5 font-medium text-slate-400">✎ My Notes</button>
+        <div class="flex items-center gap-0.5 border-b border-slate-800 mb-6 text-sm overflow-x-auto custom-scroll pb-px">
+          <button data-tab="notes"   class="tab-btn active shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">📘 <span class="hidden xs:inline">Study </span>Guide</button>
+          <button data-tab="sandbox" class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">⚡ Code</button>
+          <button data-tab="cards"   class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">🃏 Flashcards</button>
+          <button data-tab="mynotes" class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">✎ My Notes</button>
         </div>
 
         <div id="tab-notes" class="tab-pane prose-notes"></div>

@@ -20,9 +20,22 @@ html, body { height: 100%; }
 @media (max-width: 1023px) {
   .sidebar {
     position: fixed; inset: 0 auto 0 0; z-index: 40;
+    width: min(320px, 85vw);
     transform: translateX(-100%); transition: transform .25s ease;
   }
   .sidebar.open { transform: translateX(0); }
+}
+
+/* Tab bar — hide scrollbar on mobile but keep scroll */
+@media (max-width: 640px) {
+  .custom-scroll.pb-px { scrollbar-width: none; }
+  .custom-scroll.pb-px::-webkit-scrollbar { display: none; }
+
+  /* tighter content padding on phones */
+  .prose-notes { font-size: 14px; }
+  .prose-notes pre { font-size: 12.5px; padding: .75rem .85rem; }
+  .monaco-wrap { height: 280px; }
+  .flip-card { height: 220px; }
 }
 
 /* Nav item status dots */
