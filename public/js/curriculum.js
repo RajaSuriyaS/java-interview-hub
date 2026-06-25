@@ -56092,5 +56092,2236 @@ CREATE POLICY tenant_isolation ON orders
         ]
       }
     ]
+  },
+  {
+    id: `p12`,
+    title: `Design Patterns in Java`,
+    icon: `shapes`,
+    blurb: `All Gang-of-Four patterns plus modern functional, JDK & Spring patterns — each with intent, a runnable example, and real use cases.`,
+    modules: [
+      {
+        id: `12.1`,
+        title: `Creational Design Patterns`,
+        hours: 5,
+        sections: [
+          {
+            id: `12.1.1`,
+            title: `Singleton`,
+            notes: `## Singleton
+
+**Intent (one line):** ensure a class has exactly one instance and provide a global access point to it.
+
+**Problem it solves:** some resources are intrinsically single — a configuration registry, a connection pool, a metrics collector, an ID generator. Creating several copies is wrong (wasted memory, inconsistent state) and passing one instance through every constructor is tedious. Singleton centralizes the single instance and its lifecycle.
+
+\`\`\`mermaid
+classDiagram
+  class Singleton {
+    -static Singleton INSTANCE
+    -Singleton()
+    +static getInstance() Singleton
+    +doWork()
+  }
+  Singleton --> Singleton : holds its own instance
+\`\`\`
+
+### The variants, ranked
+
+| Variant | Lazy? | Thread-safe? | Serialization/reflection safe? | Verdict |
+|---|---|---|---|---|
+| Eager (\`static final\`) | No | Yes (class-init) | No | Fine if construction is cheap |
+| \`synchronized getInstance()\` | Yes | Yes | No | Correct but a lock on every read |
+| Double-checked locking (DCL) | Yes | Yes (needs \`volatile\`) | No | Correct only with \`volatile\` |
+| **Holder idiom** (lazy-init holder class) | Yes | Yes (JVM class-init guarantee) | No | Best classic idiom |
+| **enum** | No (eager) | Yes | **Yes** | Best overall (Effective Java Item 3) |
+
+### Eager vs lazy
+
+- **Eager** initializes at class load. Simple, no locking, but you pay the cost even if the singleton is never used, and you can't pass constructor arguments learned at runtime.
+- **Lazy** defers until first use. Needed when construction is expensive or depends on runtime state — but you must make first-use thread-safe.
+
+> [!WARNING]
+> **Double-checked locking is broken without \`volatile\`.** Without it, another thread can observe a *non-null but partially constructed* object because the write publishing the reference can be reordered before the constructor finishes. \`volatile\` (since the fixed Java 5 memory model) inserts the happens-before barrier that makes DCL correct.
+
+> [!TIP]
+> The **holder idiom** gets laziness *and* thread-safety for free: the JVM guarantees a class is initialized lazily and exactly once, with proper synchronization, the first time it is referenced. No \`volatile\`, no \`synchronized\` in your code.
+
+> [!DANGER]
+> **The enum singleton is the only variant that is automatically safe against serialization and reflection attacks.** A normal class with a private constructor can be re-instantiated via \`Constructor.setAccessible(true)\` or get a second instance through deserialization unless you implement \`readResolve()\`. Enums are immune to both — the JVM enforces it.
+
+### Why Singleton is an anti-pattern (testability)
+
+- It is **global mutable state**. Tests can't easily substitute a mock; the instance leaks state between test methods.
+- It **hides dependencies** — a class secretly calling \`Registry.getInstance()\` lies about what it needs in its constructor.
+- It is **hard to parallelize/relocate** — a true global breaks in multi-tenant or multi-classloader setups.
+
+> [!SUCCESS]
+> **Spring beans are singletons — the good kind.** Spring's default scope is \`singleton\`: one instance per container. But it's a *managed* singleton injected via the container, not a \`getInstance()\` global. You get single-instance economy **and** testability (inject a mock), because the framework owns the lifecycle, not a static field. The modern advice: don't hand-roll the GoF Singleton; let the DI container manage scope.
+
+### Use when / Avoid when
+
+- **Use when:** genuinely one instance must exist (registries, pools, caches, stateless helpers) and you control access through a container or the enum/holder idiom.
+- **Avoid when:** you reach for it to avoid passing a dependency around. That's just global state with a fancy name. Prefer dependency injection.
+
+### In the wild (JDK/Spring)
+
+- \`java.lang.Runtime.getRuntime()\` — classic eager JDK singleton.
+- \`java.awt.Desktop.getDesktop()\`, \`java.util.logging.LogManager\`.
+- Every Spring bean with default scope; \`@Configuration\` classes; \`ApplicationContext\` itself.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Four thread-safe singleton variants in one runnable file`,
+                code: `public class SingletonDemo {
+
+    // (1) EAGER — initialized at class load, no locking ever needed.
+    static final class EagerConfig {
+        static final EagerConfig INSTANCE = new EagerConfig();
+        private EagerConfig() {}
+        String hello() { return "eager"; }
+    }
+
+    // (2) HOLDER IDIOM — lazy + thread-safe via JVM class-init guarantee.
+    static final class HolderConfig {
+        private HolderConfig() {}
+        private static class Holder {            // loaded only on first access
+            static final HolderConfig INSTANCE = new HolderConfig();
+        }
+        static HolderConfig getInstance() { return Holder.INSTANCE; }
+        String hello() { return "holder"; }
+    }
+
+    // (3) DOUBLE-CHECKED LOCKING — correct ONLY because of 'volatile'.
+    static final class DclConfig {
+        private static volatile DclConfig instance;   // volatile is mandatory
+        private DclConfig() {}
+        static DclConfig getInstance() {
+            DclConfig local = instance;               // read volatile once
+            if (local == null) {
+                synchronized (DclConfig.class) {
+                    local = instance;
+                    if (local == null) {
+                        instance = local = new DclConfig();
+                    }
+                }
+            }
+            return local;
+        }
+        String hello() { return "dcl"; }
+    }
+
+    // (4) ENUM — eager, serialization/reflection safe, the recommended default.
+    enum EnumConfig {
+        INSTANCE;
+        String hello() { return "enum"; }
+    }
+
+    public static void main(String[] args) {
+        System.out.println(EagerConfig.INSTANCE.hello());
+        System.out.println(HolderConfig.getInstance().hello());
+        System.out.println(DclConfig.getInstance().hello());
+        System.out.println(EnumConfig.INSTANCE.hello());
+
+        // Same instance every time:
+        System.out.println("holder identity: " +
+            (HolderConfig.getInstance() == HolderConfig.getInstance()));
+        System.out.println("enum identity:   " +
+            (EnumConfig.INSTANCE == EnumConfig.INSTANCE));
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Reflection breaks a class singleton but not an enum`,
+                code: `import java.lang.reflect.Constructor;
+
+public class SingletonAttackDemo {
+
+    static final class Fragile {
+        static final Fragile INSTANCE = new Fragile();
+        private Fragile() {}
+    }
+
+    public static void main(String[] args) throws Exception {
+        // Reflection can call the private constructor and forge a 2nd instance.
+        Constructor<Fragile> c = Fragile.class.getDeclaredConstructor();
+        c.setAccessible(true);
+        Fragile forged = c.newInstance();
+        System.out.println("class singleton broken? " + (forged != Fragile.INSTANCE));
+
+        // Enums forbid reflective instantiation at the JVM level.
+        try {
+            Constructor<?> ec = Mode.class.getDeclaredConstructor(String.class, int.class);
+            ec.setAccessible(true);
+            ec.newInstance("HACK", 99);
+        } catch (Exception e) {
+            System.out.println("enum reflection blocked: " + e.getClass().getSimpleName());
+        }
+    }
+
+    enum Mode { ON, OFF }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Spring-style managed singleton vs a global getInstance() (illustration)`,
+                runnable: false,
+                note: `Spring-dependent illustration. The container owns the single instance; you inject it, so tests can substitute a mock — unlike a static getInstance() global.`,
+                code: `// Anti-pattern: hidden global, untestable.
+class OrderService {
+    void place() {
+        Auditor.getInstance().record("placed"); // hidden static dependency
+    }
+}
+
+// Spring: still one instance, but injected and mockable.
+@Service                         // default scope = singleton (one per context)
+class BetterOrderService {
+    private final Auditor auditor;
+    BetterOrderService(Auditor auditor) { this.auditor = auditor; } // declared
+    void place() { auditor.record("placed"); }
+}
+// In a test you pass a mock Auditor; no static state, no global to reset.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Singleton in one line.`,
+                a: `Ensure a class has exactly one instance and provide a single global access point to it.`
+              },
+              {
+                q: `Why is double-checked locking broken without volatile?`,
+                a: `Without volatile the publishing write of the reference can be reordered before the constructor completes, so another thread may see a non-null but partially constructed object. volatile (Java 5+ memory model) adds the happens-before barrier that fixes it.`
+              },
+              {
+                q: `How does the holder idiom achieve lazy + thread-safe init with no locks in your code?`,
+                a: `It relies on the JVM guarantee that a class is initialized lazily and exactly once, with synchronization, on first reference. The inner Holder class loads only when getInstance() touches it.`
+              },
+              {
+                q: `Why is the enum singleton considered the best (Effective Java Item 3)?`,
+                a: `It is concise, thread-safe by construction, and the only variant automatically safe against serialization and reflection creating a second instance.`
+              },
+              {
+                q: `How can a private-constructor singleton be defeated, and how do you defend it?`,
+                a: `Via reflection (setAccessible + newInstance) or deserialization. Defend reflection by throwing in the constructor if an instance exists; defend serialization with readResolve(). Or just use an enum, which is immune to both.`
+              },
+              {
+                q: `Eager vs lazy initialization — trade-off?`,
+                a: `Eager is simplest and lock-free but pays construction cost even if unused and can't use runtime constructor args. Lazy defers cost to first use but must be made thread-safe (holder/DCL).`
+              },
+              {
+                q: `Why is the GoF Singleton called an anti-pattern for testability?`,
+                a: `It is global mutable state that hides dependencies (classes secretly call getInstance()), leaks state between tests, and resists mocking because the lifecycle is owned by a static field instead of injected.`
+              },
+              {
+                q: `How are Spring singleton beans different from a hand-rolled Singleton?`,
+                a: `Same one-instance economy but the container owns and injects the instance, so dependencies are explicit and mockable. It is a managed singleton, not a static global.`
+              },
+              {
+                q: `Name two real JDK singletons.`,
+                a: `java.lang.Runtime.getRuntime() and java.util.logging.LogManager (also java.awt.Desktop.getDesktop()).`
+              },
+              {
+                q: `Singleton scope in Spring — one instance per what?`,
+                a: `One instance per ApplicationContext (container), not per JVM. Multiple contexts each get their own bean instance.`
+              }
+            ]
+          },
+          {
+            id: `12.1.2`,
+            title: `Factory Method`,
+            notes: `## Factory Method
+
+**Intent (one line):** define an interface for creating an object, but let subclasses decide which concrete class to instantiate.
+
+**Problem it solves:** a class needs to create objects but shouldn't hard-code their concrete types. \`new ConcreteThing()\` scattered through code couples callers to implementations and makes substitution painful. Factory Method moves the \`new\` behind a polymorphic creation method so the *what* of construction varies independently of the *when/where*.
+
+\`\`\`mermaid
+classDiagram
+  class Creator {
+    +factoryMethod() Product
+    +operation()
+  }
+  class ConcreteCreatorA { +factoryMethod() Product }
+  class ConcreteCreatorB { +factoryMethod() Product }
+  class Product { <<interface>> }
+  class ConcreteProductA
+  class ConcreteProductB
+  Creator <|-- ConcreteCreatorA
+  Creator <|-- ConcreteCreatorB
+  Product <|.. ConcreteProductA
+  Product <|.. ConcreteProductB
+  ConcreteCreatorA ..> ConcreteProductA : creates
+  ConcreteCreatorB ..> ConcreteProductB : creates
+\`\`\`
+
+### Factory Method vs simple/static factory
+
+People conflate three things:
+
+- **Static factory method** — a static method like \`Integer.valueOf(5)\` or \`List.of(...)\`. Not the GoF pattern; just a named alternative to a constructor that can cache, return subtypes, and read nicely.
+- **Simple Factory** — a single class with a \`switch\` returning products. Convenient, but adding a product edits the switch (OCP violation).
+- **Factory Method (GoF)** — the *creation step is itself polymorphic*; subclasses override it. Adding a product means a new subclass, not editing existing code.
+
+> [!TIP]
+> The tell for *Factory Method* specifically: the factory operation is an **overridable instance method on a base class/interface**, and the base class often calls it in a template-method flow ("I don't know what I'm making, my subclass does").
+
+### Factory Method vs Abstract Factory
+
+- **Factory Method** creates **one** product via inheritance (override a method).
+- **Abstract Factory** creates **families** of related products via composition (you hold a factory object). See the next section.
+
+### Use when / Avoid when
+
+- **Use when:** a framework must let client code plug in product types it can't know in advance (the framework calls your factory method); or construction logic legitimately varies by subtype.
+- **Avoid when:** there's only one product and no foreseeable variation — a plain constructor or static factory is clearer. Don't introduce a class hierarchy just to wrap a \`new\`.
+
+### In the wild (JDK/Spring)
+
+- \`java.util.Collection.iterator()\` — each collection returns its own \`Iterator\` (the canonical Factory Method).
+- \`java.lang.Object.toString()\`-style polymorphic creators; \`javax.xml.parsers.DocumentBuilderFactory.newInstance()\`.
+- \`java.net.URLStreamHandlerFactory\`, \`java.util.ServiceLoader\`.
+- Spring's \`FactoryBean<T>\` and \`@Bean\` methods are factory methods the container invokes.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Factory Method: subclasses decide the concrete Product`,
+                code: `public class FactoryMethodDemo {
+
+    // Product hierarchy
+    interface Notification { void send(String to, String msg); }
+
+    static class EmailNotification implements Notification {
+        public void send(String to, String msg) {
+            System.out.println("EMAIL -> " + to + ": " + msg);
+        }
+    }
+    static class SmsNotification implements Notification {
+        public void send(String to, String msg) {
+            System.out.println("SMS   -> " + to + ": " + msg);
+        }
+    }
+
+    // Creator declares the factory method and uses it in a template flow.
+    static abstract class NotificationService {
+        protected abstract Notification create();   // <-- the factory method
+
+        // The base class orchestrates without knowing the concrete product.
+        public void notifyUser(String to, String msg) {
+            Notification n = create();
+            n.send(to, msg);
+        }
+    }
+
+    static class EmailService extends NotificationService {
+        protected Notification create() { return new EmailNotification(); }
+    }
+    static class SmsService extends NotificationService {
+        protected Notification create() { return new SmsNotification(); }
+    }
+
+    public static void main(String[] args) {
+        NotificationService email = new EmailService();
+        NotificationService sms   = new SmsService();
+        email.notifyUser("ana@x.com", "Welcome!");
+        sms.notifyUser("+15550100", "Your code is 4711");
+        // Adding a PushService = new subclass, no edits to existing code (OCP).
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Simple Factory vs Factory Method — the OCP difference`,
+                code: `public class SimpleVsFactoryMethodDemo {
+
+    interface Shape { double area(); }
+    static class Circle implements Shape {
+        final double r; Circle(double r){this.r=r;}
+        public double area(){ return Math.PI*r*r; }
+    }
+    static class Square implements Shape {
+        final double s; Square(double s){this.s=s;}
+        public double area(){ return s*s; }
+    }
+
+    // SIMPLE FACTORY: one switch. Adding a Shape edits this method (not OCP-clean).
+    static class ShapeFactory {
+        static Shape create(String kind, double dim) {
+            switch (kind) {
+                case "circle": return new Circle(dim);
+                case "square": return new Square(dim);
+                default: throw new IllegalArgumentException(kind);
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        Shape a = ShapeFactory.create("circle", 2);
+        Shape b = ShapeFactory.create("square", 3);
+        System.out.printf("circle=%.2f square=%.2f%n", a.area(), b.area());
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Factory Method in one line.`,
+                a: `Define a method for creating an object but let subclasses decide which concrete class to instantiate.`
+              },
+              {
+                q: `Distinguish static factory method, Simple Factory, and Factory Method (GoF).`,
+                a: `Static factory method = a named static alternative to a constructor (Integer.valueOf). Simple Factory = one class with a switch returning products. Factory Method = a polymorphic, overridable creation method; subclasses supply the concrete product.`
+              },
+              {
+                q: `What is the tell that distinguishes Factory Method from a simple factory?`,
+                a: `The creation step is an overridable instance method on a base class/interface, usually called by the base in a template-method flow — the base says 'my subclass knows what to make'.`
+              },
+              {
+                q: `How does Factory Method satisfy the Open/Closed Principle better than a switch factory?`,
+                a: `Adding a product means adding a new Creator subclass, not editing an existing switch statement, so existing code stays closed to modification.`
+              },
+              {
+                q: `Factory Method vs Abstract Factory in one sentence.`,
+                a: `Factory Method creates one product via inheritance (override a method); Abstract Factory creates families of related products via composition (hold a factory object).`
+              },
+              {
+                q: `Give the canonical JDK example of Factory Method.`,
+                a: `Collection.iterator() — every collection returns its own Iterator implementation through the same method.`
+              },
+              {
+                q: `How does Spring use factory methods?`,
+                a: `@Bean methods and FactoryBean<T> implementations are factory methods the container calls to produce beans, decoupling callers from concrete construction.`
+              },
+              {
+                q: `When should you NOT use Factory Method?`,
+                a: `When there is a single product with no foreseeable variation; a plain constructor or static factory is clearer than inventing a creator hierarchy.`
+              },
+              {
+                q: `Why is Integer.valueOf NOT the Factory Method pattern even though it 'makes objects'?`,
+                a: `It is a static factory method — a constructor alternative that can cache. There is no polymorphic, subclass-overridable creation step, which is the essence of GoF Factory Method.`
+              }
+            ]
+          },
+          {
+            id: `12.1.3`,
+            title: `Abstract Factory`,
+            notes: `## Abstract Factory
+
+**Intent (one line):** provide an interface for creating *families* of related objects without specifying their concrete classes.
+
+**Problem it solves:** when products come in matched sets — a Windows button + Windows checkbox, a MySQL connection + MySQL dialect + MySQL pager — you must guarantee a client uses one consistent family and never mixes (a MySQL connection with a Postgres dialect). Abstract Factory packages the whole family behind one factory interface; pick the factory once and every product is guaranteed compatible.
+
+\`\`\`mermaid
+classDiagram
+  class GuiFactory { <<interface>> +createButton() Button +createCheckbox() Checkbox }
+  class WinFactory { +createButton() +createCheckbox() }
+  class MacFactory { +createButton() +createCheckbox() }
+  class Button { <<interface>> }
+  class Checkbox { <<interface>> }
+  GuiFactory <|.. WinFactory
+  GuiFactory <|.. MacFactory
+  Button <|.. WinButton
+  Button <|.. MacButton
+  Checkbox <|.. WinCheckbox
+  Checkbox <|.. MacCheckbox
+  WinFactory ..> WinButton
+  WinFactory ..> WinCheckbox
+  MacFactory ..> MacButton
+  MacFactory ..> MacCheckbox
+\`\`\`
+
+### Relationship to Factory Method
+
+Abstract Factory is usually *implemented with* a set of Factory Methods — one per product in the family — bundled on a single factory object. The difference is **scope and mechanism**: Factory Method = one product, inheritance; Abstract Factory = a family, composition.
+
+> [!TIP]
+> The senior litmus test: do your products have a **consistency constraint** ("these must come from the same family")? If yes, Abstract Factory's guarantee is the payoff. If your objects are independent, you don't need it.
+
+> [!WARNING]
+> Abstract Factory's weakness is **adding a new product type** (e.g. a third widget \`Slider\`): you must change the factory interface and *every* concrete factory. It's easy to add a new *family* (a new factory), hard to add a new *member* to every family. Know this trade-off before you commit.
+
+### Use when / Avoid when
+
+- **Use when:** you have multiple product families that must be used consistently and you want to swap the whole family with one decision (theme, OS, database vendor, cloud provider SDK).
+- **Avoid when:** there's only one family, or products aren't related — you're just adding indirection. Also avoid if product *types* churn frequently (the "new member" pain above).
+
+### In the wild (JDK/Spring)
+
+- \`javax.xml.parsers.DocumentBuilderFactory\` / \`SAXParserFactory\` — produce a coordinated set of parser objects.
+- \`java.sql.DriverManager\` + a \`Connection\` family per vendor.
+- \`javax.xml.transform.TransformerFactory\`.
+- Spring's \`BeanFactory\`/\`ApplicationContext\` is a generalized abstract factory; \`@Profile\`-selected \`@Configuration\` classes swap whole families of beans.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Abstract Factory: swap an entire UI family with one choice`,
+                code: `public class AbstractFactoryDemo {
+
+    // Product interfaces (the family members)
+    interface Button   { String render(); }
+    interface Checkbox { String render(); }
+
+    // Family A: Light theme
+    static class LightButton   implements Button   { public String render(){ return "[ Light Button ]"; } }
+    static class LightCheckbox implements Checkbox { public String render(){ return "[x] Light Checkbox"; } }
+    // Family B: Dark theme
+    static class DarkButton    implements Button   { public String render(){ return "[ Dark Button ]"; } }
+    static class DarkCheckbox  implements Checkbox { public String render(){ return "[x] Dark Checkbox"; } }
+
+    // The abstract factory: creates a whole consistent family.
+    interface GuiFactory {
+        Button createButton();
+        Checkbox createCheckbox();
+    }
+    static class LightFactory implements GuiFactory {
+        public Button createButton()     { return new LightButton(); }
+        public Checkbox createCheckbox() { return new LightCheckbox(); }
+    }
+    static class DarkFactory implements GuiFactory {
+        public Button createButton()     { return new DarkButton(); }
+        public Checkbox createCheckbox() { return new DarkCheckbox(); }
+    }
+
+    // Client code is written against the abstract factory only.
+    static void renderUi(GuiFactory factory) {
+        System.out.println(factory.createButton().render());
+        System.out.println(factory.createCheckbox().render());
+    }
+
+    public static void main(String[] args) {
+        String theme = "dark"; // imagine read from config
+        GuiFactory factory = theme.equals("dark") ? new DarkFactory() : new LightFactory();
+        renderUi(factory); // every product guaranteed to be from the same family
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Database family example — consistency guarantee`,
+                code: `public class DbFamilyDemo {
+
+    interface Dialect    { String quote(String id); }
+    interface Pager      { String limit(int n); }
+
+    static class MySqlDialect implements Dialect { public String quote(String id){ return "\`" + id + "\`"; } }
+    static class PgDialect    implements Dialect { public String quote(String id){ return "\\"" + id + "\\""; } }
+    static class MySqlPager   implements Pager   { public String limit(int n){ return "LIMIT " + n; } }
+    static class PgPager      implements Pager   { public String limit(int n){ return "FETCH FIRST " + n + " ROWS ONLY"; } }
+
+    interface DbFactory { Dialect dialect(); Pager pager(); }
+    static class MySqlFactory implements DbFactory {
+        public Dialect dialect(){ return new MySqlDialect(); }
+        public Pager pager(){ return new MySqlPager(); }
+    }
+    static class PgFactory implements DbFactory {
+        public Dialect dialect(){ return new PgDialect(); }
+        public Pager pager(){ return new PgPager(); }
+    }
+
+    static String buildQuery(DbFactory db) {
+        // Dialect and pager always agree because they came from one factory.
+        return "SELECT " + db.dialect().quote("name") + " FROM users " + db.pager().limit(10);
+    }
+
+    public static void main(String[] args) {
+        System.out.println(buildQuery(new MySqlFactory()));
+        System.out.println(buildQuery(new PgFactory()));
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Abstract Factory in one line.`,
+                a: `Provide an interface for creating families of related objects without specifying their concrete classes.`
+              },
+              {
+                q: `What core guarantee does Abstract Factory give that Factory Method does not?`,
+                a: `Family consistency — every product comes from the same concrete factory, so you can never mix incompatible members (e.g. a MySQL connection with a Postgres dialect).`
+              },
+              {
+                q: `How is Abstract Factory typically implemented in terms of Factory Method?`,
+                a: `As a bundle of factory methods (one per product) on a single factory object; it uses composition to deliver a family, whereas Factory Method uses inheritance to deliver one product.`
+              },
+              {
+                q: `What is Abstract Factory's main weakness?`,
+                a: `Adding a new product TYPE forces changes to the factory interface and every concrete factory. Easy to add a new family, hard to add a new member to all families.`
+              },
+              {
+                q: `When is Abstract Factory the wrong choice?`,
+                a: `When there is only one family, the products are unrelated, or product types churn often — you get indirection without the consistency payoff.`
+              },
+              {
+                q: `Give two JDK examples of Abstract Factory.`,
+                a: `DocumentBuilderFactory / SAXParserFactory and TransformerFactory — each produces a coordinated set of related objects.`
+              },
+              {
+                q: `How does Spring relate to Abstract Factory?`,
+                a: `BeanFactory/ApplicationContext is a generalized abstract factory; @Profile-selected @Configuration classes swap entire families of beans with one decision.`
+              },
+              {
+                q: `Factory Method vs Abstract Factory: scope and mechanism.`,
+                a: `Factory Method: one product, inheritance (override a method). Abstract Factory: a family of products, composition (hold and call a factory object).`
+              },
+              {
+                q: `What question decides whether you need Abstract Factory?`,
+                a: `Do the products have a consistency constraint ('must come from the same family')? Only then does its guarantee earn its complexity.`
+              }
+            ]
+          },
+          {
+            id: `12.1.4`,
+            title: `Builder`,
+            notes: `## Builder
+
+**Intent (one line):** separate the construction of a complex object from its representation, so the same process can build different configurations step by step.
+
+**Problem it solves:** the **telescoping constructor anti-pattern**. An object with many optional fields breeds a forest of overloaded constructors (\`Pizza(size)\`, \`Pizza(size, cheese)\`, \`Pizza(size, cheese, pepperoni)\`...) that are unreadable at the call site — \`new Pizza(12, true, false, true, false, true)\` — and easy to mis-order. The JavaBeans alternative (no-arg constructor + setters) sacrifices immutability and lets objects exist in half-built, inconsistent states. Builder gives readable, named, optional parameters **and** an immutable final object.
+
+\`\`\`mermaid
+classDiagram
+  class Pizza {
+    -int size
+    -boolean cheese
+    -boolean pepperoni
+    +static Builder builder(int)
+  }
+  class Builder {
+    -int size
+    -boolean cheese
+    +cheese() Builder
+    +pepperoni() Builder
+    +build() Pizza
+  }
+  Pizza ..> Builder : nested static
+  Builder ..> Pizza : build() creates
+\`\`\`
+
+### Builder vs the alternatives
+
+| Approach | Readable? | Immutable? | Validates before publish? |
+|---|---|---|---|
+| Telescoping constructors | No (positional) | Yes | Yes |
+| JavaBeans (setters) | Yes-ish | **No** | **No** (object usable mid-build) |
+| **Builder** | **Yes (named)** | **Yes** | **Yes (in build())** |
+
+> [!TIP]
+> Builder shines specifically when there are **many parameters, several optional**, and you want immutability. With 2-3 required params, a constructor or static factory is simpler — don't cargo-cult a builder onto everything.
+
+### Lombok @Builder & @Value
+
+\`@Builder\` generates the nested builder; \`@Value\` (or \`@Builder\` + \`final\` fields) makes the result immutable. It removes the boilerplate but you lose the chance to put **cross-field validation** in \`build()\` unless you use \`@Builder.Default\` and a custom \`build\`. Senior caveat: a generated builder won't enforce "required" — every field looks optional. For mandatory fields, prefer a **constructor-required + builder-optional** split, or a step builder.
+
+### Step Builder (a.k.a. staged builder)
+
+A step builder uses a chain of interfaces so the *compiler* enforces order and required fields: \`builder().size(12).bake()\` won't compile until required steps are called. It trades extra interfaces for compile-time safety — worth it for APIs where misuse is costly.
+
+> [!WARNING]
+> Don't confuse GoF Builder (a Director drives an abstract Builder to produce different representations) with the popular **fluent/inner-class builder** for immutable objects (Effective Java Item 2). Both are called "Builder"; interviews usually mean the latter, but know the GoF Director variant exists.
+
+### Use when / Avoid when
+
+- **Use when:** many constructor params, several optional; immutability desired; or you must build different representations of the same thing (GoF Director).
+- **Avoid when:** few params, or a simple static factory reads fine. A builder for a 2-field DTO is over-engineering.
+
+### In the wild (JDK/Spring)
+
+- \`StringBuilder\` / \`StringBuffer\`; \`java.util.stream.Stream.Builder\`; \`Calendar.Builder\`; \`java.time\` \`...Builder\`s; \`HttpRequest.newBuilder()\` (java.net.http); \`Locale.Builder\`.
+- Spring: \`UriComponentsBuilder\`, \`MockMvcRequestBuilders\`, \`BeanDefinitionBuilder\`, \`RestClient.builder()\`.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Fluent inner-class Builder for an immutable object (Effective Java style)`,
+                code: `public class BuilderDemo {
+
+    // Immutable target with required + many optional fields.
+    static final class HttpRequest {
+        private final String url;          // required
+        private final String method;       // optional, default GET
+        private final int timeoutMs;       // optional
+        private final boolean followRedirects;
+
+        private HttpRequest(Builder b) {
+            this.url = b.url;
+            this.method = b.method;
+            this.timeoutMs = b.timeoutMs;
+            this.followRedirects = b.followRedirects;
+        }
+
+        static Builder builder(String url) { return new Builder(url); }
+
+        @Override public String toString() {
+            return method + " " + url + " (timeout=" + timeoutMs +
+                   "ms, follow=" + followRedirects + ")";
+        }
+
+        static final class Builder {
+            private final String url;                 // required -> constructor arg
+            private String method = "GET";            // sensible defaults
+            private int timeoutMs = 30_000;
+            private boolean followRedirects = true;
+
+            private Builder(String url) {
+                if (url == null || url.isBlank())
+                    throw new IllegalArgumentException("url required");
+                this.url = url;
+            }
+            Builder method(String m)        { this.method = m; return this; }
+            Builder timeoutMs(int t)        { this.timeoutMs = t; return this; }
+            Builder followRedirects(boolean f){ this.followRedirects = f; return this; }
+
+            HttpRequest build() {
+                // Cross-field validation happens here, before publishing.
+                if (timeoutMs < 0) throw new IllegalStateException("timeout < 0");
+                return new HttpRequest(this);
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        HttpRequest r = HttpRequest.builder("https://api.example.com/orders")
+                .method("POST")
+                .timeoutMs(5_000)
+                .followRedirects(false)
+                .build();
+        System.out.println(r);
+        // Required url is positional & validated; everything else is named & optional.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Step Builder: the compiler enforces required steps and order`,
+                code: `public class StepBuilderDemo {
+
+    static final class Connection {
+        final String host; final int port; final boolean tls;
+        private Connection(String host, int port, boolean tls) {
+            this.host = host; this.port = port; this.tls = tls;
+        }
+        public String toString(){ return (tls?"tls://":"tcp://") + host + ":" + port; }
+
+        // Staged interfaces: each returns the NEXT mandatory step.
+        interface HostStep { PortStep host(String host); }
+        interface PortStep { BuildStep port(int port); }
+        interface BuildStep {
+            BuildStep tls(boolean tls);   // optional, stays on BuildStep
+            Connection build();
+        }
+
+        static HostStep builder() { return new Steps(); }
+
+        private static final class Steps implements HostStep, PortStep, BuildStep {
+            private String host; private int port; private boolean tls;
+            public PortStep host(String h){ this.host = h; return this; }
+            public BuildStep port(int p){ this.port = p; return this; }
+            public BuildStep tls(boolean t){ this.tls = t; return this; }
+            public Connection build(){ return new Connection(host, port, tls); }
+        }
+    }
+
+    public static void main(String[] args) {
+        // host() then port() are forced by the type system; build() only reachable after.
+        Connection c = Connection.builder().host("db.internal").port(5432).tls(true).build();
+        System.out.println(c);
+        // Connection.builder().build();  // <-- would NOT compile: host()/port() required.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Lombok @Builder illustration and its 'everything looks optional' caveat`,
+                runnable: false,
+                note: `Lombok-dependent. @Builder generates the nested builder; note that no field is 'required' — for mandatory fields prefer a step builder or a required constructor arg.`,
+                code: `import lombok.Builder;
+import lombok.Value;
+
+@Value                 // immutable: final fields, getters, no setters
+@Builder               // generates User.builder().name(..).email(..).build()
+public class User {
+    String name;       // Lombok cannot mark this 'required' in the builder
+    String email;
+    @Builder.Default boolean active = true;
+}
+
+// Usage:
+// User u = User.builder().name("Ana").email("ana@x.com").build();
+// Caveat: User.builder().build();  // compiles! name/email null — no enforcement.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Builder in one line.`,
+                a: `Separate the construction of a complex object from its representation so the same step-by-step process can produce different configurations.`
+              },
+              {
+                q: `What is the telescoping constructor anti-pattern?`,
+                a: `A proliferation of overloaded constructors for combinations of optional parameters, producing unreadable, error-prone positional calls like new Pizza(12,true,false,true).`
+              },
+              {
+                q: `Why is the JavaBeans (setters) alternative worse than Builder?`,
+                a: `It sacrifices immutability and allows the object to be observed in a half-built, inconsistent state because setters mutate it incrementally with no atomic, validated publish.`
+              },
+              {
+                q: `Where does a Builder perform cross-field validation, and why there?`,
+                a: `In build(), just before constructing the object, so invalid combinations never become a published instance.`
+              },
+              {
+                q: `What is the senior caveat with Lombok @Builder?`,
+                a: `It makes every field look optional — it cannot enforce required fields, so builder().build() compiles with nulls. Use a step builder or a required constructor arg for mandatory fields.`
+              },
+              {
+                q: `What does a step (staged) builder add over a fluent builder?`,
+                a: `Compile-time enforcement of required fields and call order via a chain of interfaces; build() is unreachable until mandatory steps are invoked.`
+              },
+              {
+                q: `When is a Builder over-engineering?`,
+                a: `When there are only a few parameters (especially all required); a constructor or static factory is clearer than a builder for a 2-field DTO.`
+              },
+              {
+                q: `Builder vs Factory: what's the distinction?`,
+                a: `A factory answers 'which type to create' in one call; a builder answers 'how to configure a complex instance' across many steps. Factory = polymorphic choice; Builder = staged construction of one type.`
+              },
+              {
+                q: `Name three JDK builders.`,
+                a: `StringBuilder, HttpRequest.newBuilder() (java.net.http), and Stream.Builder / Calendar.Builder / Locale.Builder.`
+              },
+              {
+                q: `How does GoF Builder differ from the Effective Java fluent builder?`,
+                a: `GoF uses a Director that drives an abstract Builder to produce different representations; the Effective Java variant is a single inner-class builder focused on readable construction of one immutable type.`
+              }
+            ]
+          },
+          {
+            id: `12.1.5`,
+            title: `Prototype`,
+            notes: `## Prototype
+
+**Intent (one line):** create new objects by copying an existing instance (the prototype) rather than instantiating from scratch.
+
+**Problem it solves:** when constructing an object is expensive (heavy initialization, DB/network lookups, complex assembly) or when you need many near-identical objects that differ only slightly, cloning a pre-built prototype is cheaper and decouples the client from concrete classes. It also lets you snapshot a configured object and stamp out copies.
+
+\`\`\`mermaid
+classDiagram
+  class Prototype { <<interface>> +clone() Prototype }
+  class ConcreteA { -state +clone() Prototype }
+  class ConcreteB { -state +clone() Prototype }
+  Prototype <|.. ConcreteA
+  Prototype <|.. ConcreteB
+  ConcreteA ..> ConcreteA : returns copy
+\`\`\`
+
+### Shallow vs deep copy — the crux
+
+- **Shallow copy** copies field values. For references, the copy and original **share the same referenced objects**. Mutating a shared list through the clone corrupts the original. Java's \`Object.clone()\` is shallow by default.
+- **Deep copy** recursively copies referenced objects too, so the clone is fully independent. You implement it by cloning the mutable referenced fields inside \`clone()\` (or via a copy constructor / serialization round-trip).
+
+> [!DANGER]
+> **\`Cloneable\` is a broken interface (Effective Java Item 13).** It's a marker with no \`clone()\` method; \`Object.clone()\` is \`protected\` and \`native\`; it bypasses constructors (final fields are awkward); and it forces shallow-copy semantics you must manually fix for every mutable field. Prefer a **copy constructor** or a **static copy factory** (\`static T copyOf(T)\`) — clearer, no checked \`CloneNotSupportedException\`, and they can copy across types.
+
+> [!TIP]
+> When interviewers ask "implement clone," lead with: "I'd avoid \`Cloneable\` and use a copy constructor; here's why," then show you *can* do \`clone()\` correctly (deep-copy the mutable fields). That signals seniority.
+
+### Use when / Avoid when
+
+- **Use when:** object creation is costly and you have a configured exemplar to copy; you need registries of pre-built prototypes to clone; or you must decouple cloning from concrete types.
+- **Avoid when:** objects are cheap to construct (just use \`new\`/factory), or are immutable (sharing is safe, no copy needed). Deep-copying large graphs can be slower than rebuilding.
+
+### In the wild (JDK/Spring)
+
+- \`Object.clone()\` / \`Cloneable\`; \`ArrayList.clone()\`, \`HashMap.clone()\` (all shallow!); \`java.util.Calendar.clone()\`.
+- \`Arrays.copyOf\`, copy constructors (\`new ArrayList<>(other)\`), \`List.copyOf\` are the modern, preferred copy idioms.
+- Spring: \`@Scope("prototype")\` is a *different* idea — it means "new instance per lookup," not GoF cloning, but it scratches the same "I need fresh copies" itch.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Shallow vs deep copy — and why shallow bites you`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+public class PrototypeDemo {
+
+    static class Document {
+        String title;
+        List<String> tags;   // MUTABLE reference field
+
+        Document(String title, List<String> tags) {
+            this.title = title;
+            this.tags = tags;
+        }
+
+        // SHALLOW copy: shares the SAME tags list with the original.
+        Document shallowCopy() {
+            return new Document(this.title, this.tags);
+        }
+
+        // DEEP copy: clones the mutable list so the copy is independent.
+        Document deepCopy() {
+            return new Document(this.title, new ArrayList<>(this.tags));
+        }
+
+        public String toString() { return title + " " + tags; }
+    }
+
+    public static void main(String[] args) {
+        Document original = new Document("Spec", new ArrayList<>(List.of("draft")));
+
+        Document shallow = original.shallowCopy();
+        shallow.tags.add("URGENT");   // mutates the SHARED list...
+        System.out.println("after shallow edit, original = " + original);
+        // -> original now shows [draft, URGENT]: corruption via shared reference.
+
+        Document original2 = new Document("Spec2", new ArrayList<>(List.of("draft")));
+        Document deep = original2.deepCopy();
+        deep.tags.add("URGENT");      // mutates only the copy's own list
+        System.out.println("after deep edit, original2 = " + original2);
+        // -> original2 still [draft]: deep copy is independent.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Copy constructor vs Cloneable — the preferred idiom`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+public class CopyConstructorDemo {
+
+    static final class Order {
+        final String id;
+        final List<String> lines;
+
+        Order(String id, List<String> lines) {
+            this.id = id;
+            this.lines = new ArrayList<>(lines); // defensive copy in
+        }
+
+        // Copy constructor: explicit, no Cloneable, no checked exception,
+        // deep-copies the mutable field for an independent instance.
+        Order(Order other) {
+            this(other.id, other.lines);
+        }
+
+        // Optional static copy factory reads even better at call sites.
+        static Order copyOf(Order o) { return new Order(o); }
+
+        void add(String line) { lines.add(line); }
+        public String toString() { return id + " " + lines; }
+    }
+
+    public static void main(String[] args) {
+        Order a = new Order("A1", List.of("apple"));
+        Order b = Order.copyOf(a);
+        b.add("banana");
+        System.out.println("a = " + a);  // unchanged
+        System.out.println("b = " + b);  // independent copy with extra line
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Prototype in one line.`,
+                a: `Create new objects by copying an existing configured instance rather than constructing from scratch.`
+              },
+              {
+                q: `Shallow vs deep copy — what is the difference and the danger?`,
+                a: `Shallow copies field values, so reference fields are shared between copy and original; mutating a shared object corrupts both. Deep copy recursively clones referenced objects so the copy is fully independent.`
+              },
+              {
+                q: `Is Object.clone() shallow or deep, and what must you do for mutable fields?`,
+                a: `Shallow by default. You must manually clone each mutable referenced field inside clone() to get correct deep-copy semantics.`
+              },
+              {
+                q: `Why is Cloneable considered broken (Effective Java Item 13)?`,
+                a: `It is a marker interface with no clone() method; Object.clone() is protected/native, bypasses constructors, complicates final fields, throws checked CloneNotSupportedException, and defaults to shallow semantics you must fix.`
+              },
+              {
+                q: `What is the preferred alternative to Cloneable?`,
+                a: `A copy constructor or a static copy factory (copyOf) — explicit, no checked exception, can deep-copy mutable fields, and can copy across types.`
+              },
+              {
+                q: `When is Prototype the right pattern?`,
+                a: `When constructing objects is expensive and you can copy a pre-built exemplar, when you maintain a registry of prototypes, or when you must decouple copying from concrete classes.`
+              },
+              {
+                q: `When should you NOT use Prototype?`,
+                a: `When objects are cheap to construct (use new/factory) or immutable (sharing is safe). Deep-copying large object graphs can be slower than rebuilding.`
+              },
+              {
+                q: `Do ArrayList.clone() and HashMap.clone() deep-copy their elements?`,
+                a: `No — they are shallow: the backing structure is new but the contained element references are shared with the original.`
+              },
+              {
+                q: `Is Spring's @Scope('prototype') the GoF Prototype pattern?`,
+                a: `No. It means a new bean instance is created per lookup/injection; it does not clone an exemplar. It solves a similar 'fresh instance' need by a different mechanism.`
+              }
+            ]
+          },
+          {
+            id: `12.1.6`,
+            title: `Creational Patterns in Practice`,
+            notes: `## Creational Patterns in Practice
+
+This section ties the five creational patterns together: how to choose, why **dependency injection is the modern factory**, and where **object pools** fit.
+
+### Choosing between them — a decision guide
+
+\`\`\`mermaid
+flowchart TD
+  Q0{How many params /<br/>optional fields?} -->|many, optional, immutable| B[Builder]
+  Q0 -->|few| Q1{Need to choose<br/>concrete type at runtime?}
+  Q1 -->|one product, by subtype| FM[Factory Method]
+  Q1 -->|family that must match| AF[Abstract Factory]
+  Q1 -->|exactly one instance| S[Singleton / DI bean]
+  Q1 -->|copy an expensive exemplar| P[Prototype]
+  Q1 -->|just construct it| N[new / static factory]
+\`\`\`
+
+| If you need... | Reach for |
+|---|---|
+| Exactly one shared instance | Singleton (better: a DI-managed bean) |
+| Pick one concrete subtype, decided by subclass | Factory Method |
+| Pick a consistent *family* of related objects | Abstract Factory |
+| Configure a complex immutable object readably | Builder |
+| Cheap copies of a costly pre-built object | Prototype |
+| Reuse a small set of expensive instances | Object Pool |
+
+> [!TIP]
+> **Pattern pairings you'll see:** a Builder often returns from a Factory Method; an Abstract Factory's methods are Factory Methods; a Singleton frequently *is* the factory. They compose; they aren't mutually exclusive.
+
+### Dependency injection IS the modern factory
+
+GoF creational patterns largely existed to answer "who calls \`new\`, and how do I swap implementations?" A **DI container answers that globally**: you declare *what* you need (a constructor parameter) and the container decides *which* concrete bean to supply and *when* to create it. This subsumes most hand-rolled factories:
+
+- **Singleton** → \`@Component\` default scope.
+- **Factory Method / Abstract Factory** → \`@Bean\` methods, \`@Profile\`/\`@Conditional\` selecting implementations, \`ObjectProvider<T>\`/\`@Qualifier\`.
+- **Prototype** → \`@Scope("prototype")\`.
+
+> [!SUCCESS]
+> The senior takeaway: in a Spring app you rarely write GoF creational patterns by hand — the container *is* the factory and the singleton manager. Know the patterns to understand *what the container does for you* and to recognize when you still need an explicit factory (e.g. building objects from runtime data the container can't know, where \`ObjectProvider\` or a small factory bean is the right tool).
+
+### Object pools
+
+An **object pool** reuses a fixed set of expensive-to-create objects (DB connections, threads, large buffers) instead of creating/destroying them per use. It's a creational concern (it governs object lifecycle) even though it's not in the original GoF five.
+
+> [!WARNING]
+> Pools are a **performance optimization with real cost**: borrow/return discipline (leaks if you forget to return), validation of stale entries, sizing, and contention. Only pool objects that are genuinely expensive (connections, threads). Pooling cheap objects (plain DTOs) is almost always a net loss in modern JVMs thanks to fast allocation and generational GC.
+
+> [!EU]
+> For regulated/audited systems, a DI container also centralizes **lifecycle and shutdown hooks** (closing pools, flushing audit buffers) in one place — a compliance win over scattered \`getInstance()\` globals whose teardown order is undefined.
+
+### In the wild (JDK/Spring)
+
+- Pools: \`java.util.concurrent.Executors\` (thread pools), HikariCP / Apache Commons-Pool (connection pools), Netty's \`PooledByteBufAllocator\`.
+- DI: Spring \`ApplicationContext\`, Jakarta CDI, Google Guice.`,
+            code: [
+              {
+                lang: `java`,
+                title: `A minimal generic object pool (borrow / return) with output`,
+                code: `import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.function.Supplier;
+
+public class ObjectPoolDemo {
+
+    // Simulates an expensive-to-create resource.
+    static final class Connection {
+        private static int counter = 0;
+        final int id;
+        Connection() {
+            this.id = ++counter;
+            // pretend this is slow (socket handshake, auth, etc.)
+        }
+        void use() { System.out.println("  using connection #" + id); }
+    }
+
+    static final class Pool<T> {
+        private final Deque<T> idle = new ArrayDeque<>();
+        private final Supplier<T> factory;
+        private final int maxSize;
+        private int created = 0;
+
+        Pool(Supplier<T> factory, int maxSize) {
+            this.factory = factory; this.maxSize = maxSize;
+        }
+
+        synchronized T borrow() {
+            if (!idle.isEmpty()) return idle.pop();      // reuse
+            if (created < maxSize) { created++; return factory.get(); } // grow
+            throw new IllegalStateException("pool exhausted");
+        }
+        synchronized void giveBack(T obj) { idle.push(obj); } // return for reuse
+        synchronized int createdCount() { return created; }
+    }
+
+    public static void main(String[] args) {
+        Pool<Connection> pool = new Pool<>(Connection::new, 2);
+
+        Connection a = pool.borrow();  a.use();
+        Connection b = pool.borrow();  b.use();
+        pool.giveBack(a);              // return a for reuse
+
+        Connection c = pool.borrow();  c.use();  // reuses a, not a new object
+        System.out.println("connections actually created: " + pool.createdCount());
+        // -> 2, even though we borrowed 3 times: reuse is the whole point.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `DI by hand: a tiny container as 'the modern factory'`,
+                code: `import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Supplier;
+
+public class TinyDiDemo {
+
+    // The container decides which concrete type satisfies a needed type.
+    static final class Container {
+        private final Map<Class<?>, Supplier<?>> recipes = new HashMap<>();
+        <T> void register(Class<T> type, Supplier<T> recipe) { recipes.put(type, recipe); }
+        @SuppressWarnings("unchecked")
+        <T> T get(Class<T> type) {
+            Supplier<?> r = recipes.get(type);
+            if (r == null) throw new IllegalStateException("no binding for " + type);
+            return (T) r.get();
+        }
+    }
+
+    interface Mailer { void send(String to); }
+    static final class SmtpMailer implements Mailer {
+        public void send(String to) { System.out.println("SMTP -> " + to); }
+    }
+    static final class SignupService {
+        private final Mailer mailer;            // dependency declared, not created
+        SignupService(Mailer mailer) { this.mailer = mailer; }
+        void signup(String email) { mailer.send(email); }
+    }
+
+    public static void main(String[] args) {
+        Container c = new Container();
+        c.register(Mailer.class, SmtpMailer::new);                  // choose impl here
+        c.register(SignupService.class, () -> new SignupService(c.get(Mailer.class)));
+
+        // The container is the factory + the singleton manager + the wiring.
+        c.get(SignupService.class).signup("ana@x.com");
+        // Swap SmtpMailer for a mock in tests by registering a different recipe.
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Quick chooser: many optional params and you want immutability — which pattern?`,
+                a: `Builder.`
+              },
+              {
+                q: `Quick chooser: you must pick a consistent family of related objects — which pattern?`,
+                a: `Abstract Factory.`
+              },
+              {
+                q: `Quick chooser: cheap copies of an expensive pre-built object — which pattern?`,
+                a: `Prototype.`
+              },
+              {
+                q: `Why is dependency injection called 'the modern factory'?`,
+                a: `A DI container globally answers who calls new and which implementation to supply: you declare what you need (constructor param) and it decides which concrete bean and when to create it, subsuming most hand-rolled factories and singletons.`
+              },
+              {
+                q: `Map three creational patterns to their Spring equivalents.`,
+                a: `Singleton -> @Component default scope; Factory Method/Abstract Factory -> @Bean methods with @Profile/@Conditional and ObjectProvider/@Qualifier; Prototype -> @Scope('prototype').`
+              },
+              {
+                q: `When do you still need an explicit factory in a DI app?`,
+                a: `When you must build objects from runtime data the container can't know in advance — e.g. via ObjectProvider<T> or a small factory bean that takes runtime arguments.`
+              },
+              {
+                q: `What is an object pool and when is it justified?`,
+                a: `Reuse of a fixed set of expensive-to-create objects (connections, threads, large buffers) instead of per-use create/destroy. Justified only when creation is genuinely costly.`
+              },
+              {
+                q: `Why is pooling cheap objects usually a net loss on modern JVMs?`,
+                a: `Fast TLAB allocation and generational GC make short-lived objects cheap; pooling adds borrow/return discipline, leak risk, validation, and contention that outweigh any savings.`
+              },
+              {
+                q: `Do creational patterns compose or compete?`,
+                a: `They compose: a Builder can return from a Factory Method, an Abstract Factory's methods are Factory Methods, and a Singleton is often the factory itself.`
+              },
+              {
+                q: `Name two JDK/library object pools.`,
+                a: `Executors thread pools (java.util.concurrent) and HikariCP / Apache Commons-Pool connection pools (also Netty's PooledByteBufAllocator).`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `12.2`,
+        title: `Structural Design Patterns`,
+        hours: 6,
+        sections: [
+          {
+            id: `12.2.1`,
+            title: `Adapter`,
+            notes: `## Adapter
+
+**Intent (one line):** convert the interface of a class into another interface clients expect, so incompatible types can work together.
+
+**Problem it solves:** you have a class that does what you need but its interface doesn't match what your code expects (a third-party SDK, a legacy class, a different naming convention). Rather than rewrite either side, an adapter wraps the existing class and exposes the target interface, translating calls.
+
+\`\`\`mermaid
+classDiagram
+  class Target { <<interface>> +request() }
+  class Adapter { -Adaptee adaptee +request() }
+  class Adaptee { +specificRequest() }
+  Target <|.. Adapter
+  Adapter --> Adaptee : delegates / translates
+\`\`\`
+
+### Object adapter vs class adapter
+
+- **Object adapter** (preferred in Java) holds the adaptee by **composition** and delegates. Flexible: can adapt subclasses, swap adaptee at runtime.
+- **Class adapter** uses **inheritance** (extends adaptee, implements target). Java has single inheritance, so it's limited; rarely used.
+
+### Adapter vs Decorator vs Proxy — the senior distinction
+
+All three wrap an object. The difference is **intent**:
+
+| Pattern | Changes interface? | Adds behavior? | Controls access? |
+|---|---|---|---|
+| **Adapter** | **Yes** (target != adaptee) | No (translates) | No |
+| **Decorator** | No (same interface) | **Yes** (augments) | No |
+| **Proxy** | No (same interface) | Maybe | **Yes** (lazy/secure/remote) |
+
+> [!TIP]
+> One-liner to nail the interview: **Adapter changes the interface, Decorator changes the behavior, Proxy controls access** — all by wrapping. Same structure, different purpose.
+
+### Use when / Avoid when
+
+- **Use when:** integrating a third-party or legacy class whose interface you can't change, or bridging two interfaces that evolved independently.
+- **Avoid when:** you control both sides — just change one interface. Don't adapt as a habit; layers of adapters obscure intent.
+
+### In the wild (JDK/Spring)
+
+- \`java.util.Arrays.asList()\` adapts an array to a \`List\`; \`Collections.list(Enumeration)\` adapts old \`Enumeration\` to a List.
+- \`java.io.InputStreamReader\` adapts a byte \`InputStream\` to a char \`Reader\`.
+- \`javax.xml.bind\` \`XmlAdapter\`; Spring MVC \`HandlerAdapter\`; \`@ControllerAdvice\`-style integration points; Spring's \`MessageConverter\` family.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Object adapter: make a legacy logger fit a modern interface`,
+                code: `public class AdapterDemo {
+
+    // Target: what our code wants to use.
+    interface Logger { void log(String level, String message); }
+
+    // Adaptee: a legacy/third-party class with an incompatible API.
+    static final class LegacyPrinter {
+        void printError(String text) { System.out.println("ERR! " + text); }
+        void printInfo(String text)  { System.out.println("info: " + text); }
+    }
+
+    // Adapter: implements Target, delegates+translates to the Adaptee.
+    static final class LoggerAdapter implements Logger {
+        private final LegacyPrinter printer;   // composition (object adapter)
+        LoggerAdapter(LegacyPrinter printer) { this.printer = printer; }
+
+        public void log(String level, String message) {
+            if ("ERROR".equalsIgnoreCase(level)) printer.printError(message);
+            else                                  printer.printInfo(message);
+        }
+    }
+
+    public static void main(String[] args) {
+        Logger logger = new LoggerAdapter(new LegacyPrinter());
+        logger.log("INFO", "service started");
+        logger.log("ERROR", "disk full");
+        // Client code depends only on Logger; the legacy API is hidden.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Mirrors the JDK: adapting an array to a List view`,
+                code: `import java.util.AbstractList;
+import java.util.List;
+
+public class ArrayAdapterDemo {
+
+    // Like Arrays.asList: present an Integer[] as a List<Integer> (a view).
+    static final class IntArrayListAdapter extends AbstractList<Integer> {
+        private final int[] array;
+        IntArrayListAdapter(int[] array) { this.array = array; }
+        public Integer get(int index) { return array[index]; }
+        public int size() { return array.length; }
+        // writes go through to the backing array (a true adapter view)
+        public Integer set(int index, Integer element) {
+            int old = array[index]; array[index] = element; return old;
+        }
+    }
+
+    public static void main(String[] args) {
+        int[] raw = {10, 20, 30};
+        List<Integer> view = new IntArrayListAdapter(raw);
+        System.out.println("as list: " + view + " size=" + view.size());
+        view.set(1, 99);                      // mutate through the adapter
+        System.out.println("backing array[1] now: " + raw[1]); // -> 99
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Adapter in one line.`,
+                a: `Convert the interface of a class into another interface clients expect, so incompatible types can collaborate.`
+              },
+              {
+                q: `Object adapter vs class adapter — which does Java prefer and why?`,
+                a: `Object adapter (composition + delegation) is preferred because Java has single inheritance, which limits the class adapter, and composition can adapt subclasses and swap the adaptee at runtime.`
+              },
+              {
+                q: `Distinguish Adapter, Decorator, and Proxy in one sentence.`,
+                a: `Adapter changes the interface, Decorator adds behavior behind the same interface, and Proxy controls access behind the same interface — all by wrapping a target.`
+              },
+              {
+                q: `When should you NOT use an Adapter?`,
+                a: `When you control both sides of the interface — just change one. Habitual adapter layers obscure intent and add indirection.`
+              },
+              {
+                q: `Give three JDK examples of Adapter.`,
+                a: `Arrays.asList (array->List), InputStreamReader (byte stream->char reader), and Collections.list (Enumeration->List).`
+              },
+              {
+                q: `How is InputStreamReader an Adapter?`,
+                a: `It adapts a byte-oriented InputStream to the character-oriented Reader interface, translating bytes to chars using a charset.`
+              },
+              {
+                q: `Why does Adapter not add behavior?`,
+                a: `Its job is pure translation between two interfaces; if it augmented behavior it would be a Decorator. Keeping it translation-only preserves a clear single responsibility.`
+              },
+              {
+                q: `What Spring component is an Adapter?`,
+                a: `HandlerAdapter in Spring MVC adapts varied handler types (controllers, functions) to the dispatcher's uniform invocation interface; XmlAdapter and MessageConverters are similar.`
+              }
+            ]
+          },
+          {
+            id: `12.2.2`,
+            title: `Decorator`,
+            notes: `## Decorator
+
+**Intent (one line):** attach additional responsibilities to an object dynamically by wrapping it, keeping the same interface.
+
+**Problem it solves:** you want to add behavior (buffering, compression, encryption, metrics) to individual objects without subclassing for every combination. Subclassing explodes combinatorially (\`BufferedEncryptedLoggingStream\`...). Decorators stack at runtime: each wraps the next, adds its bit, and delegates, so you compose features like Lego.
+
+\`\`\`mermaid
+classDiagram
+  class Component { <<interface>> +operation() }
+  class ConcreteComponent { +operation() }
+  class Decorator { -Component wrappee +operation() }
+  class BufferingDecorator { +operation() }
+  class CompressingDecorator { +operation() }
+  Component <|.. ConcreteComponent
+  Component <|.. Decorator
+  Decorator <|-- BufferingDecorator
+  Decorator <|-- CompressingDecorator
+  Decorator --> Component : wraps & delegates
+\`\`\`
+
+### java.io — the canonical Decorator
+
+\`java.io\` streams are the textbook example. \`InputStream\` is the component; \`FileInputStream\` is a concrete component; \`BufferedInputStream\`, \`GZIPInputStream\`, \`DataInputStream\`, \`CipherInputStream\` are decorators. You stack them:
+
+\`\`\`
+new DataInputStream(new BufferedInputStream(new FileInputStream("f")))
+\`\`\`
+
+Each wrapper *is-a* \`InputStream\` and *has-a* \`InputStream\`, adds its behavior, and delegates the rest. That's exactly Decorator.
+
+> [!TIP]
+> The structural tell: a Decorator **implements the same interface it wraps** and holds a reference to a component of that interface. Adapter wraps a *different* interface; Decorator wraps the *same* one. If \`X wraps X\`, it's a Decorator; if \`X wraps Y\`, it's an Adapter.
+
+> [!WARNING]
+> Order matters and identity breaks. \`equals\`/\`==\` on a decorated object compares the *outermost* wrapper, not the wrapped core; and stacking order changes semantics (compress-then-encrypt != encrypt-then-compress). Decorator chains can also be hard to debug — a deep stack obscures which layer did what.
+
+### Use when / Avoid when
+
+- **Use when:** you need optional, combinable, runtime-selectable enhancements over a stable interface (I/O filters, HTTP client interceptors, UI components).
+- **Avoid when:** there's a single fixed combination (just write one class) or the interface is wide (every decorator must re-implement many methods — a lot of boilerplate; consider a different design or an abstract base decorator that delegates by default).
+
+### In the wild (JDK/Spring)
+
+- \`java.io.*\` filter streams/readers/writers; \`java.util.Collections.unmodifiableList/synchronizedList/checkedList\` (decorators that add behavior to a List).
+- \`javax.servlet.http.HttpServletRequestWrapper\` / \`...ResponseWrapper\`.
+- Spring: \`HandlerInterceptor\` chains, \`BeanPostProcessor\`-wrapped beans, \`TransactionAwareDataSourceProxy\`, cache decorators.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Decorator: stack optional behaviors over one interface`,
+                code: `public class DecoratorDemo {
+
+    // Component: the stable interface.
+    interface DataSource { void write(String data); String read(); }
+
+    // Concrete component.
+    static final class InMemoryDataSource implements DataSource {
+        private String store = "";
+        public void write(String data) { this.store = data; }
+        public String read() { return store; }
+    }
+
+    // Base decorator: same interface + wraps a component, delegates by default.
+    static abstract class DataSourceDecorator implements DataSource {
+        protected final DataSource wrappee;
+        DataSourceDecorator(DataSource wrappee) { this.wrappee = wrappee; }
+        public void write(String data) { wrappee.write(data); }
+        public String read() { return wrappee.read(); }
+    }
+
+    // Concrete decorators add behavior before/after delegating.
+    static final class UpperCaseDecorator extends DataSourceDecorator {
+        UpperCaseDecorator(DataSource d) { super(d); }
+        public void write(String data) { super.write(data.toUpperCase()); }
+    }
+    static final class BracketDecorator extends DataSourceDecorator {
+        BracketDecorator(DataSource d) { super(d); }
+        public void write(String data) { super.write("[" + data + "]"); }
+        public String read() { return "READ:" + super.read(); }
+    }
+
+    public static void main(String[] args) {
+        // Stack like Lego; order changes the result.
+        DataSource ds = new BracketDecorator(new UpperCaseDecorator(new InMemoryDataSource()));
+        ds.write("hello");
+        System.out.println(ds.read());   // -> READ:[HELLO]
+        // Each wrapper is-a DataSource and has-a DataSource.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `The JDK's own java.io decorator stack, demonstrated`,
+                code: `import java.io.*;
+
+public class IoDecoratorDemo {
+    public static void main(String[] args) throws IOException {
+        // Build an in-memory byte sink, then DECORATE it:
+        //   ByteArrayOutputStream (concrete component)
+        //     <- BufferedOutputStream (adds buffering)
+        //       <- DataOutputStream (adds typed writeInt/writeUTF)
+        ByteArrayOutputStream raw = new ByteArrayOutputStream();
+        try (DataOutputStream out =
+                 new DataOutputStream(new BufferedOutputStream(raw))) {
+            out.writeInt(42);
+            out.writeUTF("ping");
+        } // close flushes the buffered decorator
+
+        byte[] bytes = raw.toByteArray();
+
+        // Mirror the stack on the read side.
+        try (DataInputStream in =
+                 new DataInputStream(new BufferedInputStream(
+                     new ByteArrayInputStream(bytes)))) {
+            System.out.println("int  = " + in.readInt());   // 42
+            System.out.println("text = " + in.readUTF());   // ping
+        }
+        System.out.println("Each wrapper IS-A InputStream and HAS-A InputStream.");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Decorator in one line.`,
+                a: `Attach additional responsibilities to an object dynamically by wrapping it while keeping the same interface.`
+              },
+              {
+                q: `What problem does Decorator solve that subclassing cannot?`,
+                a: `It avoids the combinatorial explosion of subclasses for every feature combination by letting features be composed/stacked at runtime instead of fixed at compile time.`
+              },
+              {
+                q: `What is the structural tell that something is a Decorator vs an Adapter?`,
+                a: `A Decorator implements the same interface it wraps (X wraps X); an Adapter wraps a different interface (X wraps Y). Decorator preserves the interface, Adapter changes it.`
+              },
+              {
+                q: `Why is java.io the canonical Decorator example?`,
+                a: `Filter streams like BufferedInputStream, DataInputStream, GZIPInputStream both are-a InputStream and have-a InputStream, each adding behavior and delegating the rest — exactly the Decorator structure, stacked at runtime.`
+              },
+              {
+                q: `What goes wrong with object identity in decorated objects?`,
+                a: `equals/== see the outermost wrapper, not the wrapped core, so identity comparisons can be surprising; and decorators can hide which layer produced a given behavior.`
+              },
+              {
+                q: `Why does decorator stacking order matter?`,
+                a: `Each layer transforms input/output, so order changes semantics — e.g. compress-then-encrypt differs from encrypt-then-compress.`
+              },
+              {
+                q: `When should you avoid Decorator?`,
+                a: `When there is only one fixed feature combination (write one class) or the interface is very wide, forcing every decorator to re-implement many methods (boilerplate).`
+              },
+              {
+                q: `Name two JDK decorators outside java.io.`,
+                a: `Collections.unmodifiableList/synchronizedList/checkedList and HttpServletRequestWrapper/ResponseWrapper — they add behavior over the same interface.`
+              },
+              {
+                q: `How does an abstract base decorator reduce boilerplate?`,
+                a: `It delegates every method to the wrappee by default, so concrete decorators override only the methods whose behavior they change.`
+              }
+            ]
+          },
+          {
+            id: `12.2.3`,
+            title: `Facade`,
+            notes: `## Facade
+
+**Intent (one line):** provide a simplified, unified interface to a complex subsystem.
+
+**Problem it solves:** a subsystem has many classes with intricate interactions (order placement = inventory + payment + shipping + notification). Clients shouldn't need to orchestrate all of it. A facade offers one coarse-grained entry point that hides the wiring, reduces coupling, and gives a clear API.
+
+\`\`\`mermaid
+classDiagram
+  class OrderFacade { +placeOrder(id) }
+  class Inventory { +reserve() }
+  class Payment { +charge() }
+  class Shipping { +schedule() }
+  class Notifier { +send() }
+  OrderFacade --> Inventory
+  OrderFacade --> Payment
+  OrderFacade --> Shipping
+  OrderFacade --> Notifier
+  note for OrderFacade "Client talks ONLY to the facade"
+\`\`\`
+
+### Facade vs Adapter vs Mediator
+
+- **Facade** simplifies *many* subsystem classes behind one interface; it doesn't change their interfaces, just hides them. It's about **convenience and decoupling**.
+- **Adapter** converts *one* interface to another; it's about **compatibility**.
+- **Mediator** centralizes how objects *talk to each other* (bidirectional); a facade is a one-way front door to a subsystem.
+
+> [!TIP]
+> A facade is **additive, not restrictive**: it doesn't forbid using the subsystem directly; it offers an easier path for the common case. If you must hide/forbid the subsystem entirely, that's closer to a module boundary or an API gateway, not just a facade.
+
+> [!WARNING]
+> The **god-facade** smell: a facade that grows into a 50-method dumping ground re-couples everything it was meant to decouple. Keep facades thin and use-case-oriented; split by bounded context.
+
+### Use when / Avoid when
+
+- **Use when:** a complex subsystem needs a simple, stable entry point; you want to decouple clients from internal churn; or you're layering an app (service facade over repositories/clients).
+- **Avoid when:** the subsystem is already simple (a facade just adds a pass-through layer) or you need fine-grained control the facade hides.
+
+### In the wild (JDK/Spring)
+
+- \`javax.faces.context.FacesContext\`; \`java.net.URL\` (hides socket/protocol machinery); SLF4J's \`LoggerFactory\` over logging backends.
+- Spring: \`JdbcTemplate\` / \`RestClient\` / \`JmsTemplate\` are facades over verbose low-level APIs; \`@Service\` classes commonly act as facades over repositories and external clients.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Facade: one method hides a multi-step subsystem`,
+                code: `public class FacadeDemo {
+
+    // --- Complex subsystem (many classes, intricate calls) ---
+    static final class Inventory {
+        boolean reserve(String sku, int qty) {
+            System.out.println("  reserve " + qty + " x " + sku); return true;
+        }
+    }
+    static final class Payment {
+        boolean charge(String account, double amount) {
+            System.out.println("  charge $" + amount + " to " + account); return true;
+        }
+    }
+    static final class Shipping {
+        String schedule(String sku) {
+            System.out.println("  schedule shipment of " + sku); return "TRACK-123";
+        }
+    }
+    static final class Notifier {
+        void send(String to, String msg) { System.out.println("  notify " + to + ": " + msg); }
+    }
+
+    // --- Facade: one coarse-grained entry point ---
+    static final class OrderFacade {
+        private final Inventory inventory = new Inventory();
+        private final Payment payment   = new Payment();
+        private final Shipping shipping = new Shipping();
+        private final Notifier notifier = new Notifier();
+
+        String placeOrder(String account, String sku, int qty, double price) {
+            System.out.println("Placing order...");
+            if (!inventory.reserve(sku, qty)) throw new IllegalStateException("no stock");
+            if (!payment.charge(account, price * qty)) throw new IllegalStateException("payment failed");
+            String tracking = shipping.schedule(sku);
+            notifier.send(account, "Order confirmed, tracking " + tracking);
+            return tracking;
+        }
+    }
+
+    public static void main(String[] args) {
+        // Client touches only the facade, not the four subsystem classes.
+        String tracking = new OrderFacade().placeOrder("ana@x.com", "SKU-9", 2, 19.99);
+        System.out.println("Done. Tracking = " + tracking);
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Facade in one line.`,
+                a: `Provide a simplified, unified interface to a complex subsystem.`
+              },
+              {
+                q: `Facade vs Adapter — key difference?`,
+                a: `Facade simplifies many subsystem classes behind one convenient interface (decoupling); Adapter converts one interface into another for compatibility.`
+              },
+              {
+                q: `Facade vs Mediator?`,
+                a: `A facade is a one-way front door simplifying access to a subsystem; a mediator centralizes bidirectional communication between peer objects.`
+              },
+              {
+                q: `Why is a facade described as additive, not restrictive?`,
+                a: `It offers an easier path for the common case without forbidding direct use of the subsystem; enforcing a hard boundary is a module/gateway concern, not a plain facade.`
+              },
+              {
+                q: `What is the god-facade smell?`,
+                a: `A facade that grows into a huge dumping ground of methods, re-coupling everything it was meant to decouple. Keep facades thin and use-case oriented.`
+              },
+              {
+                q: `When should you avoid a Facade?`,
+                a: `When the subsystem is already simple (you only add a pass-through) or when clients legitimately need fine-grained control the facade hides.`
+              },
+              {
+                q: `How is Spring's JdbcTemplate a Facade?`,
+                a: `It presents a few simple methods over the verbose JDBC subsystem (Connection/Statement/ResultSet/exception handling), hiding the boilerplate and resource management.`
+              },
+              {
+                q: `Give two non-Spring examples of Facade.`,
+                a: `SLF4J LoggerFactory over logging backends and java.net.URL hiding socket/protocol machinery.`
+              }
+            ]
+          },
+          {
+            id: `12.2.4`,
+            title: `Proxy`,
+            notes: `## Proxy
+
+**Intent (one line):** provide a surrogate or placeholder for another object to control access to it.
+
+**Problem it solves:** sometimes you need to interpose logic *around* access to a real object without changing it or its callers — lazy initialization, access control, remote communication, caching, logging, transactions. A proxy implements the same interface as the real subject and forwards calls, adding the control logic.
+
+\`\`\`mermaid
+classDiagram
+  class Subject { <<interface>> +request() }
+  class RealSubject { +request() }
+  class Proxy { -RealSubject real +request() }
+  Subject <|.. RealSubject
+  Subject <|.. Proxy
+  Proxy --> RealSubject : controls access / forwards
+\`\`\`
+
+### Proxy flavors
+
+- **Virtual proxy** — lazy-creates an expensive object on first use.
+- **Protection proxy** — checks permissions before forwarding.
+- **Remote proxy** — local stand-in for an object in another JVM/process (RMI).
+- **Smart proxy** — adds caching, ref-counting, logging, metrics.
+
+### Dynamic proxies in Java
+
+You don't have to hand-write a proxy class. \`java.lang.reflect.Proxy.newProxyInstance(...)\` generates one at runtime for any set of **interfaces**, routing every call to a single \`InvocationHandler.invoke(...)\`. For classes without interfaces, CGLIB/ByteBuddy generate a **subclass** proxy.
+
+### How Spring AOP / @Transactional use proxies
+
+> [!SUCCESS]
+> Spring wraps your bean in a proxy. When you call a \`@Transactional\` method *through* the proxy, the proxy opens a transaction (begin), invokes your real method, then commits or rolls back. \`@Cacheable\`, \`@Async\`, \`@Retryable\`, security checks — all the same mechanism: a proxy intercepts the call and runs the advice around it. JDK dynamic proxies are used if the bean implements interfaces; otherwise CGLIB subclass proxies.
+
+> [!DANGER]
+> **Self-invocation defeats Spring's proxy.** If method \`a()\` calls \`this.b()\` where \`b()\` is \`@Transactional\`, the annotation is **ignored** — the call goes straight to the real object, bypassing the proxy. Only calls *through* the injected proxy reference are advised. This is the #1 "@Transactional doesn't work" bug. Also: proxied methods must be \`public\`, and CGLIB can't proxy \`final\` classes/methods.
+
+### Proxy vs Decorator vs Adapter
+
+Proxy and Decorator share structure (same interface, wrap a subject). The intent differs: **Decorator adds behavior** the client wants; **Proxy controls access** (often transparently, client unaware). **Adapter changes the interface.**
+
+### Use when / Avoid when
+
+- **Use when:** lazy loading, access control, remoting, caching, or cross-cutting concerns (logging/tx/metrics) that should be transparent to callers.
+- **Avoid when:** the indirection adds latency/complexity with no real access-control need; or when self-invocation/final-class limitations make framework proxies leak surprises.
+
+### In the wild (JDK/Spring)
+
+- \`java.lang.reflect.Proxy\` (dynamic proxies); RMI stubs; \`Collections.unmodifiable*\` (protection-proxy-ish).
+- Spring AOP, \`@Transactional\`, \`@Cacheable\`, \`@Async\`, Spring Data repository interfaces (proxies over generated implementations), Hibernate lazy entity proxies.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Virtual + protection proxy by hand (lazy load + access check)`,
+                code: `public class ProxyDemo {
+
+    interface Image { void display(); }
+
+    // RealSubject: expensive to create.
+    static final class RealImage implements Image {
+        private final String file;
+        RealImage(String file) {
+            this.file = file;
+            System.out.println("  [loading heavy image from disk: " + file + "]");
+        }
+        public void display() { System.out.println("  showing " + file); }
+    }
+
+    // Proxy: same interface, controls access (lazy-load + permission).
+    static final class ImageProxy implements Image {
+        private final String file;
+        private final boolean allowed;
+        private RealImage real;            // created on demand
+
+        ImageProxy(String file, boolean allowed) { this.file = file; this.allowed = allowed; }
+
+        public void display() {
+            if (!allowed) { System.out.println("  ACCESS DENIED for " + file); return; }
+            if (real == null) real = new RealImage(file);  // virtual proxy: lazy
+            real.display();
+        }
+    }
+
+    public static void main(String[] args) {
+        Image a = new ImageProxy("photo.png", true);
+        Image b = new ImageProxy("secret.png", false);
+        System.out.println("proxies created (no disk load yet)");
+        a.display();   // triggers lazy load, then shows
+        a.display();   // reuses loaded image (no second load)
+        b.display();   // blocked by protection proxy
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `JDK dynamic proxy: cross-cutting logging via InvocationHandler`,
+                code: `import java.lang.reflect.*;
+
+public class DynamicProxyDemo {
+
+    interface Service { String greet(String name); int add(int a, int b); }
+
+    static final class RealService implements Service {
+        public String greet(String name) { return "Hello, " + name; }
+        public int add(int a, int b) { return a + b; }
+    }
+
+    // One handler intercepts EVERY method call on the proxied interface.
+    static final class LoggingHandler implements InvocationHandler {
+        private final Object target;
+        LoggingHandler(Object target) { this.target = target; }
+        public Object invoke(Object proxy, Method m, Object[] args) throws Throwable {
+            System.out.println("-> " + m.getName());
+            long t0 = System.nanoTime();
+            try {
+                return m.invoke(target, args);          // forward to real object
+            } finally {
+                System.out.println("<- " + m.getName() + " (" + (System.nanoTime()-t0) + "ns)");
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    static <T> T proxyFor(Class<T> iface, T target) {
+        return (T) Proxy.newProxyInstance(
+            iface.getClassLoader(), new Class<?>[]{iface}, new LoggingHandler(target));
+    }
+
+    public static void main(String[] args) {
+        Service svc = proxyFor(Service.class, new RealService());
+        System.out.println(svc.greet("Ana"));   // wrapped with -> / <- logs
+        System.out.println(svc.add(2, 3));
+        // This is exactly how Spring AOP weaves advice around bean methods.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `The @Transactional self-invocation trap (Spring illustration)`,
+                runnable: false,
+                note: `Spring-dependent. Self-invocation (this.b()) bypasses the proxy, so @Transactional is ignored. Call through the injected proxy, move the method to another bean, or use AopContext.currentProxy().`,
+                code: `@Service
+class OrderService {
+
+    public void process() {
+        // BUG: this.charge() calls the REAL object, not the proxy.
+        // The @Transactional on charge() is IGNORED here.
+        this.charge();
+    }
+
+    @Transactional
+    public void charge() { /* expected its own transaction... but didn't get one */ }
+}
+
+// Fixes:
+//  1) Move charge() to a separate bean and inject it (call through its proxy).
+//  2) Inject self (ObjectProvider<OrderService>) and call provider.getObject().charge().
+//  3) Make process() itself @Transactional if one tx spanning both is acceptable.
+// Also remember: proxied methods must be public; CGLIB can't proxy final.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Proxy in one line.`,
+                a: `Provide a surrogate or placeholder for another object to control access to it.`
+              },
+              {
+                q: `Name the four common proxy flavors.`,
+                a: `Virtual (lazy creation), protection (permission checks), remote (cross-process stand-in), and smart/caching (logging, ref-counting, metrics).`
+              },
+              {
+                q: `How do JDK dynamic proxies work, and what's the limitation?`,
+                a: `Proxy.newProxyInstance generates a class at runtime implementing given interfaces, routing all calls to one InvocationHandler.invoke. Limitation: it only proxies interfaces — for concrete classes you need CGLIB/ByteBuddy subclass proxies.`
+              },
+              {
+                q: `How does @Transactional use the Proxy pattern?`,
+                a: `Spring wraps the bean in a proxy; calling a @Transactional method through the proxy makes it begin a transaction, invoke the real method, then commit or roll back around it — the same mechanism as @Cacheable/@Async.`
+              },
+              {
+                q: `Explain the self-invocation trap with @Transactional.`,
+                a: `If a()  calls this.b() where b() is @Transactional, the call goes to the real object, not the proxy, so the annotation is ignored. Only calls through the injected proxy reference are advised.`
+              },
+              {
+                q: `Proxy vs Decorator — same structure, different intent?`,
+                a: `Both wrap an object of the same interface. Decorator adds behavior the client wants; Proxy controls access (lazy/secure/remote/cached), often transparently to the client.`
+              },
+              {
+                q: `Two constraints CGLIB proxies impose in Spring.`,
+                a: `They subclass the target, so they cannot proxy final classes or final/private methods, and only public (proxied) methods get advice.`
+              },
+              {
+                q: `When should you avoid a proxy?`,
+                a: `When the indirection adds latency/complexity without a real access-control need, or when framework-proxy quirks (self-invocation, final classes) would cause surprising bugs.`
+              },
+              {
+                q: `Give two JDK/Spring real proxy examples.`,
+                a: `java.lang.reflect.Proxy and RMI stubs in the JDK; Spring AOP/@Transactional beans and Hibernate lazy entity proxies.`
+              },
+              {
+                q: `Why does the proxy implement the same interface as the real subject?`,
+                a: `So it is a drop-in substitute clients can use transparently, intercepting calls without callers knowing they're talking to a surrogate.`
+              }
+            ]
+          },
+          {
+            id: `12.2.5`,
+            title: `Composite`,
+            notes: `## Composite
+
+**Intent (one line):** compose objects into tree structures and let clients treat individual objects and compositions uniformly.
+
+**Problem it solves:** you have part-whole hierarchies (files/folders, UI containers, org charts, expression trees) and want client code to handle a single leaf and a whole subtree the *same way* — \`node.size()\`, \`node.render()\` — without \`instanceof\` checks everywhere. Composite gives leaves and containers a common interface; containers just recurse into children.
+
+\`\`\`mermaid
+classDiagram
+  class Component { <<interface>> +operation() }
+  class Leaf { +operation() }
+  class Composite { -children: List~Component~ +add(c) +operation() }
+  Component <|.. Leaf
+  Component <|.. Composite
+  Composite o--> Component : children (recursion)
+\`\`\`
+
+### The design tension: transparency vs safety
+
+- **Transparent** Composite puts child-management methods (\`add\`/\`remove\`) on the **Component** interface, so leaves and composites are truly uniform — but leaves must implement \`add\` (usually by throwing). Uniform, less type-safe.
+- **Safe** Composite puts \`add\`/\`remove\` only on **Composite**, so you can't call \`add\` on a leaf — but clients must downcast to add children. Safer, less uniform. GoF leans transparent; pick per use case.
+
+> [!TIP]
+> The recursion is the whole pattern: a Composite implements \`operation()\` by **iterating its children and calling their \`operation()\`**, which may themselves be composites. The uniform interface is what lets that recursion be type-blind.
+
+### Use when / Avoid when
+
+- **Use when:** you have a genuine tree / part-whole hierarchy and want uniform operations over nodes and subtrees (file systems, ASTs, GUI widget trees, menu structures, nested permissions/categories).
+- **Avoid when:** the structure isn't really hierarchical, or leaf and container behavior differ so much that a forced common interface lies. Deep trees can also blow the stack on naive recursion — consider iterative traversal.
+
+### In the wild (JDK/Spring)
+
+- \`java.awt.Component\`/\`Container\` (a \`Container\` is itself a \`Component\`); Swing \`JComponent\` trees.
+- \`org.w3c.dom.Node\` (DOM tree); \`javax.swing.tree.TreeNode\`.
+- Composite \`CacheManager\`, composite \`HealthIndicator\`, and \`CompositeFilter\` in Spring; \`HandlerMapping\`/\`MessageSource\` composites.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Composite: a file system where files and folders share an interface`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+public class CompositeDemo {
+
+    // Component: common interface for leaf (File) and composite (Folder).
+    interface Node {
+        String name();
+        long size();                 // uniform operation over the tree
+        void print(String indent);
+    }
+
+    // Leaf
+    static final class File implements Node {
+        private final String name; private final long bytes;
+        File(String name, long bytes) { this.name = name; this.bytes = bytes; }
+        public String name() { return name; }
+        public long size() { return bytes; }
+        public void print(String indent) {
+            System.out.println(indent + "- " + name + " (" + bytes + "B)");
+        }
+    }
+
+    // Composite: holds children, recurses.
+    static final class Folder implements Node {
+        private final String name;
+        private final List<Node> children = new ArrayList<>();
+        Folder(String name) { this.name = name; }
+        Folder add(Node child) { children.add(child); return this; }
+        public String name() { return name; }
+        public long size() {                       // recursion across children
+            long total = 0;
+            for (Node c : children) total += c.size();
+            return total;
+        }
+        public void print(String indent) {
+            System.out.println(indent + "+ " + name + "/ (" + size() + "B)");
+            for (Node c : children) c.print(indent + "  ");
+        }
+    }
+
+    public static void main(String[] args) {
+        Folder root = new Folder("root")
+            .add(new File("readme.md", 100))
+            .add(new Folder("src")
+                .add(new File("Main.java", 500))
+                .add(new File("Util.java", 300)));
+
+        root.print("");
+        // Client treats a leaf and a whole subtree identically:
+        System.out.println("total size = " + root.size() + "B");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Composite in one line.`,
+                a: `Compose objects into tree structures and let clients treat individual objects and compositions uniformly.`
+              },
+              {
+                q: `What problem does Composite eliminate from client code?`,
+                a: `Scattered instanceof / type checks: clients call the same operation on a leaf and a whole subtree, and composites recurse internally.`
+              },
+              {
+                q: `Explain the transparency vs safety trade-off in Composite.`,
+                a: `Transparent: add/remove live on the Component interface so leaves and composites are uniform but leaves must implement (and usually throw on) child methods. Safe: child methods live only on Composite, preventing add on a leaf but requiring clients to downcast.`
+              },
+              {
+                q: `What mechanism makes Composite operations work over a whole tree?`,
+                a: `Recursion: a composite implements an operation by iterating its children and invoking the same operation, which may themselves be composites, down to leaves.`
+              },
+              {
+                q: `When is Composite the wrong pattern?`,
+                a: `When the structure is not genuinely hierarchical, or leaf and container behavior diverge so much that a shared interface forces lies; deep trees may also need iterative traversal to avoid stack overflow.`
+              },
+              {
+                q: `Give a JDK example of Composite.`,
+                a: `java.awt.Container is itself a Component, so containers and widgets form a uniform tree; also org.w3c.dom.Node and Swing TreeNode.`
+              },
+              {
+                q: `How does the file-system example show Composite?`,
+                a: `File (leaf) and Folder (composite) implement the same Node interface; Folder.size() sums children's size() recursively, so a client computes total size identically for a file or a directory tree.`
+              },
+              {
+                q: `Name two Spring composites.`,
+                a: `CompositeCacheManager and composite HealthIndicator (also CompositeFilter), which aggregate many delegates behind one interface.`
+              }
+            ]
+          },
+          {
+            id: `12.2.6`,
+            title: `Bridge`,
+            notes: `## Bridge
+
+**Intent (one line):** decouple an abstraction from its implementation so the two can vary independently.
+
+**Problem it solves:** when an abstraction has multiple dimensions of variation, inheritance multiplies classes combinatorially. \`Shape\` x \`Renderer\` (Circle/Square x Vector/Raster) as subclasses needs \`VectorCircle\`, \`RasterCircle\`, \`VectorSquare\`, \`RasterSquare\` — 2x2, and 3x4 = 12 for bigger matrices. Bridge splits the two dimensions into separate hierarchies linked by composition: \`Shape\` *has-a* \`Renderer\`. Now you add a shape **or** a renderer with one class, not the cross product.
+
+\`\`\`mermaid
+classDiagram
+  class Abstraction { -Implementor impl +operation() }
+  class RefinedAbstraction { +operation() }
+  class Implementor { <<interface>> +operationImpl() }
+  class ConcreteImplA { +operationImpl() }
+  class ConcreteImplB { +operationImpl() }
+  Abstraction <|-- RefinedAbstraction
+  Implementor <|.. ConcreteImplA
+  Implementor <|.. ConcreteImplB
+  Abstraction o--> Implementor : bridges to
+\`\`\`
+
+### Bridge vs Adapter vs Strategy
+
+- **Bridge** is designed *up front* to let two hierarchies vary independently (abstraction + implementor); composition is intentional from day one.
+- **Adapter** is applied *after the fact* to make two existing, incompatible interfaces work together.
+- **Strategy** swaps one algorithm behind an interface; Bridge is the same composition mechanism but the intent is structural separation of *abstraction* from *implementation*, often across two evolving hierarchies, not just one pluggable algorithm.
+
+> [!TIP]
+> The tell for Bridge: **two independent axes of change**. If you catch yourself naming classes \`AdjectiveNoun\` for every combination of two adjectives, you want a Bridge — make one axis the abstraction, the other the implementor, and compose.
+
+### Use when / Avoid when
+
+- **Use when:** an abstraction and its implementation both have several variants that should evolve independently (UI toolkit x OS, message x transport, shape x renderer, persistence x database driver).
+- **Avoid when:** there's only one implementation, or the dimensions never vary independently — the extra indirection buys nothing. Don't pre-split a single-axis design.
+
+### In the wild (JDK/Spring)
+
+- \`java.sql.Driver\` / JDBC: the \`java.sql\` API (abstraction) is bridged to vendor drivers (implementation).
+- \`java.util.logging\` / SLF4J: logging API bridged to backends (Logback, log4j) — literally called "bridges."
+- AWT peer architecture (\`Component\` abstraction over native peer implementations). Spring's \`Resource\` abstraction over many backends.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Bridge: shapes and renderers vary independently`,
+                code: `public class BridgeDemo {
+
+    // Implementor: the 'how to draw' axis.
+    interface Renderer {
+        String renderCircle(double r);
+        String renderSquare(double s);
+    }
+    static final class VectorRenderer implements Renderer {
+        public String renderCircle(double r) { return "vector circle r=" + r; }
+        public String renderSquare(double s) { return "vector square s=" + s; }
+    }
+    static final class RasterRenderer implements Renderer {
+        public String renderCircle(double r) { return "pixels for circle r=" + r; }
+        public String renderSquare(double s) { return "pixels for square s=" + s; }
+    }
+
+    // Abstraction: the 'what shape' axis, holds a Renderer (the bridge).
+    static abstract class Shape {
+        protected final Renderer renderer;          // composition, not inheritance
+        Shape(Renderer renderer) { this.renderer = renderer; }
+        abstract String draw();
+    }
+    static final class Circle extends Shape {
+        private final double r;
+        Circle(Renderer renderer, double r) { super(renderer); this.r = r; }
+        String draw() { return renderer.renderCircle(r); }
+    }
+    static final class Square extends Shape {
+        private final double s;
+        Square(Renderer renderer, double s) { super(renderer); this.s = s; }
+        String draw() { return renderer.renderSquare(s); }
+    }
+
+    public static void main(String[] args) {
+        Renderer vector = new VectorRenderer();
+        Renderer raster = new RasterRenderer();
+
+        // Any shape x any renderer WITHOUT a class per combination.
+        System.out.println(new Circle(vector, 3).draw());
+        System.out.println(new Circle(raster, 3).draw());
+        System.out.println(new Square(vector, 5).draw());
+        System.out.println(new Square(raster, 5).draw());
+        // Add a Triangle OR a 3D renderer = ONE new class, not the cross product.
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Bridge in one line.`,
+                a: `Decouple an abstraction from its implementation so the two can vary independently.`
+              },
+              {
+                q: `What class-explosion problem does Bridge prevent?`,
+                a: `The combinatorial cross product of subclasses when an abstraction has two axes of variation (e.g. Shape x Renderer producing VectorCircle, RasterCircle, ...). Bridge composes the two axes instead.`
+              },
+              {
+                q: `What is the structural tell that you need a Bridge?`,
+                a: `Two independent axes of change — if you're naming classes AdjectiveNoun for every combination of two adjectives, make one axis the abstraction and the other the implementor and compose them.`
+              },
+              {
+                q: `Bridge vs Adapter — intent and timing?`,
+                a: `Bridge is designed up front so two hierarchies vary independently; Adapter is applied after the fact to reconcile two existing incompatible interfaces.`
+              },
+              {
+                q: `Bridge vs Strategy — how do they differ despite identical structure?`,
+                a: `Both delegate to an interface, but Strategy swaps one interchangeable algorithm, whereas Bridge structurally separates an abstraction hierarchy from an implementation hierarchy that evolve independently.`
+              },
+              {
+                q: `When should you NOT use Bridge?`,
+                a: `When there's only one implementation or the dimensions never vary independently — the extra indirection adds no value. Don't pre-split a single-axis design.`
+              },
+              {
+                q: `How is JDBC an example of Bridge?`,
+                a: `The java.sql API (abstraction) is bridged via composition to vendor-specific Driver implementations, so application code and drivers evolve independently.`
+              },
+              {
+                q: `Why is SLF4J literally called a 'bridge'?`,
+                a: `It separates the logging API (abstraction) from concrete backends (Logback, log4j) so you can swap the implementation without changing call sites — the Bridge pattern in name and structure.`
+              }
+            ]
+          },
+          {
+            id: `12.2.7`,
+            title: `Flyweight`,
+            notes: `## Flyweight
+
+**Intent (one line):** minimize memory by sharing as much state as possible between many fine-grained objects.
+
+**Problem it solves:** when you need a vast number of similar objects (every character glyph in a document, every tile in a map, every particle), giving each its own copy of shared data wastes huge memory. Flyweight splits state into **intrinsic** (shared, immutable — the glyph shape) and **extrinsic** (context-specific — its position/color), stores one shared instance per intrinsic value, and passes extrinsic state in per call.
+
+\`\`\`mermaid
+classDiagram
+  class FlyweightFactory { -Map cache +get(key) Flyweight }
+  class Flyweight { -intrinsicState +operation(extrinsicState) }
+  class Client
+  FlyweightFactory o--> Flyweight : caches & shares
+  Client --> FlyweightFactory : get(key)
+  Client --> Flyweight : operation(extrinsic)
+\`\`\`
+
+### Intrinsic vs extrinsic state — the crux
+
+- **Intrinsic** state is shared and immutable; it lives inside the flyweight (e.g. the letter 'A''s font outline). One object serves all uses.
+- **Extrinsic** state varies per use and is supplied by the client at call time (e.g. where on the page this 'A' is). It is *not* stored in the flyweight.
+
+Immutability is essential: shared objects must be safe to use concurrently from many contexts.
+
+### Integer cache & String pool — the JDK's Flyweights
+
+> [!TIP]
+> \`Integer.valueOf(int)\` returns **cached** shared instances for values in \`-128..127\` (the \`IntegerCache\`), so \`Integer.valueOf(100) == Integer.valueOf(100)\` is \`true\`, but \`Integer.valueOf(1000) == Integer.valueOf(1000)\` is \`false\`. That's a Flyweight: shared immutable boxed values. The **String pool** is the same idea — string literals are interned and shared (\`"hi" == "hi"\` is true) while \`new String("hi")\` forces a distinct object.
+
+> [!DANGER]
+> The Integer cache is the classic \`==\` bug: comparing boxed \`Integer\` with \`==\` works for small values (shared flyweights) and silently breaks above 127 (new objects). **Always compare wrapper objects with \`.equals()\`** (or unbox to primitives). This is a favorite interview gotcha precisely because it's a Flyweight side effect.
+
+### Use when / Avoid when
+
+- **Use when:** you have enormous numbers of objects, much of their state is shareable and immutable, and memory is the bottleneck (text rendering, game tiles, symbol tables).
+- **Avoid when:** object counts are modest (the factory/lookup overhead and the complexity of threading extrinsic state aren't worth it), or state is mostly extrinsic (little to share). It trades CPU/complexity for memory — only worth it at scale.
+
+### In the wild (JDK/Spring)
+
+- \`Integer.valueOf\`/\`Long.valueOf\`/\`Short.valueOf\`/\`Character.valueOf\`/\`Boolean.valueOf\` caches; \`String\` literal pool / \`String.intern()\`.
+- \`java.awt.Color\` constants; enum constants (one shared instance each).
+- Caches of shared, immutable singletons throughout Spring (e.g. shared, stateless beans behave flyweight-like).`,
+            code: [
+              {
+                lang: `java`,
+                title: `Flyweight: share glyph objects, pass position as extrinsic state`,
+                code: `import java.util.HashMap;
+import java.util.Map;
+
+public class FlyweightDemo {
+
+    // Flyweight: stores only INTRINSIC (shared, immutable) state.
+    static final class Glyph {
+        private final char symbol;        // intrinsic: shared across all uses
+        private Glyph(char symbol) { this.symbol = symbol; }
+        // extrinsic state (x,y) is passed in, NOT stored.
+        void draw(int x, int y) {
+            System.out.println("glyph '" + symbol + "' at (" + x + "," + y + ")");
+        }
+    }
+
+    // Factory: ensures one shared instance per intrinsic value.
+    static final class GlyphFactory {
+        private final Map<Character, Glyph> cache = new HashMap<>();
+        Glyph get(char c) {
+            return cache.computeIfAbsent(c, Glyph::new);  // share, don't recreate
+        }
+        int distinctGlyphs() { return cache.size(); }
+    }
+
+    public static void main(String[] args) {
+        GlyphFactory factory = new GlyphFactory();
+        String text = "hello";
+        int x = 0;
+        Glyph prev = null;
+        for (char c : text.toCharArray()) {
+            Glyph g = factory.get(c);        // 'l' reuses the same Glyph object
+            g.draw(x, 0);                    // extrinsic position supplied here
+            x += 10;
+        }
+        // 'hello' has 5 chars but only 4 distinct glyphs (l is shared).
+        System.out.println("distinct glyph objects created: " + factory.distinctGlyphs());
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `The Integer cache and String pool == gotcha, proven`,
+                code: `public class IntegerCacheDemo {
+    public static void main(String[] args) {
+        // Integer flyweight cache covers -128..127.
+        Integer a = Integer.valueOf(100);
+        Integer b = Integer.valueOf(100);
+        System.out.println("100 == 100 (cached) : " + (a == b));      // true (shared)
+
+        Integer c = Integer.valueOf(1000);
+        Integer d = Integer.valueOf(1000);
+        System.out.println("1000 == 1000 (new)  : " + (c == d));      // false (distinct)
+        System.out.println("1000 .equals 1000   : " + c.equals(d));   // true (correct way)
+
+        // String pool: literals are interned/shared flyweights.
+        String s1 = "hi";
+        String s2 = "hi";
+        String s3 = new String("hi");       // forced new object, not pooled
+        System.out.println("literal == literal  : " + (s1 == s2));    // true
+        System.out.println("literal == new      : " + (s1 == s3));    // false
+        System.out.println("intern()            : " + (s1 == s3.intern())); // true
+
+        System.out.println("Lesson: compare wrappers/strings by VALUE (.equals), not ==");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the intent of Flyweight in one line.`,
+                a: `Minimize memory by sharing as much immutable state as possible across many fine-grained objects.`
+              },
+              {
+                q: `Define intrinsic vs extrinsic state.`,
+                a: `Intrinsic state is shared, immutable, and stored inside the flyweight (e.g. a glyph's shape). Extrinsic state varies per use and is supplied by the client at call time (e.g. the glyph's position), never stored in the flyweight.`
+              },
+              {
+                q: `Why must flyweights be immutable?`,
+                a: `Because a single instance is shared across many contexts and possibly threads; if its shared (intrinsic) state were mutable, one user's change would corrupt all others.`
+              },
+              {
+                q: `How is Integer.valueOf a Flyweight, and what's the range?`,
+                a: `It returns cached shared Integer instances for -128..127 (IntegerCache), so those boxed values are shared flyweights; outside that range it creates new objects.`
+              },
+              {
+                q: `Explain the Integer == bug.`,
+                a: `== on boxed Integers compares references; it's true for -128..127 (shared cache) but false above 127 (new objects). Always compare wrapper objects with .equals() or unbox to primitives.`
+              },
+              {
+                q: `How is the String pool a Flyweight?`,
+                a: `String literals are interned into a shared pool, so equal literals are the same object ('hi' == 'hi' is true); new String('hi') forces a distinct object, and intern() returns the pooled shared instance.`
+              },
+              {
+                q: `When is Flyweight NOT worth it?`,
+                a: `When object counts are modest, or most state is extrinsic (little to share); the factory/lookup overhead and the complexity of threading extrinsic state through calls outweigh the memory saving.`
+              },
+              {
+                q: `What is the fundamental trade-off Flyweight makes?`,
+                a: `It trades extra CPU/indirection and design complexity (a factory, extrinsic-state plumbing) for reduced memory; it only pays off at large object scale.`
+              },
+              {
+                q: `Give three JDK Flyweights besides Integer.`,
+                a: `Long/Short/Character/Boolean.valueOf caches, the String literal pool, and enum constants (one shared instance per constant); also java.awt.Color constants.`
+              },
+              {
+                q: `What role does the factory play in Flyweight?`,
+                a: `It owns the cache and guarantees one shared instance per intrinsic value, creating on miss and returning the shared object on hit, so clients never instantiate flyweights directly.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
   }
 ];
