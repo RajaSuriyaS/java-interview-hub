@@ -191,7 +191,7 @@
         <div class="flex items-start justify-between flex-wrap gap-4 mb-8">
           <div>
             <h1 class="text-3xl font-extrabold text-white tracking-tight">Senior Java Backend Study Hub</h1>
-            <p class="text-slate-400 mt-1.5">Deep-dive prep for European visa-sponsorship interviews. Track progress, run code, drill flashcards.</p>
+            <p class="text-slate-400 mt-1.5">Deep-dive prep for senior backend interviews. Track progress, run code, drill flashcards.</p>
           </div>
           <div class="text-right shrink-0">
             <div class="text-4xl font-extrabold text-brand leading-none">${g.pct}%</div>
@@ -265,7 +265,7 @@
       WARNING: { cls: 'callout-warning', icon: 'alert-triangle', title: 'Watch out' },
       DANGER:  { cls: 'callout-danger',  icon: 'octagon-alert',  title: 'Danger' },
       SUCCESS: { cls: 'callout-success', icon: 'check-circle-2', title: 'Strong answer' },
-      EU:      { cls: 'callout-eu',      icon: 'star',           title: 'EU interview tip' },
+      EU:      { cls: 'callout-eu',      icon: 'star',           title: 'Interview tip' },
     };
 
     const lines = md.split('\n');
@@ -642,8 +642,8 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
 - Write your own explanation in **My Notes** (the Feynman technique — if you can't explain it simply, you don't know it yet).
 - Run and modify any code in the sandbox to build intuition.
 
-> [!EU]
-> Always tie a concept back to a **trade-off** and a **real production scenario** — that's what European senior panels reward.
+> [!TIP]
+> Always tie a concept back to a **trade-off** and a **real production scenario** — that's what senior interview panels reward.
 `);
   }
 
@@ -910,6 +910,35 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
     $('#sidebar-open').addEventListener('click', openSidebarMobile);
     $('#sidebar-close').addEventListener('click', closeSidebarMobile);
     $('#backdrop').addEventListener('click', closeSidebarMobile);
+
+    // ---- Theme toggle ----
+    const THEMES = ['dark', 'dim', 'light'];
+    const THEME_ICONS = { dark: 'moon', dim: 'contrast', light: 'sun' };
+    const THEME_LABELS = { dark: 'Dark', dim: 'Dim', light: 'Light' };
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('jh-theme', theme);
+      const iconName = THEME_ICONS[theme];
+      ['theme-btn', 'theme-btn-mobile'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4"></i>`;
+        btn.title = `Theme: ${THEME_LABELS[theme]} (click to cycle)`;
+      });
+      icons();
+    }
+
+    function cycleTheme() {
+      const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length];
+      applyTheme(next);
+    }
+
+    applyTheme(localStorage.getItem('jh-theme') || 'dark');
+    $('#theme-btn').addEventListener('click', cycleTheme);
+    const mobileThemeBtn = document.getElementById('theme-btn-mobile');
+    if (mobileThemeBtn) mobileThemeBtn.addEventListener('click', cycleTheme);
 
     icons();
   }

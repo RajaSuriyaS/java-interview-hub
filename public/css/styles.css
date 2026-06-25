@@ -10,6 +10,44 @@
 html, body { height: 100%; }
 * { -webkit-tap-highlight-color: transparent; }
 
+/* ─── Dim theme ──────────────────────────────────────────────────────── */
+[data-theme="dim"] body              { background-color: #0d1117 !important; }
+[data-theme="dim"] aside             { background-color: rgba(13,17,23,0.92) !important; border-color: #21262d !important; }
+[data-theme="dim"] header            { background-color: rgba(13,17,23,0.9) !important; border-color: #21262d !important; }
+[data-theme="dim"] #content          { background-color: #0d1117 !important; }
+[data-theme="dim"] .prose-notes pre  { background: #161b22 !important; border-color: #21262d !important; }
+[data-theme="dim"] .prose-notes .mermaid { background: #161b22 !important; border-color: #21262d !important; }
+[data-theme="dim"] .flip-front       { background: linear-gradient(135deg,#161b22,#13171f) !important; border-color: #30363d !important; }
+[data-theme="dim"] .flip-back        { background: linear-gradient(135deg,#1c1d3b,#13171f) !important; border-color: #3a3890 !important; }
+[data-theme="dim"] .custom-scroll::-webkit-scrollbar-thumb { background: #30363d; }
+
+/* ─── Light theme ────────────────────────────────────────────────────── */
+[data-theme="light"] body             { background-color: #f1f5f9 !important; color: #1e293b !important; }
+[data-theme="light"] aside            { background-color: #ffffff !important; border-color: #e2e8f0 !important; }
+[data-theme="light"] header           { background-color: rgba(255,255,255,0.95) !important; border-color: #e2e8f0 !important; }
+[data-theme="light"] #content         { background-color: #f1f5f9 !important; }
+[data-theme="light"] .prose-notes     { color: #334155; }
+[data-theme="light"] .prose-notes h1,
+[data-theme="light"] .prose-notes h2  { color: #0f172a !important; border-color: #e2e8f0 !important; }
+[data-theme="light"] .prose-notes h3  { color: #4f46e5 !important; }
+[data-theme="light"] .prose-notes h4  { color: #6d28d9 !important; }
+[data-theme="light"] .prose-notes strong { color: #0f172a !important; }
+[data-theme="light"] .prose-notes :not(pre) > code { background: #e2e8f0 !important; color: #be185d !important; }
+[data-theme="light"] .prose-notes blockquote { color: #64748b !important; }
+[data-theme="light"] .prose-notes th  { background: #e2e8f0 !important; color: #0f172a !important; }
+[data-theme="light"] .prose-notes td  { border-color: #e2e8f0 !important; }
+[data-theme="light"] .prose-notes tr:nth-child(even) td { background: #f8fafc !important; }
+[data-theme="light"] .flip-front      { background: linear-gradient(135deg,#f1f5f9,#e8edf5) !important; border-color: #cbd5e1 !important; color: #1e293b !important; }
+[data-theme="light"] .flip-back       { background: linear-gradient(135deg,#ede9fe,#f1f5f9) !important; border-color: #a5b4fc !important; color: #1e1b4b !important; }
+[data-theme="light"] .monaco-wrap     { border-color: #cbd5e1 !important; }
+[data-theme="light"] .prose-notes .mermaid { background: #f8fafc !important; border-color: #e2e8f0 !important; }
+[data-theme="light"] .callout-tip     { background: rgba(139,92,246,.08) !important; border-color: rgba(139,92,246,.3) !important; color: #4c1d95 !important; }
+[data-theme="light"] .callout-warning { background: rgba(245,158,11,.08) !important; border-color: rgba(245,158,11,.3) !important; color: #92400e !important; }
+[data-theme="light"] .callout-eu      { background: rgba(56,189,248,.08) !important; border-color: rgba(56,189,248,.3) !important; color: #0c4a6e !important; }
+[data-theme="light"] .callout-danger  { background: rgba(239,68,68,.08) !important; border-color: rgba(239,68,68,.3) !important; color: #7f1d1d !important; }
+[data-theme="light"] .callout-success { background: rgba(16,185,129,.08) !important; border-color: rgba(16,185,129,.3) !important; color: #064e3b !important; }
+[data-theme="light"] .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; }
+
 /* Scrollbars */
 .custom-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
 .custom-scroll::-webkit-scrollbar-track { background: transparent; }
