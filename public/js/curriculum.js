@@ -23473,76 +23473,191 @@ WHERE NOT EXISTS (SELECT 1 FROM orders WHERE customer_id = c.id);`,
     {
       id: '4.3',
       title: 'Transactions, ACID & Isolation Levels',
-      hours: 4,
-      notes: `
-# Transactions, ACID & Isolation
-
-## ACID
-
-- **Atomicity** — all-or-nothing.
-- **Consistency** — constraints/invariants preserved.
-- **Isolation** — concurrent txns don't corrupt each other.
-- **Durability** — committed data survives crashes (WAL/redo log).
-
-## Isolation levels & the anomalies they prevent
-
-| Level | Dirty read | Non-repeatable read | Phantom read |
-|-------|:---------:|:-------------------:|:------------:|
-| READ UNCOMMITTED | ✅ possible | ✅ | ✅ |
-| READ COMMITTED *(default in PG/Oracle)* | ❌ | ✅ | ✅ |
-| REPEATABLE READ *(default in MySQL/InnoDB)* | ❌ | ❌ | ✅* |
-| SERIALIZABLE | ❌ | ❌ | ❌ |
-
-- **Dirty read** — reading another txn's uncommitted change.
-- **Non-repeatable read** — same row read twice gives different values (another txn updated+committed between).
-- **Phantom read** — same range query returns new rows (another txn inserted).
-
-> [!TIP]
-> Higher isolation = more correctness but more locking/aborts = less concurrency. Most OLTP apps run **READ COMMITTED** and handle the rest with optimistic locking (\`@Version\`) or explicit \`SELECT ... FOR UPDATE\`.
-
-## MVCC
-
-Postgres/InnoDB use **Multi-Version Concurrency Control**: readers see a consistent **snapshot** without blocking writers, and writers don't block readers. Each row keeps versions; vacuum/undo cleans old ones.
-
-> [!WARNING]
-> **Lost update**: two txns read a balance, both add, both write — one update is lost. Prevent with optimistic locking (version check on write) or \`SELECT ... FOR UPDATE\` to serialise.
-
-> [!EU]
-> Reliable question: *"Explain isolation levels and which anomaly each prevents."* Memorise the table. Then *"How do you prevent a lost update / handle concurrent edits?"* → optimistic (@Version) vs pessimistic (FOR UPDATE) with trade-offs.
-`,
-      code: [
+      hours: 2,
+      sections: [
         {
-          lang: 'sql',
-          title: 'Preventing lost updates: optimistic vs pessimistic',
-          code: `-- ❌ Lost update race:
---   Tx A: SELECT balance FROM account WHERE id=1;   -- reads 100
---   Tx B: SELECT balance FROM account WHERE id=1;   -- reads 100
---   Tx A: UPDATE account SET balance=120 WHERE id=1;-- +20
---   Tx B: UPDATE account SET balance=110 WHERE id=1;-- +10 -> A's +20 LOST
+          title: 'ACID Properties & Transaction Fundamentals',
+          notes: `## ACID Properties & Transaction Fundamentals
 
--- ✅ Optimistic locking (version column; app retries on conflict)
-UPDATE account
-SET    balance = balance + 20, version = version + 1
-WHERE  id = 1 AND version = 7;        -- affects 0 rows if someone else bumped version
+A **transaction** is a sequence of database operations that executes as a single unit — either all succeed or all fail.
 
--- ✅ Pessimistic locking (serialise the critical section)
+### ACID
+
+\`\`\`
+A — Atomicity:   All operations in the transaction succeed, or NONE are applied
+C — Consistency: The database moves from one valid state to another valid state
+I — Isolation:   Concurrent transactions appear to execute serially (no interference)
+D — Durability:  Committed transactions survive crashes (written to disk/WAL)
+\`\`\`
+
+### Atomicity in Practice
+
+\`\`\`sql
+-- Without transaction: partial failure leaves inconsistent state
+UPDATE accounts SET balance = balance - 500 WHERE id = 1;  -- Alice -500
+-- CRASH HERE — Bob never gets credited!
+UPDATE accounts SET balance = balance + 500 WHERE id = 2;  -- Bob +500
+
+-- With transaction: atomic unit
 BEGIN;
-SELECT balance FROM account WHERE id = 1 FOR UPDATE;  -- locks the row
-UPDATE account SET balance = balance + 20 WHERE id = 1;
-COMMIT;                                                -- lock released
+  UPDATE accounts SET balance = balance - 500 WHERE id = 1;
+  UPDATE accounts SET balance = balance + 500 WHERE id = 2;
+COMMIT;  -- both or neither
+-- On crash during tx: ROLLBACK restores original state
+\`\`\`
 
--- ✅ Or just make it atomic in one statement (no read-modify-write gap)
-UPDATE account SET balance = balance + 20 WHERE id = 1;`
+### How Durability Works (WAL — Write-Ahead Log)
+
+\`\`\`
+1. Transaction commits
+2. DB writes changes to WAL (sequential writes — fast)
+3. DB acknowledges COMMIT to client
+4. Later: WAL changes flushed to actual data files (background)
+
+On crash after COMMIT: WAL replay restores committed data
+On crash before COMMIT: WAL discards uncommitted changes
+
+PostgreSQL: WAL directory pg_wal/
+MySQL (InnoDB): ib_logfile0, ib_logfile1 (redo log)
+\`\`\`
+
+### Isolation Anomalies
+
+\`\`\`sql
+-- DIRTY READ: reading another transaction's uncommitted data
+-- Tx A writes balance = 1000 (not yet committed)
+-- Tx B reads balance = 1000 (dirty read)
+-- Tx A rolls back → balance was never 1000, but Tx B acted on wrong data
+
+-- NON-REPEATABLE READ: same query returns different values within one transaction
+-- Tx A reads balance → 500
+-- Tx B commits: balance = 300
+-- Tx A reads balance again → 300  (changed between reads in same tx)
+
+-- PHANTOM READ: range query returns different rows on second run
+-- Tx A: SELECT * FROM orders WHERE amount > 100 → returns 5 rows
+-- Tx B: INSERT INTO orders VALUES (150) → commits
+-- Tx A: same query → returns 6 rows (new "phantom" row appeared)
+
+-- LOST UPDATE: two transactions read-modify-write the same row
+-- Tx A reads stock = 10
+-- Tx B reads stock = 10
+-- Tx A writes stock = 9
+-- Tx B writes stock = 9  ← Tx A's update is LOST
+\`\`\`
+
+### Isolation Levels vs Anomalies
+
+\`\`\`
+Level                 Dirty  Non-Rep  Phantom  Performance
+READ UNCOMMITTED      ✓ yes  ✓ yes    ✓ yes    Fastest (no locks)
+READ COMMITTED        ✗ no   ✓ yes    ✓ yes    Fast (default PG/Oracle/SQL Server)
+REPEATABLE READ       ✗ no   ✗ no     ✓ yes    Medium (default MySQL InnoDB)
+SERIALIZABLE          ✗ no   ✗ no     ✗ no     Slowest (predicate locks / MVCC)
+\`\`\`
+
+\`\`\`sql
+-- Set isolation level (PostgreSQL)
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+  -- your queries
+COMMIT;
+
+-- Or per session
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+\`\`\``,
+          code: [
+            `-- Transaction patterns in SQL
+
+-- 1. Basic atomicity: bank transfer
+BEGIN;
+  -- Lock both rows to prevent concurrent modification
+  SELECT balance FROM accounts WHERE id IN (1, 2) FOR UPDATE;
+
+  -- Check sufficient funds
+  DO $$ BEGIN
+    IF (SELECT balance FROM accounts WHERE id = 1) < 500 THEN
+      RAISE EXCEPTION 'Insufficient funds';
+    END IF;
+  END $$;
+
+  UPDATE accounts SET balance = balance - 500 WHERE id = 1;
+  UPDATE accounts SET balance = balance + 500 WHERE id = 2;
+
+  -- Audit trail (must be in same transaction for atomicity)
+  INSERT INTO transfers (from_id, to_id, amount, at)
+  VALUES (1, 2, 500, NOW());
+COMMIT;
+-- If any statement fails: entire transaction rolls back
+
+-- 2. Savepoints (partial rollback)
+BEGIN;
+  INSERT INTO orders (customer_id, total) VALUES (42, 150.00);
+  SAVEPOINT order_created;
+
+  -- Try to reserve inventory
+  UPDATE inventory SET stock = stock - 1 WHERE product_id = 7;
+  -- If stock goes negative:
+  ROLLBACK TO SAVEPOINT order_created;  -- undo inventory update, keep order
+  -- Order saved, inventory unchanged — handle out-of-stock separately
+
+COMMIT;
+
+-- 3. Detecting lost updates with optimistic locking
+ALTER TABLE products ADD COLUMN version INT DEFAULT 0;
+
+-- Read with version
+SELECT id, stock, version FROM products WHERE id = 7;
+-- (returns: id=7, stock=10, version=3)
+
+-- Update only if version matches (optimistic lock)
+UPDATE products
+SET stock = 9, version = 4
+WHERE id = 7 AND version = 3;
+-- If 0 rows affected → someone else updated first → retry`,
+            `-- Isolation level demonstration
+
+-- Session A (REPEATABLE READ)
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SELECT SUM(balance) FROM accounts;  -- snapshot taken: 10000
+
+-- Meanwhile Session B commits: transfers 500 between accounts
+-- (total stays 10000 but individual balances change)
+
+-- Session A reads again — still sees 10000 (snapshot from BEGIN)
+SELECT SUM(balance) FROM accounts;  -- 10000 (consistent snapshot)
+COMMIT;
+
+-- Serializable: prevents phantom reads via predicate locking
+-- Session A
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SELECT COUNT(*) FROM orders WHERE status = 'PENDING';  -- 5
+
+-- Session B tries to INSERT a new PENDING order — blocked (predicate lock)
+-- or: Session B succeeds, Session A's COMMIT fails with serialization error
+-- Application must retry the transaction
+
+-- Checking current isolation level (PostgreSQL)
+SHOW transaction_isolation;
+
+-- Checking for long-running transactions (potential lock holders)
+SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state
+FROM pg_stat_activity
+WHERE state != 'idle'
+  AND (now() - pg_stat_activity.query_start) > INTERVAL '5 seconds'
+ORDER BY duration DESC;`
+          ],
+          flashcards: [
+            { q: 'What does ACID stand for and give a one-line definition of each?', a: 'Atomicity: all operations in a transaction succeed or none are applied (all-or-nothing). Consistency: a transaction moves the database from one valid state to another — constraints, triggers, rules are enforced. Isolation: concurrent transactions appear to execute one at a time — intermediate state is not visible to others. Durability: once a transaction commits, changes survive crashes (written to WAL/redo log before acknowledging to client).' },
+            { q: 'What are the four isolation anomalies and which isolation level prevents each?', a: 'Dirty read: reading another transaction\'s uncommitted data — prevented by READ COMMITTED+. Non-repeatable read: same row returns different values in two reads within one transaction — prevented by REPEATABLE READ+. Phantom read: a range query returns different rows on second read (new rows inserted by another transaction) — prevented only by SERIALIZABLE. Lost update: two transactions read-modify-write the same row, one overwrites the other — prevented by FOR UPDATE locking or optimistic locking (version column).' },
+            { q: 'How does Write-Ahead Logging (WAL) ensure durability?', a: 'Before modifying data files, the database writes the change to a sequential WAL (Write-Ahead Log). On COMMIT, the WAL record is flushed to disk (fsync), then the client receives "committed." Actual data file updates can happen later. On crash after COMMIT: WAL replay re-applies committed changes. On crash before COMMIT: WAL shows the transaction was incomplete — it\'s discarded (rolled back). Sequential WAL writes are fast; random data file writes are batched. This is how PostgreSQL\'s pg_wal and MySQL\'s ib_logfile work.' },
+            { q: 'What is optimistic locking and when do you use it instead of pessimistic locking?', a: 'Optimistic locking: read data with a version number, update only if version hasn\'t changed (UPDATE … WHERE id=X AND version=N). If 0 rows affected → conflict → retry. Pessimistic locking: lock rows on read (SELECT … FOR UPDATE) — other transactions must wait. Use optimistic when: conflicts are rare (most reads succeed without conflict), high concurrency where holding locks would cause bottlenecks, or across service boundaries (can\'t hold a DB lock across an HTTP call). Use pessimistic when conflicts are common or critical sections are short.' },
+            { q: 'What is the default isolation level in PostgreSQL and MySQL, and what does that mean practically?', a: 'PostgreSQL default: READ COMMITTED — each statement within a transaction sees a fresh snapshot of committed data. A second SELECT in the same transaction CAN see data committed by other transactions between the two reads (non-repeatable reads). MySQL InnoDB default: REPEATABLE READ — the transaction takes a snapshot at the first read and consistently sees that snapshot for all subsequent reads. Additionally, MySQL uses gap locks to prevent phantom reads in most cases, making REPEATABLE READ nearly serializable. For financial operations, always explicitly set the required isolation level.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What do the four ACID properties mean?', a: 'Atomicity (all-or-nothing), Consistency (invariants/constraints preserved), Isolation (concurrent transactions don\'t interfere), Durability (committed changes survive crashes via WAL/redo).' },
-        { q: 'Which anomalies does READ COMMITTED still allow?', a: 'It prevents dirty reads but still allows non-repeatable reads and phantom reads.' },
-        { q: 'What is MVCC and what does it buy you?', a: 'Multi-Version Concurrency Control keeps multiple row versions so readers see a consistent snapshot without locking, and readers don\'t block writers (or vice versa) — high read concurrency.' },
-        { q: 'How do you prevent a lost update?', a: 'Optimistic locking (a version column checked on write; retry on conflict), pessimistic locking (SELECT ... FOR UPDATE), or expressing the change as a single atomic UPDATE (balance = balance + x).' },
-        { q: 'Default isolation level in PostgreSQL vs MySQL/InnoDB?', a: 'PostgreSQL (and Oracle) default to READ COMMITTED; MySQL/InnoDB defaults to REPEATABLE READ.' }
       ]
-    }
+    },
+
+
   ]
 },
 
@@ -23556,380 +23671,333 @@ UPDATE account SET balance = balance + 20 WHERE id = 1;`
     {
       id: '5.1',
       title: 'Scalability Fundamentals',
-      hours: 4,
-      notes: `
-# Scalability Fundamentals
-
-System design rounds test whether you can reason about **trade-offs** under scale, not recite buzzwords. Start every answer by clarifying requirements and estimating load.
-
-## The framework (use this every time)
-
-1. **Clarify** functional + non-functional requirements (latency, availability, consistency).
-2. **Estimate** scale — QPS, data size, read/write ratio (back-of-envelope).
-3. **Draw** the high-level diagram: clients → LB → stateless app tier → data tier.
-4. **Deep-dive** the bottleneck the interviewer probes.
-5. **Discuss** trade-offs, failure modes, and how you'd evolve it.
-
-## Vertical vs horizontal scaling
-
-- **Vertical** — bigger machine. Simple, but a ceiling + single point of failure.
-- **Horizontal** — more machines behind a load balancer. Needs **stateless** app servers (push session/state to Redis/DB) and partitioning for data.
-
-## Load balancing
-
-L4 (TCP) vs L7 (HTTP-aware, path/host routing). Algorithms: round-robin, least-connections, consistent hashing (sticky to a node while minimising reshuffle on membership change).
-
-## Statelessness & the data tier
-
-Scale stateless tiers trivially; the **database is usually the bottleneck**. Scale reads with **replicas**, scale writes with **sharding/partitioning**, and absorb load with **caching** (next module).
-
-## CAP theorem
-
-Under a network **P**artition you must choose **C**onsistency or **A**vailability. CP (e.g. ZooKeeper) refuses to serve stale/partitioned data; AP (e.g. Dynamo, Cassandra) stays available and reconciles later (eventual consistency). No real system is "CA".
-
-> [!TIP]
-> Latency numbers every engineer should know: L1 cache ~1ns, main memory ~100ns, SSD read ~16µs, intra-DC round trip ~0.5ms, disk seek ~2ms, US↔EU round trip ~100ms. Use these for back-of-envelope estimates.
-
-> [!WARNING]
-> Don't jump to microservices/Kafka/sharding before establishing load. Over-engineering is a red flag. State your assumptions and scale *the part that needs it*.
-
-> [!EU]
-> European loops favour **pragmatic, trade-off-driven** design over FAANG-scale fantasy. Design a realistic system (URL shortener, rate limiter, ticket booking), justify each component, name the failure modes, and say what you'd monitor. Communication and reasoning are graded as much as the diagram.
-`,
-      code: [
-        {
-          lang: 'java',
-          title: 'Back-of-envelope capacity estimate',
-          code: `public class CapacityEstimate {
-    public static void main(String[] args) {
-        // Example: a URL shortener
-        long dailyWrites = 100_000_000L;       // 100M new URLs/day
-        long readWriteRatio = 100;             // 100:1 reads:writes
-        int  bytesPerRecord = 500;             // url + metadata
-        int  retentionYears = 5;
-
-        long writeQps = dailyWrites / 86_400;
-        long readQps  = writeQps * readWriteRatio;
-        long records  = dailyWrites * 365 * retentionYears;
-        double storageTB = records * bytesPerRecord / 1e12;
-
-        System.out.printf("Write QPS (avg)   : %,d%n", writeQps);
-        System.out.printf("Read QPS (avg)    : %,d%n", readQps);
-        System.out.printf("Peak QPS (~2x avg): %,d reads%n", readQps * 2);
-        System.out.printf("5yr records       : %,d%n", records);
-        System.out.printf("5yr storage       : %.1f TB%n", storageTB);
-        System.out.println("\\n-> reads dominate: add caching + read replicas; " +
-                           "writes modest: single primary + sharding later.");
-    }
-}`
-        }
-      ],
-      flashcards: [
-        { q: 'What is the structured approach to a system-design question?', a: 'Clarify functional/non-functional requirements, estimate scale (QPS, data, read/write ratio), draw the high-level architecture, deep-dive the bottleneck, then discuss trade-offs and failure modes.' },
-        { q: 'Vertical vs horizontal scaling trade-offs?', a: 'Vertical (bigger box) is simple but has a hardware ceiling and a single point of failure. Horizontal (more boxes behind an LB) scales further but requires stateless services and data partitioning.' },
-        { q: 'State the CAP theorem.', a: 'During a network partition a distributed system can guarantee either Consistency or Availability, not both. CP systems reject requests to stay consistent; AP systems stay available and become eventually consistent.' },
-        { q: 'Why must app servers be stateless to scale horizontally?', a: 'So any request can hit any instance and instances can be added/removed freely. Session/state is pushed to a shared store (Redis/DB), avoiding sticky sessions and enabling load balancing and failover.' }
-      ]
-    },
-
-    {
-      id: '5.2',
-      title: 'Caching Strategies',
       hours: 3,
       sections: [
         {
-          title: 'Cache Patterns — Cache-Aside, Write-Through & Eviction',
-          notes: `## Cache Patterns — Cache-Aside, Write-Through & Eviction
+          title: 'Vertical vs Horizontal Scaling & Load Balancing',
+          notes: `## Vertical vs Horizontal Scaling & Load Balancing
 
-A cache stores frequently-accessed data in fast memory (RAM) to reduce expensive operations (DB queries, external API calls, computations).
-
-### Core Cache Patterns
+### Scaling Dimensions
 
 \`\`\`
-Cache-Aside (Lazy Loading) — most common
-┌──────────┐   1. Read cache     ┌────────┐
-│  Client  │──────────────────→  │ Cache  │
-│          │←── 4. Cache Hit     │(Redis) │
-│          │        or           └────────┘
-│          │   Cache Miss ─────→ ┌────────┐
-│          │←─ 2. Fetch from DB  │   DB   │
-│          │   3. Write to cache └────────┘
-└──────────┘
-
-Write-Through
-┌──────────┐   1. Write to cache ┌────────┐
-│  Client  │──────────────────→  │ Cache  │
-│          │   2. Cache writes → │(Redis) │── 3. Write to DB ──→ ┌────┐
-└──────────┘                     └────────┘                       │ DB │
-                                                                   └────┘
-
-Write-Behind (Write-Back)
-Same as write-through but DB write is async — higher throughput, risk of data loss
+Vertical Scaling (Scale Up)          Horizontal Scaling (Scale Out)
+────────────────────────────         ──────────────────────────────
+Bigger machine (more CPU/RAM)        More machines (same size)
+Simpler: no code changes needed      Complex: stateless design required
+Limited: hardware ceiling exists     Near-unlimited: add more nodes
+Single point of failure              Redundant: nodes can fail independently
+Downtime to upgrade hardware         No downtime: rolling deploys
+Example: t3.small → t3.2xlarge      Example: 2 t3.small → 10 t3.small
 \`\`\`
 
-### Cache-Aside Pattern
+### Load Balancers
+
+\`\`\`
+                    ┌──── Server 1
+Client → Load  ─────┤──── Server 2
+         Balancer   └──── Server 3
+
+Layer 4 (Transport): routes by IP/TCP — fast, no HTTP awareness
+Layer 7 (Application): routes by URL, headers, cookies — smart routing
+\`\`\`
+
+\`\`\`
+Load balancing algorithms:
+Round Robin      — requests distributed evenly in rotation
+Least Connections — next request goes to server with fewest active connections
+IP Hash          — same client IP always hits same server (sticky sessions)
+Weighted         — more powerful servers get proportionally more traffic
+Random           — random selection (works surprisingly well at scale)
+\`\`\`
+
+### Stateless Design — Prerequisite for Horizontal Scaling
 
 \`\`\`java
-@Service
-public class ProductService {
-    private final RedisTemplate<String, Product> cache;
-    private final ProductRepository repo;
-    private static final Duration TTL = Duration.ofMinutes(30);
+// STATEFUL (cannot scale horizontally) — session stored in memory
+@RestController
+public class CartController {
+    private final Map<String, Cart> sessions = new ConcurrentHashMap<>(); // in-memory!
 
-    public Product getProduct(Long id) {
-        String key = "product:" + id;
-
-        // 1. Try cache first
-        Product cached = cache.opsForValue().get(key);
-        if (cached != null) return cached;  // Cache HIT
-
-        // 2. Cache MISS: load from DB
-        Product product = repo.findById(id).orElseThrow();
-
-        // 3. Store in cache with TTL
-        cache.opsForValue().set(key, product, TTL);
-        return product;
+    @PostMapping("/cart/add")
+    public void addItem(@RequestHeader String sessionId, @RequestBody Item item) {
+        sessions.computeIfAbsent(sessionId, k -> new Cart()).add(item);
+        // If next request hits a DIFFERENT server → cart is empty there!
     }
+}
 
-    public Product updateProduct(Long id, ProductRequest req) {
-        Product updated = repo.save(Product.from(id, req));
+// STATELESS (horizontally scalable) — state in Redis
+@RestController
+public class CartController {
+    private final RedisTemplate<String, Cart> redis;
 
-        // Invalidate cache (cache-aside: evict on write, re-warm on next read)
-        cache.delete("product:" + id);
-        return updated;
+    @PostMapping("/cart/add")
+    public void addItem(@RequestHeader String sessionId, @RequestBody Item item) {
+        Cart cart = redis.opsForValue().get("cart:" + sessionId);
+        if (cart == null) cart = new Cart();
+        cart.add(item);
+        redis.opsForValue().set("cart:" + sessionId, cart, Duration.ofHours(2));
+        // Any server can handle any request — all read same Redis
     }
 }
 \`\`\`
 
-### Spring Cache Abstraction (@Cacheable)
-
-\`\`\`java
-@Configuration @EnableCaching
-public class CacheConfig {
-    @Bean
-    public CacheManager cacheManager(RedisConnectionFactory factory) {
-        var config = RedisCacheConfiguration.defaultCacheConfig()
-            .entryTtl(Duration.ofMinutes(30))
-            .serializeValuesWith(RedisSerializationContext.SerializationPair
-                .fromSerializer(new GenericJackson2JsonRedisSerializer()));
-        return RedisCacheManager.builder(factory)
-            .cacheDefaults(config)
-            .build();
-    }
-}
-
-@Service
-public class ProductService {
-    @Cacheable(value = "products", key = "#id")  // read from cache or populate
-    public Product getProduct(Long id) { return repo.findById(id).orElseThrow(); }
-
-    @CachePut(value = "products", key = "#product.id")  // always write to cache
-    public Product updateProduct(Product product) { return repo.save(product); }
-
-    @CacheEvict(value = "products", key = "#id")  // remove from cache
-    public void deleteProduct(Long id) { repo.deleteById(id); }
-
-    @CacheEvict(value = "products", allEntries = true)  // clear entire cache
-    public void clearAll() {}
-}
-\`\`\`
-
-### Eviction Policies
+### CAP Theorem
 
 \`\`\`
-LRU (Least Recently Used) — evict the entry not accessed for the longest time
-LFU (Least Frequently Used) — evict the entry with the fewest accesses
-FIFO (First In First Out) — evict the oldest entry regardless of access
-TTL (Time To Live) — evict entries after a fixed duration
+CAP: a distributed system can only guarantee 2 of 3:
+  C — Consistency:   every read returns the most recent write
+  A — Availability:  every request gets a (possibly stale) response
+  P — Partition Tol: system continues despite network partitions
 
-Redis maxmemory-policy options:
-- allkeys-lru     — LRU across all keys (most common choice)
-- volatile-lru    — LRU but only keys with TTL set
-- allkeys-lfu     — LFU across all keys
-- allkeys-random  — random eviction
-- noeviction      — reject writes when memory full (default — usually wrong)
+Real-world: P is non-negotiable (networks DO partition)
+→ Choose between CP or AP:
 
-# Configure Redis max memory
-maxmemory 4gb
-maxmemory-policy allkeys-lru
-\`\`\`
+CP systems (prefer Consistency):    HBase, ZooKeeper, etcd
+  "Return error if can't guarantee latest data"
 
-### Cache Stampede & Thundering Herd
+AP systems (prefer Availability):   Cassandra, DynamoDB, CouchDB
+  "Return possibly stale data, never error"
 
-\`\`\`java
-// Problem: a popular key expires → many concurrent requests all hit DB simultaneously
-// "Cache Stampede" or "Dog Pile" effect
-
-// Solution 1: Mutex/lock on cache miss
-@Service
-public class ProductService {
-    private final Map<Long, Lock> locks = new ConcurrentHashMap<>();
-
-    public Product getProduct(Long id) {
-        Product cached = cache.get("product:" + id);
-        if (cached != null) return cached;
-
-        Lock lock = locks.computeIfAbsent(id, k -> new ReentrantLock());
-        lock.lock();
-        try {
-            // Double-check after acquiring lock
-            cached = cache.get("product:" + id);
-            if (cached != null) return cached;
-            Product product = repo.findById(id).orElseThrow();
-            cache.put("product:" + id, product);
-            return product;
-        } finally {
-            lock.unlock();
-        }
-    }
-}
-
-// Solution 2: Staggered TTLs (add random jitter to TTL)
-Duration ttl = Duration.ofMinutes(25 + (long)(Math.random() * 10));  // 25-35 min
-cache.opsForValue().set(key, product, ttl);
-// Prevents mass expiry at the same moment for related keys
+Most SQL databases: CA (single node) or CP with replicas
 \`\`\``,
           code: [
-            `import org.springframework.cache.annotation.*;
-import org.springframework.stereotype.*;
-import java.time.*;
-import java.util.*;
-import java.util.concurrent.*;
-
-// Demonstrating cache patterns without real Redis (Caffeine in-process cache)
-@org.springframework.context.annotation.Configuration
-@EnableCaching
-class CacheConfig {
-    @org.springframework.context.annotation.Bean
-    public org.springframework.cache.CacheManager cacheManager() {
-        // Caffeine: fast in-process cache (great for single-instance apps)
-        com.github.benmanes.caffeine.cache.Caffeine<Object,Object> caffeine =
-            com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
-                .maximumSize(1000)
-                .expireAfterWrite(Duration.ofMinutes(10))
-                .recordStats();  // enable hit/miss statistics
-        return new org.springframework.cache.caffeine.CaffeineCacheManager("products", "users");
-    }
-}
-
-@Service
-class ProductCacheService {
-    private final Map<Long, String> fakeDb = new ConcurrentHashMap<>(Map.of(
-        1L, "Widget", 2L, "Gadget", 3L, "Doohickey"
-    ));
-    private int dbHits = 0;
-
-    @Cacheable(value = "products", key = "#id")
-    public String getProduct(Long id) {
-        dbHits++;
-        System.out.println("[DB HIT #" + dbHits + "] Loading product " + id);
-        try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        return fakeDb.getOrDefault(id, "Unknown");
-    }
-
-    @CachePut(value = "products", key = "#id")
-    public String updateProduct(Long id, String name) {
-        System.out.println("[UPDATE] product " + id + " = " + name);
-        fakeDb.put(id, name);
-        return name;
-    }
-
-    @CacheEvict(value = "products", key = "#id")
-    public void deleteProduct(Long id) {
-        System.out.println("[EVICT] product " + id);
-        fakeDb.remove(id);
-    }
-
-    int getDbHits() { return dbHits; }
-}
-
-// Test (without Spring context — shows the pattern)
-class CachePatternDemo {
-    public static void main(String[] args) {
-        // Manual cache-aside pattern demonstration
-        Map<Long, String> cache = new ConcurrentHashMap<>();
-        Map<Long, String> db = Map.of(1L, "Widget", 2L, "Gadget");
-
-        java.util.function.Function<Long, String> getProduct = id -> {
-            String cached = cache.get(id);
-            if (cached != null) { System.out.println("CACHE HIT: " + id); return cached; }
-            String product = db.get(id);
-            if (product != null) cache.put(id, product);
-            System.out.println("CACHE MISS → DB: " + product);
-            return product;
-        };
-
-        getProduct.apply(1L); // miss → loads from db
-        getProduct.apply(1L); // hit
-        getProduct.apply(1L); // hit
-        getProduct.apply(2L); // miss
-        cache.remove(1L);     // evict
-        getProduct.apply(1L); // miss again (evicted)
-    }
-}`,
             `import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
-// Cache stampede prevention + multi-level caching
-class StampedeDemo {
-    // L1: fast in-process (Caffeine), L2: Redis, L3: DB
-    // Only simulating here
-    private final Map<String, String> l1Cache = new ConcurrentHashMap<>();
-    private final Map<String, String> l2Cache = new ConcurrentHashMap<>();
-    private final Map<String, String> db = Map.of("k1","v1","k2","v2","k3","v3");
-    private final Map<String, Object> locks = new ConcurrentHashMap<>();
-    private final AtomicInteger l1Hits = new AtomicInteger();
-    private final AtomicInteger l2Hits = new AtomicInteger();
-    private final AtomicInteger dbHits  = new AtomicInteger();
+// Simulating load balancer strategies
+public class LoadBalancerDemo {
 
-    String get(String key) {
-        // L1 check
-        String v = l1Cache.get(key);
-        if (v != null) { l1Hits.incrementAndGet(); return v; }
-
-        // L2 check
-        v = l2Cache.get(key);
-        if (v != null) { l1Cache.put(key, v); l2Hits.incrementAndGet(); return v; }
-
-        // Stampede prevention: lock per key
-        Object lock = locks.computeIfAbsent(key, k -> new Object());
-        synchronized (lock) {
-            // Double-check after acquiring lock
-            v = l2Cache.get(key);
-            if (v != null) { l1Cache.put(key, v); return v; }
-
-            // Load from DB
-            v = db.get(key);
-            if (v != null) { l2Cache.put(key, v); l1Cache.put(key, v); }
-            dbHits.incrementAndGet();
-            return v;
-        }
+    record Server(String id, int weight) {
+        static Server of(String id) { return new Server(id, 1); }
+        static Server weighted(String id, int w) { return new Server(id, w); }
     }
 
-    void printStats() {
-        int total = l1Hits.get() + l2Hits.get() + dbHits.get();
-        System.out.printf("L1 hits: %d (%.0f%%) | L2: %d | DB: %d%n",
-            l1Hits.get(), 100.0*l1Hits.get()/Math.max(1,total),
-            l2Hits.get(), dbHits.get());
+    // Round Robin
+    static class RoundRobinLB {
+        private final List<Server> servers;
+        private final AtomicInteger counter = new AtomicInteger(0);
+
+        RoundRobinLB(Server... s) { servers = List.of(s); }
+
+        Server next() { return servers.get(counter.getAndIncrement() % servers.size()); }
+    }
+
+    // Least Connections
+    static class LeastConnectionsLB {
+        private final List<Server> servers;
+        private final Map<Server, AtomicInteger> active = new ConcurrentHashMap<>();
+
+        LeastConnectionsLB(Server... s) {
+            servers = List.of(s);
+            servers.forEach(sv -> active.put(sv, new AtomicInteger(0)));
+        }
+
+        Server acquire() {
+            Server min = servers.stream()
+                .min(Comparator.comparingInt(sv -> active.get(sv).get()))
+                .orElseThrow();
+            active.get(min).incrementAndGet();
+            return min;
+        }
+        void release(Server s) { active.get(s).decrementAndGet(); }
+    }
+
+    // Consistent Hashing (for stateless request routing)
+    static class ConsistentHash {
+        private final TreeMap<Integer, Server> ring = new TreeMap<>();
+
+        ConsistentHash(Server... servers) {
+            for (Server s : servers)
+                for (int v = 0; v < 100; v++)  // virtual nodes for even distribution
+                    ring.put((s.id() + "-" + v).hashCode(), s);
+        }
+
+        Server route(String key) {
+            int hash = key.hashCode();
+            var entry = ring.ceilingEntry(hash);
+            if (entry == null) entry = ring.firstEntry();
+            return entry.getValue();
+        }
     }
 
     public static void main(String[] args) {
-        var demo = new StampedeDemo();
-        // Simulate 100 requests for 3 keys
-        for (int i = 0; i < 100; i++) {
-            demo.get("k" + (i % 3 + 1));
-        }
-        demo.printStats(); // Should show ~97 L1 hits after warmup
+        var servers = new Server[]{Server.of("s1"), Server.of("s2"), Server.of("s3")};
+
+        var rr = new RoundRobinLB(servers);
+        System.out.println("Round Robin:");
+        for (int i = 0; i < 6; i++) System.out.print(rr.next().id() + " ");
+
+        System.out.println("\nConsistent Hash:");
+        var ch = new ConsistentHash(servers);
+        List.of("user:1", "user:2", "user:3", "session:abc").forEach(k ->
+            System.out.printf("  %s → %s%n", k, ch.route(k).id()));
     }
 }`
           ],
           flashcards: [
-            { q: 'What is the Cache-Aside (Lazy Loading) pattern and when is it preferred?', a: 'Cache-Aside: the application first checks the cache; on a miss, it loads from the DB and writes to the cache. The cache is ONLY populated on demand. Pros: only cached data that\'s actually requested; resilient to cache failure (fallback to DB). Cons: cache miss on first request (cold start); potential stampede. Preferred for: read-heavy workloads with non-uniform access patterns. Write strategy: evict the cache key on write (re-warm on next read) or use a short TTL to ensure eventual consistency.' },
-            { q: 'What is the difference between Write-Through and Write-Behind caching?', a: 'Write-Through: on every write, update BOTH cache and DB synchronously. Cache is always consistent with DB. Slower writes (two writes per update), but reads are always cache hits. Write-Behind (Write-Back): write to cache only; an async process periodically flushes to DB. Faster writes, but risk of data loss if cache fails before flush. Used when write throughput is critical (gaming leaderboards, real-time analytics). Write-Through is safer; Write-Behind is faster but requires durability mechanisms.' },
-            { q: 'What is a cache stampede and how do you prevent it?', a: 'Cache stampede (thundering herd): a popular cache key expires, and simultaneously many concurrent requests miss the cache and all hit the DB, causing a spike. Prevention: (1) Mutex/lock per key — only one request queries DB, others wait then read cache; (2) TTL jitter — add random variation to TTL (e.g. 25-35 min) to prevent mass expiry; (3) Background refresh — asynchronously refresh the cache before TTL expires; (4) Probabilistic early expiration — with some probability, refresh the cache slightly before it expires.' },
-            { q: 'What are LRU, LFU, and TTL eviction policies?', a: 'LRU (Least Recently Used): evict the entry not accessed for the longest time — good for temporal locality (recently used items are likely to be used again). LFU (Least Frequently Used): evict the entry accessed the fewest times — good when some items are permanently hot (always accessed). TTL (Time To Live): evict after a fixed duration regardless of access — ensures eventual consistency and removes stale data. Redis default in production: allkeys-lru (evict the globally least recently used key when memory is full).' },
-            { q: 'What is @Cacheable in Spring and what are the caveats?', a: '@Cacheable intercepts the method call: checks cache first, calls the method on miss, stores the result. Key caveats: (1) Self-invocation problem — same as @Transactional: this.method() bypasses the proxy, @Cacheable is ignored; (2) Method must be public; (3) Null values: by default cached, can disable with unless="#result==null"; (4) Cache key must be serializable for Redis; (5) Cache consistency: if DB is updated without going through the cached method, the cache becomes stale — always pair with @CacheEvict or @CachePut on write methods.' }
+            { q: 'What is the difference between vertical and horizontal scaling?', a: 'Vertical scaling (scale up): add more resources to a single machine — more CPU, RAM, disk. Simple (no code changes) but has a hardware ceiling and is a single point of failure. Horizontal scaling (scale out): add more machines of the same size. Requires stateless design (no in-memory session state), but is near-unlimited and redundant. In practice: vertical scaling is the first step (easier); horizontal scaling is needed at internet scale. Cloud: vertical = larger instance type; horizontal = more instances behind a load balancer.' },
+            { q: 'What does stateless design mean and why is it required for horizontal scaling?', a: 'Stateless: each request contains all information needed to process it — the server holds no per-user in-memory state between requests. A load balancer can send any request to any server and it works correctly. Stateful: the server stores session/cart/user data in its own memory — the next request MUST hit the same server (sticky sessions) or data is lost. To go stateless: move session state to a shared store (Redis, DB) or encode it in a signed token (JWT). Stateless enables horizontal scaling, rolling deploys without dropping sessions, and fault tolerance.' },
+            { q: 'What is the CAP theorem and what does "P is non-negotiable" mean?', a: 'CAP: a distributed system can guarantee at most 2 of: Consistency (every read returns the latest write), Availability (every request gets a response), Partition Tolerance (system works despite network splits). P (Partition Tolerance) is non-negotiable because network partitions happen in real distributed systems — machines lose connectivity. So the real choice is CP (prefer consistency — reject writes/reads during partition to avoid stale data; e.g. HBase, ZooKeeper) vs AP (prefer availability — serve possibly stale data rather than error; e.g. Cassandra, DynamoDB).' },
+            { q: 'What are the main load balancing algorithms and their trade-offs?', a: 'Round Robin: distributes evenly in rotation — best for uniform request sizes. Least Connections: next request to server with fewest active connections — better for variable request duration. IP Hash/Sticky: same client always hits same server — maintains affinity but can cause hot spots. Weighted: servers get traffic proportional to weight — useful for heterogeneous server sizes. For stateless apps: round robin or least connections. For stateful apps that can\'t use shared session storage: IP hash (sticky sessions), but this limits horizontal scaling.' }
+          ]
+        },
+        {
+          title: 'Database Scaling — Read Replicas, Sharding & Caching',
+          notes: `## Database Scaling — Read Replicas, Sharding & Caching
+
+The database is usually the bottleneck at scale. Strategies from simplest to most complex:
+
+### Read Replicas
+
+\`\`\`
+Primary (read+write) ──replication──→ Replica 1 (read-only)
+                                   └──replication──→ Replica 2 (read-only)
+
+Reads → Replica (90%+ of traffic in most apps)
+Writes → Primary (only)
+Replication lag: 10ms–1s typical — replicas may be slightly stale
+\`\`\`
+
+\`\`\`yaml
+# Spring Boot: route reads to replica, writes to primary
+spring:
+  datasource:
+    primary:
+      url: jdbc:postgresql://primary-db:5432/mydb
+    replica:
+      url: jdbc:postgresql://replica-db:5432/mydb
+
+# Alternatively: use a proxy (PgBouncer, ProxySQL)
+# that automatically routes SELECT → replica, DML → primary
+\`\`\`
+
+\`\`\`java
+// Route per transaction type
+@Transactional(readOnly = true)   // → routed to replica
+public List<Product> search(String q) { return repo.search(q); }
+
+@Transactional                    // → routed to primary
+public Product create(ProductRequest r) { return repo.save(new Product(r)); }
+\`\`\`
+
+### Sharding (Horizontal Partitioning)
+
+\`\`\`
+Sharding: split data across multiple databases by a shard key
+  user_id 1-10M  → Shard A
+  user_id 10M-20M→ Shard B
+  user_id 20M-30M→ Shard C
+
+Benefits: each shard handles 1/N the load and 1/N the data
+Downsides: cross-shard queries are expensive/impossible
+           can't JOIN across shards
+           resharding (rebalancing) is painful
+
+Shard key rules:
+  ✓ High cardinality (many distinct values)
+  ✓ Uniform distribution (no hot shards)
+  ✓ Queries always include the shard key
+  ✗ Sequential IDs (hot shard — new rows always go to same shard)
+  ✗ Columns appearing only in complex queries
+\`\`\`
+
+### Denormalization & CQRS
+
+\`\`\`
+CQRS: Command Query Responsibility Segregation
+  Write model (Command): normalised relational DB — correctness
+  Read model  (Query):   denormalised, pre-computed, optimised for reads
+
+Example: product search
+  Write side: products + categories + attributes tables (normalised)
+  Read side:  Elasticsearch document { id, name, category, tags, price }
+              updated asynchronously via events (Kafka/outbox pattern)
+
+  Result: search is instant (Elasticsearch), writes are safe (relational)
+\`\`\`
+
+### When to Apply Each Strategy
+
+\`\`\`
+Problem             Solution                When
+─────────────────────────────────────────────────────
+Reads too slow      Add read replica        First step
+Reads + cache hit%  Add Redis cache         High read/low write ratio
+Writes too slow     Optimise queries/indexes Before sharding
+Too much data       Table partitioning       Single DB still viable
+Too much data       Sharding                After partitioning fails
+Cross-region        Multi-region replicas    Global users
+\`\`\``,
+          code: [
+            `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+// Simulating a simple consistent-hash sharding router
+public class ShardingDemo {
+
+    record Shard(String name, Map<String, String> data) {
+        Shard(String name) { this(name, new ConcurrentHashMap<>()); }
+        void put(String key, String value) { data.put(key, value); }
+        Optional<String> get(String key) { return Optional.ofNullable(data.get(key)); }
+        int size() { return data.size(); }
+    }
+
+    static class ShardRouter {
+        private final List<Shard> shards;
+
+        ShardRouter(int count) {
+            shards = new ArrayList<>();
+            for (int i = 0; i < count; i++) shards.add(new Shard("shard-" + i));
+        }
+
+        private Shard shardFor(String key) {
+            int hash = Math.abs(key.hashCode()) % shards.size();
+            return shards.get(hash);
+        }
+
+        void put(String key, String value) { shardFor(key).put(key, value); }
+        Optional<String> get(String key) { return shardFor(key).get(key); }
+
+        void printDistribution() {
+            shards.forEach(s -> System.out.printf("  %s: %d rows%n", s.name(), s.size()));
+        }
+    }
+
+    // Read replica simulation
+    static class ReplicaRouter {
+        private final String primary = "primary:5432";
+        private final List<String> replicas = List.of("replica1:5432","replica2:5432");
+        private final AtomicInteger rr = new AtomicInteger();
+
+        String routeRead()  { return replicas.get(rr.getAndIncrement() % replicas.size()); }
+        String routeWrite() { return primary; }
+    }
+
+    public static void main(String[] args) {
+        // Sharding demo
+        var router = new ShardRouter(4);
+        var users = List.of("alice","bob","carol","dave","eve","frank","grace","hank");
+        users.forEach(u -> router.put("user:" + u, "data-" + u));
+
+        System.out.println("Shard distribution (4 shards, 8 users):");
+        router.printDistribution();
+        System.out.println("Get user:alice → " + router.get("user:alice").orElse("missing"));
+
+        // Read replica routing
+        var replica = new ReplicaRouter();
+        System.out.println("\nRequest routing:");
+        System.out.println("  SELECT → " + replica.routeRead());
+        System.out.println("  INSERT → " + replica.routeWrite());
+        System.out.println("  SELECT → " + replica.routeRead());
+    }
+}`
+          ],
+          flashcards: [
+            { q: 'What is a read replica and what is its main limitation?', a: 'A read replica is a copy of the primary database that accepts only SELECT queries. Writes go to the primary, which replicates changes asynchronously to replicas. Benefit: read traffic (typically 80-90% of DB load) is distributed across replicas. Limitation: replication lag — replicas may be 10ms to several seconds behind the primary. Reading your own writes after a write may return stale data ("read-your-write" problem). Fix: route writes and their immediate reads to the primary; use replicas for background/reporting reads.' },
+            { q: 'What is database sharding and what makes a good shard key?', a: 'Sharding splits data across multiple databases by a shard key. Each shard is an independent DB — 1/N the data and load. Good shard key: high cardinality (many values), uniform distribution (no hot shards), always present in queries (otherwise cross-shard scatter queries). Bad shard key: sequential IDs (all new writes go to one shard — hot spot), low cardinality (status enum). Sharding prevents JOINs across shards, makes transactions spanning shards very complex. Use only when single-DB partitioning is insufficient.' },
+            { q: 'What is CQRS and what problem does it solve?', a: 'CQRS (Command Query Responsibility Segregation) uses separate models for writes and reads. Write model: normalised relational DB optimised for correctness (ACID). Read model: denormalised store optimised for queries (Elasticsearch, Redis, materialised views) — pre-joined, pre-aggregated, instantly searchable. The read model is updated asynchronously from write events. Solves: the read model can scale independently from writes; complex read queries don\'t slow down writes; each side uses the best data store for its access pattern. Trade-off: eventual consistency between write and read models.' }
           ]
         }
       ]
@@ -23939,96 +24007,287 @@ class StampedeDemo {
       id: '5.3',
       title: 'API Design: REST, gRPC & Idempotency',
       hours: 3,
-      notes: `
-# API Design
-
-A clean, evolvable API is a senior deliverable. Know REST conventions, when to reach for gRPC/GraphQL, and how to make writes safe.
-
-## RESTful conventions
-
-- **Resources as nouns**, HTTP verbs as actions: \`GET /orders/42\`, \`POST /orders\`, \`PUT/PATCH /orders/42\`, \`DELETE /orders/42\`.
-- **Status codes** mean something: 200/201/204, 400 (bad request), 401/403 (auth), 404, 409 (conflict), 422, 429 (rate limit), 5xx.
-- **Statelessness** — every request carries its auth/context; no server session affinity.
-
-## Idempotency & safety
-
-| Method | Safe (no side effects) | Idempotent (repeat = same effect) |
-|--------|:----------------------:|:---------------------------------:|
-| GET | ✅ | ✅ |
-| PUT | ❌ | ✅ |
-| DELETE | ❌ | ✅ |
-| POST | ❌ | ❌ |
-
-> [!WARNING]
-> \`POST\` isn't idempotent — a retried payment could double-charge. Use an **idempotency key** (client-generated UUID header): the server records the key + result and returns the stored result on retry. Essential for payments and at-least-once messaging.
-
-## Versioning & evolution
-
-URI (\`/v1/\`), header, or media-type versioning. Evolve **backward-compatibly**: add optional fields, never repurpose/remove fields in place. Document with OpenAPI.
-
-## REST vs gRPC vs GraphQL
-
-- **REST/JSON** — ubiquitous, cacheable, human-readable. Default for public APIs.
-- **gRPC/Protobuf** — binary, HTTP/2 streaming, contract-first, low latency. Great **internal** service-to-service.
-- **GraphQL** — client picks fields; solves over/under-fetching; cost is caching/complexity.
-
-> [!TIP]
-> Pagination: prefer **cursor/keyset** (\`WHERE id > :last LIMIT n\`) over OFFSET for large datasets — OFFSET scans and skips rows, getting slower as you page deeper, and can skip/duplicate rows under concurrent inserts.
-
-> [!EU]
-> Common: *"Design a REST API for X"* and *"How do you make a payment endpoint safe to retry?"* (idempotency key). Mention error contracts, rate limiting (429 + Retry-After), and versioning strategy.
-`,
-      code: [
+      sections: [
         {
-          lang: 'java',
-          title: 'Idempotency-key handling for POST',
-          code: `import java.util.*;
+          title: 'REST API Design — Principles & Best Practices',
+          notes: `## REST API Design — Principles & Best Practices
+
+### REST Constraints
+
+\`\`\`
+REST (Representational State Transfer) defines 6 architectural constraints:
+1. Client-Server: separation of concerns — UI and data are independent
+2. Stateless: each request contains all needed info — no server-side session
+3. Cacheable: responses declare whether they can be cached
+4. Uniform Interface: consistent resource-based URLs + HTTP methods
+5. Layered System: client doesn't know if it's talking to origin or proxy
+6. Code on Demand (optional): server can send executable code (JavaScript)
+\`\`\`
+
+### Resource Naming
+
+\`\`\`
+✓ Nouns (resources), not verbs
+  GET  /users           list users
+  POST /users           create user
+  GET  /users/{id}      get one user
+  PUT  /users/{id}      replace user
+  PATCH /users/{id}     partial update
+  DELETE /users/{id}    delete user
+
+✗ Verb-based (wrong)
+  GET /getUsers
+  POST /createUser
+  GET /deleteUser?id=1
+
+✓ Hierarchical sub-resources
+  GET  /users/{id}/orders        user's orders
+  POST /users/{id}/orders        create order for user
+  GET  /users/{id}/orders/{oid}  specific order
+
+✓ Plural nouns, lowercase, hyphens
+  /order-items   not /orderItems or /OrderItems
+
+✓ Filter via query params, not URL segments
+  GET /orders?status=PENDING&customerId=42&sort=createdAt&page=0&size=20
+  not /orders/pending/customer/42
+\`\`\`
+
+### HTTP Status Codes
+
+\`\`\`
+2xx Success
+  200 OK           — GET, PUT, PATCH success
+  201 Created      — POST success; include Location header
+  204 No Content   — DELETE success (no body)
+
+3xx Redirect
+  301 Moved Permanently  — resource URL changed permanently
+  304 Not Modified       — cached response still valid (ETag/If-None-Match)
+
+4xx Client Error
+  400 Bad Request        — invalid input / validation failure
+  401 Unauthorized       — not authenticated (no/invalid token)
+  403 Forbidden          — authenticated but not authorised
+  404 Not Found          — resource doesn't exist
+  409 Conflict           — optimistic lock failure, duplicate key
+  422 Unprocessable      — semantically invalid (e.g. business rule violation)
+  429 Too Many Requests  — rate limited
+
+5xx Server Error
+  500 Internal Server Error  — unexpected server fault
+  502 Bad Gateway            — upstream service error
+  503 Service Unavailable    — overloaded or down
+  504 Gateway Timeout        — upstream timeout
+\`\`\`
+
+### Versioning
+
+\`\`\`
+URL versioning (most common):
+  /api/v1/users     /api/v2/users
+
+Header versioning:
+  Accept: application/vnd.myapp.v2+json
+  API-Version: 2
+
+URL versioning: explicit, cacheable, easy to test in browser
+Header versioning: clean URLs, harder to test manually
+
+Avoid: breaking changes in same version
+Define "breaking change": removing fields, changing types, removing endpoints
+Non-breaking: adding optional fields, adding endpoints
+\`\`\`
+
+### Request/Response Design
+
+\`\`\`java
+// Consistent error response shape
+record ErrorResponse(
+    int status,
+    String code,      // machine-readable: "INSUFFICIENT_FUNDS"
+    String message,   // human-readable: "Account balance too low"
+    String traceId,   // for correlating logs
+    List<FieldError> errors  // for validation failures
+) {}
+
+record FieldError(String field, String message) {}
+
+// Paginated response envelope
+record Page<T>(
+    List<T> content,
+    int page,
+    int size,
+    long totalElements,
+    int totalPages,
+    boolean hasNext,
+    boolean hasPrevious
+) {}
+
+// Example Spring controller
+@RestController @RequestMapping("/api/v1")
+public class OrderController {
+    @GetMapping("/orders")
+    public ResponseEntity<Page<OrderDto>> list(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String status) {
+        return ResponseEntity.ok(orderService.list(page, size, status));
+    }
+
+    @PostMapping("/orders")
+    public ResponseEntity<OrderDto> create(@Valid @RequestBody CreateOrderRequest req) {
+        OrderDto order = orderService.create(req);
+        URI location = URI.create("/api/v1/orders/" + order.id());
+        return ResponseEntity.created(location).body(order);
+    }
+}
+\`\`\``,
+          code: [
+            `import org.springframework.web.bind.annotation.*;
+import org.springframework.http.*;
+import jakarta.validation.constraints.*;
+import java.util.*;
+import java.net.URI;
+
+// Production-quality REST controller patterns
+@RestController
+@RequestMapping("/api/v1/products")
+public class ProductController {
+
+    // GET /api/v1/products?category=Electronics&minPrice=10&page=0&size=20
+    @GetMapping
+    public ResponseEntity<PageResponse<ProductDto>> list(
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Double minPrice,
+            @RequestParam(required = false) Double maxPrice,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        // Service handles filtering + pagination
+        var result = productService.list(category, minPrice, maxPrice, page, size);
+        return ResponseEntity.ok(result);
+    }
+
+    // GET /api/v1/products/{id}
+    @GetMapping("/{id}")
+    public ResponseEntity<ProductDto> get(@PathVariable Long id) {
+        return productService.findById(id)
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    // POST /api/v1/products → 201 Created + Location header
+    @PostMapping
+    public ResponseEntity<ProductDto> create(@Valid @RequestBody CreateProductRequest req) {
+        ProductDto created = productService.create(req);
+        URI location = URI.create("/api/v1/products/" + created.id());
+        return ResponseEntity.created(location).body(created);
+    }
+
+    // PATCH /api/v1/products/{id} — partial update
+    @PatchMapping("/{id}")
+    public ResponseEntity<ProductDto> patch(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> updates) {
+        return productService.patch(id, updates)
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    // DELETE /api/v1/products/{id} → 204 No Content
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        productService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+// Consistent error handling
+@RestControllerAdvice
+class GlobalExceptionHandler {
+    record ErrorBody(int status, String code, String message, String traceId) {}
+
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    ResponseEntity<ErrorBody> onValidation(jakarta.validation.ConstraintViolationException e,
+                                            jakarta.servlet.http.HttpServletRequest req) {
+        return ResponseEntity.badRequest().body(new ErrorBody(400, "VALIDATION_ERROR",
+            e.getMessage(), req.getHeader("X-Request-Id")));
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    ResponseEntity<ErrorBody> onRuntime(RuntimeException e,
+                                        jakarta.servlet.http.HttpServletRequest req) {
+        return ResponseEntity.internalServerError().body(new ErrorBody(500,
+            "INTERNAL_ERROR", "An unexpected error occurred", req.getHeader("X-Request-Id")));
+    }
+}
+
+// Stubs
+record ProductDto(Long id, String name, double price) {}
+record CreateProductRequest(@NotBlank String name, @Positive double price) {}
+record PageResponse<T>(List<T> content, int page, long totalElements) {}
+class productService { static Object list(Object...a){return null;} static java.util.Optional<ProductDto> findById(Long id){return java.util.Optional.empty();} static ProductDto create(CreateProductRequest r){return null;} static java.util.Optional<ProductDto> patch(Long id,Map<String,Object> u){return java.util.Optional.empty();} static void delete(Long id){} }`,
+            `// Idempotency keys — safe retries for non-idempotent operations
+import java.util.*;
 import java.util.concurrent.*;
 
 public class IdempotencyDemo {
-    // Server-side store of processed idempotency keys -> their result
-    static final Map<String, String> processed = new ConcurrentHashMap<>();
-    static int chargesExecuted = 0;
+    // Problem: client retries a POST /payments → charges twice!
+    // Solution: client sends Idempotency-Key header; server deduplicates
 
-    // Simulates POST /payments with an Idempotency-Key header
-    static synchronized String charge(String idempotencyKey, int cents) {
-        // If we've seen this key, return the SAME stored result (no double charge)
-        if (processed.containsKey(idempotencyKey)) {
-            return "REPLAY -> " + processed.get(idempotencyKey);
+    record PaymentRequest(String customerId, double amount, String currency) {}
+    record PaymentResult(String paymentId, String status, double amount) {}
+
+    static class IdempotentPaymentService {
+        // In production: store in Redis/DB with TTL (24-48h)
+        private final Map<String, PaymentResult> processed = new ConcurrentHashMap<>();
+
+        PaymentResult processPayment(String idempotencyKey, PaymentRequest req) {
+            // Check if already processed
+            PaymentResult existing = processed.get(idempotencyKey);
+            if (existing != null) {
+                System.out.println("[IDEMPOTENT] Returning cached result for key: " + idempotencyKey);
+                return existing;  // return same result as first call
+            }
+
+            // Process only once
+            String paymentId = "PAY-" + UUID.randomUUID().toString().substring(0,8).toUpperCase();
+            PaymentResult result = new PaymentResult(paymentId, "COMPLETED", req.amount());
+            processed.put(idempotencyKey, result);
+            System.out.println("[NEW] Payment processed: " + paymentId);
+            return result;
         }
-        chargesExecuted++;
-        String receipt = "charged " + cents + "c, receipt#" + UUID.randomUUID();
-        processed.put(idempotencyKey, receipt);
-        return "NEW    -> " + receipt;
     }
 
     public static void main(String[] args) {
-        String key = "client-key-abc-123";          // client generates once, reuses on retry
-        System.out.println(charge(key, 4999));        // first attempt -> NEW
-        System.out.println(charge(key, 4999));        // network retry -> REPLAY (same receipt)
-        System.out.println(charge(key, 4999));        // another retry  -> REPLAY
-        System.out.println("Actual charges executed: " + chargesExecuted + " (correctly 1)");
+        var service = new IdempotentPaymentService();
+        var req = new PaymentRequest("customer-1", 99.99, "USD");
+        String key = UUID.randomUUID().toString();  // client generates once, reuses on retry
+
+        // First attempt
+        var r1 = service.processPayment(key, req);
+        // Simulated network failure → client retries with same key
+        var r2 = service.processPayment(key, req);
+        // Third retry
+        var r3 = service.processPayment(key, req);
+
+        System.out.println("All results same paymentId? " +
+            r1.paymentId().equals(r2.paymentId()) + " & " + r2.paymentId().equals(r3.paymentId()));
+        System.out.println("Payment: " + r1.paymentId() + " $" + r1.amount());
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What are the HTTP methods and their expected behaviour (safe vs idempotent)?', a: 'GET: safe + idempotent — read only, no side effects, can be cached. HEAD: safe + idempotent — like GET but no body. OPTIONS: safe + idempotent — describe allowed methods. PUT: idempotent — replace resource; calling twice has same result as once. DELETE: idempotent — same result whether called once or multiple times (404 on second call is acceptable). POST: neither safe nor idempotent — creates a new resource each call; use idempotency keys for safe retries. PATCH: not necessarily idempotent — depends on implementation (absolute vs relative changes).' },
+            { q: 'What is the difference between 401 and 403?', a: '401 Unauthorized: the request lacks valid authentication credentials — the client is not identified. Despite the name, it means "not authenticated." Response should include WWW-Authenticate header. The client should re-authenticate (login, refresh token). 403 Forbidden: the client IS authenticated but does NOT have permission to access the resource. Re-authenticating won\'t help. Example: logged-in user trying to access another user\'s data.' },
+            { q: 'What is an idempotency key and why is it critical for POST /payments?', a: 'An idempotency key is a client-generated unique ID (UUID) sent in a header (Idempotency-Key: <uuid>) that makes a non-idempotent operation safe to retry. The server stores the key + result; on retry, it returns the cached result instead of processing again. Critical for POST /payments: if the client times out after sending but before receiving the response, it doesn\'t know if the payment was processed. Without idempotency keys, a retry charges twice. Standard: client generates one UUID per operation intent, reuses it on all retries.' },
+            { q: 'How should you version a REST API and what constitutes a breaking change?', a: 'Most common: URL versioning (/api/v1/, /api/v2/) — explicit, cacheable, easy to test. Alternative: header versioning (API-Version: 2 or Accept: application/vnd.app.v2+json) — cleaner URLs. Breaking changes requiring a new version: removing a field, changing a field\'s type, removing an endpoint, changing URL structure, changing error format. Non-breaking (can do in same version): adding optional request fields, adding response fields, adding new endpoints. Strategy: run multiple versions in parallel, set a deprecation timeline (6-12 months), inform clients via deprecation headers.' },
+            { q: 'What should a REST API error response contain?', a: 'Minimum: HTTP status code (in the response status line, not just a 200 with "error" body), machine-readable error code (string like "INSUFFICIENT_FUNDS" — for programmatic handling), human-readable message (for developers), traceId/requestId (to correlate with server logs). For validation errors: a list of field-level errors with field name and message. Avoid: returning 200 for errors, revealing stack traces in production, using generic "error: true" without code, changing error shape between endpoints. Consistent error envelope across ALL endpoints is critical.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What does idempotent mean and which HTTP methods are idempotent?', a: 'Repeating the request produces the same server state as doing it once. GET, PUT, and DELETE are idempotent; POST is not (and GET/PUT/DELETE... GET is also safe).' },
-        { q: 'How do you make a POST payment endpoint safe to retry?', a: 'Require a client-generated idempotency key (header). The server stores the key with its result; on a retry with the same key it returns the stored result instead of charging again.' },
-        { q: 'Why prefer cursor/keyset pagination over OFFSET for large datasets?', a: 'OFFSET must scan and discard all skipped rows, getting slower as pages deepen, and can skip/duplicate rows under concurrent writes. Keyset (WHERE id > last_seen LIMIT n) uses the index and stays O(page size).' },
-        { q: 'When choose gRPC over REST?', a: 'For internal service-to-service calls needing low latency, strong contracts (Protobuf), bidirectional streaming, and efficient binary serialization over HTTP/2. REST/JSON remains better for public, cacheable, human-debuggable APIs.' }
       ]
-    }
-  ]
-},
+    },
 
-/* ===================== PHASE 6: Distributed & Messaging ===================== */
-{
-  id: 'p6',
-  title: 'Distributed Systems & Messaging',
-  icon: 'share-2',
-  blurb: 'Microservice communication, Kafka, sagas, idempotency, and eventual consistency.',
-  modules: [
     {
       id: '6.1',
       title: 'Microservice Patterns',
