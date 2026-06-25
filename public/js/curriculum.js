@@ -9884,6 +9884,345 @@ HashSet.contains stays flat     -> O(1) average`
                 back: `HashMap iterates in an unpredictable order. LinkedHashMap keeps a linked list of entries and iterates in insertion (or access) order at the same O(1) per-op cost — useful for caches and reproducible output.`
               }
             ]
+          },
+          {
+            title: `Coding Problems — Practising the Collections`,
+            notes: `## Coding Problems — Practising the Collections
+
+These are warm-up to intermediate drills. The goal is simple: **pick the right collection, then use its core methods naturally.** Do them until the choice is automatic.
+
+> [!TIP]
+> A tiny decision tree: *Do I need uniqueness?* → \`Set\`. *Do I need key→value lookup?* → \`Map\`. *Process in arrival order?* → \`Queue\` (\`ArrayDeque\`). *Last-in-first-out?* → stack (\`ArrayDeque\`). *Always-sorted / nearest-key?* → \`TreeSet\` / \`TreeMap\`. *Smallest/largest k?* → \`PriorityQueue\`.
+
+### Quick reference
+
+| Task | Collection | Why |
+|------|-----------|-----|
+| Remove duplicates | \`HashSet\` | O(1) membership |
+| Remove dupes, keep order | \`LinkedHashSet\` | order + uniqueness |
+| Count occurrences | \`HashMap\` + \`merge\` | O(1) per update |
+| BFS / level processing | \`ArrayDeque\` (queue) | FIFO, O(1) ends |
+| Balanced brackets | \`ArrayDeque\` (stack) | LIFO matching |
+| Top-N items | \`PriorityQueue\` | heap, O(log n) |
+| Range / floor / ceiling | \`TreeMap\` | sorted navigation |
+
+> [!WARNING]
+> \`Set\` and \`Map\` keys rely on **equals/hashCode**. If you put your own class into a \`HashSet\` without overriding both, every instance is "different" and dedupe silently fails.
+
+> [!SUCCESS]
+> In an interview, narrate the choice: *"I'll use a HashSet because I only care whether I've seen it, and I want O(1) lookups."* That sentence earns points even before the code runs.
+
+> [!DANGER]
+> \`PriorityQueue\` iteration order is **not** sorted — only \`poll()\` returns elements in priority order. Printing a \`PriorityQueue\` directly shows heap (array) order, which surprises people.
+
+> [!EU]
+> If you ever count occurrences of user identifiers (emails, IDs), that frequency map holds personal data under **GDPR**. Keep it in memory only as long as needed, and avoid logging the raw keys.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Dedupe a list with a HashSet`,
+                code: `import java.util.*;
+
+public class DedupeList {
+    static List<Integer> dedupe(List<Integer> in) {
+        return new ArrayList<>(new LinkedHashSet<>(in)); // keeps first-seen order
+    }
+    public static void main(String[] args) {
+        List<Integer> in = Arrays.asList(3,1,3,2,1,4,2);
+        System.out.println(dedupe(in));               // [3, 1, 2, 4]
+        System.out.println(new HashSet<>(in).size()); // 4 distinct
+    }
+}
+// Set gives uniqueness for free. LinkedHashSet keeps the original order; HashSet does not.`
+              },
+              {
+                lang: `java`,
+                title: `Count occurrences with Map.merge`,
+                code: `import java.util.*;
+
+public class CountOccurrences {
+    public static void main(String[] args) {
+        String text = "the cat sat on the mat the cat";
+        Map<String,Integer> freq = new HashMap<>();
+        for (String w : text.split(" "))
+            freq.merge(w, 1, Integer::sum);  // the modern counting idiom
+        System.out.println(freq);            // {cat=2, sat=1, on=1, the=3, mat=1}
+        System.out.println("the -> " + freq.get("the")); // 3
+    }
+}
+// Map for key->count. merge(key,1,Integer::sum) replaces get/null-check/put.`
+              },
+              {
+                lang: `java`,
+                title: `Reverse and rotate a list`,
+                code: `import java.util.*;
+
+public class ReverseRotate {
+    static <T> void rotateLeft(List<T> list, int k) {
+        Collections.rotate(list, -k); // negative = rotate left
+    }
+    public static void main(String[] args) {
+        List<Integer> a = new ArrayList<>(Arrays.asList(1,2,3,4,5));
+        Collections.reverse(a);
+        System.out.println(a);        // [5, 4, 3, 2, 1]
+
+        List<Integer> b = new ArrayList<>(Arrays.asList(1,2,3,4,5));
+        rotateLeft(b, 2);
+        System.out.println(b);        // [3, 4, 5, 1, 2]
+    }
+}
+// Collections.reverse / rotate work on any List in O(n). Know they exist!`
+              },
+              {
+                lang: `java`,
+                title: `Check if two strings are anagrams`,
+                code: `import java.util.*;
+
+public class AnagramCheck {
+    static boolean isAnagram(String a, String b) {
+        if (a.length() != b.length()) return false;
+        Map<Character,Integer> count = new HashMap<>();
+        for (char c : a.toCharArray()) count.merge(c, 1, Integer::sum);
+        for (char c : b.toCharArray()) {
+            count.merge(c, -1, Integer::sum);
+            if (count.get(c) < 0) return false;
+        }
+        return true;
+    }
+    public static void main(String[] args) {
+        System.out.println(isAnagram("listen", "silent")); // true
+        System.out.println(isAnagram("rat", "car"));        // false
+    }
+}
+// Map counts up for a and down for b; all zero means anagram. O(n).`
+              },
+              {
+                lang: `java`,
+                title: `Find all pairs summing to a target (HashSet)`,
+                code: `import java.util.*;
+
+public class PairSum {
+    static List<int[]> pairs(int[] a, int target) {
+        Set<Integer> seen = new HashSet<>();
+        List<int[]> out = new ArrayList<>();
+        for (int x : a) {
+            int need = target - x;
+            if (seen.contains(need)) out.add(new int[]{need, x});
+            seen.add(x);
+        }
+        return out;
+    }
+    public static void main(String[] args) {
+        for (int[] p : pairs(new int[]{2,4,3,5,7,8,1}, 9))
+            System.out.println(Arrays.toString(p));
+        // [4, 5], [2, 7], [8, 1]
+    }
+}
+// HashSet of seen values turns the inner search into O(1). Overall O(n).`
+              },
+              {
+                lang: `java`,
+                title: `Level-by-level processing with a queue (BFS-style)`,
+                code: `import java.util.*;
+
+public class LevelProcessing {
+    public static void main(String[] args) {
+        // adjacency list of a small graph/tree
+        Map<Integer,List<Integer>> g = new HashMap<>();
+        g.put(1, Arrays.asList(2,3));
+        g.put(2, Arrays.asList(4,5));
+        g.put(3, Arrays.asList(6));
+
+        Queue<Integer> q = new ArrayDeque<>();
+        q.offer(1);
+        while (!q.isEmpty()) {
+            int levelSize = q.size();
+            StringBuilder level = new StringBuilder();
+            for (int i = 0; i < levelSize; i++) {
+                int node = q.poll();
+                level.append(node).append(' ');
+                for (int nb : g.getOrDefault(node, List.of())) q.offer(nb);
+            }
+            System.out.println(level.toString().trim());
+        }
+        // 1
+        // 2 3
+        // 4 5 6
+    }
+}
+// Queue (ArrayDeque) = FIFO. Snapshotting q.size() processes one level per pass.`
+              },
+              {
+                lang: `java`,
+                title: `Balanced parentheses with a stack`,
+                code: `import java.util.*;
+
+public class BalancedParens {
+    static boolean balanced(String s) {
+        Deque<Character> stack = new ArrayDeque<>();
+        Map<Character,Character> close = Map.of(')','(', ']','[', '}','{');
+        for (char c : s.toCharArray()) {
+            if (c=='('||c=='['||c=='{') stack.push(c);
+            else if (close.containsKey(c)) {
+                if (stack.isEmpty() || stack.pop() != close.get(c)) return false;
+            }
+        }
+        return stack.isEmpty();
+    }
+    public static void main(String[] args) {
+        System.out.println(balanced("{[()]}"));  // true
+        System.out.println(balanced("{[(])}"));  // false
+        System.out.println(balanced("((("));     // false
+    }
+}
+// Stack (ArrayDeque) matches each closer against the most recent opener. O(n).`
+              },
+              {
+                lang: `java`,
+                title: `Top-3 numbers with a PriorityQueue`,
+                code: `import java.util.*;
+
+public class TopThree {
+    static List<Integer> top3(int[] a) {
+        PriorityQueue<Integer> minHeap = new PriorityQueue<>(); // natural min-heap
+        for (int x : a) {
+            minHeap.offer(x);
+            if (minHeap.size() > 3) minHeap.poll(); // drop the smallest
+        }
+        List<Integer> out = new ArrayList<>(minHeap);
+        out.sort(Collections.reverseOrder());
+        return out;
+    }
+    public static void main(String[] args) {
+        System.out.println(top3(new int[]{5,1,9,3,7,8,2})); // [9, 8, 7]
+    }
+}
+// A size-3 min-heap keeps the 3 largest. poll() removes the smallest of the kept set.`
+              },
+              {
+                lang: `java`,
+                title: `TreeMap floor / ceiling / range queries`,
+                code: `import java.util.*;
+
+public class TreeMapNavigation {
+    public static void main(String[] args) {
+        TreeMap<Integer,String> tm = new TreeMap<>();
+        tm.put(10,"a"); tm.put(20,"b"); tm.put(30,"c"); tm.put(40,"d");
+
+        System.out.println(tm.floorKey(25));    // 20  (greatest <= 25)
+        System.out.println(tm.ceilingKey(25));  // 30  (smallest >= 25)
+        System.out.println(tm.firstKey());      // 10
+        System.out.println(tm.lastKey());       // 40
+        System.out.println(tm.subMap(15, 35));  // {20=b, 30=c}  (range view)
+    }
+}
+// TreeMap keeps keys sorted: floor/ceiling/range all O(log n). HashMap can't do this.`
+              },
+              {
+                lang: `java`,
+                title: `Ordered dedupe with a LinkedHashSet`,
+                code: `import java.util.*;
+
+public class OrderedDedupe {
+    public static void main(String[] args) {
+        String[] visits = {"home","about","home","blog","about","contact"};
+        Set<String> seen = new LinkedHashSet<>(); // unique + insertion order
+        for (String v : visits) seen.add(v);
+        System.out.println(seen); // [home, about, blog, contact]
+
+        // contrast: HashSet loses order
+        System.out.println(new HashSet<>(Arrays.asList(visits)).size()); // 4
+    }
+}
+// LinkedHashSet = uniqueness of a Set PLUS predictable insertion order. O(1) add.`
+              },
+              {
+                lang: `java`,
+                title: `Group items into buckets (Map of List)`,
+                code: `import java.util.*;
+
+public class GroupByLength {
+    public static void main(String[] args) {
+        String[] words = {"hi","cat","dog","a","tree","go"};
+        Map<Integer,List<String>> byLen = new TreeMap<>(); // sorted by length key
+        for (String w : words)
+            byLen.computeIfAbsent(w.length(), k -> new ArrayList<>()).add(w);
+        byLen.forEach((len, list) -> System.out.println(len + " -> " + list));
+        // 1 -> [a]
+        // 2 -> [hi, go]
+        // 3 -> [cat, dog]
+        // 4 -> [tree]
+    }
+}
+// computeIfAbsent builds buckets lazily. TreeMap key prints groups in sorted order.`
+              },
+              {
+                lang: `java`,
+                title: `Intersection of two lists (Set retainAll)`,
+                code: `import java.util.*;
+
+public class ListIntersection {
+    public static void main(String[] args) {
+        List<String> a = Arrays.asList("x","y","z","w");
+        List<String> b = Arrays.asList("y","w","q");
+        Set<String> common = new LinkedHashSet<>(a);
+        common.retainAll(b);
+        System.out.println(common); // [y, w]
+    }
+}
+// Convert to a Set, then retainAll keeps only shared elements. O(n).`
+              }
+            ],
+            flashcards: [
+              {
+                front: `Which collection removes duplicates, and how do you keep original order?`,
+                back: `A Set removes duplicates. HashSet is fastest (O(1)) but unordered; LinkedHashSet also dedupes but preserves insertion order. To dedupe a List keeping order: new ArrayList<>(new LinkedHashSet<>(list)).`
+              },
+              {
+                front: `What's the modern idiom for counting occurrences in a Map?`,
+                back: `map.merge(key, 1, Integer::sum). It inserts 1 if absent or adds 1 to the existing count. Cleaner than map.put(k, map.getOrDefault(k,0)+1). Each update is O(1).`
+              },
+              {
+                front: `Why use ArrayDeque as both a stack and a queue?`,
+                back: `It supports O(1) operations at both ends: push/pop for LIFO stack behaviour and offer/poll for FIFO queue behaviour. It replaces the legacy synchronized Stack class and is faster than LinkedList.`
+              },
+              {
+                front: `How do you check balanced parentheses?`,
+                back: `Use a stack (ArrayDeque). Push every opening bracket; on a closing bracket, pop and check it matches the expected opener (or fail if empty/mismatched). Balanced iff the stack is empty at the end. O(n).`
+              },
+              {
+                front: `Why is a PriorityQueue good for 'top-3 largest', and what's the trick?`,
+                back: `Maintain a size-3 MIN-heap: offer each element, and when size exceeds 3, poll() removes the current smallest. What remains are the 3 largest. O(n log 3) ~ O(n). Note: iterating the queue is NOT sorted; only poll() is ordered.`
+              },
+              {
+                front: `What navigation does TreeMap give that HashMap cannot?`,
+                back: `Sorted keys with floorKey (<= k), ceilingKey (>= k), higherKey, lowerKey, firstKey, lastKey, and range views (subMap/headMap/tailMap) — all O(log n). HashMap has no ordering at all.`
+              },
+              {
+                front: `How do you process a tree/graph level by level?`,
+                back: `BFS with a queue (ArrayDeque): enqueue the root, then loop while non-empty, snapshotting q.size() at the start of each level so you process exactly one level before enqueuing the next level's children.`
+              },
+              {
+                front: `How do you compute the intersection of two lists?`,
+                back: `Put one into a Set, then call retainAll(other) — it keeps only elements present in both. Use LinkedHashSet to keep order. Union = addAll; difference = removeAll. Each is about O(n).`
+              },
+              {
+                front: `What breaks if you put a custom object in a HashSet without overriding equals/hashCode?`,
+                back: `Dedupe and contains fail: each instance uses identity equality, so logically-equal objects are treated as distinct and the Set never recognises duplicates. Always override equals AND hashCode together for keys/Set elements.`
+              },
+              {
+                front: `How do you check if two strings are anagrams using a Map?`,
+                back: `Count chars of the first string up (merge +1), count the second down (merge -1); if any count goes negative or lengths differ, they're not anagrams. All counts zero at the end means yes. O(n).`
+              },
+              {
+                front: `What's the idiom for grouping items into buckets?`,
+                back: `map.computeIfAbsent(key, k -> new ArrayList<>()).add(value). It lazily creates the bucket list only when the key first appears. Use a TreeMap if you want the groups iterated in sorted key order.`
+              },
+              {
+                front: `Why doesn't printing a PriorityQueue show sorted order?`,
+                back: `A PriorityQueue is a binary heap stored in an array; only the head (peek/poll) is guaranteed to be the min. Iteration/toString shows internal heap array order. To get sorted output you must poll() repeatedly (or copy and sort).`
+              }
+            ]
           }
         ]
       },
@@ -17382,6 +17721,496 @@ public class HashVsTreeDemo {
               {
                 front: `When should you pre-size a HashMap and why?`,
                 back: `When you know the expected count. Sizing new HashMap<>((int)(expected/0.75)+1) avoids repeated resize+rehash (each O(n)) as it grows past the 0.75 load factor, keeping inserts smooth and O(1) average.`
+              }
+            ]
+          },
+          {
+            title: `Coding Problems — Collections (Interview Drills)`,
+            notes: `## Coding Problems — Collections (Interview Drills)
+
+Collections are the **#1 source** of coding-round questions. The interviewer rarely cares about exotic algorithms; they want to see that you **reach for the right data structure** and can state the **Big-O** without thinking. This drill set is the muscle memory.
+
+> [!TIP]
+> Before you write a line of code, say out loud: *"I need O(1) membership → \`HashSet\`; I need order preserved → \`LinkedHashMap\`; I need the smallest k → \`PriorityQueue\`; I need sorted navigation → \`TreeMap\`."* Naming the structure first is half the interview score.
+
+### Choosing the collection by operation
+
+| Need | Structure | Key op cost |
+|------|-----------|-------------|
+| O(1) contains / dedupe | \`HashSet\` | \`add/contains\` O(1) |
+| Insertion-order dedupe | \`LinkedHashSet\` | O(1), keeps order |
+| Sorted + floor/ceiling/range | \`TreeSet\` / \`TreeMap\` | O(log n) |
+| Frequency / lookup by key | \`HashMap\` | \`get/put\` O(1) |
+| Top-K / streaming min-max | \`PriorityQueue\` | \`offer/poll\` O(log n) |
+| FIFO queue / BFS | \`ArrayDeque\` | \`offer/poll\` O(1) |
+| LIFO stack | \`ArrayDeque\` | \`push/pop\` O(1) |
+| Sliding-window min/max | \`ArrayDeque\` (monotonic) | amortised O(1) |
+| LRU cache | \`LinkedHashMap\` (access-order) | O(1) |
+
+> [!WARNING]
+> Never use \`java.util.Stack\` or \`Vector\` in 2026 interviews — they are synchronized legacy classes. Use \`ArrayDeque\` for stack/queue. Mentioning this unprompted signals senior-level taste.
+
+> [!DANGER]
+> Mutating a collection while iterating with an enhanced \`for\` throws \`ConcurrentModificationException\`. Remove via the **\`Iterator\`** (\`it.remove()\`) or \`Collection.removeIf(...)\`. This is the single most common "gotcha" question.
+
+### Big-O cheat you must recite
+
+- \`HashMap.get/put\` → O(1) average, O(n) worst (pre-Java 8) / O(log n) worst (treeified bins, Java 8+).
+- \`PriorityQueue.offer/poll\` → O(log n); \`peek\` → O(1).
+- \`TreeMap.floorKey/ceilingKey/subMap\` → O(log n).
+- \`ArrayList.get\` → O(1); \`ArrayList.add(0,x)\` → O(n); \`LinkedList.add(0,x)\` → O(1) but cache-unfriendly.
+
+> [!SUCCESS]
+> A clean answer = correct structure + correct Big-O + a one-line reason. The code is almost an afterthought once those three are right.
+
+> [!EU]
+> When these collections back a request handler that stores personal data, remember **GDPR data minimisation**: a frequency map keyed by user email is personal data. Prefer hashing/pseudonymising keys, and don't let an unbounded \`HashMap\` cache become a place PII silently accumulates.`,
+            code: [
+              {
+                lang: `java`,
+                title: `LRU cache via LinkedHashMap (removeEldestEntry)`,
+                code: `import java.util.*;
+
+public class LruCache {
+    // access-order LinkedHashMap evicts the least-recently-used entry.
+    static class LRU<K,V> extends LinkedHashMap<K,V> {
+        private final int cap;
+        LRU(int cap) {
+            super(16, 0.75f, true); // true = access-order
+            this.cap = cap;
+        }
+        @Override protected boolean removeEldestEntry(Map.Entry<K,V> e) {
+            return size() > cap; // evict when over capacity
+        }
+    }
+    public static void main(String[] args) {
+        LRU<Integer,String> c = new LRU<>(2);
+        c.put(1, "a");
+        c.put(2, "b");
+        c.get(1);            // touch 1 -> 2 is now eldest
+        c.put(3, "c");       // evicts 2
+        System.out.println(c.keySet()); // [1, 3]
+        System.out.println(c.get(2));    // null (evicted)
+    }
+}
+// get/put O(1). LinkedHashMap(access-order) + removeEldestEntry = textbook LRU.`
+              },
+              {
+                lang: `java`,
+                title: `First non-repeating character (LinkedHashMap order)`,
+                code: `import java.util.*;
+
+public class FirstUnique {
+    static char firstUnique(String s) {
+        Map<Character,Integer> count = new LinkedHashMap<>(); // preserve order
+        for (char ch : s.toCharArray())
+            count.merge(ch, 1, Integer::sum);
+        for (Map.Entry<Character,Integer> e : count.entrySet())
+            if (e.getValue() == 1) return e.getKey();
+        return '_'; // sentinel: none
+    }
+    public static void main(String[] args) {
+        System.out.println(firstUnique("swiss"));     // w
+        System.out.println(firstUnique("aabbcc"));    // _
+        System.out.println(firstUnique("leetcode"));  // l
+    }
+}
+// O(n) time, O(k) space. LinkedHashMap keeps first-seen order so one pass finds it.`
+              },
+              {
+                lang: `java`,
+                title: `Group anagrams (HashMap keyed by sorted signature)`,
+                code: `import java.util.*;
+
+public class GroupAnagrams {
+    static List<List<String>> group(String[] words) {
+        Map<String,List<String>> map = new HashMap<>();
+        for (String w : words) {
+            char[] c = w.toCharArray();
+            Arrays.sort(c);
+            String key = new String(c);               // canonical signature
+            map.computeIfAbsent(key, k -> new ArrayList<>()).add(w);
+        }
+        return new ArrayList<>(map.values());
+    }
+    public static void main(String[] args) {
+        System.out.println(group(new String[]{"eat","tea","tan","ate","nat","bat"}));
+        // [[eat, tea, ate], [tan, nat], [bat]] (group order may vary)
+    }
+}
+// O(n*k log k) for n words of length k. HashMap groups by sorted-char key.`
+              },
+              {
+                lang: `java`,
+                title: `Two-sum in O(n) with a HashMap`,
+                code: `import java.util.*;
+
+public class TwoSum {
+    static int[] twoSum(int[] nums, int target) {
+        Map<Integer,Integer> seen = new HashMap<>(); // value -> index
+        for (int i = 0; i < nums.length; i++) {
+            int need = target - nums[i];
+            if (seen.containsKey(need)) return new int[]{ seen.get(need), i };
+            seen.put(nums[i], i);
+        }
+        return new int[]{-1,-1};
+    }
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(twoSum(new int[]{2,7,11,15}, 9))); // [0, 1]
+        System.out.println(Arrays.toString(twoSum(new int[]{3,2,4}, 6)));     // [1, 2]
+    }
+}
+// O(n) time, O(n) space. One pass; HashMap turns the inner search into O(1).`
+              },
+              {
+                lang: `java`,
+                title: `Top-K frequent elements (frequency map + min-heap)`,
+                code: `import java.util.*;
+
+public class TopKFrequent {
+    static List<Integer> topK(int[] nums, int k) {
+        Map<Integer,Integer> freq = new HashMap<>();
+        for (int n : nums) freq.merge(n, 1, Integer::sum);
+        // min-heap of size k by frequency; poll smallest when over k.
+        PriorityQueue<Integer> heap =
+            new PriorityQueue<>(Comparator.comparingInt(freq::get));
+        for (int key : freq.keySet()) {
+            heap.offer(key);
+            if (heap.size() > k) heap.poll();
+        }
+        List<Integer> out = new ArrayList<>(heap);
+        out.sort((a,b) -> freq.get(b) - freq.get(a)); // most frequent first
+        return out;
+    }
+    public static void main(String[] args) {
+        System.out.println(topK(new int[]{1,1,1,2,2,3}, 2)); // [1, 2]
+    }
+}
+// O(n log k). A size-k min-heap beats full sort (O(n log n)) when k << n.`
+              },
+              {
+                lang: `java`,
+                title: `Merge overlapping intervals (sort + sweep)`,
+                code: `import java.util.*;
+
+public class MergeIntervals {
+    static int[][] merge(int[][] iv) {
+        Arrays.sort(iv, Comparator.comparingInt(a -> a[0]));   // by start
+        List<int[]> out = new ArrayList<>();
+        for (int[] cur : iv) {
+            if (!out.isEmpty() && cur[0] <= out.get(out.size()-1)[1])
+                out.get(out.size()-1)[1] = Math.max(out.get(out.size()-1)[1], cur[1]);
+            else
+                out.add(cur);
+        }
+        return out.toArray(new int[0][]);
+    }
+    public static void main(String[] args) {
+        int[][] r = merge(new int[][]{{1,3},{2,6},{8,10},{15,18}});
+        System.out.println(Arrays.deepToString(r)); // [[1, 6], [8, 10], [15, 18]]
+    }
+}
+// O(n log n) for the sort, then O(n) sweep. ArrayList as a growable result.`
+              },
+              {
+                lang: `java`,
+                title: `Moving average over a sliding window (ArrayDeque)`,
+                code: `import java.util.*;
+
+public class MovingAverage {
+    private final Deque<Integer> window = new ArrayDeque<>();
+    private final int size;
+    private long sum = 0;
+    MovingAverage(int size) { this.size = size; }
+    double next(int val) {
+        window.offer(val);
+        sum += val;
+        if (window.size() > size) sum -= window.poll(); // drop oldest
+        return (double) sum / window.size();
+    }
+    public static void main(String[] args) {
+        MovingAverage m = new MovingAverage(3);
+        System.out.println(m.next(1));  // 1.0
+        System.out.println(m.next(10)); // 5.5
+        System.out.println(m.next(3));  // 4.666...
+        System.out.println(m.next(5));  // 6.0  (window now 10,3,5)
+    }
+}
+// O(1) per element. ArrayDeque gives O(1) offer/poll at both ends.`
+              },
+              {
+                lang: `java`,
+                title: `Detect duplicates with a HashSet (add returns false)`,
+                code: `import java.util.*;
+
+public class DetectDuplicates {
+    static boolean hasDuplicate(int[] a) {
+        Set<Integer> seen = new HashSet<>();
+        for (int x : a)
+            if (!seen.add(x)) return true; // add==false => already present
+        return false;
+    }
+    static int firstDuplicate(int[] a) {
+        Set<Integer> seen = new HashSet<>();
+        for (int x : a) if (!seen.add(x)) return x;
+        return Integer.MIN_VALUE;
+    }
+    public static void main(String[] args) {
+        System.out.println(hasDuplicate(new int[]{1,2,3,1}));  // true
+        System.out.println(hasDuplicate(new int[]{1,2,3}));    // false
+        System.out.println(firstDuplicate(new int[]{2,1,3,1})); // 1
+    }
+}
+// O(n) time, O(n) space. Set.add returning false is the idiomatic dup check.`
+              },
+              {
+                lang: `java`,
+                title: `Frequency map with merge / getOrDefault`,
+                code: `import java.util.*;
+
+public class FrequencyMap {
+    public static void main(String[] args) {
+        String[] words = {"a","b","a","c","b","a"};
+        Map<String,Integer> freq = new HashMap<>();
+        for (String w : words) freq.merge(w, 1, Integer::sum); // cleanest idiom
+
+        // getOrDefault form (equivalent, older style):
+        Map<String,Integer> freq2 = new HashMap<>();
+        for (String w : words) freq2.put(w, freq2.getOrDefault(w, 0) + 1);
+
+        System.out.println(freq);  // {a=3, b=2, c=1}
+        System.out.println(freq.equals(freq2)); // true
+    }
+}
+// O(n). map.merge(key, 1, Integer::sum) is the modern one-liner for counting.`
+              },
+              {
+                lang: `java`,
+                title: `Intersection & union of two lists (Set ops)`,
+                code: `import java.util.*;
+
+public class SetOps {
+    public static void main(String[] args) {
+        List<Integer> a = Arrays.asList(1,2,3,4,5);
+        List<Integer> b = Arrays.asList(3,4,5,6,7);
+
+        Set<Integer> inter = new HashSet<>(a);
+        inter.retainAll(b);              // intersection
+        Set<Integer> union = new HashSet<>(a);
+        union.addAll(b);                 // union
+        Set<Integer> diff = new HashSet<>(a);
+        diff.removeAll(b);               // a minus b
+
+        System.out.println(new TreeSet<>(inter)); // [3, 4, 5]
+        System.out.println(new TreeSet<>(union)); // [1, 2, 3, 4, 5, 6, 7]
+        System.out.println(new TreeSet<>(diff));  // [1, 2]
+    }
+}
+// retainAll/addAll/removeAll are the bulk Set operations. O(n) each.`
+              },
+              {
+                lang: `java`,
+                title: `Sort a Map by value (descending)`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class SortMapByValue {
+    public static void main(String[] args) {
+        Map<String,Integer> m = new HashMap<>();
+        m.put("apple", 3); m.put("pear", 1); m.put("kiwi", 5);
+
+        // LinkedHashMap preserves the sorted order we impose.
+        Map<String,Integer> sorted = m.entrySet().stream()
+            .sorted(Map.Entry.<String,Integer>comparingByValue().reversed())
+            .collect(Collectors.toMap(
+                Map.Entry::getKey, Map.Entry::getValue,
+                (x,y) -> x, LinkedHashMap::new));
+
+        System.out.println(sorted); // {kiwi=5, apple=3, pear=1}
+    }
+}
+// O(n log n) sort. Collect into LinkedHashMap or the order is lost.`
+              },
+              {
+                lang: `java`,
+                title: `Sliding-window maximum (monotonic ArrayDeque)`,
+                code: `import java.util.*;
+
+public class SlidingWindowMax {
+    static int[] maxWindow(int[] a, int k) {
+        Deque<Integer> dq = new ArrayDeque<>(); // holds indices, values decreasing
+        int[] out = new int[a.length - k + 1];
+        for (int i = 0; i < a.length; i++) {
+            if (!dq.isEmpty() && dq.peekFirst() <= i - k) dq.pollFirst(); // expire
+            while (!dq.isEmpty() && a[dq.peekLast()] <= a[i]) dq.pollLast();
+            dq.offerLast(i);
+            if (i >= k - 1) out[i - k + 1] = a[dq.peekFirst()];
+        }
+        return out;
+    }
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(maxWindow(new int[]{1,3,-1,-3,5,3,6,7}, 3)));
+        // [3, 3, 5, 5, 6, 7]
+    }
+}
+// O(n): each index is pushed/popped once. Monotonic deque = classic O(1)-amortised window.`
+              },
+              {
+                lang: `java`,
+                title: `Bounded blocking queue idea (wait/notify)`,
+                code: `import java.util.*;
+
+public class BoundedQueue {
+    static class BQ<T> {
+        private final Queue<T> q = new ArrayDeque<>();
+        private final int cap;
+        BQ(int cap) { this.cap = cap; }
+        synchronized void put(T x) throws InterruptedException {
+            while (q.size() == cap) wait();   // block when full
+            q.offer(x); notifyAll();
+        }
+        synchronized T take() throws InterruptedException {
+            while (q.isEmpty()) wait();        // block when empty
+            T x = q.poll(); notifyAll();
+            return x;
+        }
+    }
+    public static void main(String[] args) throws InterruptedException {
+        BQ<Integer> bq = new BQ<>(2);
+        Thread prod = new Thread(() -> {
+            try { for (int i=1;i<=4;i++){ bq.put(i); System.out.println("put "+i);} }
+            catch (InterruptedException e){ Thread.currentThread().interrupt(); }
+        });
+        prod.start();
+        for (int i=0;i<4;i++) System.out.println("took "+bq.take());
+        prod.join();
+    }
+}
+// In production use java.util.concurrent.ArrayBlockingQueue; this shows the mechanics.`
+              },
+              {
+                lang: `java`,
+                title: `Iterate-and-remove safely (Iterator.remove vs CME)`,
+                code: `import java.util.*;
+
+public class SafeRemove {
+    public static void main(String[] args) {
+        List<Integer> list = new ArrayList<>(Arrays.asList(1,2,3,4,5,6));
+
+        // WRONG: for (int x : list) if (x%2==0) list.remove((Integer)x);
+        //   -> ConcurrentModificationException
+
+        // RIGHT 1: explicit Iterator.remove()
+        for (Iterator<Integer> it = list.iterator(); it.hasNext(); )
+            if (it.next() % 2 == 0) it.remove();
+        System.out.println(list); // [1, 3, 5]
+
+        // RIGHT 2: removeIf (Java 8+), clearest of all
+        List<Integer> l2 = new ArrayList<>(Arrays.asList(1,2,3,4,5,6));
+        l2.removeIf(x -> x % 2 == 0);
+        System.out.println(l2);   // [1, 3, 5]
+    }
+}
+// CME is thrown by the fail-fast iterator. Iterator.remove() or removeIf() are safe.`
+              },
+              {
+                lang: `java`,
+                title: `Implement a simple multimap (Map<K,List<V>>)`,
+                code: `import java.util.*;
+
+public class SimpleMultimap {
+    static class Multimap<K,V> {
+        private final Map<K,List<V>> m = new HashMap<>();
+        void put(K k, V v) { m.computeIfAbsent(k, x -> new ArrayList<>()).add(v); }
+        List<V> get(K k) { return m.getOrDefault(k, Collections.emptyList()); }
+        boolean remove(K k, V v) {
+            List<V> vs = m.get(k);
+            if (vs == null) return false;
+            boolean r = vs.remove(v);
+            if (vs.isEmpty()) m.remove(k); // tidy empty buckets
+            return r;
+        }
+    }
+    public static void main(String[] args) {
+        Multimap<String,Integer> mm = new Multimap<>();
+        mm.put("a", 1); mm.put("a", 2); mm.put("b", 9);
+        System.out.println(mm.get("a")); // [1, 2]
+        mm.remove("a", 1);
+        System.out.println(mm.get("a")); // [2]
+        System.out.println(mm.get("z")); // []
+    }
+}
+// computeIfAbsent is THE idiom for "get-or-create the bucket". O(1) per op.`
+              },
+              {
+                lang: `java`,
+                title: `Min & max in O(1) reads with a tracking pair`,
+                code: `import java.util.*;
+
+public class MinMaxScan {
+    public static void main(String[] args) {
+        int[] a = {4, 2, 9, 7, 1, 8};
+        int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE;
+        for (int x : a) { min = Math.min(min, x); max = Math.max(max, x); }
+        System.out.println("min=" + min + " max=" + max); // min=1 max=9
+
+        // TreeSet alternative when you also need first()/last() repeatedly:
+        TreeSet<Integer> ts = new TreeSet<>();
+        for (int x : a) ts.add(x);
+        System.out.println("first=" + ts.first() + " last=" + ts.last()); // 1, 9
+    }
+}
+// Single scan is O(n); TreeSet costs O(log n) per add but gives ordered navigation.`
+              }
+            ],
+            flashcards: [
+              {
+                front: `How do you implement an LRU cache with the JDK and nothing else?`,
+                back: `Subclass LinkedHashMap with access-order = true (the 3-arg constructor) and override removeEldestEntry to return size() > capacity. get/put stay O(1) and the eldest (least-recently-accessed) entry is evicted automatically.`
+              },
+              {
+                front: `Why does removing from a collection during an enhanced for-loop throw ConcurrentModificationException?`,
+                back: `The fail-fast iterator tracks a modCount; structurally modifying the collection through anything other than the iterator changes modCount, so the next next()/hasNext() detects the mismatch and throws. Remove via Iterator.remove() or Collection.removeIf().`
+              },
+              {
+                front: `Which collection gives top-K frequent elements efficiently, and what's the complexity?`,
+                back: `Build a frequency HashMap (O(n)), then push keys into a size-k min-heap (PriorityQueue) comparing by frequency, polling when size > k. Total O(n log k) — better than the O(n log n) of fully sorting when k << n.`
+              },
+              {
+                front: `TreeMap: what do floorKey, ceilingKey, higherKey, lowerKey return?`,
+                back: `floorKey = greatest key <= arg; ceilingKey = smallest key >= arg; higherKey = strictly greater; lowerKey = strictly less. All O(log n). Plus subMap/headMap/tailMap for range views. This is why TreeMap beats HashMap for range/nearest queries.`
+              },
+              {
+                front: `Why prefer ArrayDeque over Stack and LinkedList for stacks/queues?`,
+                back: `Stack/Vector are synchronized legacy classes (slow, locking on every op). ArrayDeque is an unsynchronized resizable-array deque: O(1) push/pop/offer/poll at both ends, cache-friendly, no per-node allocation like LinkedList. It's the modern default for both stack and FIFO queue.`
+              },
+              {
+                front: `What is the idiomatic 'get-or-create the bucket' pattern for a multimap?`,
+                back: `map.computeIfAbsent(key, k -> new ArrayList<>()).add(value). It atomically creates the list only when absent and returns it, avoiding the get-null-check-put boilerplate. Counterpart for counters is map.merge(key, 1, Integer::sum).`
+              },
+              {
+                front: `How do you sort a Map by value and keep the order?`,
+                back: `Stream the entrySet, sort with Map.Entry.comparingByValue() (.reversed() for desc), then collect into a LinkedHashMap via Collectors.toMap(k,v,(a,b)->a,LinkedHashMap::new). A plain HashMap would discard the imposed order.`
+              },
+              {
+                front: `Big-O of HashMap.get/put — and the worst case?`,
+                back: `O(1) average. Worst case is O(n) when many keys collide into one bucket; since Java 8 a bin that exceeds the treeify threshold (8, with table >=64) converts to a red-black tree, making the worst case O(log n) instead of O(n).`
+              },
+              {
+                front: `How does the monotonic-deque sliding-window-max run in O(n)?`,
+                back: `Keep an ArrayDeque of indices whose values are strictly decreasing. For each i: expire the front if it's out of window, pop the back while its value <= a[i], then offer i. The front is always the window max. Each index is pushed and popped at most once → amortised O(1) per element.`
+              },
+              {
+                front: `Which Set operations give intersection, union, and difference?`,
+                back: `Copy one set, then: retainAll(other) = intersection; addAll(other) = union; removeAll(other) = difference (this minus other). Each is roughly O(n). Wrap in TreeSet if you need the result sorted.`
+              },
+              {
+                front: `How do you find the first non-repeating character in one logical pass?`,
+                back: `Count with a LinkedHashMap (preserves first-seen order), then iterate entries returning the first with count 1. LinkedHashMap's insertion ordering means the first count-1 entry is genuinely the first unique char. O(n) time, O(k) space.`
+              },
+              {
+                front: `When would you pick LinkedHashMap over HashMap or TreeMap?`,
+                back: `LinkedHashMap when you need predictable iteration order — insertion-order by default, or access-order for LRU. HashMap when order is irrelevant and you want fastest O(1). TreeMap when you need keys sorted and navigation (floor/ceiling/range) at O(log n).`
               }
             ]
           }
