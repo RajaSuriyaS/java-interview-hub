@@ -24292,324 +24292,481 @@ public class IdempotencyDemo {
       id: '6.1',
       title: 'Microservice Patterns',
       hours: 4,
-      notes: `
-# Microservice Patterns
-
-Microservices trade in-process simplicity for independent deployability and scaling — at the cost of distributed-systems complexity. Know when *not* to use them.
-
-## When (not) to split
-
-> [!WARNING]
-> Start with a **modular monolith**. Split to microservices only when you have real scaling/team-autonomy/deploy-cadence pressure. Premature microservices create a "distributed monolith" — all the pain (network, partial failure, eventual consistency) with none of the benefits.
-
-## Communication
-
-- **Synchronous** — REST/gRPC request-response. Simple but couples availability (caller fails if callee is down).
-- **Asynchronous** — messaging/events (Kafka, RabbitMQ). Decouples; better resilience and load absorption; eventual consistency.
-
-## Resilience patterns
-
-- **Circuit breaker** (Resilience4j) — stop calling a failing dependency; fail fast, give it time to recover.
-- **Retry with exponential backoff + jitter** — for transient faults; combine with idempotency.
-- **Bulkhead** — isolate resource pools so one slow dependency can't exhaust all threads.
-- **Timeout** — never call a remote service without one.
-- **Fallback** — degrade gracefully (cached/default response).
-
-## Service discovery & gateway
-
-- **Discovery** (Eureka/Consul/k8s DNS) — find instances dynamically.
-- **API gateway** — single entry, auth, rate-limit, routing, aggregation.
-
-## Data per service
-
-Each service **owns its database** — no shared DB. Cross-service queries via API composition or CQRS read models. Cross-service writes need **sagas** (next module), not 2PC.
-
-> [!TIP]
-> The **Database-per-service** rule is what makes services independently deployable. A shared DB recreates tight coupling at the schema level — change one table, redeploy everyone.
-
-> [!EU]
-> Expect *"Monolith vs microservices — when would you choose each?"* (and the courage to say "monolith first"). Plus *"How do you handle a downstream service being slow/down?"* → timeout + circuit breaker + fallback + bulkhead, with retries+idempotency for transient errors.
-`,
-      code: [
+      sections: [
         {
-          lang: 'java',
-          title: 'Circuit breaker + retry with backoff (minimal)',
-          code: `import java.util.concurrent.ThreadLocalRandom;
+          title: 'Microservice Architecture — Core Patterns',
+          notes: `## Microservice Architecture — Core Patterns
 
-public class ResilienceDemo {
-    // Tiny circuit breaker: opens after N consecutive failures
+### Monolith vs Microservices
+
+\`\`\`
+Monolith                          Microservices
+────────────────────              ───────────────────────────────
+Single deployable unit            Many independent services
+Simple local method calls         Network calls (HTTP/gRPC/messaging)
+One database                      Each service owns its data
+Easy transactions (ACID)          Distributed transactions (hard)
+Simple to develop initially       Complex infrastructure (k8s, service mesh)
+Hard to scale individual parts    Scale each service independently
+Deploy everything for one change  Deploy one service at a time
+One tech stack                    Polyglot (best tool per service)
+
+When to use microservices:
+  ✓ Teams > 50 engineers (Conway's Law)
+  ✓ Different scaling needs per component
+  ✓ Independent release cadence per team
+  ✗ Early-stage product (premature)
+  ✗ Small team (operational overhead too high)
+\`\`\`
+
+### Service Communication Patterns
+
+\`\`\`
+Synchronous (request-response):
+  REST/HTTP   — simple, widely understood, every language
+  gRPC        — binary protocol (Protobuf), fast, strong typing, bi-directional streaming
+  GraphQL     — flexible queries, avoids over/under-fetching
+
+Asynchronous (messaging):
+  Kafka       — high-throughput event streaming, durable, replayable
+  RabbitMQ    — traditional message queue, flexible routing
+  Amazon SQS  — managed queue, at-least-once delivery
+
+Rule: synchronous for user-facing reads; async for writes and cross-service side-effects
+\`\`\`
+
+### API Gateway Pattern
+
+\`\`\`
+Client
+  │
+  ▼
+API Gateway ──────────────────────────
+  ├── Auth/JWT validation
+  ├── Rate limiting
+  ├── Request routing
+  ├── Response aggregation
+  ├── SSL termination
+  └── Logging/tracing
+  │
+  ├──▶ Order Service    :8081
+  ├──▶ Product Service  :8082
+  ├──▶ User Service     :8083
+  └──▶ Payment Service  :8084
+
+Single entry point for all clients
+Hides internal service topology
+Cross-cutting concerns in one place (no repetition per service)
+
+Tools: Kong, AWS API Gateway, Spring Cloud Gateway, Nginx
+\`\`\`
+
+### Circuit Breaker Pattern
+
+\`\`\`java
+// Problem: if Payment Service is down, Order Service keeps trying
+// → threads pile up waiting → Order Service also crashes (cascading failure)
+
+// Circuit Breaker states:
+// CLOSED   → calls pass through normally
+// OPEN     → calls fail fast (no network call) — after N failures
+// HALF-OPEN → try one call; if it succeeds → CLOSED; if fails → OPEN
+
+// With Resilience4j
+@Service
+public class PaymentClient {
+    @CircuitBreaker(name = "payment", fallbackMethod = "fallbackPay")
+    @Retry(name = "payment", fallbackMethod = "fallbackPay")
+    @TimeLimiter(name = "payment")
+    public CompletableFuture<PaymentResult> pay(PaymentRequest req) {
+        return CompletableFuture.supplyAsync(() -> httpClient.post(paymentUrl, req));
+    }
+
+    public CompletableFuture<PaymentResult> fallbackPay(PaymentRequest req, Exception e) {
+        // Graceful degradation: queue for retry or return pending status
+        outbox.save(new PendingPayment(req));
+        return CompletableFuture.completedFuture(PaymentResult.pending());
+    }
+}
+// resilience4j.circuitbreaker.instances.payment.slidingWindowSize=10
+// resilience4j.circuitbreaker.instances.payment.failureRateThreshold=50
+// resilience4j.circuitbreaker.instances.payment.waitDurationInOpenState=30s
+\`\`\`
+
+### Strangler Fig Pattern
+
+\`\`\`
+Migrating monolith → microservices incrementally:
+
+Phase 1:  Monolith ← all traffic
+Phase 2:  Monolith ← most traffic
+          └→ New User Service ← /api/users/* only
+Phase 3:  New Order Service ← /api/orders/*
+          New User Service  ← /api/users/*
+          Monolith ← remaining (legacy)
+Phase N:  All services, monolith decommissioned
+
+Route via API Gateway/reverse proxy
+Never big-bang rewrite — too risky
+Extract high-change or high-scale components first
+\`\`\``,
+          code: [
+            `import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
+
+// Circuit Breaker implementation from scratch
+public class CircuitBreakerDemo {
+
+    enum State { CLOSED, OPEN, HALF_OPEN }
+
     static class CircuitBreaker {
-        int failures = 0; final int threshold = 3; boolean open = false;
-        boolean allow() { return !open; }
-        void onSuccess() { failures = 0; open = false; }
-        void onFailure() { if (++failures >= threshold) open = true; }
-    }
+        private State state = State.CLOSED;
+        private int failureCount = 0;
+        private long openedAt = 0;
 
-    static String unreliableCall() {
-        if (ThreadLocalRandom.current().nextDouble() < 0.6) throw new RuntimeException("downstream 503");
-        return "OK";
-    }
+        private final int failureThreshold;
+        private final long retryAfterMs;
 
-    static String callWithResilience(CircuitBreaker cb) {
-        if (!cb.allow()) return "FAIL-FAST (circuit open, using fallback)";
-        long backoff = 50;
-        for (int attempt = 1; attempt <= 3; attempt++) {   // retry transient faults
+        CircuitBreaker(int failureThreshold, long retryAfterMs) {
+            this.failureThreshold = failureThreshold;
+            this.retryAfterMs = retryAfterMs;
+        }
+
+        <T> T call(Supplier<T> action, Supplier<T> fallback) {
+            if (state == State.OPEN) {
+                if (System.currentTimeMillis() - openedAt > retryAfterMs) {
+                    state = State.HALF_OPEN;
+                    System.out.println("[CB] HALF-OPEN — trying probe call");
+                } else {
+                    System.out.println("[CB] OPEN — fast fail");
+                    return fallback.get();
+                }
+            }
             try {
-                String r = unreliableCall();
-                cb.onSuccess();
-                return "success on attempt " + attempt;
-            } catch (RuntimeException e) {
-                cb.onFailure();
-                long jitter = ThreadLocalRandom.current().nextLong(20);
-                try { Thread.sleep(backoff + jitter); } catch (InterruptedException ignored) {}
-                backoff *= 2;                               // exponential backoff
+                T result = action.get();
+                if (state == State.HALF_OPEN) { reset(); }
+                return result;
+            } catch (Exception e) {
+                recordFailure();
+                return fallback.get();
             }
         }
-        return "exhausted retries -> fallback";
+
+        private void recordFailure() {
+            failureCount++;
+            if (failureCount >= failureThreshold) {
+                state = State.OPEN;
+                openedAt = System.currentTimeMillis();
+                System.out.println("[CB] OPEN after " + failureCount + " failures");
+            }
+        }
+
+        private void reset() {
+            state = State.CLOSED;
+            failureCount = 0;
+            System.out.println("[CB] CLOSED — service recovered");
+        }
     }
 
-    public static void main(String[] args) {
-        CircuitBreaker cb = new CircuitBreaker();
-        for (int i = 1; i <= 8; i++)
-            System.out.println("Request " + i + ": " + callWithResilience(cb));
+    public static void main(String[] args) throws InterruptedException {
+        var cb = new CircuitBreaker(3, 500); // open after 3 failures, retry after 500ms
+        int[] attempt = {0};
+
+        Supplier<String> service = () -> {
+            attempt[0]++;
+            if (attempt[0] <= 5) throw new RuntimeException("Service unavailable");
+            return "OK";
+        };
+        Supplier<String> fallback = () -> "FALLBACK (cached/default)";
+
+        // 8 calls — first 3 fail and open circuit, next fast-fail, then recovery
+        for (int i = 0; i < 8; i++) {
+            if (i == 6) Thread.sleep(600); // wait for circuit to allow retry
+            String result = cb.call(service, fallback);
+            System.out.printf("Call %d: %s (state=%s)%n", i+1, result, cb.state);
+        }
+    }
+}`,
+            `// Service mesh concepts + health checks pattern
+import org.springframework.boot.actuate.health.*;
+import org.springframework.web.client.RestTemplate;
+import java.util.*;
+
+// Each microservice exposes:
+// 1. /actuator/health/liveness   — is the process alive?
+// 2. /actuator/health/readiness  — can it serve traffic?
+// 3. /actuator/health (composite) — all dependency health
+
+@org.springframework.stereotype.Component
+class DependencyHealthIndicator implements HealthIndicator {
+    private final RestTemplate restTemplate;
+    private final List<String> dependencyUrls = List.of(
+        "http://payment-service/actuator/health",
+        "http://inventory-service/actuator/health"
+    );
+
+    DependencyHealthIndicator(RestTemplate rt) { this.restTemplate = rt; }
+
+    @Override
+    public Health health() {
+        Map<String, Object> details = new LinkedHashMap<>();
+        boolean allUp = true;
+        for (String url : dependencyUrls) {
+            try {
+                String resp = restTemplate.getForObject(url, String.class);
+                details.put(url, resp != null && resp.contains("UP") ? "UP" : "DEGRADED");
+            } catch (Exception e) {
+                details.put(url, "DOWN: " + e.getMessage());
+                allUp = false;
+            }
+        }
+        return allUp
+            ? Health.up().withDetails(details).build()
+            : Health.down().withDetails(details).build();
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What are the main trade-offs of microservices vs a monolith?', a: 'Monolith advantages: simple local calls, easy ACID transactions, one codebase to understand, no network latency overhead. Microservices advantages: independent deployment/scaling, team autonomy, polyglot freedom, fault isolation. Microservices add: network calls between services (latency, failure), distributed data management (no easy joins, eventual consistency), complex infrastructure (service discovery, load balancing, tracing), and operational overhead. Recommendation: start with a well-structured monolith; extract services when scaling or team structure demands it.' },
+            { q: 'What is the Circuit Breaker pattern and what problem does it solve?', a: 'Circuit Breaker prevents cascading failures. Without it: Service A calls Service B repeatedly even when B is down — threads pile up waiting for timeouts → A runs out of threads → A crashes → C which calls A also crashes. Circuit Breaker states: CLOSED (calls pass through), OPEN (calls fail fast after N failures — no network call), HALF-OPEN (try one probe call after cooldown). Fallback provides graceful degradation (cached data, default values, queue for retry). Libraries: Resilience4j (Java), Hystrix (deprecated).' },
+            { q: 'What is the API Gateway pattern and what responsibilities does it take on?', a: 'API Gateway is the single entry point for all clients. Handles cross-cutting concerns so individual services don\'t have to: authentication/JWT validation, rate limiting, SSL termination, request routing, response aggregation (BFF pattern — Backend for Frontend), protocol translation (REST → gRPC), logging and distributed tracing. Clients see one endpoint; internal service topology is hidden. Trade-off: it\'s a potential single point of failure and a bottleneck (must be highly available and fast). Popular: Kong, AWS API Gateway, Spring Cloud Gateway, Nginx.' },
+            { q: 'What is the Strangler Fig pattern for microservice migration?', a: 'The Strangler Fig incrementally replaces a monolith by building new services alongside it, routing traffic slice by slice. Step 1: put a proxy (API Gateway) in front of the monolith — it routes all traffic to the monolith unchanged. Step 2: implement the User Service, route /api/users/* to it; monolith handles everything else. Step 3: extract more services one at a time. Never: big-bang rewrite (too risky, diverges from production behaviour). This way the monolith "strangled" — slowly replaced without a cutover. Always extract high-change or high-scale components first.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'Why start with a monolith instead of microservices?', a: 'Microservices add network calls, partial failure, eventual consistency, and operational overhead. Without real scaling/team-autonomy pressure you get a "distributed monolith" — the costs without the benefits. A modular monolith is simpler and can be split later.' },
-        { q: 'What does a circuit breaker do?', a: 'It monitors calls to a dependency and "opens" after repeated failures, short-circuiting further calls to fail fast (with a fallback) and giving the dependency time to recover, then half-opens to test before closing.' },
-        { q: 'Why database-per-service?', a: 'It keeps services loosely coupled and independently deployable. A shared database couples services at the schema level, so a table change forces coordinated redeploys — defeating the purpose of microservices.' },
-        { q: 'Why combine retries with idempotency and backoff+jitter?', a: 'Retries can duplicate side effects, so the operation must be idempotent. Exponential backoff with jitter prevents synchronized retry storms (thundering herd) against a recovering service.' }
       ]
     },
 
     {
       id: '6.2',
       title: 'Apache Kafka & Event Streaming',
-      hours: 5,
-      notes: `
-# Apache Kafka
-
-Kafka is a distributed, durable, partitioned **commit log**. It's the backbone of event-driven architectures — decoupling producers from consumers and enabling replay.
-
-## Core concepts
-
-- **Topic** — a named stream, split into **partitions** (the unit of parallelism & ordering).
-- **Partition** — an ordered, immutable, append-only log. Order is guaranteed **within** a partition, not across.
-- **Offset** — a message's position in a partition; consumers track it.
-- **Producer** — writes; chooses partition by key hash (same key → same partition → ordered).
-- **Consumer group** — consumers sharing the work; each partition is consumed by **exactly one** member of a group. Parallelism is capped by partition count.
-- **Broker / cluster** — servers; partitions are **replicated** (leader + followers) for durability.
-
-## Delivery semantics
-
-- **At-most-once** — commit offset before processing (may lose).
-- **At-least-once** — process then commit (may duplicate) — **the common default**.
-- **Exactly-once** — idempotent producer + transactions (within Kafka). Across external systems you still design **idempotent consumers**.
-
-> [!WARNING]
-> "Exactly-once" end-to-end is largely a myth once an external DB/API is involved. Design **at-least-once + idempotent consumers** (dedupe on a business key or processed-offset table). This is the pragmatic senior answer.
-
-## Ordering, keys & rebalancing
-
-- Need ordering for an entity? Use its id as the **message key** → all its events land in one partition.
-- Adding/removing consumers triggers a **rebalance** (partitions reassigned); design for it (commit offsets, idempotent processing).
-
-## Retention & replay
-
-Kafka **retains** messages (time/size based) independent of consumption, so new consumers can **replay from offset 0** — great for rebuilding state, new read models, or reprocessing after a bug.
-
-> [!TIP]
-> Kafka vs RabbitMQ: Kafka = high-throughput durable **log** with replay and ordered partitions (event streaming, analytics, event sourcing). RabbitMQ = flexible **message broker** with routing, per-message ack, priorities (task queues, RPC). Pick by use case.
-
-> [!EU]
-> Expect: *"How does Kafka guarantee ordering?"* (within a partition, via keys) and *"How do you achieve exactly-once?"* (idempotent producer + transactions inside Kafka; idempotent consumers for end-to-end). Mention consumer groups, partitions = parallelism, and replay.
-`,
-      code: [
+      hours: 4,
+      sections: [
         {
-          lang: 'java',
-          title: 'Partitioning by key & idempotent consumer (model)',
-          code: `import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+          title: 'Kafka Architecture — Topics, Partitions & Consumer Groups',
+          notes: `## Kafka Architecture — Topics, Partitions & Consumer Groups
 
-public class KafkaModelDemo {
-    // Model: a topic with N partitions; key hash decides the partition (ordering per key)
-    static int partitionFor(String key, int partitions) {
-        return Math.floorMod(key.hashCode(), partitions);
+### Core Concepts
+
+\`\`\`
+Topic: named stream of records (like a table in a database)
+  └── Partition 0:  [msg0][msg1][msg2]...[msgN]  ← append-only log
+  └── Partition 1:  [msg0][msg3][msg5]...
+  └── Partition 2:  [msg1][msg4][msg6]...
+
+Each message has:
+  - Offset: sequential ID within a partition (immutable)
+  - Key: optional; determines partition assignment (same key → same partition)
+  - Value: the payload (bytes — usually JSON or Avro)
+  - Timestamp, headers
+\`\`\`
+
+### Producers
+
+\`\`\`java
+// Producer sends records; Kafka decides partition (by key hash) or round-robin
+@Configuration
+public class KafkaConfig {
+    @Bean
+    public ProducerFactory<String, Object> producerFactory() {
+        return new DefaultKafkaProducerFactory<>(Map.of(
+            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9092",
+            ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,   StringSerializer.class,
+            ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class,
+            ProducerConfig.ACKS_CONFIG, "all",      // wait for all replicas
+            ProducerConfig.RETRIES_CONFIG, 3,
+            ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true  // exactly-once send
+        ));
     }
+}
 
-    // Idempotent consumer: dedupe by business id so at-least-once delivery is safe
-    static final Set<String> processedEventIds = ConcurrentHashMap.newKeySet();
-    static int sideEffects = 0;
+@Service
+public class OrderEventPublisher {
+    private final KafkaTemplate<String, OrderEvent> kafka;
 
-    static void consume(String eventId, String payload) {
-        if (!processedEventIds.add(eventId)) {     // already processed -> skip
-            System.out.println("  duplicate " + eventId + " ignored");
-            return;
+    public void publish(Order order) {
+        var event = new OrderEvent(order.id(), order.status(), Instant.now());
+        // Key = order.customerId() → same customer's events → same partition → ordered
+        kafka.send("order-events", order.customerId(), event)
+            .whenComplete((result, ex) -> {
+                if (ex != null) log.error("Failed to publish: {}", ex.getMessage());
+                else log.info("Published to partition {} offset {}",
+                    result.getRecordMetadata().partition(),
+                    result.getRecordMetadata().offset());
+            });
+    }
+}
+\`\`\`
+
+### Consumers & Consumer Groups
+
+\`\`\`
+Consumer Group "order-processor" with 3 consumers:
+  Topic "order-events" (4 partitions)
+  Consumer 1 → Partition 0, 1
+  Consumer 2 → Partition 2
+  Consumer 3 → Partition 3
+
+  → Parallelism = min(consumers, partitions)
+  → Adding a 5th consumer: one consumer gets NO partition (idle)
+  → Partition count is the max parallelism ceiling
+
+Two groups reading same topic:
+  "order-processor" reads for order fulfillment
+  "analytics"       reads same events for reporting
+  → Each group gets ALL events independently (pub-sub model)
+\`\`\`
+
+\`\`\`java
+@Service
+public class OrderEventConsumer {
+    @KafkaListener(topics = "order-events", groupId = "order-processor",
+                   concurrency = "3")  // 3 consumer threads
+    public void handle(OrderEvent event, Acknowledgment ack) {
+        try {
+            processOrder(event);
+            ack.acknowledge();  // manual commit — control exactly when offset advances
+        } catch (RetryableException e) {
+            // Don't ack — Kafka will re-deliver
+            log.warn("Will retry: {}", e.getMessage());
+        } catch (NonRetryableException e) {
+            ack.acknowledge(); // ack to skip, send to dead letter topic
+            deadLetter.send("order-events.DLT", event);
         }
-        sideEffects++;
-        System.out.println("  processed " + eventId + " : " + payload);
     }
+}
+\`\`\`
 
-    public static void main(String[] args) {
-        int partitions = 3;
-        String[] keys = {"order-1", "order-2", "order-1", "user-9"};
-        System.out.println("Key -> partition (same key always same partition = ordered):");
-        for (String k : keys)
-            System.out.println("  " + k + " -> p" + partitionFor(k, partitions));
+### Retention & Replayability
 
-        System.out.println("\\nAt-least-once delivery with idempotent consumer:");
-        consume("evt-100", "OrderPlaced");
-        consume("evt-100", "OrderPlaced");   // redelivery after a rebalance/retry
-        consume("evt-101", "OrderShipped");
-        System.out.println("Actual side effects: " + sideEffects + " (correctly 2, not 3)");
-    }
-}`
-        },
-        {
-          lang: 'java',
-          title: 'Dead Letter Queue (DLQ) pattern for Kafka error handling',
-          code: `import java.util.*;
+\`\`\`
+Kafka retains messages for a configurable period (default 7 days)
+→ Consumers can replay from any offset
 
-// When a Kafka consumer fails to process a message (parse error, downstream down),
-// retrying forever blocks the partition. The DLQ pattern sends failed messages
-// to a separate "dead letter" topic for manual review / replay.
-public class KafkaDlqDemo {
+Use cases for replay:
+- Deploy a new service that needs to process historical events
+- Bug in consumer — fix code, reset offset, replay
+- Build a new read model from event history (event sourcing)
 
-    record KafkaMessage(String topic, int partition, long offset, String key, String payload) {}
+# Reset consumer group to beginning
+kafka-consumer-groups.sh --reset-offsets --to-earliest --group my-group --topic my-topic
+\`\`\``,
+          code: [
+            `import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.serialization.*;
+import java.util.*;
+import java.time.Duration;
 
-    interface KafkaProducer {
-        void send(String topic, String key, String payload);
-    }
+// Kafka producer + consumer without Spring (plain Java API)
+public class KafkaRawDemo {
+    static final String BOOTSTRAP = "localhost:9092";
+    static final String TOPIC = "order-events";
 
-    static class OrderConsumer {
-        private final KafkaProducer producer;
-        private final int MAX_RETRIES = 3;
+    static void produce() throws Exception {
+        Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.ACKS_CONFIG, "all");
+        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true");
 
-        OrderConsumer(KafkaProducer producer) { this.producer = producer; }
-
-        void processWithDlq(KafkaMessage msg) {
-            int attempt = 0;
-            Exception lastError = null;
-
-            while (attempt < MAX_RETRIES) {
-                try {
-                    processOrder(msg.payload());
-                    System.out.println("[OK] Processed: " + msg.key() + " offset=" + msg.offset());
-                    return;  // success — commit offset
-                } catch (Exception e) {
-                    lastError = e;
-                    attempt++;
-                    System.out.printf("[RETRY %d/%d] %s: %s%n", attempt, MAX_RETRIES, msg.key(), e.getMessage());
-                    // Exponential backoff between retries (for transient errors)
-                    try { Thread.sleep(100L * (1L << attempt)); } catch (InterruptedException ie) { break; }
-                }
+        try (var producer = new KafkaProducer<String, String>(props)) {
+            for (int i = 0; i < 10; i++) {
+                String key = "customer-" + (i % 3);   // 3 customers → 3 partitions used
+                String value = "{\"orderId\":" + i + ",\"total\":" + (i * 10.0) + "}";
+                var record = new ProducerRecord<>(TOPIC, key, value);
+                producer.send(record, (meta, ex) -> {
+                    if (ex != null) System.err.println("Error: " + ex.getMessage());
+                    else System.out.printf("Sent → partition=%d offset=%d key=%s%n",
+                        meta.partition(), meta.offset(), key);
+                });
             }
-
-            // Retries exhausted: send to DLQ topic for human review
-            String dlqPayload = String.format(
-                "{\"original\":%s,\"error\":\"%s\",\"topic\":\"%s\",\"partition\":%d,\"offset\":%d}",
-                msg.payload(), lastError.getMessage(), msg.topic(), msg.partition(), msg.offset()
-            );
-            producer.send("orders.DLQ", msg.key(), dlqPayload);
-            System.out.println("[DLQ] Sent to dead letter: " + msg.key());
-            // Still commit the offset — we don't block the partition for a poison pill
-        }
-
-        void processOrder(String payload) {
-            // Simulate: some messages are "poison pills" (permanently bad)
-            if (payload.contains("INVALID")) throw new RuntimeException("invalid order format");
-            System.out.println("  -> Order processed: " + payload);
+            producer.flush();
         }
     }
 
-    public static void main(String[] args) throws InterruptedException {
-        List<String> dlqMessages = new ArrayList<>();
-        KafkaProducer mockProducer = (topic, key, payload) -> {
-            if (topic.endsWith("DLQ")) dlqMessages.add(key + ":" + payload);
-        };
+    static void consume() {
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "order-processor-v1");
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false"); // manual commit
 
-        OrderConsumer consumer = new OrderConsumer(mockProducer);
-        consumer.processWithDlq(new KafkaMessage("orders", 0, 1L, "order-1", "{\"id\":1,\"total\":100}"));
-        consumer.processWithDlq(new KafkaMessage("orders", 0, 2L, "order-2", "INVALID_DATA"));
-        consumer.processWithDlq(new KafkaMessage("orders", 0, 3L, "order-3", "{\"id\":3,\"total\":200}"));
-
-        System.out.println("\nDLQ messages: " + dlqMessages.size());
-        System.out.println("\nDLQ replay: when the bug is fixed, replay the DLQ topic to reprocess");
-        System.out.println("In Spring Kafka: @DltHandler / SeekToCurrentErrorHandler / DeadLetterPublishingRecoverer");
+        try (var consumer = new KafkaConsumer<String, String>(props)) {
+            consumer.subscribe(List.of(TOPIC));
+            while (true) {
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                for (var r : records) {
+                    System.out.printf("[P%d @%d] key=%s value=%s%n",
+                        r.partition(), r.offset(), r.key(), r.value());
+                }
+                consumer.commitSync(); // commit after processing batch
+            }
+        }
     }
+}`,
+            `// Spring Kafka — producer + consumer with dead letter topic
+import org.springframework.kafka.annotation.*;
+import org.springframework.kafka.core.*;
+import org.springframework.kafka.support.*;
+import org.springframework.stereotype.*;
+
+record OrderEvent(String orderId, String customerId, String status, double total) {}
+
+@Service
+class OrderProducer {
+    private final KafkaTemplate<String, OrderEvent> kafka;
+
+    OrderProducer(KafkaTemplate<String, OrderEvent> k) { this.kafka = k; }
+
+    void publish(OrderEvent event) {
+        // Key ensures all events for same customer go to same partition → ordered
+        kafka.send("orders", event.customerId(), event)
+            .thenAccept(r -> System.out.printf("[SENT] partition=%d offset=%d%n",
+                r.getRecordMetadata().partition(), r.getRecordMetadata().offset()))
+            .exceptionally(ex -> { System.err.println("[FAIL] " + ex.getMessage()); return null; });
+    }
+}
+
+@Service
+class OrderConsumer {
+    @KafkaListener(topics = "orders", groupId = "fulfillment", concurrency = "4")
+    public void handle(
+            @org.springframework.messaging.handler.annotation.Payload OrderEvent event,
+            @org.springframework.messaging.handler.annotation.Header(KafkaHeaders.RECEIVED_PARTITION) int partition,
+            @org.springframework.messaging.handler.annotation.Header(KafkaHeaders.OFFSET) long offset,
+            Acknowledgment ack) {
+        System.out.printf("[RECV p=%d @%d] order=%s customer=%s%n",
+            partition, offset, event.orderId(), event.customerId());
+        try {
+            processOrder(event);
+            ack.acknowledge(); // commit offset only after successful processing
+        } catch (Exception e) {
+            System.err.println("Processing failed: " + e.getMessage());
+            // Don't ack → Kafka re-delivers (configure max.poll.records + retry topics)
+        }
+    }
+
+    // Dead letter listener
+    @KafkaListener(topics = "orders.DLT", groupId = "dlt-handler")
+    public void handleDlt(OrderEvent event) {
+        System.err.println("[DLT] Failed permanently: " + event.orderId());
+        // Alert, save to error DB, manual intervention
+    }
+
+    private void processOrder(OrderEvent e) { System.out.println("Processing: " + e.orderId()); }
 }`
-        },
-        {
-          lang: 'java',
-          title: 'Kafka consumer group & partition assignment simulation',
-          code: `import java.util.*;
-import java.util.stream.*;
-
-// Models how Kafka distributes partitions across a consumer group.
-// Rule: each partition is consumed by EXACTLY ONE consumer in a group.
-// Parallelism ceiling = number of partitions.
-public class KafkaConsumerGroupDemo {
-
-    record Partition(String topic, int id) {}
-    record Consumer(String id, List<Partition> assigned) {}
-
-    // Range assignor: divides sorted partitions evenly across sorted consumers
-    static List<Consumer> rangeAssign(String topic, int partitionCount, List<String> consumerIds) {
-        List<Partition> partitions = IntStream.range(0, partitionCount)
-            .mapToObj(i -> new Partition(topic, i))
-            .collect(Collectors.toList());
-
-        List<String> sorted = consumerIds.stream().sorted().collect(Collectors.toList());
-        List<Consumer> consumers = sorted.stream()
-            .map(id -> new Consumer(id, new ArrayList<>()))
-            .collect(Collectors.toList());
-
-        // Distribute partitions round-robin style (simplified range assignor)
-        for (int i = 0; i < partitions.size(); i++) {
-            consumers.get(i % consumers.size()).assigned().add(partitions.get(i));
+          ],
+          flashcards: [
+            { q: 'What is a Kafka partition and why does it matter for ordering and parallelism?', a: 'A partition is an ordered, immutable sequence of records within a topic. Records with the same key always go to the same partition (hash(key) % numPartitions), ensuring ordering per key. Partitions enable parallelism: each partition is consumed by exactly one consumer in a group, so throughput scales with partition count. Adding consumers beyond partition count: extra consumers are idle (no partition). Rule: choose partitions as the max parallelism you\'ll ever need — increasing partitions later is possible but disrupts key-based ordering.' },
+            { q: 'What is a consumer group and how does it enable both queue and pub-sub semantics?', a: 'A consumer group is a set of consumers that collectively consume a topic — each partition assigned to one consumer in the group (competing consumers / queue semantics). Multiple groups can read the same topic independently, each getting all messages (pub-sub semantics). Example: "order-processor" group handles fulfillment; "analytics" group reads same events for reporting. Each group maintains its own offset — they progress independently. Add consumers to a group to scale throughput; add groups to fan-out to new consumers.' },
+            { q: 'What is the difference between at-most-once, at-least-once, and exactly-once delivery in Kafka?', a: 'At-most-once: auto-commit offset before processing — if processing fails, message is lost (no retry). At-least-once: commit offset only after successful processing — if processing succeeds but commit fails, message is redelivered (processed twice). Requires idempotent consumers (deduplication by message ID). Exactly-once: Kafka\'s transactional API (enable.idempotence=true, transactions across produce+commit) — no duplicates and no loss, but lower throughput. Most production systems use at-least-once + idempotent consumers.' },
+            { q: 'What is a Dead Letter Topic (DLT) and when should you use one?', a: 'A DLT is a separate topic where messages are sent when they fail processing after all retries. Without DLT: a poison pill message (one that always fails) blocks the consumer forever — that partition stops progressing. With DLT: after N retries, the message is moved to orders.DLT, the consumer acknowledges and continues. A separate consumer (or human process) handles DLT messages: alert, save to error DB, manual fix. Configure with Spring Kafka: @RetryableTopic(attempts=3, dltStrategy=DltStrategy.FAIL_ON_ERROR).' }
+          ]
         }
-        return consumers;
-    }
-
-    static void printAssignment(List<Consumer> consumers) {
-        consumers.forEach(c -> {
-            List<Integer> pIds = c.assigned().stream().map(Partition::id).collect(Collectors.toList());
-            System.out.printf("  Consumer %-10s -> partitions %s%n", c.id(), pIds);
-        });
-    }
-
-    public static void main(String[] args) {
-        System.out.println("=== 6 partitions, 3 consumers (ideal: 2 each) ===");
-        printAssignment(rangeAssign("orders", 6, List.of("C1","C2","C3")));
-
-        System.out.println("\n=== 6 partitions, 2 consumers (3 each) ===");
-        printAssignment(rangeAssign("orders", 6, List.of("C1","C2")));
-
-        System.out.println("\n=== 6 partitions, 8 consumers (2 idle!) ===");
-        List<Consumer> over = rangeAssign("orders", 6, List.of("C1","C2","C3","C4","C5","C6","C7","C8"));
-        printAssignment(over);
-        long idle = over.stream().filter(c -> c.assigned().isEmpty()).count();
-        System.out.println("  Idle consumers: " + idle + " (adding consumers beyond partition count is wasteful)");
-
-        System.out.println("\n=== After consumer C2 dies -> REBALANCE ===");
-        printAssignment(rangeAssign("orders", 6, List.of("C1","C3"))); // C2 removed
-        System.out.println("  Rebalance: all consumers stop, coordinator reassigns, all resume");
-        System.out.println("  During rebalance: no messages consumed! Design for it (idempotency)");
-    }
-}`
-        }
-      ],
-      flashcards: [
-        { q: 'How does Kafka guarantee message ordering?', a: 'Order is guaranteed only within a single partition. To keep an entity\'s events ordered, produce them with the entity id as the message key so they hash to the same partition.' },
-        { q: 'What determines Kafka consumer parallelism?', a: 'The number of partitions. Within a consumer group each partition is consumed by exactly one consumer, so you cannot have more active consumers than partitions.' },
-        { q: 'Why is end-to-end exactly-once usually replaced by at-least-once + idempotent consumers?', a: 'True exactly-once across external systems (DB/APIs) is impractical. The pragmatic design is at-least-once delivery with consumers that dedupe on a business key or track processed offsets, making reprocessing safe.' },
-        { q: 'Kafka vs RabbitMQ — when each?', a: 'Kafka: a durable, partitioned, replayable log for high-throughput event streaming, event sourcing, and analytics. RabbitMQ: a broker with flexible routing, per-message acks, and priorities for task queues and RPC.' },
-        { q: 'What enables replay in Kafka?', a: 'Messages are retained by time/size independent of consumption, and consumers track offsets, so a consumer can reset its offset and reprocess from any point (e.g. offset 0) to rebuild state.' },
-        { q: 'What is a Dead Letter Queue (DLQ) in Kafka and when do you use it?', a: 'A DLQ is a separate topic where messages that fail processing after N retries are sent instead of blocking the partition. It prevents a single "poison pill" message from halting all downstream processing. Messages are manually inspected and replayed after the bug is fixed.' },
-        { q: 'What happens during a Kafka consumer group rebalance?', a: 'All consumers in the group stop processing, the group coordinator reassigns partitions (using a configured assignor like Range or CooperativeSticky), then consumers resume. During rebalance no messages are consumed. CooperativeSticky rebalancing (Kafka 2.4+) minimizes the disruption by only moving partitions that need to move.' },
-        { q: 'What is the ISR (In-Sync Replica) and why does it matter for durability?', a: 'The ISR is the set of replicas fully caught up with the leader. With acks=all, the producer waits for all ISR replicas to acknowledge the write, ensuring the message survives a leader failure. min.insync.replicas controls how many ISR replicas must ack before the write is accepted.' }
       ]
     },
 
@@ -24617,454 +24774,842 @@ public class KafkaConsumerGroupDemo {
       id: '6.3',
       title: 'Saga Pattern & Distributed Transactions',
       hours: 3,
-      notes: `
-# Sagas & Distributed Data Consistency
-
-You can't use a single ACID transaction across multiple services' databases. The **saga** pattern maintains consistency via a sequence of **local transactions** with **compensating actions**.
-
-## Why not 2PC?
-
-Two-phase commit (XA) locks resources across services and a coordinator failure can block everyone. It scales poorly and hurts availability. Modern microservices avoid it.
-
-## Saga = local txns + compensations
-
-Each step commits locally and publishes an event/command for the next. If a later step fails, previously completed steps run **compensating** transactions to semantically undo their effect (you can't rollback a committed local txn, so you *counteract* it — refund, release stock).
-
-### Two coordination styles
-
-- **Choreography** — services react to each other's events. No central coordinator; simple for few steps, but logic is scattered and hard to follow as it grows.
-- **Orchestration** — a central **orchestrator** (e.g. Camunda, a saga state machine) tells each service what to do and handles compensation. Clearer, easier to monitor/debug; the orchestrator is a dependency.
-
-> [!WARNING]
-> Sagas give **eventual consistency**, not isolation. Other transactions can see intermediate states (e.g. order created but not yet paid). Handle with semantic locks, status flags ("PENDING"), or commutative updates. Design the UX/API for in-flight states.
-
-## The outbox pattern (must-know)
-
-> [!TIP]
-> **Dual-write problem:** writing to your DB *and* publishing to Kafka isn't atomic — a crash between them loses the event or creates a phantom. The **transactional outbox** fixes it: write the event to an \`outbox\` table **in the same DB transaction** as the business change; a separate relay (CDC/Debezium or poller) publishes outbox rows to Kafka. Now the event is published **iff** the business data committed.
-
-> [!EU]
-> Strong senior answer to *"How do you keep data consistent across services?"*: "Local transactions + sagas (orchestrated via Camunda for complex flows) with compensating actions, the transactional outbox to avoid dual-write, and idempotent consumers — accepting eventual consistency rather than 2PC." This ties Phases 6 and 8 together.
-`,
-      code: [
+      sections: [
         {
-          lang: 'java',
-          title: 'Orchestrated saga with compensation',
-          code: `import java.util.*;
-import java.util.function.*;
+          title: 'Saga Pattern — Choreography vs Orchestration',
+          notes: `## Saga Pattern — Choreography vs Orchestration
 
-public class SagaDemo {
-    // Each step: an action + its compensating action
-    record Step(String name, Supplier<Boolean> action, Runnable compensate) {}
+### Why Distributed Transactions Are Hard
 
-    static boolean runSaga(List<Step> steps) {
-        Deque<Step> completed = new ArrayDeque<>();
-        for (Step s : steps) {
-            System.out.println("-> " + s.name());
-            boolean ok = s.action().get();
-            if (!ok) {
-                System.out.println("   FAILED: " + s.name() + " -> compensating in reverse");
-                while (!completed.isEmpty()) {
-                    Step done = completed.pop();
-                    System.out.println("   <- compensate " + done.name());
-                    done.compensate().run();
-                }
-                return false;
-            }
-            completed.push(s);
+\`\`\`
+Monolith: BEGIN TX → update orders → update inventory → update payments → COMMIT
+  → ACID guarantees, rollback on failure
+
+Microservices: each service has its own DB
+  → Can't use a single transaction across services
+  → Two-Phase Commit (2PC) exists but: blocking, performance, availability issues
+  → Saga is the practical alternative
+\`\`\`
+
+### Saga Pattern
+
+\`\`\`
+A Saga is a sequence of local transactions, each publishing an event/message
+to trigger the next step. Failure → compensating transactions undo prior steps.
+
+Choreography Saga (event-driven, no central coordinator):
+  Order Service → creates order → publishes "OrderCreated"
+    → Inventory Service: reserves stock → publishes "StockReserved"
+      → Payment Service: charges card → publishes "PaymentCompleted"
+        → Order Service: marks order CONFIRMED
+
+  On failure (e.g. payment fails):
+  Payment Service → publishes "PaymentFailed"
+    ← Inventory Service: releases stock (compensating tx)
+      ← Order Service: cancels order (compensating tx)
+\`\`\`
+
+### Orchestration Saga
+
+\`\`\`java
+// Central Saga Orchestrator manages the workflow
+@Service
+public class CreateOrderSaga {
+    // Steps: 1.Reserve Inventory → 2.Charge Payment → 3.Confirm Order
+    // On failure: compensate in reverse
+
+    @Transactional
+    public SagaResult execute(CreateOrderCommand cmd) {
+        String sagaId = UUID.randomUUID().toString();
+        SagaState state = new SagaState(sagaId, cmd);
+
+        try {
+            // Step 1
+            state.setInventoryReservationId(
+                inventoryClient.reserve(cmd.productId(), cmd.quantity()));
+            state.setStep(SagaStep.INVENTORY_RESERVED);
+
+            // Step 2
+            state.setPaymentId(
+                paymentClient.charge(cmd.customerId(), cmd.amount()));
+            state.setStep(SagaStep.PAYMENT_CHARGED);
+
+            // Step 3
+            orderRepo.updateStatus(cmd.orderId(), OrderStatus.CONFIRMED);
+            return SagaResult.success();
+
+        } catch (InventoryException e) {
+            // Nothing to compensate — failed at step 1
+            orderRepo.updateStatus(cmd.orderId(), OrderStatus.FAILED);
+            return SagaResult.failure("Out of stock");
+
+        } catch (PaymentException e) {
+            // Compensate step 1: release inventory
+            inventoryClient.release(state.getInventoryReservationId());
+            orderRepo.updateStatus(cmd.orderId(), OrderStatus.FAILED);
+            return SagaResult.failure("Payment failed");
         }
-        return true;
+    }
+}
+\`\`\`
+
+### Choreography vs Orchestration Trade-offs
+
+\`\`\`
+                    Choreography              Orchestration
+─────────────────────────────────────────────────────────────
+Coupling            Loose (event-driven)      Central coordinator
+Visibility          Hard (events scattered)   Easy (one place)
+Failure handling    Distributed / hard        Centralised / clear
+Testing             Complex                   Simpler
+Single point of     None                      Orchestrator (must be resilient)
+  failure?
+Suitable for        Simple 2-3 step flows     Complex multi-step, long-running
+\`\`\`
+
+### Outbox Pattern — Guaranteed Event Publishing
+
+\`\`\`java
+// Problem: save to DB + publish to Kafka atomically
+// What if DB commits but Kafka publish fails?
+
+// Solution: Outbox table — same DB transaction as business data
+@Service @Transactional
+public class OrderService {
+    public Order createOrder(CreateOrderRequest req) {
+        Order order = orderRepo.save(new Order(req));
+
+        // Write to outbox in SAME transaction — atomic
+        outboxRepo.save(new OutboxEvent(
+            UUID.randomUUID().toString(),
+            "order-events",
+            order.customerId(),        // Kafka key
+            toJson(new OrderCreated(order.id(), order.status()))
+        ));
+        // If this tx rolls back → outbox entry also gone → no orphan event
+        return order;
+    }
+}
+
+// Separate relay process reads outbox and publishes to Kafka
+@Scheduled(fixedDelay = 100)
+public void relay() {
+    List<OutboxEvent> pending = outboxRepo.findUnpublished();
+    for (OutboxEvent e : pending) {
+        kafka.send(e.topic(), e.key(), e.payload());
+        outboxRepo.markPublished(e.id());
+    }
+}
+// Tools: Debezium (CDC — captures DB changes via WAL), Transactional Outbox libraries
+\`\`\``,
+          code: [
+            `import java.util.*;
+import java.util.concurrent.*;
+
+// Saga orchestration simulation
+public class SagaDemo {
+    enum SagaStep { STARTED, INVENTORY_RESERVED, PAYMENT_CHARGED, CONFIRMED, FAILED }
+
+    record SagaState(String id, String orderId, SagaStep step,
+                     String reservationId, String paymentId) {
+        SagaState withStep(SagaStep s) { return new SagaState(id,orderId,s,reservationId,paymentId); }
+        SagaState withReservation(String r) { return new SagaState(id,orderId,step,r,paymentId); }
+        SagaState withPayment(String p) { return new SagaState(id,orderId,step,reservationId,p); }
+    }
+
+    record CreateOrderCmd(String orderId, String productId, int qty, double amount, String customerId) {}
+    record SagaResult(boolean success, String message) {}
+
+    // Simulated service clients
+    static String reserveInventory(String productId, int qty) {
+        if (qty > 100) throw new RuntimeException("Out of stock: " + productId);
+        return "RES-" + productId + "-" + qty;
+    }
+    static String chargePayment(String customerId, double amount) {
+        if (amount > 10000) throw new RuntimeException("Card declined: limit exceeded");
+        return "PAY-" + customerId + "-" + (int)amount;
+    }
+    static void releaseInventory(String reservationId) {
+        System.out.println("[COMPENSATE] Released reservation: " + reservationId);
+    }
+    static void refundPayment(String paymentId) {
+        System.out.println("[COMPENSATE] Refunded payment: " + paymentId);
+    }
+
+    static SagaResult executeSaga(CreateOrderCmd cmd) {
+        var state = new SagaState(UUID.randomUUID().toString(),
+            cmd.orderId(), SagaStep.STARTED, null, null);
+        System.out.println("[SAGA] Starting for order: " + cmd.orderId());
+
+        try {
+            // Step 1: Reserve inventory
+            String resId = reserveInventory(cmd.productId(), cmd.qty());
+            state = state.withReservation(resId).withStep(SagaStep.INVENTORY_RESERVED);
+            System.out.println("[SAGA] Inventory reserved: " + resId);
+
+            // Step 2: Charge payment
+            String payId = chargePayment(cmd.customerId(), cmd.amount());
+            state = state.withPayment(payId).withStep(SagaStep.PAYMENT_CHARGED);
+            System.out.println("[SAGA] Payment charged: " + payId);
+
+            // Step 3: Confirm order
+            state = state.withStep(SagaStep.CONFIRMED);
+            System.out.println("[SAGA] Order CONFIRMED: " + cmd.orderId());
+            return new SagaResult(true, "Order confirmed");
+
+        } catch (Exception e) {
+            System.out.println("[SAGA] FAILED at step " + state.step() + ": " + e.getMessage());
+            // Compensate in reverse
+            if (state.paymentId() != null) refundPayment(state.paymentId());
+            if (state.reservationId() != null) releaseInventory(state.reservationId());
+            return new SagaResult(false, e.getMessage());
+        }
     }
 
     public static void main(String[] args) {
-        // Order saga: reserve stock -> charge card -> ship. Charge fails -> undo stock.
-        boolean[] chargeWillFail = { true };
-        List<Step> order = List.of(
-            new Step("reserveStock", () -> { System.out.println("   stock reserved"); return true; },
-                                     () -> System.out.println("   stock released")),
-            new Step("chargeCard",   () -> { boolean ok = !chargeWillFail[0];
-                                             System.out.println("   charge " + (ok ? "ok" : "declined"));
-                                             return ok; },
-                                     () -> System.out.println("   refund issued")),
-            new Step("shipOrder",    () -> { System.out.println("   shipped"); return true; },
-                                     () -> System.out.println("   shipment cancelled"))
-        );
+        // Success case
+        var r1 = executeSaga(new CreateOrderCmd("ORD-001","PROD-A",5,150.0,"CUST-1"));
+        System.out.println("Result: " + r1 + "\n");
 
-        boolean success = runSaga(order);
-        System.out.println("\\nSaga result: " + (success ? "COMMITTED" : "ROLLED BACK via compensation"));
+        // Payment failure — inventory must be released
+        var r2 = executeSaga(new CreateOrderCmd("ORD-002","PROD-B",2,15000.0,"CUST-2"));
+        System.out.println("Result: " + r2 + "\n");
+
+        // Inventory failure — nothing to compensate
+        var r3 = executeSaga(new CreateOrderCmd("ORD-003","PROD-C",200,50.0,"CUST-3"));
+        System.out.println("Result: " + r3);
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What is the Saga pattern and why is it needed in microservices?', a: 'In microservices each service owns its database — traditional ACID transactions spanning multiple services aren\'t possible (or practical with 2PC). Saga solves this: a saga is a sequence of local transactions, one per service. Each step publishes an event/message triggering the next. On failure, compensating transactions undo previous steps (e.g. refund payment, release inventory). Two styles: Choreography (services react to each other\'s events — decoupled), Orchestration (central coordinator explicitly calls each service — clearer control flow).' },
+            { q: 'What is the difference between choreography and orchestration sagas?', a: 'Choreography: each service listens for events and reacts — no central controller. Order Service publishes "OrderCreated" → Inventory Service listens and reserves stock → publishes "StockReserved" → Payment Service listens and charges. Pros: loose coupling, no SPOF. Cons: hard to see the overall flow, failure handling scattered. Orchestration: a central Saga Orchestrator service explicitly calls each step and handles failures. Pros: clear flow in one place, easy debugging. Cons: orchestrator is a SPOF (must be resilient), more coupling. Use orchestration for complex multi-step processes.' },
+            { q: 'What is the Outbox pattern and what problem does it solve?', a: 'Problem: you need to both save to your DB AND publish an event to Kafka atomically. If you save to DB then publish, and Kafka fails → DB has data but no event. If you publish then save → process crashes → event without data. Outbox solution: write the event to an outbox table in the SAME DB transaction as your business data. A separate relay process (or Debezium CDC) reads the outbox and publishes to Kafka, marking entries as published. If the relay fails, it retries (idempotent). Guaranteed: event is published if and only if the DB transaction committed.' },
+            { q: 'What are compensating transactions and what are their limitations?', a: 'Compensating transactions undo the effect of a completed local transaction. Examples: if inventory was reserved → release it; if payment was charged → refund it. Limitations: they are not instant rollbacks — the original transaction already committed and side effects occurred. Between the original action and the compensation, other processes may have acted on that data. Compensation may itself fail (what if refund fails?). Time window between forward and compensating tx creates temporary inconsistency. Compensations must be idempotent (safe to call multiple times). Not all operations can be compensated (e.g. an email was sent).' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What is the saga pattern?', a: 'A way to maintain data consistency across services without a distributed transaction: a sequence of local transactions, each publishing an event/command; if a step fails, previously completed steps run compensating transactions to semantically undo their effects.' },
-        { q: 'Choreography vs orchestration sagas?', a: 'Choreography: services react to each other\'s events with no central coordinator (simple but logic is scattered). Orchestration: a central orchestrator directs each step and compensation (clearer, easier to monitor; adds a coordinator dependency).' },
-        { q: 'What is the dual-write problem and how does the outbox pattern solve it?', a: 'Writing to the DB and publishing to a broker aren\'t atomic, so a crash between them loses or fabricates events. The transactional outbox writes the event to an outbox table in the same DB transaction; a relay (CDC/poller) then publishes it, so the event is sent iff the data committed.' },
-        { q: 'Why avoid two-phase commit (2PC) in microservices?', a: 'XA/2PC holds locks across services and a coordinator failure can block all participants, reducing availability and scalability. Sagas with compensations preserve autonomy and availability at the cost of eventual consistency.' }
       ]
-    }
-  ]
-},
+    },
 
-/* ===================== PHASE 7: DevOps / K8s / Helm ===================== */
-{
-  id: 'p7',
-  title: 'DevOps: Docker, Kubernetes & Helm',
-  icon: 'ship',
-  blurb: 'Containers, orchestration, and Helm from zero to advanced as a practical hands-on guide.',
-  modules: [
     {
       id: '7.1',
       title: 'Docker & Containers',
-      hours: 4,
-      notes: `
-# Docker & Containers
-
-A container packages an app with its dependencies into an **isolated, portable** unit that runs the same everywhere. Unlike a VM, containers share the host **kernel** — they start in milliseconds and are lightweight.
-
-## Containers vs VMs
-
-| | Container | VM |
-|--|-----------|----|
-| Isolation | process-level (namespaces, cgroups) | full OS + hypervisor |
-| Boot | milliseconds | seconds–minutes |
-| Size | MBs | GBs |
-| Kernel | shared with host | own kernel |
-
-Namespaces isolate what a process *sees* (PID, network, mount); **cgroups** limit what it *uses* (CPU, memory).
-
-## Images & layers
-
-An **image** is a stack of read-only **layers** built from a \`Dockerfile\`. Each instruction adds a layer; layers are **cached** and shared. A **container** is a running image with a writable top layer.
-
-## Dockerfile best practices
-
-- **Multi-stage builds** — compile in a fat builder image, copy only the artifact into a slim runtime → tiny, secure images.
-- **Layer ordering** — put rarely-changing steps (dependency download) before code copy to maximise cache hits.
-- **\`.dockerignore\`**, pin base image tags, run as **non-root**, prefer \`distroless\`/\`alpine\`/\`-jre\` bases.
-
-> [!WARNING]
-> Don't bake secrets into images (they persist in layers/history). Inject at runtime via env/secrets. Don't run as root. Scan images (Trivy) for CVEs.
-
-> [!TIP]
-> For Java: use a JRE (not JDK) runtime base, enable container-aware JVM (\`-XX:MaxRAMPercentage=75\`), and leverage **layered jars** (Spring Boot) or **jlink/jib** so dependency layers cache separately from your fast-changing app code.
-
-> [!EU]
-> Expect: *"Container vs VM?"*, *"What is a multi-stage build and why?"*, *"How do you keep images small/secure?"* Have a real Dockerfile you can explain line by line.
-`,
-      code: [
+      hours: 3,
+      sections: [
         {
-          lang: 'bash',
-          title: 'Multi-stage Dockerfile for a Spring Boot app',
-          code: `# ---- Stage 1: build (fat image with Maven + JDK) ----
-# FROM maven:3.9-eclipse-temurin-21 AS build
-# WORKDIR /app
-# COPY pom.xml .
-# RUN mvn -q dependency:go-offline        # cached layer: deps rarely change
-# COPY src ./src
-# RUN mvn -q clean package -DskipTests    # produces target/app.jar
+          title: 'Docker Fundamentals — Images, Containers & Networking',
+          notes: `## Docker Fundamentals — Images, Containers & Networking
 
-# ---- Stage 2: runtime (slim JRE only) ----
-# FROM eclipse-temurin:21-jre-alpine
-# WORKDIR /app
-# RUN addgroup -S app && adduser -S app -G app   # non-root user
-# COPY --from=build /app/target/*.jar app.jar    # copy ONLY the artifact
-# USER app
-# EXPOSE 8080
-# ENV JAVA_OPTS="-XX:MaxRAMPercentage=75"
-# ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar app.jar"]
+### What is a Container?
 
-echo "Multi-stage build keeps the final image to ~200MB (JRE) instead of ~700MB (JDK+Maven)."
-echo ""
-echo "Common commands you must know:"
-echo "  docker build -t myapp:1.0 ."
-echo "  docker run -p 8080:8080 -e SPRING_PROFILES_ACTIVE=prod myapp:1.0"
-echo "  docker images          # list images & sizes"
-echo "  docker ps -a           # running + stopped containers"
-echo "  docker logs -f <id>    # follow logs"
-echo "  docker exec -it <id> sh  # shell into a container"
-echo "  docker system prune -f # reclaim space"`
+\`\`\`
+Container vs VM:
+  VM:        Guest OS + App + Libs    — heavyweight (GBs), slow boot
+  Container: App + Libs only          — lightweight (MBs), instant start
+             Shares host kernel via Linux namespaces + cgroups
+
+Namespaces (isolation): pid, net, mnt, uts, ipc, user
+cgroups (limits): CPU %, memory, disk I/O — prevents one container starving others
+\`\`\`
+
+### Dockerfile — Building Images
+
+\`\`\`dockerfile
+# Multi-stage build: build stage + lean runtime stage
+# Stage 1: build (Maven + JDK — ~500MB)
+FROM eclipse-temurin:21-jdk AS builder
+WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN mvn -q clean package -DskipTests
+
+# Stage 2: runtime (JRE only — ~100MB)
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+# Non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+COPY --from=builder /app/target/*.jar app.jar
+RUN chown appuser:appuser app.jar
+USER appuser
+EXPOSE 8080
+# Use exec form to be PID 1 (receives signals properly)
+ENTRYPOINT ["java", "-jar", "app.jar"]
+
+# Optimise for Spring Boot layer caching
+# FROM eclipse-temurin:21-jre
+# COPY --from=builder /app/target/layers/dependencies/ ./
+# COPY --from=builder /app/target/layers/spring-boot-loader/ ./
+# COPY --from=builder /app/target/layers/snapshot-dependencies/ ./
+# COPY --from=builder /app/target/layers/application/ ./
+# ENTRYPOINT ["org.springframework.boot.loader.launch.JarLauncher"]
+\`\`\`
+
+### Key Docker Commands
+
+\`\`\`bash
+# Build
+docker build -t myapp:1.0 .
+docker build --no-cache -t myapp:1.0 .
+
+# Run
+docker run -d -p 8080:8080 --name myapp myapp:1.0
+docker run -d -p 8080:8080 -e DB_URL=jdbc:postgres://... --name myapp myapp:1.0
+docker run -d -v /host/data:/app/data myapp:1.0    # volume mount
+
+# Inspect
+docker ps                          # running containers
+docker logs -f myapp               # follow logs
+docker exec -it myapp /bin/sh      # shell into container
+docker stats                       # CPU/mem usage
+
+# Registry
+docker tag myapp:1.0 registry.io/myapp:1.0
+docker push registry.io/myapp:1.0
+docker pull registry.io/myapp:1.0
+
+# Cleanup
+docker rm -f myapp                 # remove container
+docker rmi myapp:1.0              # remove image
+docker system prune -af           # remove all unused
+\`\`\`
+
+### Docker Compose
+
+\`\`\`yaml
+# docker-compose.yml — local dev stack
+services:
+  app:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/mydb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: secret
+    depends_on:
+      db:
+        condition: service_healthy  # wait for DB healthcheck
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: mydb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+volumes:
+  postgres_data:
+\`\`\``,
+          code: [
+            `# Dockerfile best practices — Spring Boot optimised
+
+# =======================================================
+# OPTION A: Simple single-stage (for quick demos)
+# =======================================================
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+ARG JAR_FILE=target/*.jar
+COPY \${JAR_FILE} app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", \
+  "-XX:+UseContainerSupport", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-jar", "app.jar"]
+
+# =======================================================
+# OPTION B: Multi-stage with Spring Boot layers (best)
+# =======================================================
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /build
+COPY mvnw .
+COPY .mvn .mvn
+COPY pom.xml .
+RUN ./mvnw dependency:go-offline -q   # cache dependencies layer
+COPY src ./src
+RUN ./mvnw package -DskipTests -q
+RUN java -Djarmode=layertools -jar target/*.jar extract --destination target/extracted
+
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+COPY --from=builder /build/target/extracted/dependencies/ ./
+COPY --from=builder /build/target/extracted/spring-boot-loader/ ./
+COPY --from=builder /build/target/extracted/snapshot-dependencies/ ./
+COPY --from=builder /build/target/extracted/application/ ./
+USER appuser
+EXPOSE 8080
+ENTRYPOINT ["java", \
+  "-XX:+UseContainerSupport", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "org.springframework.boot.loader.launch.JarLauncher"]
+
+# WHY LAYERS: most rebuilds only change the 'application' layer (~50KB)
+# dependencies layer (~200MB) is cached and reused → fast builds`
+          ],
+          flashcards: [
+            { q: 'What is the difference between a Docker image and a container?', a: 'An image is a read-only, layered snapshot — a blueprint. It contains the filesystem, app binaries, libraries, and metadata (ENTRYPOINT, ENV, EXPOSE). Images are built from Dockerfiles and stored in registries. A container is a running instance of an image — it adds a thin writable layer on top of the image layers. Multiple containers can share the same image. "docker run" creates a container from an image. Containers are ephemeral — stopping and removing them destroys the writable layer; the image remains.' },
+            { q: 'What is a multi-stage Docker build and why should you use it for Java?', a: 'Multi-stage builds use multiple FROM instructions. The first stage uses a full JDK + Maven to compile and build. The second stage uses only a JRE (no compiler, no build tools). COPY --from=builder copies just the built artifact. Benefits: final image is much smaller (JRE ~100MB vs JDK ~500MB), no build tools or source code in production image (security), build dependencies don\'t bloat runtime image. For Spring Boot: use jarmode=layertools to extract layers — enables Docker layer caching so rebuilds only re-copy the changed application layer.' },
+            { q: 'What are Docker volumes and why use them for databases?', a: 'Volumes persist data outside the container\'s writable layer — data survives container restarts, replacements, and upgrades. Without a volume: stopping and removing a postgres container deletes all data. With a named volume (postgres_data:/var/lib/postgresql/data): data is stored on the host, container mounts it. Types: named volumes (docker manages location), bind mounts (specific host path, e.g. /host/data:/app/data — good for dev, bad for production portability). Use volumes for: databases, file uploads, log files that must survive container lifecycle.' },
+            { q: 'Why run containers as a non-root user?', a: 'By default containers run as root (UID 0). If the app is compromised, the attacker has root inside the container and may escape to the host or mount sensitive host paths. Running as a non-root user limits the blast radius: the attacker has minimal permissions. Add to Dockerfile: RUN useradd -r appuser && USER appuser. Many container security policies (Kubernetes PodSecurityPolicy, OpenShift) REQUIRE non-root. Also: the user inside the container doesn\'t need write access to its own binary — read-only root filesystem is even more secure.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'How do containers differ from VMs?', a: 'Containers share the host kernel and isolate at the process level (namespaces + cgroups), so they\'re MBs in size and start in milliseconds. VMs virtualize hardware with their own OS kernel via a hypervisor — GBs and slower to boot.' },
-        { q: 'What is a multi-stage Docker build and why use it?', a: 'A Dockerfile with multiple FROM stages: build/compile in a heavy image, then COPY only the final artifact into a slim runtime image. Result: much smaller, more secure images with no build tools or source in the final layer.' },
-        { q: 'Why order Dockerfile instructions carefully?', a: 'Each instruction is a cached layer. Placing rarely-changing steps (dependency download) before copying source maximizes cache hits, so code changes don\'t re-trigger expensive dependency rebuilds.' },
-        { q: 'Two JVM/container pitfalls and fixes?', a: 'Baking secrets into image layers (inject at runtime instead) and the JVM ignoring container memory limits (use a container-aware JVM with -XX:MaxRAMPercentage). Also run as non-root and use a JRE base.' }
       ]
     },
 
     {
       id: '7.2',
       title: 'Kubernetes Core Concepts',
-      hours: 5,
-      notes: `
-# Kubernetes Core Concepts
-
-Kubernetes orchestrates containers across a cluster: scheduling, scaling, self-healing, service discovery, and rolling updates — declaratively.
-
-## Control plane vs workers
-
-- **Control plane**: \`api-server\` (the front door), \`etcd\` (cluster state KV store), \`scheduler\` (places pods), \`controller-manager\` (reconciliation loops).
-- **Worker nodes**: \`kubelet\` (runs pods), \`kube-proxy\` (networking), container runtime.
-
-## The reconciliation loop (the big idea)
-
-You declare **desired state** (YAML); controllers continuously drive **actual state** toward it. Pod dies → ReplicaSet creates a new one. This is **declarative**, self-healing infrastructure.
-
-## Core objects
-
-- **Pod** — smallest unit; one or more co-located containers sharing network/storage. Ephemeral.
-- **ReplicaSet** — keeps N pod replicas running.
-- **Deployment** — manages ReplicaSets; gives **rolling updates** + rollback.
-- **Service** — stable virtual IP/DNS load-balancing across pods (pods are ephemeral; Services are stable). Types: \`ClusterIP\` (internal), \`NodePort\`, \`LoadBalancer\`.
-- **Ingress** — L7 HTTP routing (host/path) into Services.
-- **ConfigMap / Secret** — externalised config & sensitive data.
-- **StatefulSet** — stable identity/storage for stateful apps (DBs, Kafka).
-- **DaemonSet** — one pod per node (log/metric agents).
-- **Namespace** — logical isolation/quota boundary.
-
-## Health & scaling
-
-- **Probes**: \`liveness\` (restart if dead), \`readiness\` (remove from Service until ready), \`startup\` (slow boot grace).
-- **Resources**: \`requests\` (scheduling guarantee) vs \`limits\` (hard cap; exceeding memory → OOMKilled).
-- **HPA** — Horizontal Pod Autoscaler scales replicas on CPU/custom metrics.
-
-> [!WARNING]
-> Set **resource requests/limits** and **readiness probes** on every workload. Missing readiness → traffic hits not-ready pods (errors during deploys). Missing limits → a noisy neighbour starves the node. Liveness too aggressive → restart loops.
-
-> [!TIP]
-> Pods are cattle, not pets — never rely on a pod's IP or identity. Talk to **Services**. Store state in PersistentVolumes/StatefulSets or external stores, keep app pods stateless.
-
-> [!EU]
-> Common: *"What happens when you \`kubectl apply\` a Deployment?"* (api-server → etcd → scheduler → kubelet → pods, reconciled). *"Liveness vs readiness?"* *"How does a rolling update work and how do you roll back?"* (\`kubectl rollout undo\`).
-`,
-      code: [
+      hours: 4,
+      sections: [
         {
-          lang: 'bash',
-          title: 'A Deployment + Service manifest & kubectl essentials',
-          code: `cat <<'YAML'
+          title: 'Kubernetes Architecture & Core Resources',
+          notes: `## Kubernetes Architecture & Core Resources
+
+### Why Kubernetes?
+
+\`\`\`
+Docker Compose is for one machine. What if you need:
+  - Run across 10 machines (nodes)?
+  - Auto-restart crashed containers?
+  - Roll out new versions without downtime?
+  - Scale from 2 to 20 replicas based on CPU?
+  - Route traffic to healthy pods only?
+
+Kubernetes (K8s) is the orchestrator that handles all of this.
+\`\`\`
+
+### Cluster Architecture
+
+\`\`\`
+Control Plane (master):
+  ├── kube-apiserver     — REST API, entry point for all commands (kubectl → apiserver)
+  ├── etcd               — distributed key-value store, cluster state (single source of truth)
+  ├── kube-scheduler     — picks which node to run a new pod on
+  └── kube-controller-manager — reconciliation loops (ReplicaSet, Deployment controllers)
+
+Worker Nodes (where your app runs):
+  ├── kubelet            — agent: ensures containers run per spec; reports health
+  ├── kube-proxy         — networking: iptables rules for Service load balancing
+  └── container runtime  — containerd or Docker: actually runs containers
+\`\`\`
+
+### Core Resources
+
+\`\`\`yaml
+# Pod — smallest deployable unit; one or more containers
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app: myapp
+spec:
+  containers:
+    - name: myapp
+      image: myrepo/myapp:1.0
+      ports: [{containerPort: 8080}]
+      resources:
+        requests: {cpu: "250m", memory: "256Mi"}   # scheduler uses this
+        limits: {cpu: "500m", memory: "512Mi"}     # enforced; OOMKill on exceed
+      env:
+        - name: DB_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: url
+      readinessProbe:                              # pod not in Service until ready
+        httpGet: {path: /actuator/health/readiness, port: 8080}
+        initialDelaySeconds: 10
+        periodSeconds: 5
+      livenessProbe:                               # restart pod if this fails
+        httpGet: {path: /actuator/health/liveness, port: 8080}
+        initialDelaySeconds: 30
+        periodSeconds: 10
+\`\`\`
+
+### Deployment & Service
+
+\`\`\`yaml
+# Deployment — manages ReplicaSet → ensures N replicas running
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: payment-api }
+metadata: {name: myapp}
 spec:
   replicas: 3
-  selector: { matchLabels: { app: payment-api } }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 1, maxSurge: 1}  # at most 1 down, at most 4 total
+  selector:
+    matchLabels: {app: myapp}
   template:
-    metadata: { labels: { app: payment-api } }
+    metadata:
+      labels: {app: myapp}
+    spec:
+      containers: [...]
+---
+# Service — stable VIP + DNS + load balancing to pods
+apiVersion: v1
+kind: Service
+metadata: {name: myapp}
+spec:
+  type: ClusterIP          # ClusterIP (internal), NodePort, LoadBalancer
+  selector: {app: myapp}  # finds pods by label
+  ports:
+    - port: 80              # Service port
+      targetPort: 8080      # Pod port
+---
+# Ingress — HTTP routing from outside cluster
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: myapp.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service: {name: myapp, port: {number: 80}}
+\`\`\`
+
+### Key kubectl Commands
+
+\`\`\`bash
+kubectl apply -f deployment.yaml        # declarative create/update
+kubectl get pods -n mynamespace         # list pods
+kubectl describe pod myapp-abc123       # detailed info + events
+kubectl logs myapp-abc123 -f            # stream logs
+kubectl exec -it myapp-abc123 -- sh     # shell into pod
+kubectl scale deployment myapp --replicas=5
+kubectl rollout status deployment/myapp
+kubectl rollout undo deployment/myapp   # rollback
+kubectl port-forward pod/myapp-abc123 8080:8080  # local debugging
+\`\`\``,
+          code: [
+            `# Full Spring Boot deployment manifest
+# Includes: ConfigMap, Secret, Deployment, Service, HPA, Ingress
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myapp-config
+  namespace: production
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  LOG_LEVEL: "INFO"
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "mydb"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: myapp-secrets
+  namespace: production
+type: Opaque
+data:
+  # Values must be base64-encoded: echo -n 'value' | base64
+  DB_PASSWORD: cGFzc3dvcmQxMjM=   # "password123"
+  JWT_SECRET: c2VjcmV0a2V5MTIz    # "secretkey123"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+  namespace: production
+  labels:
+    app: myapp
+    version: "1.5.2"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1    # at most 1 pod down during update
+      maxSurge: 1          # at most 1 extra pod during update
+  template:
+    metadata:
+      labels:
+        app: myapp
+        version: "1.5.2"
     spec:
       containers:
-        - name: app
-          image: myreg/payment-api:1.4.2
-          ports: [{ containerPort: 8080 }]
-          resources:                       # ALWAYS set these
-            requests: { cpu: "250m", memory: "256Mi" }
-            limits:   { cpu: "1",    memory: "512Mi" }
-          readinessProbe:                  # don't send traffic until ready
-            httpGet: { path: /actuator/health/readiness, port: 8080 }
-            initialDelaySeconds: 10
-          livenessProbe:                   # restart if wedged
-            httpGet: { path: /actuator/health/liveness, port: 8080 }
+        - name: myapp
+          image: myrepo/myapp:1.5.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: myapp-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secrets
+                  key: DB_PASSWORD
+          resources:
+            requests:
+              cpu: "250m"     # 0.25 vCPU guaranteed
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"    # 1 vCPU max
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
             initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: payment-api }
+metadata:
+  name: myapp
+  namespace: production
 spec:
-  selector: { app: payment-api }          # routes to the 3 pods above
-  ports: [{ port: 80, targetPort: 8080 }]
-  type: ClusterIP
-YAML
-
-echo ""
-echo "kubectl essentials:"
-echo "  kubectl apply -f deploy.yaml          # declarative create/update"
-echo "  kubectl get pods -o wide              # list pods + nodes/IPs"
-echo "  kubectl describe pod <name>           # events: why is it pending/crashing?"
-echo "  kubectl logs -f <pod> [-c <container>]"
-echo "  kubectl rollout status deploy/payment-api"
-echo "  kubectl rollout undo deploy/payment-api   # roll back a bad deploy"
-echo "  kubectl scale deploy/payment-api --replicas=5"
-echo "  kubectl exec -it <pod> -- sh"`
+  selector:
+    app: myapp
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: myapp-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myapp
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # scale up when avg CPU > 70%`
+          ],
+          flashcards: [
+            { q: 'What is the difference between a Pod, Deployment, and Service in Kubernetes?', a: 'Pod: the smallest deployable unit — wraps one or more containers that share network/storage. Pods are ephemeral; when they die, they\'re replaced with a new IP. Deployment: manages a set of identical pods via a ReplicaSet. Ensures N replicas are always running, handles rolling updates and rollbacks. You never manage pods directly in production — use a Deployment. Service: a stable endpoint (DNS name + virtual IP) that load-balances traffic across pods. Because pod IPs change, other services talk to the Service, not directly to pods. Types: ClusterIP (internal), NodePort (external via port), LoadBalancer (cloud-provisioned LB).' },
+            { q: 'What is the difference between a readinessProbe and a livenessProbe?', a: 'ReadinessProbe: "is this pod ready to serve traffic?" If it fails, the pod is removed from the Service endpoints — it won\'t receive requests, but it\'s not killed. Useful during startup (waiting for DB connection, cache warmup) and for temporary overload. LivenessProbe: "is this pod still alive?" If it fails (N times), kubelet restarts the container. Catches deadlocks or crashes that leave a process running but not processing. Rule: always have both for Spring Boot. Use /actuator/health/readiness and /actuator/health/liveness respectively. Set initialDelaySeconds to allow startup time.' },
+            { q: 'What are resource requests and limits in Kubernetes and why do they matter?', a: 'Requests: the minimum CPU/memory guaranteed to the pod. The scheduler uses requests to decide which node to place the pod on — it won\'t schedule a pod on a node without enough free capacity. Limits: the maximum. CPU is throttled if exceeded (not killed). Memory: if a pod exceeds its memory limit, it\'s OOMKilled (Out of Memory Killed) and restarted. Rule: always set both. Without requests: pods get scheduled on overloaded nodes. Without limits: one runaway pod starves others. Common ratio: limit = 2× request. Memory limit should match JVM -Xmx setting.' },
+            { q: 'What is a HorizontalPodAutoscaler (HPA) and how does it work?', a: 'HPA automatically adjusts replica count based on metrics (typically CPU or memory). It reads metrics from the Metrics Server every 15 seconds, compares against the target (e.g., 70% avg CPU), and scales the Deployment\'s replicas between minReplicas and maxReplicas. Scale-up is fast (default ~3 min stabilization); scale-down is slow (default ~5 min to avoid flapping). Prerequisites: resource requests must be set (HPA calculates utilization as actual/request %). Custom metrics (RPS, queue depth) possible with KEDA or Prometheus adapter. Combine with PodDisruptionBudgets (PDB) to ensure minimum pods stay up during scale-down.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What is the reconciliation loop in Kubernetes?', a: 'Controllers continuously compare desired state (your declarative YAML in etcd) with actual cluster state and take actions to converge them — e.g. recreating a pod that died — giving self-healing, declarative infrastructure.' },
-        { q: 'Why talk to a Service instead of a Pod IP?', a: 'Pods are ephemeral; their IPs change as they\'re rescheduled. A Service provides a stable virtual IP/DNS name and load-balances across the current healthy pods selected by labels.' },
-        { q: 'Liveness vs readiness vs startup probes?', a: 'Liveness: restart the container if it fails (deadlock/wedged). Readiness: remove the pod from Service endpoints until it can serve traffic (no errors during startup/deploys). Startup: give slow-booting apps time before liveness kicks in.' },
-        { q: 'Requests vs limits for resources?', a: 'Requests are guaranteed amounts used for scheduling placement; limits are hard caps. Exceeding a memory limit gets the container OOMKilled; exceeding CPU limit throttles it. Always set both to protect node stability.' },
-        { q: 'How do you roll back a bad Deployment?', a: 'Deployments keep ReplicaSet revision history; run kubectl rollout undo deployment/<name> (optionally --to-revision=N) to revert, and kubectl rollout status to watch it.' }
       ]
     },
 
     {
       id: '7.3',
       title: 'Helm: Zero to Advanced',
-      hours: 5,
-      notes: `
-# Helm — Zero to Advanced (Practical Guide)
+      hours: 3,
+      sections: [
+        {
+          title: 'Helm — Kubernetes Package Manager',
+          notes: `## Helm — Kubernetes Package Manager
 
-**Helm is the package manager for Kubernetes.** A **chart** is a versioned, parameterised bundle of K8s manifests. Instead of hand-editing dozens of YAMLs per environment, you template them once and supply **values** per environment. This module is a hands-on path from first install to production patterns.
+### What is Helm?
 
----
+\`\`\`
+Problem: deploying to 3 environments (dev/staging/prod) requires 3 copies of every YAML.
+Change the image tag → update 3 files. Change a label → 3 files. Error-prone.
 
-## 0 → Why Helm exists
+Helm is the package manager for Kubernetes:
+  Chart     = package (like npm package) — collection of YAML templates
+  Release   = a deployed instance of a chart (like npm install)
+  Values    = configuration that templates are rendered with (like .env per environment)
 
-Without Helm you copy-paste \`deployment.yaml\`, \`service.yaml\`, \`ingress.yaml\`, \`configmap.yaml\`… for **dev/staging/prod**, each with slightly different image tags, replica counts, and hosts. That drifts and breaks. Helm gives you:
+helm install my-app ./mychart -f values-prod.yaml
+helm upgrade my-app ./mychart -f values-prod.yaml --set image.tag=1.5.3
+helm rollback my-app 1
+helm uninstall my-app
+\`\`\`
 
-- **Templating** — one set of manifests, many environments via \`values.yaml\`.
-- **Releases** — a named, **versioned** install you can \`upgrade\` and \`rollback\`.
-- **Packaging/sharing** — charts in repos (like npm/apt for K8s).
-- **Dependencies** — pull in Postgres/Redis subcharts.
-
----
-
-## 1 → Core concepts
-
-| Term | Meaning |
-|------|---------|
-| **Chart** | A package: templates + default values + metadata |
-| **Release** | An instance of a chart installed in a cluster (named) |
-| **Values** | Parameters that fill the templates (\`values.yaml\` + \`--set\`/\`-f\`) |
-| **Repository** | A place to publish/fetch charts |
-| **Revision** | Each install/upgrade bumps a revision you can roll back to |
-
-## 2 → Chart anatomy
+### Chart Structure
 
 \`\`\`
 mychart/
-  Chart.yaml          # name, version, appVersion, dependencies
-  values.yaml         # DEFAULT values (overridable)
+  Chart.yaml              # chart metadata: name, version, description
+  values.yaml             # default values (overridden per environment)
+  charts/                 # dependency charts (subcharts)
   templates/
-    deployment.yaml   # Go-templated manifests
+    deployment.yaml       # templated Kubernetes resources
     service.yaml
     ingress.yaml
-    _helpers.tpl      # reusable template snippets (named templates)
-    NOTES.txt         # post-install message
-  charts/             # vendored dependency charts (subcharts)
+    configmap.yaml
+    _helpers.tpl          # named templates / shared macros
+    NOTES.txt             # post-install instructions
 \`\`\`
 
-## 3 → Templating basics (Go templates + Sprig)
+### templates/deployment.yaml
 
-- Inject a value: \`{{ .Values.replicaCount }}\`
-- Built-in objects: \`{{ .Release.Name }}\`, \`{{ .Chart.Name }}\`, \`{{ .Values.* }}\`
-- Defaults & pipelines: \`{{ .Values.image.tag | default .Chart.AppVersion }}\`
-- Conditionals: \`{{- if .Values.ingress.enabled }} ... {{- end }}\`
-- Loops: \`{{- range .Values.env }} ... {{- end }}\`
-- Named templates (\`_helpers.tpl\`): \`{{ include "mychart.fullname" . }}\`
-- Whitespace control: \`{{-\` trims left, \`-}}\` trims right (avoid stray blank lines).
-
-> [!TIP]
-> **\`helm template\` and \`--dry-run\` are your best friends.** \`helm template ./mychart -f prod-values.yaml\` renders the YAML **locally** so you can see exactly what will be applied — no cluster needed. Always render before you install.
-
-## 4 → The essential commands (the daily loop)
-
-\`\`\`
-helm create mychart                 # scaffold a chart
-helm lint ./mychart                 # static checks
-helm template ./mychart             # render locally (no cluster)
-helm install myrel ./mychart -f prod.yaml      # first install
-helm upgrade myrel ./mychart -f prod.yaml      # apply changes (new revision)
-helm upgrade --install myrel ./mychart         # idempotent install-or-upgrade (CI/CD)
-helm rollback myrel 2               # revert to revision 2
-helm history myrel                  # see revisions
-helm list -A                        # all releases, all namespaces
-helm uninstall myrel                # remove the release
-helm get values myrel               # what values are live?
-\`\`\`
-
-> [!SUCCESS]
-> In CI/CD always use **\`helm upgrade --install\`** — it installs on first run and upgrades thereafter, so the same pipeline step is idempotent. Add \`--atomic\` to auto-rollback on a failed upgrade and \`--wait\` to block until resources are ready.
-
-## 5 → Values & environment overrides (the payoff)
-
-Precedence (lowest → highest): chart \`values.yaml\` → \`-f myvalues.yaml\` (repeatable) → \`--set key=val\`. So:
-
-\`\`\`
-helm upgrade --install api ./api-chart \\
-  -f values-prod.yaml \\
-  --set image.tag=1.8.3 --set replicaCount=6
-\`\`\`
-
-## 6 → Advanced patterns
-
-- **Subcharts & dependencies** — declare in \`Chart.yaml\` \`dependencies:\`, run \`helm dependency update\`. Parent values can override child values under the child's key.
-- **\`_helpers.tpl\` named templates** — DRY labels/names (\`{{ include "app.labels" . }}\`).
-- **Hooks** — \`pre-install\`, \`post-install\`, \`pre-upgrade\`, \`post-delete\` (annotation \`helm.sh/hook\`) for DB migrations/jobs.
-- **\`required\` & \`fail\`** — \`{{ required "image.repository is required" .Values.image.repository }}\` to enforce inputs.
-- **\`tpl\` function** — render a string that itself contains template syntax (config files).
-- **\`lookup\`** — read existing cluster objects at render time.
-- **Library charts** — shareable template-only charts (no resources of their own).
-
-> [!WARNING]
-> **Helm pitfalls:** (1) Changing an immutable field (e.g. a Deployment \`selector\`) makes upgrades fail — you must uninstall/recreate. (2) Secrets in \`values.yaml\` end up in release history in etcd — use **helm-secrets/SOPS** or external secret operators. (3) \`--set\` with dots/commas needs escaping. (4) CRDs aren't upgraded by Helm by default — manage them carefully.
-
-## 7 → How Helm 3 stores state
-
-Helm 3 has **no Tiller** (the Helm-2 in-cluster server was a security problem). Release state is stored as **Secrets** in the release's namespace (\`sh.helm.release.v1.<name>.<rev>\`). \`helm\` talks straight to the K8s API with your kubeconfig.
-
-> [!EU]
-> Helm questions are increasingly common for backend roles touching deployment. Be ready for: *"What problem does Helm solve over raw kubectl?"* (templating + releases + rollback), *"How do you manage per-environment config?"* (values files + precedence), *"How do DB migrations fit a Helm deploy?"* (pre-upgrade hooks / Job), and *"How do you handle a bad release?"* (\`helm rollback\`, or \`--atomic\` to auto-revert). Tie it back to GitOps (Argo CD/Flux render Helm charts).
-`,
-      code: [
-        {
-          lang: 'bash',
-          title: 'A real chart: template + values + the deploy loop',
-          code: `# ---------- templates/deployment.yaml (Go-templated) ----------
-cat <<'YAML'
+\`\`\`yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "api.fullname" . }}
-  labels: {{- include "api.labels" . | nindent 4 }}
+  name: {{ include "mychart.fullname" . }}          # from _helpers.tpl
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "mychart.labels" . | nindent 4 }}   # indent 4 spaces
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
-    matchLabels: {{- include "api.selectorLabels" . | nindent 6 }}
+    matchLabels:
+      {{- include "mychart.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      labels: {{- include "api.selectorLabels" . | nindent 8 }}
+      labels:
+        {{- include "mychart.selectorLabels" . | nindent 8 }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          ports: [{ containerPort: {{ .Values.service.port }} }]
-          {{- if .Values.env }}
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+          {{- if .Values.resources }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
           env:
-            {{- range .Values.env }}
+            - name: SPRING_PROFILES_ACTIVE
+              value: {{ .Values.environment }}
+            {{- range .Values.extraEnv }}
             - name: {{ .name }}
               value: {{ .value | quote }}
             {{- end }}
-          {{- end }}
-YAML
+\`\`\`
 
-# ---------- values.yaml (defaults) ----------
-cat <<'YAML'
+### values.yaml and per-environment overrides
+
+\`\`\`yaml
+# values.yaml — defaults
 replicaCount: 2
+namespace: default
+environment: dev
 image:
-  repository: myreg/payment-api
-  tag: ""              # falls back to Chart.appVersion
-service: { port: 8080 }
-env:
-  - { name: SPRING_PROFILES_ACTIVE, value: prod }
-YAML
+  repository: myrepo/myapp
+  tag: ""  # overridden at deploy time
+service:
+  port: 80
+  targetPort: 8080
+resources:
+  requests: {cpu: "250m", memory: "256Mi"}
+  limits: {cpu: "500m", memory: "512Mi"}
+extraEnv: []
 
-# ---------- the daily loop ----------
-echo "helm lint ./api-chart"
-echo "helm template ./api-chart -f values-prod.yaml   # render & eyeball BEFORE applying"
-echo "helm upgrade --install payment ./api-chart \\\\"
-echo "     -f values-prod.yaml --set image.tag=1.8.3 --atomic --wait"
-echo "helm history payment        # 1 deployed, 2 deployed ..."
-echo "helm rollback payment 1     # instant revert if 1.8.3 misbehaves"`
+---
+# values-prod.yaml — production overrides
+replicaCount: 5
+namespace: production
+environment: prod
+resources:
+  requests: {cpu: "500m", memory: "512Mi"}
+  limits: {cpu: "2000m", memory: "2Gi"}
+extraEnv:
+  - name: LOG_LEVEL
+    value: WARN
+
+# Deploy: helm upgrade --install my-app ./mychart -f values-prod.yaml --set image.tag=1.5.3
+\`\`\`
+
+### Helm Hooks
+
+\`\`\`yaml
+# Run DB migration BEFORE the deployment is updated
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  annotations:
+    "helm.sh/hook": pre-upgrade          # run before upgrade
+    "helm.sh/hook-weight": "-5"           # ordering
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["java", "-jar", "app.jar", "--migrate-only"]
+\`\`\``,
+          code: [
+            `# Helm cheat sheet — most-used commands
+
+# Install / Upgrade
+helm install my-app ./mychart                         # first install
+helm install my-app ./mychart -f values-prod.yaml    # with env overrides
+helm install my-app ./mychart --set image.tag=1.5.3  # inline override
+helm upgrade my-app ./mychart -f values-prod.yaml --set image.tag=1.5.3
+helm upgrade --install my-app ./mychart -f values.yaml  # idempotent: install if not present
+
+# Inspect
+helm list                                    # all releases in current namespace
+helm list -n production                      # specific namespace
+helm status my-app                           # release status
+helm history my-app                          # revision history
+helm get values my-app                       # see currently applied values
+helm get manifest my-app                     # rendered YAML in cluster
+
+# Rollback
+helm rollback my-app                         # to previous version
+helm rollback my-app 3                       # to specific revision
+
+# Dry run / debug
+helm template ./mychart -f values-prod.yaml  # render templates locally
+helm template ./mychart --set image.tag=X | kubectl apply --dry-run=client -f -
+helm lint ./mychart                          # validate chart
+helm upgrade my-app ./mychart --dry-run      # simulate upgrade
+
+# Repositories (public charts)
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+helm search repo bitnami/postgresql
+helm install my-postgres bitnami/postgresql --set auth.password=secret
+
+# Package / push
+helm package ./mychart                       # creates mychart-0.1.0.tgz
+helm push mychart-0.1.0.tgz oci://myregistry.io/charts
+
+# Uninstall
+helm uninstall my-app                        # removes all resources
+helm uninstall my-app --keep-history         # remove but keep history for rollback`
+          ],
+          flashcards: [
+            { q: 'What is Helm and what problem does it solve in Kubernetes?', a: 'Helm is the package manager for Kubernetes. Without Helm: deploying to dev/staging/prod means maintaining near-identical YAML files for each environment — changing a label or image tag requires editing multiple files, drift creeps in. Helm: templates the YAML with Go templating; a values.yaml provides defaults; per-environment values files (values-prod.yaml) override just what differs. helm upgrade --install is idempotent (install if not present, upgrade if present). Also enables: rollback (helm rollback), release history, sharing via registries (like bitnami charts for postgres, redis).' },
+            { q: 'What is the difference between helm install and helm upgrade?', a: 'helm install: creates a brand new release. Fails if the release already exists. helm upgrade: updates an existing release to a new chart version or new values. Fails if the release doesn\'t exist. helm upgrade --install: idempotent — installs if missing, upgrades if present. This is what CI/CD pipelines use. Each upgrade creates a new revision. helm rollback my-app reverts to the previous revision. helm rollback my-app 3 reverts to a specific revision. Revision history is stored as Secrets in the same namespace.' },
+            { q: 'How do Helm hooks work and why is pre-upgrade used for DB migrations?', a: 'Helm hooks are resources with "helm.sh/hook" annotations that run at specific lifecycle points: pre-install, post-install, pre-upgrade, post-upgrade, pre-delete, post-delete. pre-upgrade: runs BEFORE the new Deployment is rolled out — perfect for DB migrations. If the migration Job fails, the upgrade aborts — the old version keeps running. Without hooks: migration runs as an init container (same rollout, race condition) or separately (deployment order not guaranteed). "helm.sh/hook-delete-policy": hook-succeeded cleans up completed Jobs. "helm.sh/hook-weight" orders multiple hooks.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What problem does Helm solve over plain kubectl apply?', a: 'It templates manifests so one chart serves many environments via values files, and it manages releases as versioned units you can upgrade and roll back — instead of copy-pasting and hand-editing YAML per environment.' },
-        { q: 'Explain Helm value precedence.', a: 'Lowest to highest: the chart\'s default values.yaml, then any -f override files (later files win), then --set flags (highest). Higher-precedence sources override lower ones key by key.' },
-        { q: 'Why use "helm upgrade --install" in CI/CD?', a: 'It\'s idempotent: installs the release on first run and upgrades it on subsequent runs, so the same pipeline step works every time. Add --atomic to auto-rollback on failure and --wait to block until resources are ready.' },
-        { q: 'How does Helm 3 store release state and why no Tiller?', a: 'Release state is stored as Secrets in the release namespace (sh.helm.release.v1.*). Helm 3 removed Tiller (the Helm 2 in-cluster server) because it was a security/RBAC liability; the CLI now uses your kubeconfig directly.' },
-        { q: 'How do you run a DB migration as part of a Helm deploy?', a: 'Use a Helm hook — annotate a Job with helm.sh/hook: pre-upgrade (or pre-install) so it runs before the new app version rolls out, with hook-weight to order multiple hooks.' },
-        { q: 'Name two common Helm pitfalls.', a: 'Secrets placed in values.yaml end up in release history in etcd (use SOPS/helm-secrets/external secrets); and changing immutable fields like a Deployment selector breaks upgrades, requiring uninstall/recreate. Also CRDs aren\'t auto-upgraded by Helm.' }
       ]
     },
 
@@ -25072,277 +25617,677 @@ echo "helm rollback payment 1     # instant revert if 1.8.3 misbehaves"`
       id: '7.4',
       title: 'CI/CD & GitOps',
       hours: 3,
-      notes: `
-# CI/CD & GitOps
-
-Automate build → test → package → deploy so changes ship safely and repeatably.
-
-## The pipeline
-
-1. **CI** — on push/PR: compile, unit + integration tests, static analysis (SonarQube), build artifact, **build & scan image**, push to registry.
-2. **CD** — deploy to staging, run smoke/e2e tests, promote to prod with a safe strategy.
-
-## Deployment strategies
-
-- **Rolling** — replace pods gradually (K8s default). Zero downtime if readiness probes are set.
-- **Blue-green** — stand up new version alongside old, switch traffic at once; instant rollback.
-- **Canary** — route a small % to the new version, watch metrics, ramp up.
-
-## GitOps
-
-> [!TIP]
-> **GitOps** (Argo CD / Flux): Git is the **single source of truth** for desired cluster state. An in-cluster agent continuously syncs the cluster to the repo. Benefits: auditable history, easy rollback (\`git revert\`), no manual \`kubectl\`/credentials sprawl, drift detection. Often renders **Helm charts** or Kustomize.
-
-## Quality gates & safety
-
-- Required tests + coverage thresholds before merge.
-- Image vulnerability scanning (Trivy) blocks criticals.
-- Progressive delivery + automated rollback on SLO breach.
-- Secrets via Vault/sealed-secrets/external-secrets — never in the repo.
-
-> [!WARNING]
-> Pipelines need least-privilege credentials and signed/provenance-tracked artifacts (supply-chain security — SLSA, Sigstore). A compromised CI runner can push malicious images.
-
-> [!EU]
-> Expect: *"Describe your CI/CD pipeline."* Walk build→test→scan→package→deploy with a named strategy (rolling/canary) and rollback plan. Bonus points for GitOps, trunk-based development, and how you keep deploys safe (feature flags, progressive rollout, observability).
-`,
-      code: [
+      sections: [
         {
-          lang: 'bash',
-          title: 'A CI/CD pipeline outline (GitHub Actions style)',
-          code: `cat <<'YAML'
-# .github/workflows/deploy.yml
-name: build-test-deploy
-on: { push: { branches: [main] } }
+          title: 'CI/CD Pipelines & GitOps with GitHub Actions',
+          notes: `## CI/CD Pipelines & GitOps with GitHub Actions
+
+### CI/CD Philosophy
+
+\`\`\`
+CI (Continuous Integration): every push → build + test automatically
+  → Catch bugs immediately, not weeks later
+  → Everyone integrates small changes frequently (not big bang merges)
+
+CD (Continuous Delivery): every green build → deployable artifact ready
+  → Deploy to staging automatically; prod is one human click
+
+CD (Continuous Deployment): every green build → automatically deployed to prod
+  → High trust in test suite; feature flags control rollout
+
+CI/CD Pipeline stages:
+  1. Lint + compile         → catch syntax/type errors
+  2. Unit tests             → fast (< 2 min)
+  3. Build Docker image     → tag with git SHA
+  4. Push to registry       → available to deploy
+  5. Deploy to staging      → smoke test
+  6. Integration tests      → API contract tests
+  7. Deploy to production   → rolling update
+\`\`\`
+
+### GitHub Actions — Spring Boot CI
+
+\`\`\`yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: 21, cache: maven }
-      - run: mvn -B clean verify              # compile + unit + integration tests
-      - run: docker build -t $REG/api:$GIT_SHA .
-      - run: trivy image --exit-code 1 --severity CRITICAL $REG/api:$GIT_SHA   # gate
-      - run: docker push $REG/api:$GIT_SHA
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          helm upgrade --install api ./charts/api \\
-            -f charts/api/values-prod.yaml \\
-            --set image.tag=$GIT_SHA \\
-            --atomic --wait --timeout 5m       # auto-rollback if it fails
-YAML
-echo ""
-echo "GitOps alternative: the pipeline only bumps image.tag in a Git repo;"
-echo "Argo CD detects the commit and syncs the cluster to match. Rollback = git revert."`
-        }
-      ],
-      flashcards: [
-        { q: 'Rolling vs blue-green vs canary deployments?', a: 'Rolling gradually replaces old pods with new (zero-downtime with readiness probes). Blue-green runs new alongside old and switches all traffic at once (instant rollback). Canary sends a small traffic % to the new version, monitors, then ramps up.' },
-        { q: 'What is GitOps?', a: 'A model where Git is the single source of truth for desired cluster state and an in-cluster agent (Argo CD/Flux) continuously reconciles the cluster to the repo. It gives auditability, easy rollback via git revert, and drift detection.' },
-        { q: 'What quality gates belong in a CI pipeline?', a: 'Automated unit/integration tests with coverage thresholds, static analysis, and image vulnerability scanning that blocks critical CVEs — all required before an artifact is promoted/deployed.' },
-        { q: 'Why does supply-chain security matter in CI/CD?', a: 'A compromised CI runner or dependency can inject malicious code into images you deploy. Mitigate with least-privilege credentials, dependency/image scanning, artifact signing and provenance (Sigstore, SLSA).' }
-      ]
-    }
-  ]
-},
+        with: {java-version: '21', distribution: 'temurin'}
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: \${{ runner.os }}-maven-\${{ hashFiles('**/pom.xml') }}
 
-/* ===================== PHASE 8: Camunda & BPMN ===================== */
-{
-  id: 'p8',
-  title: 'Camunda & Process Orchestration',
-  icon: 'workflow',
-  blurb: 'BPMN-driven workflow orchestration, Camunda 7 vs 8, and how it fits microservice sagas.',
-  modules: [
+      - name: Build and test
+        run: mvn -B clean verify
+
+      - name: Build Docker image
+        run: |
+          docker build -t myapp:\${{ github.sha }} .
+          echo "IMAGE_TAG=\${{ github.sha }}" >> \$GITHUB_ENV
+
+      - name: Push to registry
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo \${{ secrets.REGISTRY_PASSWORD }} | docker login registry.io -u \${{ secrets.REGISTRY_USER }} --password-stdin
+          docker push registry.io/myapp:\${{ github.sha }}
+          docker tag registry.io/myapp:\${{ github.sha }} registry.io/myapp:latest
+          docker push registry.io/myapp:latest
+
+  deploy-staging:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to staging
+        run: |
+          helm upgrade --install myapp ./helm/mychart \
+            -f helm/values-staging.yaml \
+            --set image.tag=\${{ github.sha }} \
+            --namespace staging
+        env:
+          KUBECONFIG: \${{ secrets.STAGING_KUBECONFIG }}
+\`\`\`
+
+### GitOps with ArgoCD
+
+\`\`\`
+Traditional CD: CI pipeline SSHes into server or runs kubectl directly
+  Problem: cluster state diverges from repo; hard to audit; rollback = re-run pipeline
+
+GitOps: Git is the single source of truth for cluster state
+  ArgoCD (or Flux) watches a Git repo; cluster state ALWAYS matches repo
+
+  Developer pushes code → CI builds image → CI opens PR to update image tag in git
+  ArgoCD watches the git repo → sees new tag → deploys to cluster
+
+  Benefits:
+  - Full audit log (git history)
+  - Rollback = git revert (PR)
+  - Cluster drift detected and auto-corrected
+  - No CI pipeline has cluster credentials — only ArgoCD does
+
+# ArgoCD Application manifest (declarative)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: myapp
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/org/k8s-configs
+    path: apps/myapp
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true     # delete resources removed from git
+      selfHeal: true  # revert manual kubectl changes
+\`\`\``,
+          code: [
+            `# Complete GitHub Actions CI/CD pipeline for Spring Boot + Docker + Kubernetes
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: \${{ github.repository }}
+
+jobs:
+  # ─── Job 1: Test ───────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run tests
+        run: mvn -B clean verify
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/testdb
+          SPRING_DATASOURCE_USERNAME: test
+          SPRING_DATASOURCE_PASSWORD: test
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: target/surefire-reports/
+
+  # ─── Job 2: Build & push image (main branch only) ────────────
+  build-and-push:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: \${{ steps.meta.outputs.tags }}
+      image-digest: \${{ steps.push.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: \${{ env.REGISTRY }}
+          username: \${{ github.actor }}
+          password: \${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: \${{ env.REGISTRY }}/\${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: \${{ steps.meta.outputs.tags }}
+          labels: \${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── Job 3: Deploy to production ──────────────────────────────
+  deploy:
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production  # requires manual approval if configured
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "\${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+
+      - name: Deploy via Helm
+        run: |
+          helm upgrade --install myapp ./helm/mychart \
+            --namespace production \
+            --create-namespace \
+            -f helm/values-prod.yaml \
+            --set image.tag=sha-\${{ github.sha }} \
+            --wait \
+            --timeout 5m
+
+      - name: Smoke test
+        run: |
+          kubectl rollout status deployment/myapp -n production --timeout=5m
+          curl -f https://myapp.example.com/actuator/health || exit 1`
+          ],
+          flashcards: [
+            { q: 'What is the difference between CI, CD (Delivery), and CD (Deployment)?', a: 'Continuous Integration: every push triggers automated build + tests — fast feedback on integration issues. Continuous Delivery: every green CI build produces a deployable artifact; deployment to production is triggered manually (one click). Suitable when production deployment needs human sign-off or change approval. Continuous Deployment: every green CI build is automatically deployed to production with no human gate. Requires high confidence in the test suite and feature flags for risky changes. Most enterprises use Continuous Delivery. SaaS/startups often use Continuous Deployment.' },
+            { q: 'What is GitOps and how is it different from traditional CI/CD deployment?', a: 'Traditional CD: the CI pipeline pushes directly to the cluster (kubectl apply, SSH, or Helm from the CI runner). The cluster state diverges from what\'s in git — hard to audit, rollback = re-run pipeline. GitOps: Git is the single source of truth. Tools like ArgoCD or Flux watch the git repo and continuously sync cluster state to match. Developer pushes code → CI builds image → CI updates the image tag in the git config repo → ArgoCD sees the change and deploys. Rollback = git revert. Drift detection: ArgoCD can auto-correct manual kubectl changes (selfHeal). CI pipeline never has cluster credentials.' },
+            { q: 'How do you pass secrets securely in GitHub Actions?', a: 'Store in GitHub Secrets (repository or environment-level): Settings → Secrets and Variables → Actions. Reference in workflow as ${{ secrets.MY_SECRET }}. Secrets are masked in logs and never exposed to forks (PRs from forks don\'t get secrets by default). Environment secrets: attach to an environment (e.g. "production") and require manual approval gate before that job runs. Never: hardcode secrets in YAML, print them with echo, store in repo files. For external secret managers: Vault, AWS Secrets Manager, or Kubernetes External Secrets Operator pull secrets at deploy time rather than storing them in GitHub.' }
+          ]
+        }
+      ]
+    },
+
     {
       id: '8.1',
       title: 'BPMN & Workflow Fundamentals',
       hours: 3,
-      notes: `
-# BPMN & Workflow Orchestration
-
-**BPMN 2.0** (Business Process Model and Notation) is a standard graphical language for modelling business processes as executable diagrams. **Camunda** executes BPMN: it's a workflow/orchestration engine that drives long-running, stateful processes across services and humans.
-
-## Why a process engine?
-
-Some logic is **long-running, stateful, and must survive crashes**: an onboarding that waits days for approval, an order that orchestrates payment → inventory → shipping with compensation. Encoding this in scattered \`if/else\` + cron + DB flags is fragile. A BPMN engine gives you:
-
-- **Persistent state** — each process instance's position is stored; survives restarts.
-- **Visual model = executable** — the diagram *is* the source of truth (great for business + dev alignment).
-- **Timers, retries, error/compensation handling** built in.
-- **Auditability** — full history of every instance.
-
-## Core BPMN elements
-
-| Element | Meaning |
-|---------|---------|
-| **Start / End event** | process entry / completion |
-| **Task** | a unit of work: *User task* (human), *Service task* (code/worker), *Script task* |
-| **Gateway** | branching: *exclusive* (XOR, one path), *parallel* (AND, all paths), *inclusive*, *event-based* |
-| **Sequence flow** | arrows connecting steps (can carry conditions) |
-| **Event** | timer, message, signal, error — start/intermediate/boundary |
-| **Pool / Lane** | participant / responsibility |
-
-## Boundary events & compensation
-
-A **boundary event** attached to a task handles a timeout or error (e.g. escalate if approval not given in 2 days). **Compensation** events model "undo" — the BPMN-native saga (ties to Phase 6).
-
-> [!TIP]
-> Camunda shines as a **saga orchestrator**: model the order saga in BPMN with service tasks calling each microservice and compensation tasks for rollback. You get visual monitoring of in-flight sagas and automatic retry/timeout — far clearer than choreography for complex flows.
-
-> [!EU]
-> Camunda is widely used in **European enterprises** (banking, insurance, telco — many Camunda customers are DACH/EU). For roles mentioning it, know: BPMN basics, what a process engine buys you over hand-rolled state machines, and Camunda 7 vs 8.
-`,
-      code: [
+      sections: [
         {
-          lang: 'java',
-          title: 'A service-task worker (external task pattern)',
-          code: `import java.util.*;
+          title: 'BPMN 2.0 — Business Process Model & Notation',
+          notes: `## BPMN 2.0 — Business Process Model & Notation
 
-// Conceptual model of a Camunda "external task" worker that handles a service task.
-public class CamundaWorkerDemo {
-    // The engine holds process state; workers poll for jobs of a given topic.
-    record Job(String topic, String processInstanceId, Map<String,Object> vars) {}
+### What is BPMN?
 
-    static Map<String,Object> handleChargePayment(Job job) {
-        int amount = (int) job.vars().get("amount");
-        System.out.println("[worker:charge-payment] instance " + job.processInstanceId() +
-                           " charging " + amount + "c");
-        boolean ok = amount < 100_000;            // pretend gateway
-        // Worker reports completion + output variables back to the engine
-        return Map.of("paymentSucceeded", ok, "receiptId", "R-" + UUID.randomUUID());
+\`\`\`
+BPMN (Business Process Model and Notation) is a standard for visually describing
+business processes. Bridges the gap between business analysts and developers.
+
+Why use it?
+  - Visual → business stakeholders and developers read the same diagram
+  - Standard → tools like Camunda, Flowable, jBPM all execute BPMN XML
+  - Durable → long-running processes survive server restarts (state in DB)
+  - Auditable → each step is logged (when, who, how long)
+\`\`\`
+
+### Core BPMN Elements
+
+\`\`\`
+Events (circles):
+  ○ Start Event        — where the process begins
+  ◎ Intermediate Event — something happens mid-process (timer, message, signal)
+  ● End Event          — where the process ends
+
+Tasks (rectangles):
+  [Service Task]   — automated step (Java code / API call)
+  [User Task]      — human completes a form in a UI
+  [Script Task]    — inline script (Groovy/JS)
+  [Send Task]      — sends a message (email, Kafka)
+  [Receive Task]   — waits for an incoming message
+
+Gateways (diamonds):
+  ◇ Exclusive (XOR) — exactly ONE path based on condition (if/else)
+  ◈ Parallel  (AND) — ALL paths execute simultaneously
+  ⊕ Inclusive (OR)  — ONE OR MORE paths based on conditions
+
+Subprocesses:
+  [+Subprocess]    — group of tasks collapsed into one box
+  ⟳ Multi-instance — repeat subprocess per item in a collection (like a for-each)
+\`\`\`
+
+### Sample Process: Order Fulfillment
+
+\`\`\`
+○ Order Received
+    │
+[Service] Validate Order ────(fail)──→ ● Order Rejected
+    │(pass)
+[Service] Reserve Inventory
+    │
+◇ Stock Available?
+  ├─(yes)─→ [Service] Charge Payment
+  │              │
+  │          ◇ Payment OK?
+  │            ├─(yes)─→ [Service] Ship Order → ● Order Complete
+  │            └─(no) ─→ [Service] Release Stock → ● Order Failed
+  └─(no) ─→ [User] Notify Customer → [Receive] Wait for Response
+                 │
+             ◇ Customer wants backorder?
+               ├─(yes)→ [Service] Create Backorder → ● Backordered
+               └─(no) → ● Order Cancelled
+\`\`\`
+
+### BPMN in XML (Camunda compatible)
+
+\`\`\`xml
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+             targetNamespace="http://mycompany.com/processes">
+
+  <process id="order-fulfillment" name="Order Fulfillment" isExecutable="true">
+
+    <startEvent id="start" name="Order Received">
+      <outgoing>flow1</outgoing>
+    </startEvent>
+
+    <serviceTask id="validate" name="Validate Order"
+                 camunda:class="com.company.delegate.ValidateOrderDelegate">
+      <incoming>flow1</incoming>
+      <outgoing>flow2</outgoing>
+    </serviceTask>
+
+    <exclusiveGateway id="gw-stock" name="Stock Available?">
+      <incoming>flow2</incoming>
+      <outgoing>flow-yes</outgoing>
+      <outgoing>flow-no</outgoing>
+    </exclusiveGateway>
+
+    <sequenceFlow id="flow-yes" sourceRef="gw-stock" targetRef="charge-payment">
+      <conditionExpression>\${stockAvailable == true}</conditionExpression>
+    </sequenceFlow>
+
+    <serviceTask id="charge-payment" name="Charge Payment"
+                 camunda:delegateExpression="\${paymentDelegate}">
+      <incoming>flow-yes</incoming>
+      <outgoing>flow3</outgoing>
+    </serviceTask>
+
+    <endEvent id="end-complete" name="Order Complete">
+      <incoming>flow3</incoming>
+    </endEvent>
+
+  </process>
+</definitions>
+\`\`\``,
+          code: [
+            `import org.camunda.bpm.engine.delegate.*;
+import org.springframework.stereotype.*;
+
+// Camunda JavaDelegate — implements a Service Task in BPMN
+@Component("validateOrderDelegate")
+public class ValidateOrderDelegate implements JavaDelegate {
+
+    @Override
+    public void execute(DelegateExecution execution) throws Exception {
+        // Read process variables (set when process started)
+        String orderId = (String) execution.getVariable("orderId");
+        Long customerId = (Long) execution.getVariable("customerId");
+        Double amount = (Double) execution.getVariable("amount");
+
+        System.out.println("[BPMN] Validating order: " + orderId);
+
+        // Business logic
+        boolean valid = orderId != null
+            && customerId != null
+            && amount != null
+            && amount > 0;
+
+        // Set output variables — used by gateways and later tasks
+        execution.setVariable("orderValid", valid);
+
+        if (!valid) {
+            execution.setVariable("rejectReason", "Missing required fields or invalid amount");
+            System.out.println("[BPMN] Order invalid: " + execution.getVariable("rejectReason"));
+        } else {
+            System.out.println("[BPMN] Order valid — amount: " + amount);
+        }
     }
+}
 
-    public static void main(String[] args) {
-        // Engine -> worker: a fetched-and-locked external task
-        Job job = new Job("charge-payment", "order-42", Map.of("amount", 4999));
-        Map<String,Object> result = handleChargePayment(job);
-        System.out.println("Completed task -> engine continues BPMN with vars: " + result);
+// Inventory check delegate
+@Component("inventoryDelegate")
+class InventoryDelegate implements JavaDelegate {
+    @Override
+    public void execute(DelegateExecution execution) throws Exception {
+        String productId = (String) execution.getVariable("productId");
+        int qty = ((Number) execution.getVariable("quantity")).intValue();
 
-        // The BPMN exclusive gateway then routes on 'paymentSucceeded':
-        boolean ok = (boolean) result.get("paymentSucceeded");
-        System.out.println("Gateway routes to: " + (ok ? "reserve-inventory" : "compensate/notify-failure"));
+        // Check stock (simplified)
+        int available = 50; // would query DB in real code
+        boolean inStock = available >= qty;
+
+        execution.setVariable("stockAvailable", inStock);
+        if (inStock) {
+            execution.setVariable("reservationId", "RES-" + productId + "-" + qty);
+            System.out.println("[BPMN] Reserved " + qty + " units of " + productId);
+        } else {
+            System.out.println("[BPMN] Out of stock: " + productId + " needs " + qty);
+        }
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What are the three types of BPMN gateways and when do you use each?', a: 'Exclusive (XOR) gateway: exactly ONE outgoing path is taken based on a condition — like an if/else. Each outgoing sequence flow has a condition expression; the first matching one wins. Use for branching decisions (is payment approved?). Parallel (AND) gateway: ALL outgoing paths execute simultaneously — like fork/join. Use when multiple steps can happen concurrently (send email AND notify warehouse at the same time). A matching join gateway waits for ALL branches before continuing. Inclusive (OR) gateway: ONE OR MORE paths execute based on conditions — like multiple if statements where several can be true. More flexible than XOR but complex to reason about; use sparingly.' },
+            { q: 'What is a Service Task in BPMN and how does it execute in Camunda?', a: 'A Service Task is an automated step — no human interaction. In Camunda it can be implemented three ways: (1) JavaDelegate: implement JavaDelegate interface, annotate with @Component, reference via camunda:delegateExpression="${myBean}". Most common in Spring. (2) Class: camunda:class="com.example.MyDelegate" — Camunda instantiates the class directly, no Spring injection. (3) External Task: camunda engine creates a job, a separate worker polls and completes it (good for polyglot, works across network). JavaDelegate gets a DelegateExecution to read/write process variables and query task metadata.' },
+            { q: 'Why use a workflow engine (Camunda/Flowable) instead of just code?', a: 'Regular code: long-running processes (e.g. order → payment → shipping → delivery over days) require complex state management. If the server restarts, in-memory state is lost. Manual retry logic for failures. No visibility into where a process is stuck. Workflow engine solves this: state is persisted to DB after each step — processes survive restarts. Visual: business analysts can read and edit the BPMN diagram. Audit log: every task completion is recorded with timestamps. Human tasks: user tasks assign work items to people via a task inbox. Timers: "escalate if not approved within 48h." SLAs and monitoring built in.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'What does a process/workflow engine like Camunda give you over hand-rolled logic?', a: 'Persistent, crash-safe process state; a visual BPMN model that is itself executable; built-in timers, retries, error and compensation handling; and full audit history of every instance — ideal for long-running, stateful flows.' },
-        { q: 'Name the main BPMN gateway types.', a: 'Exclusive (XOR — exactly one outgoing path based on conditions), Parallel (AND — all paths concurrently, join waits for all), Inclusive (one or more), and Event-based (route on which event occurs first).' },
-        { q: 'How does Camunda relate to the saga pattern?', a: 'Camunda acts as a saga orchestrator: BPMN service tasks invoke each microservice in sequence and compensation events/tasks model the rollback, giving visual monitoring, retries, and timeouts for distributed transactions.' },
-        { q: 'What is a boundary event?', a: 'An event attached to the edge of a task/subprocess that interrupts or runs alongside it — e.g. a timer boundary event to escalate after a deadline, or an error boundary event to handle a failure path.' }
       ]
     },
 
     {
       id: '8.2',
       title: 'Camunda 7 vs 8 & Spring Integration',
-      hours: 3,
-      notes: `
-# Camunda 7 vs 8 & Spring Integration
-
-## Camunda Platform 7 (the classic)
-
-- **Embeddable** Java library — runs **inside** your Spring Boot app, sharing its JVM and (often) its relational DB for process state.
-- Engine executes BPMN; service tasks via Java delegates or **external task** workers.
-- Mature, simple to embed, JPA-friendly. Great for monoliths/single-service orchestration.
-
-## Camunda Platform 8 (cloud-native)
-
-- Built on **Zeebe** — a horizontally scalable, distributed workflow engine (no relational DB; event-sourced, partitioned like Kafka).
-- **Job workers** poll over gRPC; designed for high-throughput, microservice-scale orchestration.
-- SaaS or self-managed (k8s). Decoupled from your app's JVM/DB.
-
-| | Camunda 7 | Camunda 8 (Zeebe) |
-|--|-----------|-------------------|
-| Deployment | embedded in your JVM | standalone distributed engine |
-| State store | relational DB (shared) | event log, partitioned |
-| Scale | vertical / single engine | horizontal, partitioned |
-| Worker protocol | Java delegate / external task (REST) | job workers over gRPC |
-| Best for | monolith, embedded orchestration | cloud-native microservices at scale |
-
-> [!TIP]
-> **Migration awareness** is a great talking point: many EU enterprises are moving from Camunda 7 (embedded) to 8 (Zeebe) for scalability and to decouple orchestration from the application. Know that 8 trades the convenient shared-DB embedding for distributed scale.
-
-## Spring Boot integration (Camunda 7)
-
-Add the starter, drop \`.bpmn\` files in \`resources/\`, implement service tasks as Spring beans (\`JavaDelegate\`) or external workers, and use the engine's APIs (\`RuntimeService\`, \`TaskService\`) to start/manage instances.
-
-> [!WARNING]
-> Keep service tasks **idempotent** — the engine retries failed jobs, and at-least-once execution means a task may run more than once. Same discipline as Kafka consumers (Phase 6).
-
-> [!EU]
-> If a JD lists Camunda, expect: *"7 vs 8 — what's the difference?"*, *"How do you integrate Camunda with Spring Boot?"*, and *"How does it help with distributed transactions?"* (orchestrated saga + compensation). Connect it to your microservice and messaging knowledge.
-`,
-      code: [
+      hours: 4,
+      sections: [
         {
-          lang: 'java',
-          title: 'JavaDelegate service task + idempotency (Camunda 7 style)',
-          code: `import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+          title: 'Camunda 7 vs 8 & Spring Boot Integration',
+          notes: `## Camunda 7 vs 8 & Spring Boot Integration
 
-// Sketch of a Camunda 7 JavaDelegate. The engine calls execute() for a service task.
-public class SpringDelegateDemo {
-    interface DelegateExecution {
-        String getProcessInstanceId();
-        Object getVariable(String name);
-        void setVariable(String name, Object value);
+### Camunda 7 vs Camunda 8
+
+\`\`\`
+Camunda 7 (embedded):
+  ├── Engine runs INSIDE your Spring Boot application
+  ├── Uses your application's database (tables: ACT_*)
+  ├── Spring bean injection works in delegates
+  ├── Simple to start: add spring-boot-starter to pom.xml
+  ├── Task management: Spring @Transactional + engine transaction
+  └── Free for community use; Enterprise for advanced features
+
+Camunda 8 (Zeebe — standalone):
+  ├── Separate gRPC-based cluster (Zeebe broker, Operate, Tasklist)
+  ├── No shared database — Zeebe has its own event log
+  ├── Delegates replaced by: Job Workers (external tasks via gRPC)
+  ├── No Spring bean injection in workers (separate service)
+  ├── SaaS: Camunda Cloud; Self-managed: Helm charts
+  └── Designed for high throughput, cloud-native
+
+Choose Camunda 7: existing Spring monolith, RDBMS, team knows it
+Choose Camunda 8: new greenfield, cloud-native, high scale (100k+ processes/day)
+\`\`\`
+
+### Camunda 7 — Spring Boot Setup
+
+\`\`\`xml
+<!-- pom.xml -->
+<dependency>
+  <groupId>org.camunda.bpm.springboot</groupId>
+  <artifactId>camunda-bpm-spring-boot-starter</artifactId>
+  <version>7.21.0</version>
+</dependency>
+<dependency>
+  <groupId>org.camunda.bpm.springboot</groupId>
+  <artifactId>camunda-bpm-spring-boot-starter-rest</artifactId>
+  <version>7.21.0</version>
+</dependency>
+<!-- Database: H2 for dev, PostgreSQL for prod -->
+\`\`\`
+
+\`\`\`yaml
+# application.yml
+camunda.bpm:
+  admin-user:
+    id: admin
+    password: admin
+  history-level: full              # audit log detail
+  auto-deployment-enabled: true    # deploy BPMN from classpath on startup
+  database:
+    schema-update: true            # create ACT_* tables automatically
+\`\`\`
+
+### Starting and Querying Processes
+
+\`\`\`java
+@Service
+public class OrderProcessService {
+    private final RuntimeService runtimeService;
+    private final TaskService taskService;
+    private final HistoryService historyService;
+
+    // Start a process instance
+    public String startOrderProcess(Order order) {
+        Map<String, Object> variables = Map.of(
+            "orderId",    order.getId(),
+            "customerId", order.getCustomerId(),
+            "amount",     order.getAmount(),
+            "productId",  order.getProductId(),
+            "quantity",   order.getQuantity()
+        );
+        ProcessInstance instance = runtimeService.startProcessInstanceByKey(
+            "order-fulfillment",   // process id in BPMN
+            order.getId(),         // business key (unique per process)
+            variables
+        );
+        return instance.getId();
     }
 
-    // Idempotency guard: the engine may retry, so dedupe by instance id
-    static final Set<String> charged = ConcurrentHashMap.newKeySet();
+    // Query where a process is now
+    public String getProcessStatus(String processInstanceId) {
+        // Active instance
+        ProcessInstance pi = runtimeService.createProcessInstanceQuery()
+            .processInstanceId(processInstanceId)
+            .singleResult();
+        if (pi != null) {
+            // Get current activity
+            List<String> activities = runtimeService.getActiveActivityIds(processInstanceId);
+            return "RUNNING at: " + activities;
+        }
+        // Completed instance — query history
+        HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
+            .processInstanceId(processInstanceId)
+            .singleResult();
+        return hpi != null ? "COMPLETED: " + hpi.getEndTime() : "NOT FOUND";
+    }
 
-    // @Component("chargePaymentDelegate")  -> referenced in BPMN: camunda:delegateExpression
-    static class ChargePaymentDelegate {
-        public void execute(DelegateExecution ex) {
-            String id = ex.getProcessInstanceId();
-            if (!charged.add(id)) {                      // already done on a prior retry
-                System.out.println("Instance " + id + " already charged -> skip (idempotent)");
-                ex.setVariable("paymentSucceeded", true);
-                return;
-            }
-            int amount = (int) ex.getVariable("amount");
-            System.out.println("Charging instance " + id + " amount=" + amount);
-            ex.setVariable("paymentSucceeded", true);    // engine routes the next gateway on this
+    // Complete a User Task (from a human)
+    public void completeUserTask(String taskId, Map<String, Object> variables) {
+        Task task = taskService.createTaskQuery()
+            .taskId(taskId).singleResult();
+        if (task == null) throw new IllegalArgumentException("Task not found: " + taskId);
+        taskService.complete(taskId, variables);
+    }
+}
+\`\`\`
+
+### Camunda 8 — Job Worker Pattern
+
+\`\`\`java
+// Camunda 8 — no embedded engine; workers poll via gRPC
+@Component
+public class ValidateOrderWorker {
+    @JobWorker(type = "validate-order")
+    public void handleValidation(final JobClient client, final ActivatedJob job) {
+        String orderId = job.getVariable("orderId").toString();
+        boolean valid = orderId != null && !orderId.isEmpty();
+
+        if (valid) {
+            client.newCompleteCommand(job.getKey())
+                .variable("orderValid", true)
+                .send().join();
+        } else {
+            client.newFailCommand(job.getKey())
+                .retries(0)
+                .errorMessage("Invalid orderId")
+                .send().join();
         }
     }
+}
+\`\`\``,
+          code: [
+            `// Full Camunda 7 + Spring Boot example
+// Assumes BPMN file "order-fulfillment.bpmn" in src/main/resources/
+import org.camunda.bpm.engine.*;
+import org.camunda.bpm.engine.runtime.*;
+import org.camunda.bpm.engine.task.*;
+import org.camunda.bpm.engine.delegate.*;
+import org.springframework.stereotype.*;
+import org.springframework.web.bind.annotation.*;
+import java.util.*;
 
-    // Minimal in-memory execution to demonstrate the retry/idempotency behaviour
-    public static void main(String[] args) {
-        var vars = new HashMap<String,Object>(Map.of("amount", 2500));
-        DelegateExecution ex = new DelegateExecution() {
-            public String getProcessInstanceId() { return "proc-7"; }
-            public Object getVariable(String n) { return vars.get(n); }
-            public void setVariable(String n, Object v) { vars.put(n, v); }
-        };
-        var delegate = new ChargePaymentDelegate();
-        delegate.execute(ex);       // first run: charges
-        delegate.execute(ex);       // engine retry: skipped, no double charge
-        System.out.println("Final vars: " + vars);
+// 1. Process starter
+@RestController @RequestMapping("/api/orders")
+class OrderProcessController {
+    private final RuntimeService runtimeService;
+    private final TaskService taskService;
+
+    OrderProcessController(RuntimeService rs, TaskService ts) {
+        this.runtimeService = rs;
+        this.taskService = ts;
+    }
+
+    @PostMapping("/start")
+    Map<String, String> startProcess(@RequestBody Map<String, Object> req) {
+        ProcessInstance pi = runtimeService.startProcessInstanceByKey(
+            "order-fulfillment",
+            req.get("orderId").toString(),
+            req
+        );
+        return Map.of("processInstanceId", pi.getId(), "businessKey", pi.getBusinessKey());
+    }
+
+    @GetMapping("/{businessKey}/tasks")
+    List<Map<String, Object>> getPendingTasks(@PathVariable String businessKey) {
+        return taskService.createTaskQuery()
+            .processInstanceBusinessKey(businessKey)
+            .list()
+            .stream()
+            .map(t -> Map.of("taskId", t.getId(), "name", t.getName(),
+                "assignee", t.getAssignee() != null ? t.getAssignee() : "unassigned"))
+            .toList();
+    }
+
+    @PostMapping("/tasks/{taskId}/complete")
+    void completeTask(@PathVariable String taskId,
+                      @RequestBody Map<String, Object> variables) {
+        taskService.complete(taskId, variables);
+    }
+}
+
+// 2. Service Task Delegate
+@Component("paymentDelegate")
+class PaymentDelegate implements JavaDelegate {
+    @Override
+    public void execute(DelegateExecution ex) throws Exception {
+        Double amount = (Double) ex.getVariable("amount");
+        String customerId = (String) ex.getVariable("customerId");
+
+        // Simulate payment
+        boolean success = amount < 10000;
+        ex.setVariable("paymentSuccessful", success);
+        if (success) {
+            ex.setVariable("paymentId", "PAY-" + customerId + "-" + (int)(amount*100));
+            System.out.println("[DELEGATE] Payment charged: " + amount);
+        } else {
+            ex.setVariable("paymentError", "Exceeds daily limit");
+            System.out.println("[DELEGATE] Payment rejected: " + amount);
+        }
+    }
+}
+
+// 3. Process Event Listener
+@Component
+class OrderProcessListener implements org.camunda.bpm.engine.delegate.ExecutionListener {
+    @Override
+    public void notify(DelegateExecution ex) throws Exception {
+        if ("end".equals(ex.getEventName())) {
+            System.out.println("[LISTENER] Process ended: " + ex.getProcessInstanceId()
+                + " | orderValid=" + ex.getVariable("orderValid")
+                + " | paymentSuccessful=" + ex.getVariable("paymentSuccessful"));
+        }
     }
 }`
+          ],
+          flashcards: [
+            { q: 'What are the main architectural differences between Camunda 7 and Camunda 8?', a: 'Camunda 7: engine runs embedded INSIDE your Spring Boot app. Shares your RDBMS (ACT_* tables). JavaDelegate beans are Spring-injected. Simple to add to existing apps. Good for most enterprise Java shops. Camunda 8 (Zeebe): standalone cluster (Zeebe broker + Operate + Tasklist). Your app connects via gRPC. No shared DB — Zeebe has an internal distributed log. Workers are separate services polling for jobs. No Spring injection in workers — they\'re independent processes. Designed for horizontal scale (millions of process instances). Choose C7 for embedded simplicity; C8 for cloud-native high throughput.' },
+            { q: 'What are the key Camunda 7 engine services and what does each do?', a: 'RuntimeService: start process instances, get active instances, set/get variables, send signals and messages. RepositoryService: deploy BPMN files, query deployed process definitions. TaskService: query user tasks, assign, claim, and complete them — the human inbox. HistoryService: query completed process instances, completed tasks, audit log. ManagementService: manage jobs (timers, async tasks), retries for failed jobs. IdentityService: user/group management (if using Camunda\'s identity). FormService: render forms for user tasks. All accessible as Spring beans when using camunda-bpm-spring-boot-starter.' },
+            { q: 'How do you pass data between BPMN steps in Camunda?', a: 'Process variables: stored in the engine DB, scoped to the process instance. Set on start: runtimeService.startProcessInstanceByKey(key, businessKey, variablesMap). Set in delegate: execution.setVariable("key", value). Read in delegate: execution.getVariable("key"). Gateway conditions use EL (Expression Language): ${stockAvailable == true}. Scoping: by default variables are process-instance scoped (all tasks in the process can read them). Local variables: execution.setVariableLocal() — only visible in the current task scope. Large data: don\'t store blobs in variables — store an ID and look up from DB.' }
+          ]
         }
-      ],
-      flashcards: [
-        { q: 'Core architectural difference between Camunda 7 and 8?', a: 'Camunda 7 is an embeddable Java engine running inside your app, storing process state in a relational DB. Camunda 8 is built on Zeebe — a standalone, horizontally scalable, event-sourced/partitioned engine with job workers over gRPC, decoupled from your JVM and DB.' },
-        { q: 'How do you integrate Camunda 7 with Spring Boot?', a: 'Add the Camunda Spring Boot starter, place .bpmn models in resources, implement service tasks as Spring beans (JavaDelegate / delegateExpression) or external task workers, and drive instances via RuntimeService/TaskService APIs.' },
-        { q: 'Why must Camunda service tasks be idempotent?', a: 'The engine retries failed jobs and executes at-least-once, so a task may run multiple times. Idempotent handlers (dedupe by process instance/business key) prevent duplicate side effects like double charges.' },
-        { q: 'Why are enterprises migrating from Camunda 7 to 8?', a: 'For horizontal scalability and to decouple orchestration from the application JVM/DB. Zeebe\'s partitioned event-sourced design handles far higher throughput than a single embedded relational-DB-backed engine.' }
       ]
-    }
-  ]
-},
+    },
 
-/* ===================== PHASE 9: Linux & Networking ===================== */
-{
-  id: 'p9',
-  title: 'Linux, Networking & Observability',
-  icon: 'terminal',
-  blurb: 'Shell fluency, process/memory tools, TCP/HTTP fundamentals, and production debugging.',
-  modules: [
     {
       id: '9.1',
       title: 'Linux Essentials & Shell',
