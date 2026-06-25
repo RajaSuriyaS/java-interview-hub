@@ -6674,862 +6674,1176 @@ public class StringPatterns {
       {
         id: `0.7`,
         title: `Exception Handling & Custom Exceptions`,
-        hours: 3,
+        hours: 4,
         sections: [
           {
-            title: `Exception Hierarchy & Checked vs Unchecked`,
-            notes: `## Exception Hierarchy & Checked vs Unchecked
+            title: `The Exception Hierarchy & JVM Mechanics`,
+            notes: `## The Exception Hierarchy & JVM Mechanics
 
-### The Exception Class Hierarchy
+Everything throwable in Java descends from \`java.lang.Throwable\`. Only instances of \`Throwable\` (or its subclasses) may appear in a \`throw\` statement or be caught by a \`catch\` clause.
 
 \`\`\`mermaid
 graph TD
     T[Throwable]
     T --> E[Exception]
     T --> ER[Error]
-    E --> CE["Checked Exceptions
-(must handle or declare)"]
     E --> RE[RuntimeException]
-    RE --> UC["Unchecked Exceptions
-(optional to handle)"]
-    CE --> IO[IOException]
-    CE --> SQL[SQLException]
-    CE --> CN[ClassNotFoundException]
-    UC --> NPE[NullPointerException]
-    UC --> IAE[IllegalArgumentException]
-    UC --> ISE[IllegalStateException]
-    UC --> IOOB[IndexOutOfBoundsException]
-    ER --> OOM[OutOfMemoryError]
-    ER --> SOE[StackOverflowError]
+    E --> CE["Checked Exceptions<br/>IOException, SQLException,<br/>InterruptedException"]
+    RE --> UC["Unchecked<br/>NPE, IllegalArgument,<br/>IllegalState, ClassCast"]
+    ER --> VME["VirtualMachineError"]
+    VME --> OOM[OutOfMemoryError]
+    VME --> SOE[StackOverflowError]
+    ER --> AE[AssertionError]
+    ER --> NCDFE[NoClassDefFoundError]
     style CE fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style UC fill:#1e293b,stroke:#334155,color:#94a3b8
     style ER fill:#1e0a0a,stroke:#ef4444,color:#fca5a5
 \`\`\`
 
-### Checked Exceptions
+### The three branches
 
-**Checked exceptions** are subclasses of \`Exception\` (but not \`RuntimeException\`). The compiler **forces** you to handle them — either with \`try/catch\` or by declaring them with \`throws\`.
+- **\`Error\`** — JVM-level, generally unrecoverable (\`OutOfMemoryError\`, \`StackOverflowError\`). Do not catch.
+- **\`RuntimeException\`** (unchecked) — programming bugs: bad arguments, null derefs, illegal state.
+- **Checked** \`Exception\` (everything under \`Exception\` that is **not** \`RuntimeException\`) — recoverable, foreseeable, external conditions the compiler forces you to acknowledge.
 
-Why they exist: they model **recoverable, foreseeable failures** — a file not found, a network timeout, a malformed URL. The compiler forces you to think about what to do.
+> [!TIP]
+> The "checked-ness" of an exception is **purely a compile-time property** determined by its place in the hierarchy. The JVM and bytecode have no notion of checked vs unchecked — \`throws\` clauses are erased to a \`Exceptions\` attribute that the *compiler* (not the runtime) enforces. You can throw a checked exception from a method that does not declare it using bytecode manipulation or generics trickery (e.g. the "sneaky throws" idiom).
 
-\`\`\`java
-// MUST handle — compiler error if you don't
-public void readFile(String path) throws IOException {   // option 1: declare
-    FileReader reader = new FileReader(path);            // throws FileNotFoundException
-    // ...
-}
+### Checked vs Unchecked: the debate
 
-public void readFileSafe(String path) {
-    try {
-        FileReader reader = new FileReader(path);        // option 2: catch
-    } catch (FileNotFoundException e) {
-        System.err.println("File not found: " + path);
-    }
-}
-\`\`\`
+| Dimension | Checked | Unchecked |
+|---|---|---|
+| Base type | \`Exception\` (not \`RuntimeException\`) | \`RuntimeException\` |
+| Compiler enforced | Yes (catch or declare) | No |
+| Models | Recoverable external failure | Programming error / contract violation |
+| Examples | \`IOException\`, \`SQLException\` | \`NPE\`, \`IllegalArgumentException\` |
+| Lambda/stream friendly | No (breaks functional interfaces) | Yes |
+| Framework trend | Avoided / wrapped | Preferred |
 
-### Unchecked Exceptions (RuntimeException)
+> [!WARNING]
+> The famous argument *against* checked exceptions (Bruce Eckel, the C#/Spring/Hibernate camp): they do not scale. They leak implementation details up the call stack, force \`throws\` clauses through every intermediate layer, encourage swallowing (\`catch (IOException e) {}\`), and are incompatible with \`Stream\`/\`Function\`. The argument *for* (Josh Bloch, *Effective Java* Item 70-71): use checked for **recoverable** conditions where you want to *force* the caller to deal with it; use runtime for programming errors. Bloch also warns: do not overuse checked — they impose a real burden.
 
-**Unchecked exceptions** are subclasses of \`RuntimeException\`. The compiler does **not** require you to handle them. They typically indicate **programming errors**:
+### How the JVM unwinds the stack
 
-| Exception | Typical Cause |
-|---|---|
-| \`NullPointerException\` | Calling method on null reference |
-| \`IllegalArgumentException\` | Caller passed an invalid argument |
-| \`IllegalStateException\` | Object is in wrong state for the operation |
-| \`IndexOutOfBoundsException\` | Array/list index out of range |
-| \`ClassCastException\` | Invalid downcast |
-| \`ArithmeticException\` | Division by zero |
-| \`UnsupportedOperationException\` | Operation not implemented (e.g. unmodifiable list) |
+When \`throw\` executes, the JVM searches the current method's **exception table** (a per-method bytecode structure mapping \`[startPC, endPC)\` ranges + exception type to a handler PC) for a matching handler. If none matches, the current frame is **popped** and the search continues in the caller's frame — repeatedly — until a handler is found or the thread's stack is exhausted. If no handler exists, the thread's \`UncaughtExceptionHandler\` runs and the thread dies.
 
-### Errors
+- Each popped frame runs its \`finally\` blocks (compiled as handler entries that re-throw).
+- Stack unwinding is **not** free, but the search itself is cheap relative to constructing the trace.
 
-\`Error\` subclasses signal **JVM-level failures** you generally cannot recover from:
-- \`OutOfMemoryError\` — heap exhausted
-- \`StackOverflowError\` — infinite recursion
-- \`VirtualMachineError\` — JVM internal failure
+### The real cost: fillInStackTrace
 
-**Do not catch \`Error\`** — you cannot meaningfully recover, and catching it suppresses the signal that the JVM is in a bad state.
+The expensive part of throwing is **not** the throw or the unwind — it is \`Throwable.fillInStackTrace()\`, called from the \`Throwable\` constructor. It walks the **entire** call stack capturing class/method/line for every frame. For deep stacks (typical in Spring) this dominates exception cost — often **microseconds**, ~100-1000x a normal return.
 
-### The Checked vs Unchecked Debate
+> [!DANGER]
+> Using exceptions for **control flow** (e.g. throwing to break a loop, or to signal "not found" on a hot path) can destroy throughput precisely because of \`fillInStackTrace\`. If you genuinely need a fast signal exception, override \`fillInStackTrace()\` to return \`this\`, or use the protected \`Throwable(msg, cause, enableSuppression, writableStackTrace)\` constructor with \`writableStackTrace=false\`. Singleton, stackless exceptions are a known JDK pattern (e.g. \`java.io.EOFException\` is not, but many libraries do this).
 
-The Java community has been debating this for 25 years. The pragmatic modern view:
-
-- **Throw checked** when the caller has a realistic path to recovery and the failure is external (file system, network, database)
-- **Throw unchecked** for programming errors (null, wrong argument, wrong state) — these should be fixed in code, not caught at runtime
-- **Modern frameworks** (Spring, Hibernate, most cloud-native libs) wrap checked exceptions in unchecked ones to avoid \`throws\` pollution`,
+> [!SUCCESS]
+> Interviewer probe: *"What is the most expensive part of throwing an exception?"* Answer: capturing the stack trace in \`fillInStackTrace()\`, which walks every frame. Follow-up: *"How would you make a control-flow exception cheap?"* -> stackless exception via the 4-arg constructor or overriding \`fillInStackTrace\`.`,
             code: [
-              `import java.io.*;
+              {
+                lang: `java`,
+                title: `Stackless exception: measuring the fillInStackTrace cost`,
+                runnable: true,
+                note: `Shows that overriding fillInStackTrace (or using writableStackTrace=false) makes throwing dramatically cheaper.`,
+                code: `public class StacklessExceptionDemo {
 
-public class CheckedDemo {
-    // Method 1: propagate with throws
-    static String readFirst(String path) throws IOException {
-        try (BufferedReader br = new BufferedReader(new FileReader(path))) {
-            return br.readLine();
+    // Normal exception: captures full stack trace on construction.
+    static class NormalException extends RuntimeException {
+        NormalException(String m) { super(m); }
+    }
+
+    // Stackless exception: suppresses trace capture via the 4-arg ctor.
+    static class FastException extends RuntimeException {
+        FastException(String m) {
+            super(m, null, /*enableSuppression*/ false, /*writableStackTrace*/ false);
         }
     }
 
-    // Method 2: catch and handle locally
-    static String readFirstSafe(String path) {
-        try (BufferedReader br = new BufferedReader(new FileReader(path))) {
-            return br.readLine();
-        } catch (FileNotFoundException e) {
-            System.err.println("File missing: " + path);
-            return null;
-        } catch (IOException e) {
-            System.err.println("Read error: " + e.getMessage());
-            return null;
+    static long timeThrows(boolean fast, int iters) {
+        long start = System.nanoTime();
+        for (int i = 0; i < iters; i++) {
+            try {
+                if (fast) throw new FastException("x");
+                else      throw new NormalException("x");
+            } catch (RuntimeException ignored) { /* swallow for benchmark only */ }
         }
+        return System.nanoTime() - start;
+    }
+
+    // Force a deep stack so fillInStackTrace has real work to do.
+    static long deep(int depth, boolean fast, int iters) {
+        if (depth > 0) return deep(depth - 1, fast, iters);
+        return timeThrows(fast, iters);
     }
 
     public static void main(String[] args) {
-        // Unchecked — no forced handling
-        String s = null;
-        try {
-            s.length();                   // NullPointerException
-        } catch (NullPointerException e) {
-            System.out.println("Caught NPE: " + e.getMessage());
-        }
-
-        // Checked — must handle
-        String line = readFirstSafe("/tmp/data.txt");
-        System.out.println("First line: " + line);
+        int iters = 200_000;
+        deep(50, false, 10_000); deep(50, true, 10_000); // warm up
+        long normal = deep(50, false, iters);
+        long fast   = deep(50, true,  iters);
+        System.out.printf("normal: %d ms%n", normal / 1_000_000);
+        System.out.printf("fast  : %d ms%n", fast   / 1_000_000);
+        System.out.printf("speedup ~ %.1fx%n", (double) normal / Math.max(1, fast));
     }
-}`,
-              `public class ExceptionHierarchyDemo {
-    // Demonstrate catching at different levels of hierarchy
-    static void riskyOp(int choice) throws Exception {
+}`
+              },
+              {
+                lang: `java`,
+                title: `Catch order: most-specific-first and the unreachable-catch compile error`,
+                runnable: true,
+                note: `A catch for a superclass before its subclass is a compile error. This version compiles because order is correct.`,
+                code: `import java.io.IOException;
+
+public class CatchOrderDemo {
+    static void risky(int choice) throws Exception {
         switch (choice) {
-            case 1 -> throw new NullPointerException("null ref");
-            case 2 -> throw new IllegalArgumentException("bad arg");
-            case 3 -> throw new IOException("io problem");
-            case 4 -> throw new RuntimeException("runtime");
+            case 1: throw new NullPointerException("null ref");
+            case 2: throw new IllegalArgumentException("bad arg");
+            case 3: throw new IOException("io problem");
+            default: throw new RuntimeException("generic runtime");
         }
     }
 
     public static void main(String[] args) {
         for (int i = 1; i <= 4; i++) {
             try {
-                riskyOp(i);
+                risky(i);
             } catch (NullPointerException e) {
-                System.out.println("NPE: " + e.getMessage());     // caught most specific
-            } catch (IllegalArgumentException e) {
-                System.out.println("IAE: " + e.getMessage());
-            } catch (RuntimeException e) {
-                System.out.println("Runtime: " + e.getMessage()); // catches case 4
-            } catch (Exception e) {
-                System.out.println("Checked: " + e.getMessage()); // catches IOException
+                System.out.println(i + " -> NPE: " + e.getMessage());
+            } catch (RuntimeException e) {            // must come AFTER NPE
+                System.out.println(i + " -> Runtime: " + e.getMessage());
+            } catch (Exception e) {                   // checked (IOException) lands here
+                System.out.println(i + " -> Checked: " + e.getMessage());
             }
         }
     }
 }`
+              }
             ],
             flashcards: [
               {
-                q: `What is the difference between checked and unchecked exceptions?`,
-                a: `Checked exceptions (subclasses of Exception but not RuntimeException) must be caught or declared with throws — the compiler enforces this. Unchecked exceptions (RuntimeException subclasses) do not require handling. Checked = recoverable external failures; Unchecked = programming bugs.`
+                q: `What is the root of the throwable hierarchy and what are its two direct subclasses?`,
+                a: `java.lang.Throwable. Direct subclasses: Exception (recoverable conditions) and Error (JVM-level, generally unrecoverable). Only Throwable and its subclasses can be thrown or caught.`
               },
               {
-                q: `Should you catch Error?`,
-                a: `No. Errors (OutOfMemoryError, StackOverflowError) signal JVM-level failures you cannot meaningfully recover from. Catching them suppresses the signal that the JVM is in a bad state. Let them propagate to the top-level crash handler.`
+                q: `Precisely, which exceptions are "unchecked"?`,
+                a: `Subclasses of RuntimeException, plus all subclasses of Error. Everything else under Exception is checked. Checked-ness is a compile-time-only property based on hierarchy position.`
               },
               {
-                q: `If a method throws a checked exception, what are your two options as the caller?`,
-                a: `(1) Wrap in try/catch and handle it. (2) Declare it with throws in your own method signature, passing the responsibility up the call stack. You must choose one — the compiler will not compile if you do neither.`
+                q: `Is "checked vs unchecked" enforced by the JVM or the compiler?`,
+                a: `The compiler only. Bytecode has no notion of checked exceptions; throws clauses become an Exceptions attribute the compiler reads. This is why "sneaky throws" (generics/bytecode tricks) can throw checked exceptions undeclared at runtime.`
               },
               {
-                q: `What is NullPointerException and why is it unchecked?`,
-                a: `NPE is thrown when you call a method or access a field on a null reference. It is unchecked because it represents a programming error (you should have checked for null) rather than a recoverable external failure. The compiler cannot predict which references might be null at runtime.`
+                q: `What is the single most expensive part of throwing an exception?`,
+                a: `Throwable.fillInStackTrace(), invoked from the Throwable constructor. It walks every stack frame capturing class/method/line. On deep stacks it dominates cost (100-1000x a normal return).`
               },
               {
-                q: `What is the parent of all exceptions and errors in Java?`,
-                a: `Throwable. It has two direct subclasses: Exception (for recoverable conditions) and Error (for JVM-level failures). Only Throwable subclasses can be thrown with throw or caught in catch blocks.`
+                q: `How do you make an exception cheap to throw on a hot path?`,
+                a: `Make it stackless: use the protected 4-arg constructor Throwable(msg, cause, enableSuppression=false, writableStackTrace=false), or override fillInStackTrace() to return this. Optionally reuse a singleton instance.`
+              },
+              {
+                q: `How does the JVM find a handler when an exception is thrown?`,
+                a: `It searches the current method's exception table for a [startPC,endPC) range matching the throw site whose handler type is assignable from the thrown type. If none, the frame is popped (running finally) and the search continues in the caller, up to the top of the thread.`
+              },
+              {
+                q: `State the case for using checked exceptions (Bloch).`,
+                a: `Use checked exceptions for conditions from which the caller can reasonably recover, where you want to force the caller to handle or propagate. They make recovery part of the API contract. But do not overuse them — they impose a real caller burden.`
+              },
+              {
+                q: `State the case against checked exceptions.`,
+                a: `They leak implementation details up the stack, force throws clauses through every layer, encourage swallowing, do not compose with generics/streams/lambdas, and version poorly. Modern frameworks (Spring, Hibernate) wrap them as unchecked.`
+              },
+              {
+                q: `Why should you not catch Error?`,
+                a: `Errors (OutOfMemoryError, StackOverflowError, VirtualMachineError) indicate the JVM is in a bad/unrecoverable state. Catching them hides that signal and may leave the process in an inconsistent state. Let them propagate.`
+              },
+              {
+                q: `What happens when an exception reaches the top of a thread with no handler?`,
+                a: `The thread's UncaughtExceptionHandler runs (default prints the trace to stderr), then the thread terminates. In the main thread this ends the program; in a pool thread it can silently kill that worker.`
+              },
+              {
+                q: `Why is a catch for a superclass placed before its subclass a compile error?`,
+                a: `The subclass catch would be unreachable — any instance is already caught by the superclass clause. javac rejects unreachable catch blocks. Order catches most-specific first.`
+              },
+              {
+                q: `Where does InterruptedException sit, and why does it matter?`,
+                a: `It is a checked exception under Exception (not RuntimeException). It signals cooperative cancellation; catching it clears the thread's interrupt flag, so you must either rethrow or restore the flag with Thread.currentThread().interrupt().`
               }
             ]
           },
           {
             title: `try/catch/finally & try-with-resources`,
-            notes: `## try/catch/finally & try-with-resources
+            notes: `## try / catch / finally & try-with-resources
 
-### Basic try/catch/finally
+### finally semantics
 
-\`\`\`java
-try {
-    // Code that might throw
-    int result = 10 / 0;
-} catch (ArithmeticException e) {
-    System.out.println("Caught: " + e.getMessage());  // / by zero
-} catch (Exception e) {
-    System.out.println("General: " + e.getMessage());
-} finally {
-    System.out.println("Always runs");  // even if catch re-throws
-}
-\`\`\`
+A \`finally\` block runs **no matter how** the \`try\` (or \`catch\`) exits: normal completion, \`return\`, \`break\`/\`continue\`, or a propagating exception. The only ways to skip it: \`System.exit()\`, a JVM crash, \`Thread.stop\` (deprecated/removed), or daemon-thread death at shutdown.
 
-**Key \`finally\` facts:**
-- Runs whether or not an exception was thrown
-- Runs whether or not the exception was caught
-- Runs even if \`catch\` re-throws
-- Does **not** run if \`System.exit()\` is called or the JVM crashes
-- If \`finally\` itself throws, the original exception is **lost**
+> [!DANGER]
+> **The return-in-finally trap.** A \`return\` (or \`throw\`) inside \`finally\` **overrides** any value returned or exception thrown by the \`try\`/\`catch\` block — and **silently swallows a pending exception**. This is one of the highest-signal "spot the bug" interview questions. Never put \`return\` or \`throw\` in a \`finally\` block.
 
-### Multi-catch (Java 7+)
+Subtlety: \`finally\` can mutate state but **cannot change an already-evaluated primitive/reference return value** — the return value is computed and copied before \`finally\` runs. So mutating a returned \`int\` variable in \`finally\` does *not* change the returned value, but an explicit \`return\` statement *does*.
 
-When two exceptions need identical handling, avoid duplicate catch blocks:
+### try-with-resources (TWR)
 
-\`\`\`java
-try {
-    process(input);
-} catch (IOException | SQLException e) {   // pipe-separated
-    log.error("Storage failure: {}", e.getMessage());
-    throw new ServiceException("Storage error", e);
-}
-// Note: e is implicitly final in a multi-catch — you cannot reassign it
-\`\`\`
+Any \`AutoCloseable\` (or \`Closeable\`) declared in the TWR header is closed automatically, in **reverse order** of declaration, **before** any \`catch\`/\`finally\` runs.
 
-### try-with-resources (Java 7+)
+> [!TIP]
+> TWR beats manual \`try/finally { close() }\` for two reasons. (1) **Correctness with multiple resources** — manual nesting is verbose and error-prone; a naive single \`finally\` closing two resources can skip the second close if the first \`close()\` throws. (2) **Suppressed exceptions** — if the body throws *and* \`close()\` throws, manual code loses one of them; TWR keeps the body exception primary and attaches the close exception via \`addSuppressed()\`.
 
-Resources (anything implementing \`AutoCloseable\`) declared in the try header are **automatically closed** when the block exits — no finally needed:
+### Suppressed exceptions
 
-\`\`\`java
-// Before Java 7 — error-prone
-Connection conn = null;
-PreparedStatement stmt = null;
-try {
-    conn = dataSource.getConnection();
-    stmt = conn.prepareStatement(sql);
-    // ...
-} finally {
-    if (stmt != null) try { stmt.close(); } catch (SQLException ignored) {}
-    if (conn != null) try { conn.close(); } catch (SQLException ignored) {}
-}
+When the \`try\` body throws and a resource's \`close()\` *also* throws, the body exception is **primary** and the close exception is added to it as **suppressed**. Retrieve them with \`Throwable.getSuppressed()\`. (Manual \`try/finally\` does the opposite by default: the \`finally\`'s exception masks the original — a classic bug.)
 
-// Java 7+ try-with-resources — clean
-try (Connection conn = dataSource.getConnection();
-     PreparedStatement stmt = conn.prepareStatement(sql)) {
-    // ...
-}   // stmt.close() then conn.close() called automatically, in reverse order
-\`\`\`
+### Multi-catch
 
-### Suppressed Exceptions
+\`catch (IOException | SQLException e)\` handles either type with one block. The variable \`e\` is **implicitly final** and its static type is the least-upper-bound of the alternatives; you cannot reassign it. Alternatives must not be subclasses of one another (that would be redundant -> compile error).
 
-When both the \`try\` body and \`close()\` throw, the exception from \`close()\` is added as a **suppressed exception** on the primary exception (rather than replacing it, which was the old finally problem):
-
-\`\`\`java
-try {
-    // ...
-} catch (Exception e) {
-    Throwable[] suppressed = e.getSuppressed();  // exceptions from close()
-    for (Throwable t : suppressed) {
-        log.warn("Suppressed: {}", t.getMessage());
-    }
-}
-\`\`\`
-
-### Visualising try-with-resources Flow
-
-\`\`\`mermaid
-flowchart TD
-    A[Open resources in try header] --> B[Execute try body]
-    B --> C{Exception thrown?}
-    C -->|No| D[Close resources in reverse order]
-    C -->|Yes| E[Close resources — exceptions suppressed]
-    E --> F{catch block matches?}
-    D --> G[Normal exit]
-    F -->|Yes| H[Handle in catch]
-    F -->|No| I[Propagate exception]
-    H --> J{finally block?}
-    I --> J
-    G --> J
-    J --> K[finally always runs]
-    style E fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
-    style K fill:#0f1e12,stroke:#10b981,color:#e2e8f0
-\`\`\`
-
-### Exception in finally — the silent killer
-
-\`\`\`java
-try {
-    throw new RuntimeException("original");
-} finally {
-    throw new RuntimeException("finally");  // swallows "original"!
-}
-// Only "finally" propagates — "original" is silently LOST
-\`\`\`
-
-This is why **never throw from finally** and **never return from finally** (a return in finally discards the exception in the same way). With try-with-resources, the framework uses suppressed exceptions to avoid this.`,
+| Construct | Primary exception on conflict | Boilerplate | Multiple resources |
+|---|---|---|---|
+| Manual try/finally close | the **finally** (close) wins — original lost | High | Error-prone nesting |
+| try-with-resources | the **body** wins, close suppressed | Minimal | Clean, reverse-order close |`,
             code: [
-              `import java.io.*;
-
-public class TryWithResourcesDemo {
-    // Custom AutoCloseable
-    static class DatabaseConnection implements AutoCloseable {
-        private final String url;
-        DatabaseConnection(String url) {
-            this.url = url;
-            System.out.println("  Opening connection to " + url);
+              {
+                lang: `java`,
+                title: `try-with-resources + suppressed exceptions`,
+                runnable: true,
+                note: `Body throws AND close() throws. TWR keeps the body exception primary and attaches close as suppressed.`,
+                code: `public class SuppressedDemo {
+    static class NoisyResource implements AutoCloseable {
+        private final String name;
+        NoisyResource(String name) { this.name = name; System.out.println("open " + name); }
+        void work() { throw new RuntimeException("failure inside body using " + name); }
+        @Override public void close() {
+            System.out.println("close " + name);
+            throw new IllegalStateException("close() failed for " + name);
         }
-        public void query(String sql) throws Exception {
-            System.out.println("  Executing: " + sql);
-            if (sql.contains("BAD")) throw new Exception("Bad SQL: " + sql);
-        }
-        @Override
-        public void close() {
-            System.out.println("  Closing connection to " + url);
-        }
-    }
-
-    static class Statement implements AutoCloseable {
-        Statement() { System.out.println("  Creating statement"); }
-        @Override public void close() { System.out.println("  Closing statement"); }
     }
 
     public static void main(String[] args) {
-        System.out.println("=== Success path ===");
-        try (DatabaseConnection conn = new DatabaseConnection("jdbc:h2:mem");
-             Statement stmt = new Statement()) {
-            conn.query("SELECT * FROM users");
-        } catch (Exception e) {
-            System.out.println("Error: " + e.getMessage());
-        }
-
-        System.out.println("
-=== Exception path ===");
-        try (DatabaseConnection conn = new DatabaseConnection("jdbc:h2:mem")) {
-            conn.query("BAD SQL");                // throws
-        } catch (Exception e) {
-            System.out.println("Caught: " + e.getMessage());
-            // Connection still closed before catch runs
-        }
-    }
-}`,
-              `public class MultiCatchDemo {
-    static void process(String input) throws Exception {
-        if (input == null)       throw new NullPointerException("null input");
-        if (input.isEmpty())     throw new IllegalArgumentException("empty input");
-        if (input.equals("sql")) throw new java.sql.SQLException("DB error");
-        if (input.equals("io"))  throw new java.io.IOException("File error");
-        System.out.println("Processed: " + input);
-    }
-
-    public static void main(String[] args) {
-        String[] tests = { "hello", null, "", "sql", "io" };
-        for (String test : tests) {
-            try {
-                process(test);
-            } catch (NullPointerException | IllegalArgumentException e) {
-                // Multi-catch — same handling for both
-                System.out.println("Input error [" + test + "]: " + e.getMessage());
-            } catch (java.io.IOException | java.sql.SQLException e) {
-                // Multi-catch — storage failures
-                System.out.println("Storage error [" + test + "]: " + e.getMessage());
-            } catch (Exception e) {
-                System.out.println("Unknown [" + test + "]: " + e.getMessage());
-            } finally {
-                System.out.println("  -> finally for input: " + test);
+        try (NoisyResource a = new NoisyResource("A");
+             NoisyResource b = new NoisyResource("B")) {   // closed B then A (reverse)
+            b.work();                                       // primary exception
+        } catch (RuntimeException primary) {
+            System.out.println("PRIMARY  : " + primary.getMessage());
+            for (Throwable s : primary.getSuppressed()) {
+                System.out.println("SUPPRESSED: " + s.getMessage());
             }
         }
     }
 }`
+              },
+              {
+                lang: `java`,
+                title: `The return-in-finally trap (and value-copy subtlety)`,
+                runnable: true,
+                note: `finally return overrides the try value AND swallows the exception. Mutating the variable after computing the return value does not change it.`,
+                code: `public class FinallyTrapDemo {
+
+    // BAD: finally return swallows the thrown exception entirely.
+    static int swallow() {
+        try {
+            throw new RuntimeException("boom");
+        } finally {
+            return 42;                 // overrides the exception -> caller never sees boom
+        }
+    }
+
+    // BAD: finally return overrides the try return.
+    static int override() {
+        try {
+            return 1;
+        } finally {
+            return 2;                  // wins
+        }
+    }
+
+    // SUBTLE: return value is computed/copied BEFORE finally runs.
+    static int mutateButNoEffect() {
+        int x = 1;
+        try {
+            return x;                  // value 1 is captured here
+        } finally {
+            x = 99;                    // too late: does NOT change the returned value
+        }
+    }
+
+    public static void main(String[] args) {
+        System.out.println("swallow()           = " + swallow());           // 42, no exception
+        System.out.println("override()          = " + override());          // 2
+        System.out.println("mutateButNoEffect() = " + mutateButNoEffect()); // 1, not 99
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Manual try/finally loses the original exception (anti-pattern)`,
+                runnable: true,
+                note: `Demonstrates why TWR exists: the finally close() exception masks the real body exception.`,
+                code: `public class ManualCloseAntiPattern {
+    static class Resource implements AutoCloseable {
+        void work() { throw new RuntimeException("REAL failure"); }
+        public void close() { throw new IllegalStateException("close failure (masking!)"); }
+    }
+
+    static void manual() {
+        Resource r = new Resource();
+        try {
+            r.work();
+        } finally {
+            r.close();   // this exception REPLACES the real one - bug!
+        }
+    }
+
+    public static void main(String[] args) {
+        try {
+            manual();
+        } catch (Exception e) {
+            System.out.println("Caller saw: " + e.getMessage());
+            System.out.println("Suppressed count: " + e.getSuppressed().length + " (the REAL failure was lost)");
+        }
+    }
+}`
+              }
             ],
             flashcards: [
               {
-                q: `When does the finally block NOT run?`,
-                a: `The finally block does not run when System.exit() is called, when the JVM crashes (e.g. kill -9 on the process), or when a daemon thread is killed as the JVM shuts down. In all other cases — including re-thrown exceptions — finally always runs.`
+                q: `Name every way a finally block can be skipped.`,
+                a: `System.exit(), a hard JVM crash (e.g. kill -9, SIGSEGV in native code), an infinite loop/deadlock in the try, daemon thread death at JVM shutdown, or the (removed) Thread.stop. Normal exceptions, returns, and breaks all still run finally.`
               },
               {
-                q: `What is a suppressed exception in try-with-resources?`,
-                a: `When both the try body and a resource's close() method throw, the exception from close() is attached to the primary exception as a suppressed exception (via Throwable.addSuppressed). Retrieve them with e.getSuppressed(). This prevents the original exception from being silently lost, which was a problem with manual finally blocks.`
+                q: `What does a return inside finally do to a pending exception?`,
+                a: `It silently swallows it. The finally return becomes the method's outcome and the in-flight exception is discarded. Same for a throw in finally. This is why you must never return/throw from finally.`
               },
               {
-                q: `In what order are try-with-resources resources closed?`,
-                a: `Reverse order of declaration. If you declare (A, B, C), they close as C.close(), B.close(), A.close(). This mirrors stack-based resource acquisition: last acquired, first released.`
+                q: `If try returns x and finally mutates x, what is returned?`,
+                a: `The original value. The return expression is evaluated and the value copied before finally runs, so mutating the variable in finally has no effect on the returned value. Only an explicit return in finally changes the outcome.`
               },
               {
-                q: `What is multi-catch and what restriction applies to the variable?`,
-                a: `Multi-catch (Java 7+) lets one catch block handle multiple exception types: catch (IOException | SQLException e). The variable e is implicitly final — you cannot reassign it inside the block. This prevents the ambiguity of which type e is after reassignment.`
+                q: `In try-with-resources, in what order are resources closed?`,
+                a: `Reverse order of declaration, and before any catch or finally block of the same statement runs.`
               },
               {
-                q: `What happens if you throw from a finally block?`,
-                a: `The exception being handled in the try/catch is silently lost and replaced by the finally exception. This is a common bug. Similarly, a return in finally discards any exception. Never throw or return from finally — use try-with-resources to avoid needing finally for cleanup.`
+                q: `What is a suppressed exception and how do you read it?`,
+                a: `When the try body throws and a resource close() also throws, the body exception is primary and the close exception is attached via addSuppressed(). Read them with Throwable.getSuppressed(), which returns a Throwable[].`
+              },
+              {
+                q: `Why does try-with-resources beat manual try/finally close()?`,
+                a: `It closes multiple resources correctly in reverse order, never skips a close if an earlier one throws, and preserves the original body exception (attaching the close exception as suppressed rather than masking it).`
+              },
+              {
+                q: `In manual try/finally where both body and close throw, which exception reaches the caller?`,
+                a: `The close() exception from finally, which masks (replaces) the body exception entirely — the real failure is lost. This is the precise bug TWR solves.`
+              },
+              {
+                q: `What is special about the exception variable in a multi-catch?`,
+                a: `It is implicitly final (cannot be reassigned), and its static type is the least-upper-bound of the caught types, so you can only call members common to all alternatives.`
+              },
+              {
+                q: `Can multi-catch alternatives be related by inheritance?`,
+                a: `No. If one alternative is a subclass of another, the subclass is redundant and javac rejects it (e.g. catch (IOException | FileNotFoundException) does not compile).`
+              },
+              {
+                q: `Does a resource have to implement Closeable to be used in try-with-resources?`,
+                a: `No — it needs AutoCloseable. Closeable extends AutoCloseable but narrows close() to throw only IOException. AutoCloseable.close() may throw any Exception.`
+              },
+              {
+                q: `What is the effective-final requirement for TWR in Java 9+?`,
+                a: `Java 9 allows using an already-declared effectively-final variable directly in the TWR header: try (resource) { } without re-declaring. The variable must be final or effectively final.`
+              },
+              {
+                q: `How do you manually replicate TWR's suppression semantics?`,
+                a: `Catch the body exception, and in the close attempt wrap it: if a close throws while a primary is in flight, call primary.addSuppressed(closeEx) and rethrow primary; otherwise rethrow the close exception. TWR generates exactly this.`
               }
             ]
           },
           {
-            title: `Custom Exceptions & Exception Chaining`,
-            notes: `## Custom Exceptions & Exception Chaining
+            title: `Designing Exceptions: Hierarchies, Translation & Alternatives`,
+            notes: `## Designing Exceptions
 
-### When to Create Custom Exceptions
+### Business vs technical exceptions
 
-Create a custom exception when:
-1. The caller needs to distinguish this failure from all other failures (\`catch (PaymentDeclinedException e)\`)
-2. You need to carry domain-specific context (order ID, amount, error code)
-3. You are crossing a layer boundary and want to translate technical exceptions to domain language
+Split your hierarchy into two roots:
 
-Do **not** create custom exceptions just to rename \`RuntimeException\` with no added context.
-
-### Checked or Unchecked Custom Exception?
-
-\`\`\`java
-// Checked — recoverable, caller MUST handle (e.g. network call that can retry)
-public class InsufficientFundsException extends Exception {
-    private final double amount;
-    private final double balance;
-
-    public InsufficientFundsException(double amount, double balance) {
-        super(String.format("Cannot withdraw %.2f — balance is %.2f", amount, balance));
-        this.amount = amount;
-        this.balance = balance;
-    }
-
-    // Constructor for exception chaining
-    public InsufficientFundsException(double amount, double balance, Throwable cause) {
-        super(String.format("Cannot withdraw %.2f — balance is %.2f", amount, balance), cause);
-        this.amount = amount;
-        this.balance = balance;
-    }
-
-    public double getAmount()  { return amount; }
-    public double getBalance() { return balance; }
-}
-
-// Unchecked — programming error or unrecoverable
-public class InvalidTradeException extends RuntimeException {
-    private final String symbol;
-    private final String reason;
-
-    public InvalidTradeException(String symbol, String reason) {
-        super("Invalid trade for " + symbol + ": " + reason);
-        this.symbol = symbol;
-        this.reason = reason;
-    }
-
-    public InvalidTradeException(String symbol, String reason, Throwable cause) {
-        super("Invalid trade for " + symbol + ": " + reason, cause);
-        this.symbol = symbol;
-        this.reason = reason;
-    }
-
-    public String getSymbol() { return symbol; }
-    public String getReason() { return reason; }
-}
-\`\`\`
-
-### Exception Chaining (Cause Chain)
-
-When you catch a low-level exception and throw a higher-level one, always **pass the original as the cause**. This preserves the full stack trace for debugging:
-
-\`\`\`java
-// BAD — swallows the cause, losing the original stack trace
-try {
-    stmt.executeQuery(sql);
-} catch (SQLException e) {
-    throw new DataAccessException("Query failed");   // e is lost!
-}
-
-// GOOD — cause is preserved
-try {
-    stmt.executeQuery(sql);
-} catch (SQLException e) {
-    throw new DataAccessException("Query failed: " + sql, e);  // e attached as cause
-}
-
-// Retrieve the chain
-try {
-    service.fetchUser(id);
-} catch (DataAccessException e) {
-    Throwable cause = e.getCause();                  // original SQLException
-    logger.error("Root cause: {}", cause.getMessage());
-}
-\`\`\`
-
-### Custom Exception Hierarchy
-
-For large applications, create a hierarchy rooted at your own base exception:
+- **Technical / infrastructure** (e.g. \`DataAccessException\`, \`IntegrationException\`) — retryable, logged at ERROR, usually mapped to 5xx. The caller cannot fix the input.
+- **Business / domain** (e.g. \`InsufficientFundsException\`, \`OrderAlreadyShippedException\`) — expected outcomes of valid flows, logged at INFO/WARN, mapped to 4xx/422. The caller *can* react.
 
 \`\`\`mermaid
 graph TD
-    RE[RuntimeException]
-    RE --> AE[AppException]
-    AE --> SE[ServiceException]
-    AE --> DE[DataException]
-    SE --> PE[PaymentException]
-    SE --> NE[NotificationException]
-    DE --> FNF[EntityNotFoundException]
-    DE --> DAE[DataAccessException]
-    style AE fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
-    style SE fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
-    style DE fill:#1e293b,stroke:#4f46e5,color:#c7d2fe
+    AE[AppException - RuntimeException]
+    AE --> BE[BusinessException]
+    AE --> TE[TechnicalException]
+    BE --> IF[InsufficientFundsException]
+    BE --> NF[EntityNotFoundException]
+    BE --> VAL[ValidationException]
+    TE --> DAE[DataAccessException]
+    TE --> IGE[IntegrationException]
+    style BE fill:#0a1f0a,stroke:#22c55e,color:#bbf7d0
+    style TE fill:#1e0a0a,stroke:#ef4444,color:#fca5a5
 \`\`\`
 
-Benefits:
-- \`catch (AppException e)\` in your top-level handler catches all app exceptions
-- More specific \`catch (PaymentException e)\` still works in payment code
-- Logging and monitoring can filter by hierarchy
+> [!TIP]
+> Make your base \`AppException\` **unchecked** (extend \`RuntimeException\`) so it does not pollute every signature, but carry **structured data**: an error code (enum), an HTTP-status hint, and a context map. This lets one global handler translate any app exception to a consistent API response without instanceof ladders.
 
-### Exception Best Practices
+### Exception translation — preserve the cause!
 
-\`\`\`java
-// 1. Always log OR rethrow — never both (double logging)
-try { ... }
-catch (Exception e) {
-    log.error("Failed", e);     // log it
-    throw e;                    // OR rethrow it — pick one
-}
+When crossing an abstraction boundary, **translate** a low-level exception into one meaningful to your layer (*Effective Java* Item 73), but **always chain the cause** via the \`Throwable(message, cause)\` constructor or \`initCause()\`. Losing the cause destroys the stack trace and the root reason.
 
-// 2. Include context in the message
-throw new IllegalArgumentException(
-    "userId must be positive, got: " + userId);  // not just "invalid userId"
+> [!DANGER]
+> \`throw new ServiceException("failed");\` inside \`catch (SQLException e)\` **without** passing \`e\` is the cardinal sin: you discard the SQL state, vendor code, and original stack. Always \`new ServiceException("failed", e)\`.
 
-// 3. Do not catch Exception/Throwable broadly unless you are a framework top-level handler
-// 4. Prefer specific catch over catching Exception
-// 5. Never swallow exceptions silently
-catch (Exception e) { }  // BAD — error disappears
-catch (Exception e) { log.warn("Ignoring expected: {}", e.getMessage()); }  // OK with reason
-\`\`\``,
+### Never swallow; fail fast
+
+An empty \`catch\` block (or one that only \`e.printStackTrace()\`s and continues into corrupt state) hides defects until they surface far away. **Fail fast**: validate arguments at the top of public methods and throw \`IllegalArgumentException\`/\`NullPointerException\` (use \`Objects.requireNonNull\`) immediately, so the stack trace points at the real cause.
+
+### Exceptions vs sentinel vs Optional vs error codes
+
+| Strategy | Use when | Cost / risk |
+|---|---|---|
+| Exception | Truly exceptional, caller may not handle inline | Stack-trace cost; bad for hot-path control flow |
+| \`Optional<T>\` | "Absent" is a normal, expected result (lookup miss) | Not for fields/collections/params; no error detail |
+| Sentinel value (\`-1\`, \`null\`) | Legacy/perf-critical APIs (e.g. \`indexOf\`) | Easy to ignore; ambiguous; null-pollution |
+| Result/Either object | You want exhaustive, typed error handling without throwing | More ceremony; not idiomatic pre-records |
+
+> [!WARNING]
+> \`Optional\` is for **return values that may be absent**, not for "an error happened." Do not use \`Optional\` for parameters, fields, or to wrap collections (return an empty collection). For a *miss*, \`Optional\` beats throwing; for a *failure*, throw.
+
+### When NOT to use exceptions
+
+- Expected, frequent outcomes on a hot path (use \`Optional\`, a boolean, or a result object).
+- Anything resembling normal control flow (loop termination, "not found" in a tight loop).
+- Validation you can express as a guard returning a typed result for bulk processing.`,
             code: [
-              `// Full custom exception example with hierarchy
-class AppException extends RuntimeException {
-    public AppException(String message)                  { super(message); }
-    public AppException(String message, Throwable cause) { super(message, cause); }
-}
+              {
+                lang: `java`,
+                title: `Exception translation preserving the cause`,
+                runnable: true,
+                note: `Low-level SQL-style failure is translated to a domain exception while chaining the cause; the root is still in the trace.`,
+                code: `public class ExceptionTranslationDemo {
 
-class InsufficientFundsException extends AppException {
-    private final double requested;
-    private final double available;
-
-    public InsufficientFundsException(double requested, double available) {
-        super(String.format("Requested %.2f but only %.2f available", requested, available));
-        this.requested = requested;
-        this.available = available;
+    // Pretend low-level (technical) failure.
+    static class DataAccessException extends Exception {
+        DataAccessException(String m) { super(m); }
     }
 
-    public double getRequested() { return requested; }
-    public double getAvailable() { return available; }
-}
-
-class BankService {
-    private double balance = 100.0;
-
-    public void withdraw(double amount) {
-        if (amount <= 0) throw new IllegalArgumentException("Amount must be positive: " + amount);
-        if (amount > balance) throw new InsufficientFundsException(amount, balance);
-        balance -= amount;
-        System.out.printf("Withdrew %.2f, balance now %.2f%n", amount, balance);
-    }
-}
-
-class CustomExceptionDemo {
-    public static void main(String[] args) {
-        BankService bank = new BankService();
-        try {
-            bank.withdraw(50);    // ok
-            bank.withdraw(200);   // InsufficientFundsException
-        } catch (InsufficientFundsException e) {
-            System.out.printf("Declined: requested=%.2f available=%.2f%n",
-                e.getRequested(), e.getAvailable());
-        } catch (AppException e) {
-            System.out.println("App error: " + e.getMessage());
-        }
-    }
-}`,
-              `import java.sql.*;
-
-// Exception chaining demo — preserving the cause chain
-class DataAccessException extends RuntimeException {
-    public DataAccessException(String message, Throwable cause) {
-        super(message, cause);
-    }
-}
-
-class UserRepository {
-    // Wraps low-level SQLException in domain exception
-    public String findUser(int id) {
-        try {
-            simulateDbCall(id);   // throws SQLException
-            return "User-" + id;
-        } catch (SQLException e) {
-            // Chain: pass cause so stack trace is preserved
-            throw new DataAccessException("Failed to fetch user id=" + id, e);
+    // Domain-level (business) exception - unchecked, carries an error code.
+    static class AccountServiceException extends RuntimeException {
+        final String code;
+        AccountServiceException(String code, String m, Throwable cause) {
+            super(m, cause);          // <-- chain the cause, never lose it
+            this.code = code;
         }
     }
 
-    private void simulateDbCall(int id) throws SQLException {
-        if (id < 0) throw new SQLException("Invalid id: " + id, "42000", 1064);
+    static void loadFromDb() throws DataAccessException {
+        throw new DataAccessException("ORA-00942: table or view does not exist");
     }
-}
 
-class ExceptionChainDemo {
-    public static void main(String[] args) {
-        UserRepository repo = new UserRepository();
+    static void getAccount() {
         try {
-            repo.findUser(-1);
+            loadFromDb();
         } catch (DataAccessException e) {
-            System.out.println("Domain error: " + e.getMessage());
-            System.out.println("Root cause: " + e.getCause().getMessage());
-            // Full chain visible in e.printStackTrace()
-            // DataAccessException: Failed to fetch user id=-1
-            //   Caused by: SQLException: Invalid id: -1
+            // Translate to a meaningful layer exception, preserving the cause.
+            throw new AccountServiceException("ACCOUNT_LOAD_FAILED", "Could not load account", e);
+        }
+    }
+
+    public static void main(String[] args) {
+        try {
+            getAccount();
+        } catch (AccountServiceException e) {
+            System.out.println("code     : " + e.code);
+            System.out.println("message  : " + e.getMessage());
+            System.out.println("root cause: " + e.getCause().getMessage());
         }
     }
 }`
+              },
+              {
+                lang: `java`,
+                title: `Fail fast with Objects.requireNonNull vs swallowing`,
+                runnable: true,
+                note: `Validating at the boundary makes the trace point at the real caller, instead of a confusing NPE deep inside.`,
+                code: `import java.util.Objects;
+
+public class FailFastDemo {
+
+    static String transfer(String from, String to, long cents) {
+        // Fail fast: validate the contract up front.
+        Objects.requireNonNull(from, "from must not be null");
+        Objects.requireNonNull(to, "to must not be null");
+        if (cents <= 0) {
+            throw new IllegalArgumentException("amount must be positive, was " + cents);
+        }
+        return "transferred " + cents + " from " + from + " to " + to;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(transfer("ACC-1", "ACC-2", 500));
+        try {
+            transfer("ACC-1", null, 500);
+        } catch (NullPointerException e) {
+            System.out.println("rejected early: " + e.getMessage());
+        }
+        try {
+            transfer("ACC-1", "ACC-2", -5);
+        } catch (IllegalArgumentException e) {
+            System.out.println("rejected early: " + e.getMessage());
+        }
+    }
+}`
+              }
             ],
             flashcards: [
               {
-                q: `When should you create a custom exception vs use a standard one?`,
-                a: `Create custom exceptions when: (1) the caller needs to distinguish this failure from others in a catch block, (2) you need to carry domain-specific data (amount, orderId), (3) crossing a layer boundary to translate technical to domain language. Do not create them just to rename RuntimeException.`
+                q: `What is exception translation and what must you never forget?`,
+                a: `Catching a low-level exception at an abstraction boundary and rethrowing a higher-level one meaningful to your layer (Effective Java Item 73). Never forget to chain the original via new X(msg, cause) so the root cause and stack survive.`
               },
               {
-                q: `Why must you always pass the original exception as the cause when rethrowing?`,
-                a: `Without the cause, the original stack trace is lost forever — you see only where the new exception was thrown, not what caused it. Always use throw new MyException("message", originalException) to preserve the full chain for debugging.`
+                q: `Why split exceptions into business vs technical roots?`,
+                a: `They differ in handling: business exceptions are expected outcomes of valid flows (log INFO/WARN, map to 4xx, caller can react); technical exceptions are infrastructure failures (log ERROR, map to 5xx, often retryable). One root each lets a global handler treat them uniformly.`
               },
               {
-                q: `What are the two constructors every custom exception should have?`,
-                a: `(1) (String message) — for new errors. (2) (String message, Throwable cause) — for wrapping an existing exception. Both delegate to the matching super() constructor. This makes the exception useful in all wrapping scenarios.`
+                q: `Should a custom app-exception base be checked or unchecked, and why?`,
+                a: `Usually unchecked (extends RuntimeException) so it does not force throws clauses through every layer, while carrying structured data (error code enum, status hint, context) so a single handler can translate it without instanceof ladders.`
               },
               {
-                q: `What is the "log or rethrow" rule?`,
-                a: `When you catch an exception, either log it (and handle it) OR rethrow it — not both. If every layer logs and rethrows, the same exception appears in the log multiple times, obscuring the actual flow. Log only at the point where you truly handle it and stop propagation.`
+                q: `When should you return Optional instead of throwing?`,
+                a: `When absence is a normal, expected result (a lookup miss). Optional is for possibly-absent return values only — not for parameters, fields, or collections (return an empty collection instead). For an actual failure, throw.`
               },
               {
-                q: `What is the benefit of rooting all custom exceptions in your own AppException base class?`,
-                a: `A single catch (AppException e) at the top-level handler catches all app exceptions. More specific handlers still work at lower levels. Monitoring and logging can filter by the hierarchy. And you can add cross-cutting fields (correlationId, errorCode) to AppException once.`
+                q: `Optional vs sentinel value — what is the trade-off?`,
+                a: `Optional makes absence explicit and forces the caller to address it, eliminating null bugs, at a small allocation cost. Sentinels (-1, null) are zero-allocation and used in perf/legacy APIs (indexOf) but are easy to ignore and ambiguous.`
+              },
+              {
+                q: `What is the cardinal sin in a catch block during translation?`,
+                a: `Throwing a new exception without passing the caught one as the cause, e.g. catch (SQLException e) { throw new ServiceException("failed"); } — this discards the SQL state, vendor code, and original stack trace.`
+              },
+              {
+                q: `What does "fail fast" mean for exception design?`,
+                a: `Detect contract violations as early as possible — validate arguments at the top of public methods (Objects.requireNonNull, range checks) and throw immediately, so the trace points at the offending caller rather than a confusing failure deep inside.`
+              },
+              {
+                q: `Why is swallowing an exception (empty catch) dangerous?`,
+                a: `It hides a defect and lets the program continue in a corrupt state, so the failure surfaces much later, far from its cause, often as a misleading symptom. At minimum log with context; ideally handle or rethrow.`
+              },
+              {
+                q: `Give three situations where exceptions are the wrong tool.`,
+                a: `(1) Expected/frequent outcomes on a hot path; (2) normal control flow such as loop termination; (3) bulk validation where a typed result per item is cleaner. Exceptions cost stack capture and obscure flow when overused.`
+              },
+              {
+                q: `How do you attach a cause to an exception you already created?`,
+                a: `Use the (message, cause) constructor when throwing, or call initCause(cause) once on an already-constructed throwable. initCause throws IllegalStateException if a cause was already set.`
+              },
+              {
+                q: `What structured data should a production exception carry?`,
+                a: `A stable error code (enum, safe to expose), a human message, an optional HTTP/status hint, and a context map (entity id, operation) — enough for a global handler to build a consistent API error and for logs to be actionable.`
+              },
+              {
+                q: `Why prefer a Result/Either object over exceptions in some designs?`,
+                a: `When errors are expected and you want exhaustive, typed, allocation-cheap handling without stack-trace cost or non-local control flow — common in functional/stream pipelines and bulk processing where each item may fail independently.`
               }
             ]
           },
           {
-            title: `Exception Patterns & Real-World Best Practices`,
-            notes: `## Exception Patterns & Real-World Best Practices
+            title: `Exception Handling in Layered Applications`,
+            notes: `## Exception Handling in Layered Applications
 
-### Anti-Pattern Gallery
+### Where to catch
 
-Understanding what NOT to do is as important as knowing the patterns.
+The rule: **catch where you can add value** — translate, recover, retry, or render a response — and **propagate everywhere else**. Most layers should *not* catch; they should let exceptions bubble to a place that knows what to do.
 
-**1. Swallowing exceptions silently**
-\`\`\`java
-// BAD — error disappears, debugging becomes a nightmare
-try {
-    processPayment(order);
-} catch (Exception e) { }  // empty catch block
-
-// GOOD — at minimum, log it
-try {
-    processPayment(order);
-} catch (Exception e) {
-    log.error("Payment failed for order {}", order.getId(), e);
-    // now decide: rethrow? return error response? set error state?
-}
+\`\`\`mermaid
+sequenceDiagram
+    participant C as Controller
+    participant S as Service
+    participant R as Repository
+    participant H as @ControllerAdvice
+    C->>S: placeOrder()
+    S->>R: save()
+    R-->>S: throws DataAccessException
+    S-->>C: translate -> OrderException(cause=DAE)
+    C-->>H: propagates (no try/catch in controller)
+    H-->>C: map to HTTP 409 + safe error body
+    Note over H: single place that maps<br/>exceptions to responses + logs once
 \`\`\`
 
-**2. Catching Exception too broadly**
-\`\`\`java
-// BAD — catches InterruptedException, OutOfMemoryError subtypes, everything
-try { riskyOp(); }
-catch (Exception e) { handle(e); }
+### Global handlers
 
-// GOOD — catch what you can actually handle
-try { riskyOp(); }
-catch (IOException e) { handleIoError(e); }
-catch (SQLException e) { handleDbError(e); }
-\`\`\`
+In Spring MVC, a \`@ControllerAdvice\` class with \`@ExceptionHandler\` methods centralizes mapping. Each handler maps an exception type to an HTTP status and a **sanitized** body. This keeps controllers free of repetitive \`try/catch\` and guarantees consistent error contracts.
 
-**3. Exception used as flow control**
-\`\`\`java
-// BAD — exceptions are expensive (stack trace capture); use if/else for normal flow
-try {
-    return map.get(key).toString();   // relies on NPE for missing key
-} catch (NullPointerException e) {
-    return "default";
-}
-
-// GOOD — check first
-String value = map.get(key);
-return value != null ? value.toString() : "default";
-// Even better: map.getOrDefault(key, "default")
-\`\`\`
-
-### Wrapping Checked as Unchecked (Common Framework Pattern)
-
-Libraries like Spring wrap checked exceptions in unchecked ones so callers don't litter code with \`throws\`:
-
-\`\`\`java
-// Utility: rethrow checked exception as unchecked
-public static <T> T call(Callable<T> callable) {
-    try {
-        return callable.call();
-    } catch (RuntimeException e) {
-        throw e;  // pass through unchecked
-    } catch (Exception e) {
-        throw new RuntimeException(e);  // wrap checked in unchecked
-    }
-}
-
-// Usage — no throws needed
-String content = call(() -> Files.readString(Path.of("config.txt")));
-\`\`\`
-
-### Exception and Lambdas — the Checked Problem
-
-Checked exceptions and lambdas don't mix well because functional interface methods don't declare \`throws\`:
-
-\`\`\`java
-// WON'T COMPILE — Function<String, String> doesn't declare throws IOException
-Function<String, String> reader = path -> Files.readString(Path.of(path));
-
-// Solution 1: wrap inline
-Function<String, String> reader = path -> {
-    try { return Files.readString(Path.of(path)); }
-    catch (IOException e) { throw new UncheckedIOException(e); }
-};
-
-// Solution 2: checked-friendly functional interface
-@FunctionalInterface
-interface ThrowingFunction<T, R> {
-    R apply(T t) throws Exception;
-}
-\`\`\`
-
-### Java 9+ — Stack Walking API
-
-\`\`\`java
-// Get caller information without new Exception().getStackTrace()
-StackWalker walker = StackWalker.getInstance();
-String caller = walker.walk(frames ->
-    frames.skip(1).findFirst().map(StackWalker.StackFrame::getMethodName).orElse("unknown")
-);
-\`\`\`
-
-### Interview Quick-Fire
-
-| Question | Answer |
+| Exception type | HTTP status |
 |---|---|
-| Can you catch multiple exceptions in one catch? | Yes — \`catch (A \\| B e)\` since Java 7 |
-| Is it safe to re-throw \`e\` after \`catch (Exception e)\`? | Yes since Java 7 — compiler tracks actual types |
-| What does \`throw e\` vs \`throw new RuntimeException(e)\` preserve? | \`throw e\` preserves original type and stack; wrapping adds a layer |
-| When is \`UncheckedIOException\` used? | Wrapping \`IOException\` for use in streams/lambdas |
-| Can a constructor throw? | Yes — any constructor can throw both checked and unchecked |
-| What is the \`throws\` clause on main? | Legal but useless in production — unhandled exceptions print to stderr and exit |`,
+| \`EntityNotFoundException\` | 404 Not Found |
+| \`ValidationException\` / bind errors | 400 / 422 |
+| \`AccessDeniedException\` | 403 Forbidden |
+| \`OptimisticLockException\` / conflict | 409 Conflict |
+| Unhandled / technical | 500 Internal Server Error |
+
+### Log vs rethrow — log ONCE
+
+> [!DANGER]
+> **Log-and-rethrow = double logging.** If every layer does \`log.error(e); throw e;\`, one failure produces N stack traces, blowing up log volume and making correlation a nightmare. Pick **one** owner — usually the global handler (or the outermost boundary) — to log the full trace. Inner layers either translate (no log) or add context without logging the full trace.
+
+### Do not leak internals
+
+> [!WARNING]
+> Never return raw exception messages, stack traces, SQL, or class names to clients. They leak schema, library versions, and attack surface. Return a stable error code + correlation id; log the detail server-side keyed by that id.
+
+### Idempotent retry on transient failures
+
+Retry **only** transient, technical failures (timeouts, \`429\`, deadlocks, connection resets) and **only** if the operation is **idempotent** (or made so with an idempotency key). Use bounded retries with **exponential backoff + jitter**. Never retry business failures (insufficient funds) or non-idempotent writes blindly.
+
+> [!EU]
+> When errors carry personal data (a user's email in a "not found" message, an account id in a stack trace), logging the full exception can persist PII. Under GDPR, scrub or pseudonymize identifiers in logs and avoid echoing personal data back in error responses.`,
             code: [
-              `import java.util.function.*;
-import java.io.*;
-import java.nio.file.*;
-import java.util.*;
+              {
+                lang: `java`,
+                title: `Idempotent retry with exponential backoff + jitter (transient only)`,
+                runnable: true,
+                note: `Retries only a marker TransientException; business failures propagate immediately.`,
+                code: `import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.Callable;
 
-public class ExceptionPatterns {
-    // Wrapping checked for lambda use
-    @FunctionalInterface
-    interface ThrowingSupplier<T> {
-        T get() throws Exception;
+public class RetryDemo {
+    static class TransientException extends RuntimeException {
+        TransientException(String m) { super(m); }
+    }
+    static class BusinessException extends RuntimeException {
+        BusinessException(String m) { super(m); }
     }
 
-    static <T> T quietly(ThrowingSupplier<T> supplier, T defaultValue) {
-        try { return supplier.get(); }
-        catch (Exception e) {
-            System.err.println("Suppressed: " + e.getMessage());
-            return defaultValue;
-        }
-    }
-
-    // Retry pattern with exception
-    static <T> T withRetry(ThrowingSupplier<T> op, int maxAttempts) throws Exception {
+    static <T> T withRetry(Callable<T> op, int maxAttempts, long baseMs) throws Exception {
         Exception last = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                return op.get();
-            } catch (Exception e) {
+                return op.call();
+            } catch (TransientException e) {           // ONLY retry transient
                 last = e;
-                System.out.printf("Attempt %d/%d failed: %s%n", attempt, maxAttempts, e.getMessage());
+                if (attempt == maxAttempts) break;
+                long backoff = baseMs * (1L << (attempt - 1));
+                long jitter = ThreadLocalRandom.current().nextLong(backoff / 2 + 1);
+                System.out.printf("attempt %d failed (%s), sleeping %d ms%n", attempt, e.getMessage(), backoff + jitter);
+                Thread.sleep(backoff + jitter);
             }
         }
-        throw new RuntimeException("All " + maxAttempts + " attempts failed", last);
+        throw last;
     }
 
     public static void main(String[] args) throws Exception {
-        // quietly — use default on error
-        String content = quietly(() -> Files.readString(Path.of("/missing.txt")), "default");
-        System.out.println("Content: " + content);
+        int[] calls = {0};
+        String result = withRetry(() -> {
+            calls[0]++;
+            if (calls[0] < 3) throw new TransientException("timeout #" + calls[0]);
+            return "OK on attempt " + calls[0];
+        }, 5, 10);
+        System.out.println(result);
 
-        // retry pattern
-        int[] attempt = {0};
         try {
-            String result = withRetry(() -> {
-                if (++attempt[0] < 3) throw new IOException("network timeout");
-                return "success";
-            }, 3);
-            System.out.println("Result: " + result);
-        } catch (RuntimeException e) {
-            System.out.println("All retries failed: " + e.getCause().getMessage());
-        }
-    }
-}`,
-              `// Full real-world exception hierarchy example
-class AppException extends RuntimeException {
-    private final String errorCode;
-    public AppException(String errorCode, String message)                  {
-        super(message); this.errorCode = errorCode;
-    }
-    public AppException(String errorCode, String message, Throwable cause) {
-        super(message, cause); this.errorCode = errorCode;
-    }
-    public String getErrorCode() { return errorCode; }
-}
-
-class ValidationException extends AppException {
-    private final String field;
-    public ValidationException(String field, String message) {
-        super("VALIDATION_ERROR", field + ": " + message);
-        this.field = field;
-    }
-    public String getField() { return field; }
-}
-
-class OrderService {
-    public void placeOrder(String product, int qty) {
-        if (product == null || product.isBlank())
-            throw new ValidationException("product", "must not be blank");
-        if (qty <= 0)
-            throw new ValidationException("qty", "must be positive, got " + qty);
-        System.out.println("Order placed: " + qty + "x " + product);
-    }
-}
-
-class RealWorldDemo {
-    public static void main(String[] args) {
-        OrderService svc = new OrderService();
-        Object[][] orders = {{"Widget", 3}, {null, 1}, {"Gadget", -1}};
-        for (Object[] o : orders) {
-            try {
-                svc.placeOrder((String) o[0], (int) o[1]);
-            } catch (ValidationException e) {
-                System.out.printf("[%s] Field '%s': %s%n",
-                    e.getErrorCode(), e.getField(), e.getMessage());
-            } catch (AppException e) {
-                System.out.printf("[%s] %s%n", e.getErrorCode(), e.getMessage());
-            }
+            withRetry(() -> { throw new BusinessException("insufficient funds"); }, 5, 10);
+        } catch (BusinessException e) {
+            System.out.println("not retried: " + e.getMessage());
         }
     }
 }`
+              },
+              {
+                lang: `java`,
+                title: `Layered translate-then-map (plain Java model of @ControllerAdvice)`,
+                runnable: true,
+                note: `Repository throws technical; service translates; a central handler maps to a status code and logs once.`,
+                code: `public class LayeredHandlingDemo {
+    static class DataAccessException extends RuntimeException {
+        DataAccessException(String m) { super(m); }
+    }
+    static class EntityNotFoundException extends RuntimeException {
+        EntityNotFoundException(String m, Throwable c) { super(m, c); }
+    }
+
+    // Repository layer: throws technical failure.
+    static String repoFind(String id) {
+        throw new DataAccessException("no row for id=" + id);
+    }
+
+    // Service layer: translate, do not log here.
+    static String serviceGet(String id) {
+        try {
+            return repoFind(id);
+        } catch (DataAccessException e) {
+            throw new EntityNotFoundException("Order " + id + " not found", e);
+        }
+    }
+
+    // Central handler: map to status + log ONCE with correlation id.
+    static String handle(Runnable controllerCall) {
+        try {
+            controllerCall.run();
+            return "200";
+        } catch (EntityNotFoundException e) {
+            String corrId = "req-12345";
+            System.out.println("LOG once [" + corrId + "]: " + e.getMessage() + " root=" + e.getCause().getMessage());
+            return "404 {\\"code\\":\\"NOT_FOUND\\",\\"correlationId\\":\\"" + corrId + "\\"}";
+        } catch (RuntimeException e) {
+            return "500 {\\"code\\":\\"INTERNAL\\"}";
+        }
+    }
+
+    public static void main(String[] args) {
+        System.out.println(handle(() -> serviceGet("A-1")));
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Spring @ControllerAdvice global exception handler`,
+                runnable: false,
+                note: `Conceptual Spring snippet — requires Spring Web. Maps exceptions to sanitized responses in one place.`,
+                code: `import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.util.Map;
+import java.util.UUID;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNotFound(EntityNotFoundException ex) {
+        // Business: expected -> WARN, no full trace, 404, no internals leaked.
+        log.warn("not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("code", "NOT_FOUND", "message", ex.getMessage()));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
+        // Technical/unknown: log ONCE with full trace + correlation id, hide details.
+        String correlationId = UUID.randomUUID().toString();
+        log.error("unhandled [{}]", correlationId, ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("code", "INTERNAL_ERROR", "correlationId", correlationId));
+    }
+}`
+              }
             ],
             flashcards: [
               {
-                q: `Why is using exceptions for flow control bad?`,
-                a: `Two reasons: (1) Performance — constructing an exception captures the full stack trace, which is expensive (hundreds of microseconds). (2) Clarity — exceptions should signal unexpected failures, not expected branches. Use if/else or Optional for expected conditions.`
+                q: `What is the rule for where to catch exceptions in a layered app?`,
+                a: `Catch only where you can add value: translate, recover, retry, or render a response. Everywhere else, let it propagate. Most layers should not catch at all.`
               },
               {
-                q: `How do you handle checked exceptions inside a stream lambda?`,
-                a: `Option 1: wrap inline in try/catch and throw UncheckedIOException (or RuntimeException). Option 2: define a ThrowingFunction functional interface that declares throws Exception and write a wrapper that converts it. Checked exceptions cannot propagate through standard functional interfaces like Function or Consumer.`
+                q: `What does @ControllerAdvice + @ExceptionHandler give you?`,
+                a: `A single, centralized place to map exception types to HTTP statuses and sanitized response bodies, keeping controllers free of repetitive try/catch and guaranteeing a consistent error contract.`
               },
               {
-                q: `What is the difference between throw e and throw new RuntimeException(e)?`,
-                a: `throw e re-throws the original exception with its original type and stack trace. throw new RuntimeException(e) wraps it — adds a new stack frame layer, changes the type, but preserves the original as the cause. Use throw e when you want to preserve the original; wrap when converting checked to unchecked.`
+                q: `What is the log-and-rethrow anti-pattern?`,
+                a: `Every layer doing log.error(e); throw e;. One failure then produces N duplicate stack traces, inflating logs and breaking correlation. Log the full trace exactly once, at the outermost boundary/global handler.`
               },
               {
-                q: `What is UncheckedIOException?`,
-                a: `A RuntimeException (added in Java 8) specifically for wrapping IOException. It is the standard way to propagate IO errors through lambdas and streams without checked exception boilerplate. Always prefer it over generic RuntimeException(e) when the cause is IOException.`
+                q: `Why must you not leak exception details to API clients?`,
+                a: `Raw messages/traces/SQL/class names expose schema, library versions, and attack surface. Return a stable error code plus a correlation id; keep the detail in server logs keyed by that id.`
               },
               {
-                q: `What is the "retry pattern" and when do you use it?`,
-                a: `Retry wraps an operation in a loop, catching transient failures (network timeouts, temporary unavailability) and retrying up to N times. After N failures, it throws with the last exception as the cause. Appropriate for network calls, file system operations on remote mounts, or any operation where transient failures are expected.`
+                q: `Which failures are safe to retry, and under what condition?`,
+                a: `Only transient technical failures (timeouts, 429, deadlocks, connection resets), and only when the operation is idempotent (or made idempotent via an idempotency key). Never blindly retry business failures or non-idempotent writes.`
+              },
+              {
+                q: `Why exponential backoff with jitter rather than fixed-interval retry?`,
+                a: `Backoff reduces load on a struggling dependency; jitter de-synchronizes many clients so they do not retry in lockstep (the thundering-herd problem) and re-overload the service.`
+              },
+              {
+                q: `How should business vs technical exceptions differ in logging and status mapping?`,
+                a: `Business: expected -> log INFO/WARN without full trace, map to 4xx/422. Technical/unknown: log ERROR with full trace and correlation id once, map to 5xx, hide internals.`
+              },
+              {
+                q: `Map: EntityNotFound, validation failure, access denied, optimistic-lock conflict.`,
+                a: `404 Not Found, 400/422 Unprocessable, 403 Forbidden, 409 Conflict respectively. Unhandled/technical -> 500.`
+              },
+              {
+                q: `Where should the single full-stack-trace log live?`,
+                a: `At the outermost boundary that owns the request — typically the global @ControllerAdvice handler (or the top-level entry point for non-web apps). Inner layers add context or translate but do not log the full trace.`
+              },
+              {
+                q: `How do you make a non-idempotent write safely retryable?`,
+                a: `Attach a client-supplied idempotency key; the server records the key result and returns the prior outcome on retries, so duplicate requests do not double-apply the write.`
+              },
+              {
+                q: `What GDPR concern does exception logging raise?`,
+                a: `Exception messages/traces can contain personal data (emails, account ids). Persisting them in logs creates a PII store; scrub/pseudonymize identifiers and avoid echoing personal data in error responses.`
+              },
+              {
+                q: `Why keep controllers free of try/catch when a global handler exists?`,
+                a: `It avoids duplicated mapping logic, prevents inconsistent error responses, and lets controllers express the happy path. The advice layer is the single source of truth for error -> response mapping.`
+              }
+            ]
+          },
+          {
+            title: `Concurrency & Modern API Exceptions`,
+            notes: `## Concurrency & Modern API Exceptions
+
+### Exceptions do not cross threads automatically
+
+An exception thrown in a \`Runnable\` run by another thread does **not** propagate to the thread that started it. With a raw \`Thread\`, an uncaught exception goes to that thread's \`UncaughtExceptionHandler\` (default: print to stderr, thread dies). The launching thread never sees it.
+
+> [!WARNING]
+> With \`ExecutorService.submit(Runnable/Callable)\`, a thrown exception is **captured in the returned \`Future\`** and is invisible until you call \`future.get()\`, which rethrows it wrapped in an \`ExecutionException\`. If you ignore the \`Future\`, the exception is **silently lost** — a notorious source of "my task just stopped" bugs. (\`execute()\`, by contrast, routes to the \`UncaughtExceptionHandler\`.)
+
+### ExecutionException unwrapping
+
+\`Future.get()\` wraps the task's exception in \`ExecutionException\`; the real cause is \`ee.getCause()\`. \`get()\` also throws \`InterruptedException\` (the *calling* thread was interrupted while waiting) and \`CancellationException\`.
+
+### CompletableFuture: exceptionally / handle / whenComplete
+
+| Method | Sees | Can transform value? | Can recover? |
+|---|---|---|---|
+| \`exceptionally(fn)\` | exception only | yes (provides fallback value) | yes |
+| \`handle(fn)\` | (value, throwable) | yes (always runs) | yes |
+| \`whenComplete(fn)\` | (value, throwable) | **no** (side-effect only) | no (re-propagates) |
+
+> [!TIP]
+> In a \`CompletableFuture\` chain, exceptions are wrapped in \`CompletionException\` (analogous to \`ExecutionException\` for the async-stage path). Always inspect \`throwable.getCause()\`. Use \`handle\` when you must run on both success and failure and possibly recover; \`whenComplete\` for logging/cleanup that must not change the result; \`exceptionally\` for a pure fallback.
+
+### The checked-exception-in-lambda problem
+
+Functional interfaces like \`Function\`, \`Supplier\`, \`Consumer\` **do not declare checked exceptions**. So a lambda body that throws a checked exception (e.g. \`Files.readString\` -> \`IOException\`) does **not compile** inside \`stream.map(...)\`.
+
+Patterns to resolve it:
+- **Wrap-and-rethrow as unchecked** inside the lambda (\`try/catch -> throw new UncheckedIOException(e)\`). Most common.
+- **A custom "throwing" functional interface** + an adapter that wraps checked into unchecked.
+- **"Sneaky throws"** — a generics trick to throw the checked exception undeclared. Clever but hides the checked contract; use sparingly.
+- **Result/Either** — map each element to a success/failure object and partition afterwards; keeps the stream pure.
+
+> [!DANGER]
+> Do not catch-and-swallow inside a stream lambda (\`catch (IOException e) { return null; }\`) — you silently drop failures and pollute the stream with nulls. Either fail the whole pipeline (wrap as unchecked) or collect failures explicitly.`,
+            code: [
+              {
+                lang: `java`,
+                title: `ExecutionException unwrapping from a Future`,
+                runnable: true,
+                note: `The task throws; get() rethrows it wrapped in ExecutionException. The real cause is getCause().`,
+                code: `import java.util.concurrent.*;
+
+public class FutureExceptionDemo {
+    public static void main(String[] args) throws InterruptedException {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        Future<Integer> f = pool.submit(() -> {
+            throw new IllegalStateException("task blew up");
+        });
+        try {
+            f.get();
+        } catch (ExecutionException ee) {
+            System.out.println("wrapper : " + ee.getClass().getSimpleName());
+            System.out.println("real    : " + ee.getCause().getClass().getSimpleName()
+                    + " - " + ee.getCause().getMessage());
+        } finally {
+            pool.shutdown();
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `CompletableFuture handle vs exceptionally`,
+                runnable: true,
+                note: `handle() runs on both paths and recovers; the exception arrives wrapped in CompletionException, so inspect getCause().`,
+                code: `import java.util.concurrent.*;
+
+public class CompletableFutureHandleDemo {
+    public static void main(String[] args) throws Exception {
+        CompletableFuture<Integer> failing = CompletableFuture
+                .supplyAsync(() -> { throw new RuntimeException("upstream failure"); });
+
+        // handle: receives (value, throwable); always runs; can recover.
+        Integer recovered = failing
+                .handle((value, ex) -> {
+                    if (ex != null) {
+                        Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                        System.out.println("handle saw: " + cause.getMessage());
+                        return -1;                 // fallback value
+                    }
+                    return value;
+                })
+                .join();
+        System.out.println("recovered = " + recovered);
+
+        // exceptionally: only on failure, provides fallback.
+        Integer fallback = CompletableFuture
+                .<Integer>supplyAsync(() -> { throw new IllegalStateException("nope"); })
+                .exceptionally(ex -> { System.out.println("exceptionally: " + ex.getMessage()); return 0; })
+                .join();
+        System.out.println("fallback = " + fallback);
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Checked exception in a stream lambda: wrap as unchecked`,
+                runnable: true,
+                note: `A throwing functional interface adapts a checked-throwing lambda so it composes with Stream.map.`,
+                code: `import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+public class CheckedInLambdaDemo {
+
+    // Custom functional interface that MAY throw a checked exception.
+    @FunctionalInterface
+    interface ThrowingFunction<T, R> {
+        R apply(T t) throws Exception;
+    }
+
+    // Adapter: turns a throwing lambda into a normal Function (wraps checked -> unchecked).
+    static <T, R> Function<T, R> unchecked(ThrowingFunction<T, R> f) {
+        return t -> {
+            try {
+                return f.apply(t);
+            } catch (Exception e) {
+                throw new RuntimeException(e);   // preserve cause
+            }
+        };
+    }
+
+    // Pretend this throws a checked exception.
+    static int parsePositive(String s) throws Exception {
+        int v = Integer.parseInt(s);
+        if (v < 0) throw new Exception("negative not allowed: " + v);
+        return v;
+    }
+
+    public static void main(String[] args) {
+        List<Integer> ok = List.of("1", "2", "3").stream()
+                .map(unchecked(CheckedInLambdaDemo::parsePositive))
+                .collect(Collectors.toList());
+        System.out.println("ok = " + ok);
+
+        try {
+            List.of("1", "-5").stream()
+                    .map(unchecked(CheckedInLambdaDemo::parsePositive))
+                    .forEach(System.out::println);
+        } catch (RuntimeException e) {
+            System.out.println("pipeline failed, cause: " + e.getCause().getMessage());
+        }
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Does an exception in a thread propagate to the thread that started it?`,
+                a: `No. Each thread is independent. An uncaught exception in a raw Thread goes to its UncaughtExceptionHandler and kills that thread; the starter never sees it.`
+              },
+              {
+                q: `What happens to an exception thrown by a Callable submitted via submit()?`,
+                a: `It is captured in the returned Future and rethrown — wrapped in ExecutionException — only when you call future.get(). If you never call get(), the exception is silently lost.`
+              },
+              {
+                q: `Difference between Executor.execute() and submit() for exceptions?`,
+                a: `execute(Runnable) lets an uncaught exception reach the thread's UncaughtExceptionHandler. submit() captures it in the Future, hiding it until get() is called. submit can silently swallow failures.`
+              },
+              {
+                q: `How do you get the real cause out of a Future failure?`,
+                a: `Catch ExecutionException from get() and call ee.getCause(). get() may also throw InterruptedException (the waiting thread was interrupted) and CancellationException (task was cancelled).`
+              },
+              {
+                q: `In a CompletableFuture chain, what type wraps a stage failure?`,
+                a: `CompletionException (for the async chaining path), analogous to ExecutionException for get(). Always inspect throwable.getCause() to find the real exception.`
+              },
+              {
+                q: `Compare exceptionally, handle, and whenComplete.`,
+                a: `exceptionally(fn): runs only on failure, returns a fallback value. handle(fn): runs on both success and failure, receives (value, throwable), can transform/recover. whenComplete(fn): runs on both but is side-effect only and re-propagates the original outcome.`
+              },
+              {
+                q: `When would you choose whenComplete over handle?`,
+                a: `When you need to observe the outcome (log, cleanup, metrics) without altering the result or recovering. whenComplete cannot change the value/exception; handle can.`
+              },
+              {
+                q: `Why does a checked-throwing lambda not compile in stream.map?`,
+                a: `Standard functional interfaces (Function, Supplier, Consumer) declare no checked exceptions in their SAM, so a body that throws a checked exception violates the interface contract. The compiler rejects it.`
+              },
+              {
+                q: `What is the most common fix for the checked-in-lambda problem?`,
+                a: `Wrap the checked exception as unchecked inside the lambda (try/catch -> throw new RuntimeException(e) or UncheckedIOException(e)), preserving the cause — often via a reusable ThrowingFunction adapter.`
+              },
+              {
+                q: `What is "sneaky throws" and what is its downside?`,
+                a: `A generics trick (an unchecked cast in a generic method) that lets you throw a checked exception without declaring it. It compiles and works at runtime but hides the checked contract from callers, so use it sparingly and document it.`
+              },
+              {
+                q: `Why is catch-and-return-null inside a stream lambda an anti-pattern?`,
+                a: `It silently drops failures and injects nulls into the stream, corrupting downstream operations. Either fail the pipeline by wrapping as unchecked, or map to an explicit Result/Either and partition successes from failures.`
+              },
+              {
+                q: `How should you handle InterruptedException inside a worker task?`,
+                a: `Either rethrow it, or restore the interrupt flag with Thread.currentThread().interrupt() before returning, so higher-level code can still observe the cancellation request. Never swallow it silently.`
+              }
+            ]
+          },
+          {
+            title: `Best Practices, Pitfalls & a Senior Checklist`,
+            notes: `## Best Practices, Pitfalls & a Senior Checklist
+
+### Exceptions as control flow (anti-pattern)
+
+> [!DANGER]
+> Throwing to drive normal logic — break a loop, signal "not found" on a hot path, validate cheaply — is slow (stack-trace capture) and obscures flow. *Effective Java* Item 69: **use exceptions only for exceptional conditions.** A loop that catches \`ArrayIndexOutOfBoundsException\` to terminate instead of checking bounds is the canonical sin.
+
+### Catching too broadly
+
+\`catch (Exception e)\` or \`catch (Throwable t)\` near the leaves swallows bugs (NPEs, \`Error\`s like \`OutOfMemoryError\`) you never meant to handle. Catch the **narrowest** type you can actually handle. A broad catch is acceptable **only** at a top-level boundary (request handler, thread root) whose job is exactly "turn anything into a safe response" — and even there, never catch \`Error\`.
+
+### Double logging
+
+Already covered in layering: \`log; rethrow\` at every level multiplies traces. Log once, at the boundary that owns the failure.
+
+### Performance
+
+- Stack-trace capture (\`fillInStackTrace\`) is the cost, not the throw/catch. A \`try\` block you do not throw from is essentially free (JIT handles it via the exception table).
+- Do not pre-create-and-cache exceptions with live traces (the trace becomes stale/misleading); if you cache, make them stackless.
+
+### Assertions vs exceptions
+
+| | \`assert\` | Exception / \`Objects.requireNonNull\` |
+|---|---|---|
+| Audience | Developer (internal invariant) | Caller / external input |
+| Enabled in prod | No (\`-ea\` off by default) | Always |
+| Use for | "This can never happen" internal checks | Validating arguments, public contracts |
+
+> [!WARNING]
+> Never use \`assert\` to validate public-method arguments or anything that must run in production — assertions are disabled by default, so the check silently vanishes. Use explicit \`if/throw\` or \`Objects.requireNonNull\`.
+
+### Error codes vs exceptions in APIs
+
+Inside a single JVM, exceptions are idiomatic. Across a **network/library boundary** (public REST API, gRPC, SDK), a **stable error-code contract** (string/enum + message + correlation id) is more robust: it versions cleanly, is language-agnostic, and does not leak internals. Map internal exceptions to those codes at the edge.
+
+> [!SUCCESS]
+> **Senior exception checklist**
+> - [ ] Right category: checked only for recoverable external conditions; unchecked for bugs.
+> - [ ] Custom exceptions carry an error code + context; base is unchecked.
+> - [ ] Every translation chains the cause (\`new X(msg, cause)\`).
+> - [ ] No empty catches; no \`return\`/\`throw\` in \`finally\`.
+> - [ ] try-with-resources for every \`AutoCloseable\`; check \`getSuppressed()\` when relevant.
+> - [ ] Catch the narrowest type; broad catch only at the boundary; never catch \`Error\`.
+> - [ ] Log the full trace **once**, at the boundary, with a correlation id; no PII/internals to clients.
+> - [ ] Retry only idempotent + transient failures, with backoff + jitter.
+> - [ ] Futures: always consume the \`Future\`; unwrap \`ExecutionException.getCause()\`.
+> - [ ] No exceptions for control flow; no checked-swallow in stream lambdas.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Exceptions-as-control-flow vs bounds check (anti-pattern measured)`,
+                runnable: true,
+                note: `Catching AIOOBE to terminate a loop is both wrong-spirited and far slower than a bounds check.`,
+                code: `public class ControlFlowAntiPatternDemo {
+    public static void main(String[] args) {
+        int[] data = new int[1000];
+
+        // GOOD: explicit bounds check.
+        long t0 = System.nanoTime();
+        long good = 0;
+        for (int r = 0; r < 1000; r++) {
+            for (int i = 0; i < data.length; i++) good += data[i];
+        }
+        long goodMs = (System.nanoTime() - t0) / 1_000_000;
+
+        // BAD: rely on the exception to terminate the loop.
+        long t1 = System.nanoTime();
+        long bad = 0;
+        for (int r = 0; r < 1000; r++) {
+            int i = 0;
+            try {
+                while (true) { bad += data[i]; i++; }
+            } catch (ArrayIndexOutOfBoundsException stop) { /* loop end */ }
+        }
+        long badMs = (System.nanoTime() - t1) / 1_000_000;
+
+        System.out.println("bounds-check sum=" + good + " in " + goodMs + " ms");
+        System.out.println("exception-loop sum=" + bad + " in " + badMs + " ms (slower + obscure)");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Assertions are off by default; validate args with explicit throws`,
+                runnable: true,
+                note: `Run normally and the assert is skipped; only -ea enables it. Public args must use explicit validation.`,
+                code: `public class AssertVsValidationDemo {
+
+    // WRONG for public input: vanishes without -ea.
+    static int squareRootCeilingBad(int n) {
+        assert n >= 0 : "n must be >= 0";        // skipped in production
+        return (int) Math.ceil(Math.sqrt(n));
+    }
+
+    // RIGHT: always-on validation of the caller-supplied argument.
+    static int squareRootCeilingGood(int n) {
+        if (n < 0) throw new IllegalArgumentException("n must be >= 0, was " + n);
+        return (int) Math.ceil(Math.sqrt(n));
+    }
+
+    public static void main(String[] args) {
+        // Without -ea, the bad version silently returns garbage for -4.
+        System.out.println("bad(-4)  = " + squareRootCeilingBad(-4) + " (assert skipped without -ea)");
+        try {
+            squareRootCeilingGood(-4);
+        } catch (IllegalArgumentException e) {
+            System.out.println("good(-4) rejected: " + e.getMessage());
+        }
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State Effective Java Item 69 in one line.`,
+                a: `Use exceptions only for exceptional conditions — never for ordinary control flow. Throwing to terminate loops or signal expected outcomes is slow (stack capture) and obscures intent.`
+              },
+              {
+                q: `When is catching Exception or Throwable acceptable?`,
+                a: `Only at a top-level boundary (request handler, thread/pool root) whose explicit job is to convert anything into a safe response or log. Even then, prefer Exception over Throwable so you do not swallow Errors like OutOfMemoryError.`
+              },
+              {
+                q: `Is a try block that never throws expensive?`,
+                a: `No. With no exception thrown, a try block is essentially free — the JIT implements it via the method's exception table with no runtime cost on the happy path. The cost is in constructing/throwing.`
+              },
+              {
+                q: `Why is caching exception instances with live stack traces risky?`,
+                a: `The captured trace reflects where the instance was first created, not where it is later thrown, so it is stale and misleading. If you must reuse instances, make them stackless (no writable trace).`
+              },
+              {
+                q: `assert vs Objects.requireNonNull — when each?`,
+                a: `assert is for internal developer invariants ("can never happen") and is disabled by default (-ea off), so it must not guard production logic or public input. Use explicit if/throw or Objects.requireNonNull for argument validation that must always run.`
+              },
+              {
+                q: `Why must you never validate public-method arguments with assert?`,
+                a: `Assertions are disabled by default in production, so the check silently disappears and invalid input flows through. Argument validation must be always-on: use explicit throws or requireNonNull.`
+              },
+              {
+                q: `Exceptions vs error codes across a network/SDK boundary — which and why?`,
+                a: `A stable error-code contract (code + message + correlation id). It is language-agnostic, versions cleanly, and does not leak internals or stack traces. Map internal exceptions to these codes at the edge; keep exceptions for in-JVM flow.`
+              },
+              {
+                q: `What is the double-logging anti-pattern and the fix?`,
+                a: `Logging and rethrowing at every layer, producing N duplicate traces per failure. Fix: log the full trace exactly once at the owning boundary (global handler); inner layers translate or add context without logging the full trace.`
+              },
+              {
+                q: `Why catch the narrowest exception type you can handle?`,
+                a: `A broad catch swallows unrelated bugs (NPE, Errors) you never intended to handle, hiding defects and corrupting state. Narrow catches handle exactly the recoverable condition and let everything else propagate.`
+              },
+              {
+                q: `What is the real performance cost of exceptions?`,
+                a: `fillInStackTrace() walking the whole stack at construction time — not the throw, catch, or try block. Deep stacks make this expensive, which is why control-flow exceptions hurt and stackless exceptions exist.`
+              },
+              {
+                q: `Give three items from a senior exception-handling checklist.`,
+                a: `Examples: always chain the cause on translation; never return/throw in finally; use try-with-resources for AutoCloseables; log once at the boundary with a correlation id; retry only idempotent+transient failures with backoff+jitter; never leak internals to clients.`
+              },
+              {
+                q: `Why is e.printStackTrace() in production code a smell?`,
+                a: `It writes to System.err outside the logging framework, bypassing log levels, formatting, correlation ids, and aggregation. Use the logger (log.error("...", e)) at the right level and exactly once.`
               }
             ]
           }
@@ -46854,199 +47168,693 @@ class OrderProcessListener implements org.camunda.bpm.engine.delegate.ExecutionL
       {
         id: `9.1`,
         title: `Linux Essentials & Shell`,
-        hours: 3,
+        hours: 4,
         sections: [
           {
-            title: `Linux for Java Developers — Commands, Processes & Shell`,
-            notes: `## Linux for Java Developers — Commands, Processes & Shell
+            id: `9.1.1`,
+            title: `Processes & Signals`,
+            notes: `## Processes & Signals
 
-### Essential Commands for Production Debugging
+A **process** is an instance of a running program: an address space, a set of threads, open file descriptors, and kernel bookkeeping (PID, PPID, scheduling state).
 
-\`\`\`bash
-# File navigation
-ls -la                    # list with permissions, hidden files
-cd /opt/app               # change directory
-pwd                       # print working directory
-find /var/log -name "*.log" -mtime -1   # files modified in last day
+> [!TIP]
+> At staff level you are rarely asked "what is \`ps\`". You are asked: *"the JVM is up but unresponsive, how do you find out why, and how do you stop it safely?"* Know the **signal contract** and the **process lifecycle**.
 
-# File content
-cat app.log               # print entire file
-tail -f app.log           # follow live (like IDE console view)
-tail -n 100 app.log       # last 100 lines
-grep "ERROR" app.log      # filter lines
-grep -i "exception" app.log | tail -50  # case-insensitive, last 50
-grep -r "OutOfMemory" /var/log/        # recursive
+### Inspecting processes
+\`ps\` is a snapshot; \`top\`/\`htop\` are live. The two \`ps\` dialects you must know:
 
-# Process management
-ps aux | grep java        # find Java processes
-top                       # live CPU/memory per process
-htop                      # interactive top (if installed)
-kill -9 1234              # force kill process id 1234
-kill -15 1234             # graceful shutdown (SIGTERM)
-kill -3 1234              # thread dump to stdout (Java-specific)
+- \`ps aux\` — BSD style (no dash). Columns: USER, PID, %CPU, %MEM, VSZ, RSS, STAT, START, TIME, COMMAND.
+- \`ps -ef\` — System V style. Columns: UID, PID, PPID, C, STIME, TTY, TIME, CMD. Use this when you need **PPID** (parent) to trace orphans.
 
-# Network
-netstat -tlnp             # listening TCP ports
-ss -tlnp                  # modern replacement for netstat
-curl -I http://localhost:8080/health   # check endpoint
-curl -s http://localhost:8080/health | python3 -m json.tool
+### Process states (the STAT column)
 
-# Disk
-df -h                     # disk usage summary
-du -sh /opt/app/*         # size of each item in directory
-lsof | grep deleted       # files deleted but still open (disk leak)
-\`\`\`
+| Code | State | Meaning |
+|------|-------|---------|
+| \`R\` | Running / Runnable | On CPU or in run queue |
+| \`S\` | Interruptible sleep | Waiting for an event (most idle threads) |
+| \`D\` | Uninterruptible sleep | Blocked in kernel, usually **disk/NFS I/O** — cannot be killed, even by SIGKILL |
+| \`Z\` | Zombie | Exited, parent has not \`wait()\`-ed yet |
+| \`T\` | Stopped | Job-control stop (SIGSTOP / Ctrl+Z) |
+| \`I\` | Idle kernel thread | (newer kernels) |
 
-### File Permissions
+> [!WARNING]
+> A process stuck in \`D\` state is the classic "I can't kill it" interview trap. SIGKILL is delivered only when the process returns from the uninterruptible syscall. If it never returns (dead NFS mount, failing disk) the only fix is resolving the I/O or rebooting.
 
-\`\`\`
-Permission string: -rwxr-xr--
-  - (first char): d=directory, l=symlink, -=file
-  rwx = owner: read, write, execute
-  r-x = group: read, no write, execute
-  r-- = others: read only
+### fork / exec
+\`fork()\` clones the calling process (copy-on-write address space); the child gets a new PID and a return value of 0. \`exec*()\` replaces the current process image with a new program. The shell runs every external command as **fork then exec**; \`exec\` *without* fork (the shell builtin) replaces the shell itself.
 
-chmod 755 script.sh       # rwxr-xr-x
-chmod +x script.sh        # add execute for all
-chown appuser:appgroup file.txt
-chown -R appuser /opt/app # recursive ownership change
+### Signals
 
-# Why matters: Spring Boot app running as non-root can't
-# read /etc/secrets if owned by root with mode 600
-\`\`\`
+| Signal | Number | Default | Catchable? | Use |
+|--------|--------|---------|-----------|-----|
+| \`SIGHUP\` | 1 | Terminate | Yes | Terminal hangup; often "reload config" by convention |
+| \`SIGINT\` | 2 | Terminate | Yes | Ctrl+C |
+| \`SIGQUIT\` | 3 | Core dump | Yes | Ctrl+\\\\ — **JVM prints a full thread dump to stdout** |
+| \`SIGKILL\` | 9 | Terminate | **No** | Cannot be caught/ignored; kernel kills you |
+| \`SIGTERM\` | 15 | Terminate | Yes | Polite "please shut down" — the default of \`kill\` |
+| \`SIGSTOP\` | 19 | Stop | **No** | Pause process |
+| \`SIGCONT\` | 18 | Continue | Yes | Resume |
 
-### Shell Scripting for DevOps
+> [!DANGER]
+> **SIGTERM vs SIGKILL is the #1 ops question.** SIGTERM (15) is graceful: the JVM runs its shutdown hooks, flushes buffers, drains connections, deregisters from service discovery. SIGKILL (9) is the nuclear option: the kernel reaps the process immediately, **no shutdown hooks run**, in-flight requests are dropped, and files may be left half-written. Always SIGTERM first, wait, then escalate to SIGKILL. Kubernetes does exactly this: SIGTERM, then SIGKILL after \`terminationGracePeriodSeconds\`.
 
-\`\`\`bash
-#!/bin/bash
-set -e  # exit on error
-set -u  # error on unset variables
-set -o pipefail  # pipeline fails if any command fails
+### Zombies & orphans
+- **Zombie (\`<defunct>\`):** child has exited but its exit status has not been reaped via \`wait()\`. It holds only a PID + exit code, no memory. Caused by a parent that never reaps. Fix: fix the parent; if the parent dies, \`init\`/PID 1 adopts and reaps it.
+- **Orphan:** parent died first; child is re-parented to PID 1 (\`init\`/\`systemd\`). Orphans are normal and harmless.
 
-APP_DIR="/opt/myapp"
-LOG_DIR="/var/log/myapp"
-JAR_FILE="$APP_DIR/app.jar"
-PID_FILE="$APP_DIR/app.pid"
+> [!WARNING]
+> In containers your app is often **PID 1**. PID 1 has special signal semantics (default actions for SIGTERM are *not* applied unless you install a handler) and must reap zombies. If your container leaks zombies or ignores SIGTERM, add an init shim (\`tini\`, \`--init\`) or handle signals explicitly.
 
-start() {
-    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
-        echo "Already running: $(cat $PID_FILE)"
-        exit 1
-    fi
-    java -Xms256m -Xmx512m          -XX:+UseG1GC          -Dspring.profiles.active=prod          -jar "$JAR_FILE"          > "$LOG_DIR/app.log" 2>&1 &
-    echo $! > "$PID_FILE"
-    echo "Started: $(cat $PID_FILE)"
-}
+### nohup, disown, jobs
+- \`nohup cmd &\` — immune to SIGHUP, stdout/stderr go to \`nohup.out\`. Survives the terminal closing.
+- \`cmd &\` then \`disown -h %1\` — detach an already-running job from the shell.
+- \`jobs\` / \`fg\` / \`bg\` / \`Ctrl+Z\` — job control within one shell.
+- For anything real, prefer a process supervisor (\`systemd\`, container runtime) over \`nohup\`.
 
-stop() {
-    if [ -f "$PID_FILE" ]; then
-        kill -15 $(cat "$PID_FILE")  # SIGTERM — graceful shutdown
-        rm -f "$PID_FILE"
-        echo "Stopped"
-    fi
-}
-
-case "$1" in
-    start) start ;;
-    stop)  stop ;;
-    restart) stop; sleep 2; start ;;
-    *) echo "Usage: $0 {start|stop|restart}" ;;
-esac
-\`\`\`
-
-### JVM Diagnostics on Linux
-
-\`\`\`bash
-# Thread dump — see all threads, deadlocks
-kill -3 $(pgrep -f myapp.jar)
-# or
-jstack $(pgrep -f myapp.jar) > thread-dump.txt
-
-# Heap dump
-jmap -dump:format=b,file=heap.hprof $(pgrep -f myapp.jar)
-# or via JMX: jcmd <pid> GC.heap_dump /tmp/heap.hprof
-
-# GC stats
-jstat -gc $(pgrep -f myapp.jar) 1000  # every 1 second
-# S0 S1 E  O  M  YGC YGCT FGC FGCT  GCT
-# S0/S1: survivor spaces, E: eden, O: old gen
-
-# Check JVM flags actually used
-java -XX:+PrintFlagsFinal -version 2>&1 | grep MaxHeapSize
+\`\`\`mermaid
+stateDiagram-v2
+    [*] --> Runnable: fork/exec
+    Runnable --> Running: scheduler dispatch
+    Running --> Runnable: timeslice/preempt
+    Running --> Sleeping: wait for I/O or event
+    Sleeping --> Runnable: event ready
+    Running --> Stopped: SIGSTOP / Ctrl+Z
+    Stopped --> Runnable: SIGCONT
+    Running --> Zombie: exit()
+    Zombie --> [*]: parent wait()/reap
 \`\`\``,
             code: [
-              `#!/bin/bash
-# Useful one-liners for Spring Boot operations — runnable on any Linux server
+              {
+                lang: `bash`,
+                code: `# Find the JVM and its parent
+$ ps -ef | grep [j]ava
+appuser  4821  4810  3 09:12 ?  00:41:07 java -Xmx4g -jar app.jar
+#        PID   PPID
 
-# 1. Find Java process and its args
-ps aux | grep java | grep -v grep
+# Graceful shutdown first, escalate only if needed
+$ kill -TERM 4821        # SIGTERM (15) — runs JVM shutdown hooks
+$ sleep 30
+$ kill -KILL 4821        # SIGKILL (9) — only if it ignored TERM
 
-# 2. Watch live log with ERROR highlighting (requires grep --color)
-tail -f /var/log/myapp/app.log | grep --color=always -E "ERROR|WARN|$"
+# Ask a hung JVM for a thread dump WITHOUT killing it
+$ kill -QUIT 4821        # SIGQUIT (3) -> full thread dump to the JVM stdout
 
-# 3. Count error frequency in last hour's log
-grep "$(date '+%Y-%m-%d %H')" /var/log/myapp/app.log | grep -c ERROR
-
-# 4. Extract exception types from log
-grep "Exception" /var/log/myapp/app.log | grep -oP '\\w+Exception' | sort | uniq -c | sort -rn
-
-# 5. Check if app is listening on port 8080
-ss -tlnp | grep 8080
-
-# 6. Disk space check
-df -h /var/log
-du -sh /var/log/myapp/
-
-# 7. Find large files (over 100MB)
-find /var/log -size +100M -type f
-
-# 8. Monitor CPU/memory of a specific Java process
-PID=$(pgrep -f myapp.jar)
-top -p $PID
-
-# 9. Rotate logs manually (if logrotate not set up)
-mv /var/log/myapp/app.log /var/log/myapp/app.log.$(date +%Y%m%d)
-kill -USR1 $PID  # send USR1 to reopen log file (depends on logging framework)
-
-# 10. Check systemd service status and recent logs
-systemctl status myapp
-journalctl -u myapp -n 100 --no-pager
-journalctl -u myapp --since "1 hour ago"
-
-# 11. Run Spring Boot as systemd service
-# /etc/systemd/system/myapp.service
-cat << 'EOF'
-[Unit]
-Description=My Spring Boot Application
-After=network.target
-
-[Service]
-User=appuser
-ExecStart=/usr/bin/java -jar /opt/myapp/app.jar --spring.profiles.active=prod
-SuccessExitStatus=143
-TimeoutStopSec=10
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable and start:
-# systemctl enable myapp && systemctl start myapp`
+# Spot zombies
+$ ps aux | awk '$8 ~ /Z/ { print }'
+appuser  5102  0.0  0.0  0  0 ?  Z  09:40  0:00 [worker] <defunct>`
+              }
             ],
             flashcards: [
               {
-                q: `How do you take a thread dump from a running Java process on Linux?`,
-                a: `Method 1: kill -3 <pid> — sends SIGQUIT, JVM prints thread dump to stdout (useful if you can see the process output). Method 2: jstack <pid> > thread.txt — Oracle's tool, outputs to a file. Method 3: jcmd <pid> Thread.print > thread.txt — newer, more features. Method 4: /actuator/threaddump endpoint if Spring Boot Actuator is enabled. A thread dump shows all threads: name, state (RUNNABLE, WAITING, BLOCKED), stack trace. Analyse: look for BLOCKED threads waiting for a lock held by another BLOCKED thread → deadlock. Also useful for diagnosing "why is CPU at 100%?" — find threads in RUNNABLE state with hot stack frames.`
+                q: `SIGTERM vs SIGKILL — when and why?`,
+                a: `SIGTERM (15) is catchable and graceful: shutdown hooks run, buffers flush, connections drain. SIGKILL (9) cannot be caught or ignored; the kernel kills the process immediately with no cleanup. Always send TERM first, wait, then escalate to KILL.`
               },
               {
-                q: `What does kill -15 vs kill -9 do and which should you use to stop a Spring Boot app?`,
-                a: `kill -15 (SIGTERM): graceful shutdown. JVM catches this signal, runs shutdown hooks — Spring Boot stops accepting new requests, drains in-flight requests (Tomcat graceful shutdown), flushes buffers, closes DB connections cleanly. Preferred. kill -9 (SIGKILL): force kill — OS immediately terminates the process, bypasses JVM and shutdown hooks. Risk: in-flight transactions left open, DB connections leaked, write buffers not flushed, possible data corruption. Use -9 only as a last resort when -15 doesn't work after a timeout. Spring Boot graceful shutdown config: server.shutdown=graceful + spring.lifecycle.timeout-per-shutdown-phase=30s.`
+                q: `Why can a process in state D not be killed?`,
+                a: `D is uninterruptible sleep, blocked in a kernel syscall (typically disk/NFS I/O). Signals — including SIGKILL — are only delivered when the syscall returns. If the I/O never completes, only fixing the device or rebooting clears it.`
               },
               {
-                q: `What do the columns in jstat -gc output mean and what should you watch for?`,
-                a: `jstat -gc <pid> <intervalMs> shows GC stats every N ms. Key columns: S0C/S1C: survivor 0/1 capacity. EC: Eden capacity. OC: Old gen capacity. YGC/YGCT: young GC count/time. FGC/FGCT: full GC count/time. GCT: total GC time. Watch for: FGC climbing continuously → full GCs happening → possible memory leak or heap too small. YGCT high → too many young GCs → allocation rate too high (object creation rate). OC usage near 100% with frequent FGC → heap exhaustion → OOMKill imminent. Rule of thumb: occasional young GC is fine; frequent full GCs need investigation.`
+                q: `What is a zombie process and how do you fix it?`,
+                a: `A child that has exited but whose exit status the parent has not reaped via wait(). It holds a PID + exit code, no memory. Fix the parent to reap; if the parent dies, init/PID 1 adopts and reaps it. You cannot kill a zombie (it is already dead).`
+              },
+              {
+                q: `What is an orphan process?`,
+                a: `A process whose parent died first. It is re-parented to PID 1 (init/systemd), which will reap it. Orphans are normal and harmless.`
+              },
+              {
+                q: `How do fork and exec relate?`,
+                a: `fork() clones the process (copy-on-write), returning 0 in the child and the child PID in the parent. exec*() replaces the current image with a new program. The shell runs external commands as fork-then-exec.`
+              },
+              {
+                q: `How do you get a thread dump from a running JVM via signals?`,
+                a: `Send SIGQUIT (kill -3 / Ctrl+\\). The JVM catches it and writes a full thread dump to its stdout without terminating. Useful when jstack is unavailable.`
+              },
+              {
+                q: `What does PID 1 do specially in a container?`,
+                a: `PID 1 must reap zombies and does not get default signal actions unless it installs handlers — so an app run directly as PID 1 may ignore SIGTERM and leak zombies. Use an init shim (tini / --init) or handle signals yourself.`
+              },
+              {
+                q: `ps aux vs ps -ef — which for what?`,
+                a: `ps aux (BSD) shows VSZ/RSS/%CPU/STAT — good for resource snapshots. ps -ef (SysV) shows PPID — good for tracing parent/child and orphans.`
+              },
+              {
+                q: `What does nohup actually do?`,
+                a: `Runs a command immune to SIGHUP and redirects stdout/stderr to nohup.out so it survives the controlling terminal closing. For production, prefer a supervisor (systemd/container).`
+              },
+              {
+                q: `What is SIGHUP conventionally used for besides hangup?`,
+                a: `By convention many daemons treat SIGHUP as reload-configuration (e.g. nginx, syslog). The default action is terminate, but long-running services install a handler.`
+              },
+              {
+                q: `How does Kubernetes stop a pod?`,
+                a: `It sends SIGTERM to PID 1, waits terminationGracePeriodSeconds (default 30s), then sends SIGKILL. Your app should handle SIGTERM to drain gracefully within that window.`
+              },
+              {
+                q: `What is the difference between a process and a thread on Linux?`,
+                a: `Both are tasks scheduled by the kernel. A process has its own address space; threads of a process share the address space and fds but have separate stacks. Linux implements both via clone() with different sharing flags.`
+              }
+            ]
+          },
+          {
+            id: `9.1.2`,
+            title: `Files, Permissions & File Descriptors`,
+            notes: `## Files, Permissions & File Descriptors
+
+Everything on Linux is a file: regular files, directories, devices, sockets, pipes. Understanding **inodes**, **permissions**, and **file descriptors** is what separates "I restarted it" from "I found the leak".
+
+### Inodes
+An **inode** stores a file's metadata (owner, perms, size, timestamps, link count, block pointers) — *not* its name. The directory entry maps a name to an inode number. Consequences:
+- A file can have many names (**hard links**) pointing at one inode; the file is deleted only when the link count *and* open-fd count both reach 0.
+- You can run out of inodes while having free disk space — \`df -i\` shows inode usage. Classic cause: millions of tiny files.
+
+> [!TIP]
+> "Disk full but \`df\` shows space free" → check \`df -i\` (inodes exhausted) **or** a deleted-but-still-open file (\`lsof | grep deleted\`). Space is reclaimed only when the last fd closes.
+
+### Permissions: rwx, chmod, chown
+Each file has owner/group/other triplets of read(4)/write(2)/execute(1).
+
+| Octal | Symbolic | Meaning |
+|-------|----------|---------|
+| \`644\` | \`rw-r--r--\` | Owner read/write, others read (typical file) |
+| \`755\` | \`rwxr-xr-x\` | Owner all, others read/exec (typical dir / binary) |
+| \`600\` | \`rw-------\` | Owner only (secrets, keys) |
+| \`777\` | \`rwxrwxrwx\` | World-writable — **almost always a mistake** |
+
+- On a **directory**, \`x\` means "may traverse into it", \`r\` means "may list it". A dir with \`r\` but no \`x\` lets you see names but not stat the entries.
+- \`chmod u+x file\`, \`chmod 640 file\`; \`chown user:group file\`.
+- Special bits: **setuid** (\`u+s\`) run as file owner, **setgid** (\`g+s\`), **sticky** (\`+t\`, e.g. \`/tmp\` so users can't delete each other's files).
+
+### Symlinks vs hard links
+- **Hard link:** another directory entry pointing at the same inode. Same filesystem only; survives deletion of the original.
+- **Symlink:** a tiny file containing a path. Can cross filesystems; becomes dangling if the target is removed.
+
+### File descriptors & /proc
+A **file descriptor (fd)** is a small integer index into the process's open-file table. 0=stdin, 1=stdout, 2=stderr. Every open file, **socket**, and pipe consumes an fd.
+
+- \`/proc/<pid>/fd/\` — symlinks to every fd the process holds. \`ls -l /proc/4821/fd | wc -l\` counts open fds.
+- \`/proc/<pid>/limits\` — that process's effective limits.
+- \`/proc/<pid>/status\`, \`/proc/<pid>/maps\`, \`/proc/<pid>/cmdline\` — rich live state.
+
+### ulimit and "Too many open files"
+\`ulimit -n\` shows the soft limit on open fds (often 1024 by default — far too low for a busy server). Each socket counts. A connection-leaking app or a high-throughput service blows past it and throws:
+
+> [!DANGER]
+> \`java.net.SocketException: Too many open files\` (or \`IOException: Too many open files\`). This is an **fd exhaustion**, not memory. Diagnose with \`lsof -p <pid> | wc -l\` and \`cat /proc/<pid>/limits\`. Raise the limit (\`/etc/security/limits.conf\`, systemd \`LimitNOFILE\`, container ulimits) AND find the leak — a forever-rising fd count under steady load is a bug, not a tuning issue.
+
+\`\`\`
+$ ulimit -n            # soft limit, current shell
+1024
+$ ulimit -Hn           # hard limit (max the soft can be raised to)
+1048576
+$ ulimit -n 65535      # raise soft limit (<= hard) for this shell
+\`\`\``,
+            code: [
+              {
+                lang: `bash`,
+                code: `# Count open file descriptors of a process (e.g. an fd leak)
+$ ls /proc/4821/fd | wc -l
+8473
+
+# See the actual limit the process runs with
+$ grep "open files" /proc/4821/limits
+Max open files  1024  4096  files
+
+# What kinds of fds? (mostly sockets here -> connection leak)
+$ lsof -p 4821 | awk '{print $5}' | sort | uniq -c | sort -rn
+   8201 IPv4
+    140 REG
+     12 CHR
+
+# Space gone but df shows free? Find deleted-but-open files
+$ lsof +L1 | grep deleted
+java 4821 appuser 9w REG 8,1 5368709120 0 12345 /var/log/app.log (deleted)
+
+# Out of inodes vs out of bytes
+$ df -h /var ; df -i /var`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is a file descriptor?`,
+                a: `A small non-negative integer indexing into a process open-file table. 0/1/2 are stdin/stdout/stderr. Every open file, socket, and pipe consumes one. Limited per-process by ulimit -n.`
+              },
+              {
+                q: `What does "Too many open files" mean and how do you diagnose it?`,
+                a: `The process hit its fd limit (ulimit -n). Diagnose: lsof -p <pid> | wc -l and cat /proc/<pid>/limits. Sockets count as fds, so it is usually a connection/stream leak. Fix the leak and raise the limit (limits.conf / LimitNOFILE / container ulimit).`
+              },
+              {
+                q: `What does an inode store?`,
+                a: `File metadata: owner, group, permissions, size, timestamps, link count, and block pointers — but NOT the filename. The directory entry maps a name to an inode number.`
+              },
+              {
+                q: `How can a disk be "full" while df shows free space?`,
+                a: `Either inodes are exhausted (df -i) or a file was deleted while still open — space is freed only when the last fd closes. Find them with lsof +L1 | grep deleted.`
+              },
+              {
+                q: `Hard link vs symlink?`,
+                a: `A hard link is another directory entry pointing at the same inode (same filesystem, survives deletion of the original). A symlink is a small file holding a path; it can cross filesystems and dangles if the target is removed.`
+              },
+              {
+                q: `What do rwx mean on a directory specifically?`,
+                a: `r = list names, w = create/delete entries, x = traverse into / stat entries. A dir with r but no x lets you see names but not access them.`
+              },
+              {
+                q: `What is the setuid bit and why is it risky?`,
+                a: `setuid makes an executable run with the file owner's privileges (often root) regardless of who runs it. Misused, it is a privilege-escalation vector; minimize setuid binaries.`
+              },
+              {
+                q: `What is the sticky bit on /tmp for?`,
+                a: `With the sticky bit (+t) on a world-writable directory, only the file owner (or root) can delete or rename a file in it, so users cannot delete each other's files in /tmp.`
+              },
+              {
+                q: `Soft limit vs hard limit in ulimit?`,
+                a: `The soft limit is the current enforced value; the hard limit is the ceiling the soft limit can be raised to. Unprivileged users can raise soft up to hard but cannot raise hard.`
+              },
+              {
+                q: `Where do you read a running process's live state on Linux?`,
+                a: `Under /proc/<pid>/: fd/ (open fds), limits, status, maps (memory regions), cmdline, environ. It is a virtual filesystem reflecting kernel state.`
+              },
+              {
+                q: `Why is chmod 777 almost always wrong?`,
+                a: `It makes the file world-writable and world-executable, letting any user modify it — a security and integrity risk. Use the least privilege that works (644 files, 755 dirs/binaries, 600 secrets).`
+              },
+              {
+                q: `When is a file actually removed from disk?`,
+                a: `When BOTH its link count (number of hard links) reaches 0 AND no process holds an open fd to it. Until then the inode and its blocks persist.`
+              }
+            ]
+          },
+          {
+            id: `9.1.3`,
+            title: `Memory & CPU`,
+            notes: `## Memory & CPU
+
+The single most misread metric in production is "memory used". Linux deliberately uses free RAM for cache; "low free memory" is usually healthy, not a problem.
+
+### RSS vs VSZ (and why the JVM looks huge)
+- **VSZ (Virtual Size):** total address space the process has *mapped*, including memory it never touched, memory-mapped files, and the JVM's reserved-but-uncommitted heap. Almost always misleadingly large; rarely actionable.
+- **RSS (Resident Set Size):** physical RAM actually occupied right now (includes shared pages). This is what matters for "is it about to be OOM-killed".
+
+> [!WARNING]
+> For a JVM, RSS = heap (committed) + metaspace + thread stacks + JIT code cache + GC structures + direct/native buffers + native libs. RSS routinely exceeds \`-Xmx\`. If RSS keeps climbing while heap is stable, suspect **native/off-heap** growth (Netty direct buffers, mmap, JNI, thread count, Metaspace leak). Track with **Native Memory Tracking** (\`-XX:NativeMemoryTracking=summary\`, \`jcmd <pid> VM.native_memory\`).
+
+### \`free\` and the page cache
+
+\`\`\`
+$ free -h
+               total        used        free      shared  buff/cache   available
+Mem:            31Gi        12Gi       1.2Gi       256Mi        18Gi        18Gi
+Swap:          2.0Gi          0B       2.0Gi
+\`\`\`
+
+- **buff/cache** is the page cache — file data kept in RAM, reclaimable on demand. It is *not* "used up".
+- **available** is the column that matters: an estimate of memory available for new apps *without swapping*. Watch this, not \`free\`.
+
+### Load average
+\`uptime\` / \`top\` show three numbers: 1-, 5-, 15-minute averages of the number of tasks **runnable or in uninterruptible (D) sleep**.
+
+> [!TIP]
+> Compare load to **core count**. On an 8-core box, load 8.0 ≈ fully utilized; 16.0 ≈ tasks waiting twice as long as they run. Crucially, Linux load includes \`D\`-state (I/O-blocked) tasks, so **high load with low CPU% means you are I/O-bound, not CPU-bound** — a frequent senior gotcha.
+
+| Symptom | Likely cause |
+|---------|-------------|
+| High load + high CPU% (user) | CPU-bound work / hot loop / GC |
+| High load + low CPU% + high \`wa\` | I/O wait (disk, network storage) |
+| High load + many \`D\` procs | Storage/NFS stall |
+| High \`sy\` (system) CPU | Syscall/context-switch storm, lock contention |
+
+### vmstat
+\`vmstat 1\` is the fastest whole-box triage. Watch:
+- \`r\` (run queue) high → CPU pressure; \`b\` (blocked) high → I/O.
+- \`si\`/\`so\` (swap in/out) **non-zero → you are swapping → latency disaster**. Healthy boxes show 0.
+- \`us\`/\`sy\`/\`id\`/\`wa\` — user/system/idle/iowait CPU split.
+
+### The OOM killer
+When the kernel cannot satisfy an allocation and cannot reclaim, the **OOM killer** picks a victim and SIGKILLs it to save the system.
+
+> [!DANGER]
+> The OOM killer scores processes by \`oom_score\` (roughly proportional to memory used, adjustable via \`oom_score_adj\`). The JVM is usually the fattest process, so **it gets killed** — abruptly, with no Java exception, no heap dump, just gone. Signs: \`dmesg\`/\`journalctl -k\` shows \`Out of memory: Killed process 4821 (java)\`. In containers, hitting the cgroup memory limit triggers a cgroup OOM kill (exit code 137 = 128 + SIGKILL 9). Fix by sizing \`-Xmx\` (and native memory) well under the cgroup limit, not at it.
+
+\`\`\`
+$ dmesg -T | grep -i "killed process"
+[Tue Jun 24 03:14:07 2026] Out of memory: Killed process 4821 (java) 
+  total-vm:9412300kB, anon-rss:8123400kB, file-rss:0kB
+\`\`\`
+
+### top vs htop
+\`top\` is everywhere by default; press \`M\` (sort by memory), \`P\` (CPU), \`1\` (per-core), \`H\` (show threads), \`c\` (full command). \`htop\` adds color, per-core bars, tree view, scroll, and mouse — nicer but not always installed. For the JVM, \`top -H -p <pid>\` shows per-**thread** CPU, and the thread's decimal TID converts (in hex) to the \`nid\` in a jstack dump — the key to "which thread is burning CPU".`,
+            code: [
+              {
+                lang: `bash`,
+                code: `# 10-second whole-box triage
+$ vmstat 1 5
+procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
+ r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
+ 9  0      0 1258000 320000 18000000  0    0     4    52 9100 21000 78 12  9  1  0
+# r=9 high run queue, us=78 user-CPU bound, si/so=0 (good, no swap)
+
+# Memory: look at "available", not "free"
+$ free -h
+
+# Is the kernel OOM-killing things?
+$ journalctl -k | grep -i oom
+
+# JVM native memory breakdown (needs -XX:NativeMemoryTracking=summary)
+$ jcmd 4821 VM.native_memory summary
+Total: reserved=9.1GB, committed=8.4GB
+-     Java Heap (reserved=4GB, committed=4GB)
+-     Thread (reserved=1.1GB, committed=1.1GB)   # 1100 threads * 1MB stack!
+-     Code (reserved=240MB, committed=120MB)`
+              }
+            ],
+            flashcards: [
+              {
+                q: `RSS vs VSZ?`,
+                a: `VSZ is total virtual address space mapped (reserved, often huge and not actionable). RSS is physical RAM actually resident now (incl. shared pages) — the number that drives OOM. For a JVM, RSS > -Xmx because of metaspace, thread stacks, code cache, and native/direct buffers.`
+              },
+              {
+                q: `Why is low "free" memory usually fine on Linux?`,
+                a: `Linux uses otherwise-idle RAM for the page cache (buff/cache), which is reclaimable instantly. Watch the "available" column in free, not "free". Low free + high available = healthy.`
+              },
+              {
+                q: `What does load average actually measure?`,
+                a: `The 1/5/15-minute average count of tasks that are runnable OR in uninterruptible (D) sleep. Compare to core count. Because it includes I/O-blocked tasks, high load can mean I/O wait, not CPU saturation.`
+              },
+              {
+                q: `High load average but low CPU% — what does it indicate?`,
+                a: `You are I/O-bound, not CPU-bound. The D-state (uninterruptible sleep) tasks counted in load are blocked on disk/network storage. Check vmstat wa/b and iostat.`
+              },
+              {
+                q: `What triggers the OOM killer and which process dies?`,
+                a: `When the kernel cannot allocate and cannot reclaim memory. It picks the highest oom_score (roughly the biggest memory user) and SIGKILLs it — usually the JVM. No Java exception, no heap dump. In containers, exit code 137 = SIGKILL from a cgroup memory-limit OOM.`
+              },
+              {
+                q: `How do you tell the JVM is leaking native (off-heap) memory?`,
+                a: `RSS keeps climbing while the Java heap is stable. Enable -XX:NativeMemoryTracking=summary and run jcmd <pid> VM.native_memory summary to see heap vs thread stacks vs code vs direct buffers.`
+              },
+              {
+                q: `In vmstat, what do si/so mean and why care?`,
+                a: `Swap-in / swap-out pages per second. Any sustained non-zero value means the box is swapping, which destroys latency. Healthy production hosts show 0.`
+              },
+              {
+                q: `How do you find which JVM thread is burning CPU?`,
+                a: `top -H -p <pid> shows per-thread CPU and TID. Convert the hot TID to hex; match it against the nid=0x... field in a jstack thread dump to identify the exact Java thread.`
+              },
+              {
+                q: `Why size -Xmx below the container memory limit?`,
+                a: `The JVM also needs native memory (metaspace, stacks, code cache, direct buffers) beyond the heap. If heap + native exceeds the cgroup limit, the container is OOM-killed (137). Leave headroom; or use -XX:MaxRAMPercentage.`
+              },
+              {
+                q: `What does the "available" column in free represent?`,
+                a: `A kernel estimate of how much memory new applications can use without swapping, accounting for reclaimable page cache. It is the right indicator of memory pressure.`
+              },
+              {
+                q: `us vs sy vs wa in top — what do high values each suggest?`,
+                a: `High us = application/CPU-bound work (or GC). High sy = kernel/syscall/context-switch or lock-contention overhead. High wa = CPU idle waiting on I/O. id is idle.`
+              },
+              {
+                q: `What is the page cache and is it "used" memory?`,
+                a: `File contents cached in RAM to avoid disk reads. It shows as buff/cache and is reclaimable on demand, so it is not memory pressure — it is the kernel making good use of free RAM.`
+              }
+            ]
+          },
+          {
+            id: `9.1.4`,
+            title: `The Shell & Text Processing`,
+            notes: `## The Shell & Text Processing
+
+Log triage on a production box is a text-processing problem. The Unix philosophy — small tools composed via pipes — still wins for "grep the last hour of errors and count them by type".
+
+### Pipes & redirection
+- \`|\` connects stdout of one command to stdin of the next.
+- \`>\` truncate-redirect stdout to a file, \`>>\` append, \`2>\` redirect stderr, \`2>&1\` merge stderr into stdout, \`&>\` both (bash).
+- \`<\` read stdin from a file; \`<<<\` here-string; \`<<EOF\` heredoc.
+
+> [!TIP]
+> Order matters: \`cmd > file 2>&1\` redirects stdout to file *then* points stderr at the same place. \`cmd 2>&1 > file\` sends stderr to the **old** stdout (terminal) and only stdout to the file — a classic mistake.
+
+### The core toolkit
+
+| Tool | One-line job |
+|------|--------------|
+| \`grep\` | find lines matching a pattern (\`-i\` case, \`-v\` invert, \`-c\` count, \`-r\` recurse, \`-E\` regex, \`-A/-B/-C\` context) |
+| \`sed\` | stream edit: substitute (\`s/x/y/g\`), delete, print ranges |
+| \`awk\` | field-aware: split on whitespace, compute, group, sum |
+| \`find\` | walk the tree by name/size/mtime/type, \`-exec\` actions |
+| \`xargs\` | turn stdin into command arguments (batching, \`-P\` parallel) |
+| \`sort\`/\`uniq\` | order and dedupe/count (\`sort | uniq -c | sort -rn\`) |
+| \`cut\`/\`tr\`/\`wc\`/\`tail\`/\`head\` | columns / translate / count / windows |
+
+### Exit codes
+Every command returns 0 = success, non-zero = failure. \`$?\` holds the last exit code.
+- \`cmd1 && cmd2\` runs cmd2 only if cmd1 succeeded; \`||\` only if it failed.
+- In pipelines, \`$?\` is the **last** command's status by default; set \`set -o pipefail\` so the pipeline fails if *any* stage fails.
+- Conventions: \`1\` general error, \`2\` shell misuse, \`126\` not executable, \`127\` command not found, \`130\` Ctrl+C (128+SIGINT), \`137\` SIGKILL (128+9), \`143\` SIGTERM (128+15).
+
+> [!SUCCESS]
+> \`128 + N\` exit code = killed by signal N. \`137\` is OOM/SIGKILL, \`143\` is graceful SIGTERM. Memorize these — they show up constantly in container/\`kubectl describe pod\` output.
+
+### Log-triage one-liners
+
+\`\`\`
+# Top 10 error types in the last 100k lines
+tail -n 100000 app.log | grep -i error | sort | uniq -c | sort -rn | head
+
+# Count requests per status code from an access log (field 9)
+awk '{c[$9]++} END {for (k in c) print c[k], k}' access.log | sort -rn
+
+# Requests per minute (timestamp is field 4 like [25/Jun/2026:09:14:..])
+awk '{print substr($4,2,17)}' access.log | uniq -c
+
+# 95th-percentile-ish: slowest 1% of response times (last field = ms)
+awk '{print $NF}' access.log | sort -n | tail -n $(( $(wc -l < access.log) / 100 )) | head -1
+
+# Find and gzip logs older than 7 days, 4 at a time
+find /var/log/app -name "*.log" -mtime +7 -print0 | xargs -0 -P4 gzip
+
+# Live errors with 2 lines of context, follow the file
+tail -F app.log | grep --line-buffered -A2 -i "exception"
+\`\`\``,
+            code: [
+              {
+                lang: `bash`,
+                code: `# Extract stack traces for a single exception class and count them
+$ grep -c "NullPointerException" app.log
+47
+
+# Group exceptions by class, most frequent first
+$ grep -oE "[a-zA-Z.]+Exception" app.log | sort | uniq -c | sort -rn | head
+   312 java.net.SocketTimeoutException
+    47 java.lang.NullPointerException
+    11 java.lang.IllegalStateException
+
+# pipefail so a broken stage is not hidden
+$ set -o pipefail
+$ grep ERROR missing.log | wc -l ; echo "exit=$?"
+grep: missing.log: No such file or directory
+0
+exit=2
+
+# Why container restarted: 137 = OOM/SIGKILL, 143 = SIGTERM
+$ kubectl get pod app -o jsonpath="{.status.containerStatuses[0].lastState.terminated.exitCode}"
+137`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does 2>&1 do, and why does order matter?`,
+                a: `It redirects stderr (fd 2) to wherever stdout (fd 1) currently points. Order matters: "> file 2>&1" sends both to the file; "2>&1 > file" sends stderr to the original terminal and only stdout to the file.`
+              },
+              {
+                q: `What does set -o pipefail change?`,
+                a: `Without it, a pipeline's exit status is only the last command's. With pipefail, the pipeline returns the status of the last command to exit non-zero, so failures in earlier stages are not silently swallowed.`
+              },
+              {
+                q: `What do exit codes 137 and 143 mean?`,
+                a: `128 + signal number. 137 = 128 + 9 (SIGKILL, often OOM kill). 143 = 128 + 15 (SIGTERM, graceful stop). 130 = Ctrl+C (SIGINT). They appear in kubectl/docker output.`
+              },
+              {
+                q: `How do you count occurrences of each value and sort by frequency?`,
+                a: `sort | uniq -c | sort -rn. uniq -c requires sorted input and prefixes counts; the final sort -rn orders by count descending. The canonical log-frequency idiom.`
+              },
+              {
+                q: `When do you reach for awk over grep/cut?`,
+                a: `When you need field-aware logic: select/compute on columns ($1, $9, $NF), aggregate into arrays (c[$9]++), or print/sum across lines. grep matches, cut slices fixed columns, awk does logic per field.`
+              },
+              {
+                q: `Why use xargs instead of find -exec sometimes?`,
+                a: `xargs batches many arguments per command invocation (far fewer forks) and can parallelize with -P. Use -print0 | xargs -0 to handle filenames with spaces/newlines safely.`
+              },
+              {
+                q: `How do && and || control flow in the shell?`,
+                a: `cmd1 && cmd2 runs cmd2 only if cmd1 returned 0 (success); cmd1 || cmd2 runs cmd2 only if cmd1 failed (non-zero). They short-circuit on the exit code in $?.`
+              },
+              {
+                q: `tail -f vs tail -F?`,
+                a: `-f follows the open file descriptor; if the file is rotated/recreated you stop seeing new data. -F follows by name and re-opens on rotation — what you want for live logs under logrotate.`
+              },
+              {
+                q: `What is the difference between > and >>?`,
+                a: `> truncates the target file to zero then writes; >> appends to the end. Accidentally using > on a log can wipe it.`
+              },
+              {
+                q: `How do you safely grep a live, growing file without buffering delays?`,
+                a: `tail -F file | grep --line-buffered pattern. Without --line-buffered, grep block-buffers when its output is a pipe and you see bursts late.`
+              },
+              {
+                q: `What does grep -oE do?`,
+                a: `-o prints only the matched substring (not the whole line); -E enables extended regex. Combined, it extracts just the tokens you matched — e.g. exception class names — ready to sort | uniq -c.`
+              },
+              {
+                q: `What is $? and when is it set?`,
+                a: `$? holds the exit status of the most recently completed foreground command. Check it immediately, since the next command overwrites it.`
+              }
+            ]
+          },
+          {
+            id: `9.1.5`,
+            title: `Debugging a JVM on Linux`,
+            notes: `## Debugging a JVM on Linux
+
+This is the section senior interviews actually probe: *"the service is slow / hung / leaking — walk me through your toolkit."* Build the muscle memory below.
+
+### The JDK toolbox
+
+| Tool | What it gives you |
+|------|-------------------|
+| \`jps -l\` | list running JVMs with their PIDs and main class/jar |
+| \`jstack <pid>\` | thread dump: every thread's stack, state, locks held/waited |
+| \`jmap -histo:live <pid>\` | live-object histogram (top classes by count/bytes) — triggers a GC |
+| \`jmap -dump:live,format=b,file=h.hprof <pid>\` | full heap dump for MAT/Eclipse analysis |
+| \`jcmd <pid> <command>\` | the modern Swiss-army knife — supersedes most jmap/jstack uses |
+| \`jstat -gcutil <pid> 1s\` | live GC stats: survivor/eden/old occupancy, GC counts & times |
+
+> [!TIP]
+> Prefer **\`jcmd\`** today: \`jcmd <pid> Thread.print\` (= jstack), \`jcmd <pid> GC.heap_info\`, \`jcmd <pid> GC.class_histogram\`, \`jcmd <pid> VM.native_memory summary\`, \`jcmd <pid> GC.heap_dump /tmp/h.hprof\`. One tool, attaches via the same mechanism.
+
+### Reading a thread dump
+A thread entry looks like:
+\`\`\`
+"http-nio-8080-exec-7" #142 daemon prio=5 os_prio=0 cpu=98123.4ms tid=0x... nid=0x1f4d runnable
+   java.lang.Thread.State: RUNNABLE
+        at com.acme.Pricing.compute(Pricing.java:88)
+        at com.acme.Handler.handle(Handler.java:40)
+\`\`\`
+- **State:** RUNNABLE (on CPU / runnable), BLOCKED (waiting on a monitor someone else holds), WAITING/TIMED_WAITING (parked, e.g. queue/lock/sleep).
+- **\`nid\`** is the OS thread id in hex — match it to \`top -H\` output to pin the CPU hog.
+- **Many BLOCKED on the same lock** → contention/deadlock. jstack prints an explicit \`Found one Java-level deadlock\` section when it detects one.
+- Take **2-3 dumps a few seconds apart**: threads stuck on the same frame across all dumps are truly stuck; threads that move are just busy.
+
+> [!DANGER]
+> A thread pool fully **BLOCKED/WAITING on a downstream call** (DB, HTTP) with a full request queue is the classic "service hung but CPU near 0" picture — thread starvation, not CPU. The dump shows all \`http-nio-*-exec-*\` threads parked in socket reads. Fix: timeouts, bulkheads, circuit breakers — not bigger heaps.
+
+### Native/OS tools
+
+| Tool | Use |
+|------|-----|
+| \`top -H -p <pid>\` | per-thread CPU; convert hot TID to hex -> nid in jstack |
+| \`lsof -p <pid>\` | open files & sockets (fd leaks, which port/host) |
+| \`ss -tanp\` (or \`netstat -tanp\`) | sockets by state; count CLOSE_WAIT / TIME_WAIT / ESTABLISHED |
+| \`strace -f -p <pid>\` | trace syscalls — see exactly what a hung process is blocked on |
+| \`dmesg\` / \`journalctl -k\` | OOM kills, segfaults, kernel events |
+
+> [!WARNING]
+> \`strace\` is invaluable but **pauses the target on every syscall** — it can massively slow a hot process. Use it briefly, target one thread (\`-p <tid>\`), filter (\`-e trace=network\`), and never leave it attached to a latency-sensitive prod process. Prefer \`-c\` for a syscall summary over a short window.
+
+### Socket states worth recognizing
+- **Many \`CLOSE_WAIT\`** → *your* app is not closing sockets the peer already closed → a connection/fd leak in your code.
+- **Many \`TIME_WAIT\`** → normal for a busy client that opens many short connections; usually benign (kernel-tuned).
+
+\`\`\`mermaid
+flowchart TD
+    A["Symptom: slow / hung / OOM"] --> B{High CPU?}
+    B -- yes --> C["top -H -p PID -> hot TID"]
+    C --> D["jstack PID, match nid=hex(TID)"]
+    D --> E["Hot frame: GC? hot loop? regex?"]
+    B -- no --> F{Threads BLOCKED/WAITING?}
+    F -- yes --> G["jstack x3: lock contention / deadlock / pool starvation"]
+    F -- no --> H{Memory climbing?}
+    H -- heap --> I["jmap -histo:live / heap dump -> MAT"]
+    H -- native/RSS --> J["jcmd VM.native_memory summary"]
+    H -- killed 137 --> K["dmesg / cgroup OOM -> size Xmx"]
+\`\`\``,
+            code: [
+              {
+                lang: `bash`,
+                code: `# 1) Which JVMs are running?
+$ jps -l
+4821 /opt/app/app.jar
+5190 sun.tools.jps.Jps
+
+# 2) Find the CPU-hot thread, in hex
+$ top -H -p 4821 -b -n1 | head -12   # note the hot PID, e.g. 4877
+$ printf "%x\\n" 4877
+130d
+
+# 3) Pull the thread dump and find nid=0x130d
+$ jcmd 4821 Thread.print | grep -A6 "nid=0x130d"
+"http-nio-8080-exec-7" #142 daemon ... nid=0x130d runnable
+   java.lang.Thread.State: RUNNABLE
+        at java.util.regex.Pattern$Curly.match0(Pattern.java) 
+        at com.acme.Validator.validate(Validator.java:55)
+
+# 4) Socket leak? Count CLOSE_WAIT (your side not closing)
+$ ss -tanp | awk '{print $1}' | sort | uniq -c | sort -rn
+   8120 ESTAB
+    934 CLOSE-WAIT
+
+# 5) Heap leak triage without a full dump
+$ jcmd 4821 GC.class_histogram | head -8`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does jstack / Thread.print show and how do you use it?`,
+                a: `A full thread dump: every thread's name, state, locks held/waited, and stack. Use it to find deadlocks, lock contention (many BLOCKED on one monitor), and pool starvation (all worker threads parked in downstream calls). Take 2-3 dumps seconds apart to tell stuck from busy.`
+              },
+              {
+                q: `How do you map a CPU-hungry OS thread to a Java thread?`,
+                a: `top -H -p <pid> gives per-thread CPU and the decimal TID. Convert it to hex (printf %x) and find the matching nid=0x... in the jstack dump — that is the exact Java thread and its stack.`
+              },
+              {
+                q: `Why prefer jcmd over jmap/jstack today?`,
+                a: `jcmd is one tool covering Thread.print, GC.heap_info, GC.class_histogram, GC.heap_dump, VM.native_memory, and more, using the same attach mechanism. jmap/jstack are effectively legacy front-ends.`
+              },
+              {
+                q: `Service is hung but CPU is near zero — what do you suspect and check?`,
+                a: `Thread-pool starvation: all worker threads BLOCKED/WAITING on a slow downstream (DB/HTTP) with a full queue. Confirm with jstack showing every exec thread parked in a socket read. Fix with timeouts, bulkheads, circuit breakers.`
+              },
+              {
+                q: `What does a pile of CLOSE_WAIT sockets indicate?`,
+                a: `Your application is not calling close() on connections the remote peer already closed. It is an application-side socket/fd leak that will eventually exhaust file descriptors.`
+              },
+              {
+                q: `TIME_WAIT vs CLOSE_WAIT?`,
+                a: `TIME_WAIT is on the side that closed first, a normal brief kernel-held state to absorb stray packets (benign, often many on busy clients). CLOSE_WAIT means YOUR side has not closed yet — an app bug.`
+              },
+              {
+                q: `What is the risk of using strace in production?`,
+                a: `strace stops the target on every syscall, drastically slowing hot or latency-sensitive processes. Use briefly, target one thread, filter with -e, or use -c for a summary; never leave it attached to a prod service.`
+              },
+              {
+                q: `What does jmap -histo:live do and what is the catch?`,
+                a: `Prints a histogram of live objects by class (count and bytes), great for spotting a leaking type. The :live qualifier forces a full GC first, which pauses the application — use with care on prod.`
+              },
+              {
+                q: `Which jstat command shows GC health live?`,
+                a: `jstat -gcutil <pid> 1s: percentage occupancy of eden/survivor/old/metaspace plus young/full GC counts and cumulative times. Rising full-GC time with old near 100% signals a heap problem.`
+              },
+              {
+                q: `You see exit code 137 and no Java stack trace — what happened?`,
+                a: `The process was SIGKILLed (128+9), almost always by the OOM killer or a cgroup memory-limit OOM in a container. There is no JVM exception or heap dump; check dmesg / journalctl -k and size -Xmx below the limit.`
+              },
+              {
+                q: `How do you capture a heap dump from a running JVM for offline analysis?`,
+                a: `jcmd <pid> GC.heap_dump /tmp/heap.hprof (or jmap -dump:live,format=b,file=...). Analyze in Eclipse MAT for dominator tree, leak suspects, and retained sizes. Beware: dumping a large heap pauses the JVM and writes a big file.`
+              },
+              {
+                q: `What do RUNNABLE, BLOCKED and WAITING mean in a thread dump?`,
+                a: `RUNNABLE: executing or able to run (on CPU). BLOCKED: waiting to acquire a monitor held by another thread (synchronized). WAITING/TIMED_WAITING: parked voluntarily (wait/park/sleep/queue). Many BLOCKED on one lock = contention; cycle = deadlock.`
               }
             ]
           }
@@ -48123,283 +48931,674 @@ backend orders
         hours: 4,
         sections: [
           {
-            title: `The Three Pillars of Observability`,
-            notes: `## The Three Pillars of Observability
+            id: `9.3.1`,
+            title: `The Three Pillars & Why Observability != Monitoring`,
+            notes: `## The Three Pillars & Why Observability != Monitoring
 
-### Logs, Metrics, and Traces — Why All Three?
+**Monitoring** answers questions you already knew to ask: "is CPU > 80%?", "is the service up?" — predefined dashboards and alerts on **known failure modes**. **Observability** is the property of a system that lets you ask **arbitrary new questions about its behavior from the outside, without shipping new code** — to debug failure modes you never anticipated.
 
-\`\`\`
-Logs:    What happened?   — timestamped text events
-Metrics: How much/often?  — numbers over time (request rate, error rate, latency)
-Traces:  Where did time go? — request journey across multiple services
+> [!TIP]
+> The crisp interview framing: monitoring is for **known unknowns** (you know the question, you watch the answer). Observability is for **unknown unknowns** (novel, emergent failures you could not have predicted). Modern distributed systems fail in ways no dashboard was built for, so you need high-cardinality, high-dimensionality telemetry you can slice arbitrarily.
 
-An error alert fires:
-  Metrics → spike in error_rate counter at 14:32
-  Logs    → "NullPointerException in PaymentService" at 14:32
-  Traces  → the request went: API → OrderService (2ms) → PaymentService (8000ms, TIMEOUT) → DB
+### The three pillars
 
-All three together answer: what broke, when, why, which user/request was affected.
-\`\`\`
+| Pillar | Question it answers | Shape | Cost driver |
+|--------|--------------------|-------|-------------|
+| **Logs** | "What exactly happened in this one event?" | Discrete, timestamped, high-detail records | Volume (bytes) |
+| **Metrics** | "What is the aggregate trend / rate / distribution?" | Numeric time series, pre-aggregated | **Cardinality** (label combinations) |
+| **Traces** | "Where did the time go across services for this request?" | Causally-linked spans across services | Span volume / sampling |
 
-### Structured Logging with SLF4J + Logback
+They are complementary, not redundant: a **metric** tells you p99 latency spiked; a **trace** tells you *which hop* in *that request* was slow; the **logs** for that span tell you *why* (the stack trace, the SQL, the parameter).
 
-\`\`\`java
-// WRONG: string concatenation (don't do this)
-log.info("Order created for user " + userId + " amount " + amount);
+### Cardinality — the concept that ties it together
+**Cardinality** = the number of distinct values a dimension can take. \`http_status\` has low cardinality (~5 values). \`user_id\`, \`request_id\`, \`trace_id\`, \`email\` have effectively **unbounded** cardinality.
 
-// RIGHT: parameterised (deferred evaluation — no concatenation if log level disabled)
-log.info("Order created for user {} amount {}", userId, amount);
+> [!DANGER]
+> Cardinality is the budget that governs *where* a dimension belongs. **High-cardinality data is cheap in logs/traces (stored per-event) and catastrophically expensive in metrics**, because each unique label-set combination creates a new time series the TSDB must store and index forever. Putting \`user_id\` or \`request_id\` in a Prometheus label is the #1 way to take down your metrics backend ("cardinality explosion").
 
-// BEST: structured JSON logging (Logback with logstash-logback-encoder)
-// MDC (Mapped Diagnostic Context): adds key-value pairs to EVERY log line
-import org.slf4j.MDC;
-
-@RestControllerAdvice
-public class RequestIdInterceptor implements HandlerInterceptor {
-    @Override
-    public boolean preHandle(HttpServletRequest req, ...) {
-        String requestId = req.getHeader("X-Request-Id");
-        MDC.put("requestId", requestId != null ? requestId : UUID.randomUUID().toString());
-        MDC.put("userId", getCurrentUserId());
-        return true;
-    }
-    @Override
-    public void afterCompletion(...) { MDC.clear(); }
-}
-
-// Now every log line automatically includes: {"requestId":"abc","userId":"42","message":"..."}
-// → Can filter ALL logs for a single request: requestId="abc"
+\`\`\`mermaid
+flowchart LR
+    R["Request: order #9931 is slow"] --> M["METRICS<br/>p99 latency spiked at 14:02"]
+    M --> T["TRACES<br/>which span? -> payments.charge took 1.8s"]
+    T --> L["LOGS<br/>why? -> SocketTimeout to gateway, retry x3"]
+    L --> RC["Root cause: downstream gateway degraded"]
 \`\`\`
 
-### Metrics with Micrometer + Prometheus
-
-\`\`\`java
-@Service
-public class PaymentService {
-    private final MeterRegistry registry;
-    private final Counter paymentSuccessCounter;
-    private final Counter paymentFailureCounter;
-    private final Timer paymentTimer;
-
-    public PaymentService(MeterRegistry registry) {
-        this.registry = registry;
-        this.paymentSuccessCounter = Counter.builder("payments.processed")
-            .tag("status", "success")
-            .description("Total successful payments")
-            .register(registry);
-        this.paymentFailureCounter = Counter.builder("payments.processed")
-            .tag("status", "failure")
-            .register(registry);
-        this.paymentTimer = Timer.builder("payments.latency")
-            .description("Payment processing latency")
-            .register(registry);
-    }
-
-    public PaymentResult process(PaymentRequest req) {
-        return paymentTimer.record(() -> {
-            try {
-                PaymentResult result = doProcess(req);
-                paymentSuccessCounter.increment();
-                return result;
-            } catch (Exception e) {
-                paymentFailureCounter.increment();
-                throw e;
-            }
-        });
-    }
-}
-
-// Spring Boot Actuator + Micrometer: auto-exposes:
-// /actuator/prometheus  → Prometheus scrapes this endpoint
-// Built-in metrics: JVM heap, GC, threads, HTTP request rate, latency, DB pool
-\`\`\`
-
-### Distributed Tracing with OpenTelemetry
-
-\`\`\`
-Trace: one end-to-end request (e.g. "checkout" button click)
-Span: one unit of work within the trace (one service call, one DB query)
-TraceId: unique ID shared across all spans for one trace
-SpanId: unique ID for one span
-
-Example trace for an order:
-  TraceId: abc123
-  ├── Span: API-Gateway          [0ms → 5ms]
-  ├── Span: OrderService         [5ms → 50ms]
-  │     ├── Span: DB query       [5ms → 10ms]
-  │     └── Span: PaymentService [10ms → 48ms]  ← slow!
-  │           ├── Span: charge    [10ms → 45ms]
-  │           └── Span: webhook   [45ms → 48ms]
-  └── Span: NotificationService  [50ms → 60ms]
-
-OpenTelemetry propagates TraceId/SpanId via HTTP headers:
-  traceparent: 00-abc123-def456-01
-\`\`\`
-
-### Stack: ELK / Grafana
-
-\`\`\`
-Logs:    Application → Filebeat → Logstash → Elasticsearch → Kibana
-         Application → Loki (Grafana Loki, much lighter) → Grafana
-
-Metrics: Application → Prometheus (scrapes /actuator/prometheus) → Grafana
-         Alerts: Grafana Alerting or Prometheus AlertManager
-
-Traces:  Application (OTel SDK) → Jaeger / Tempo → Grafana
-
-Modern simplification — Grafana stack:
-  Loki (logs) + Prometheus (metrics) + Tempo (traces) → all in Grafana
-  Correlate: click a log line → see the trace for that request
-\`\`\``,
+> [!SUCCESS]
+> The senior mental model: **metrics to detect and alert, traces to localize, logs to explain.** Correlate them with a shared **trace ID** so you can pivot from a metric spike to the exact traces to the exact log lines in seconds.`,
             code: [
-              `import io.micrometer.core.instrument.*;
-import org.slf4j.*;
-import org.springframework.stereotype.*;
-import java.time.*;
-import java.util.*;
-import java.util.concurrent.atomic.*;
+              {
+                lang: `text`,
+                code: `Known unknown   (MONITORING)  : "Is error rate above 1%?"        -> predefined alert
+Unknown unknown (OBSERVABILITY): "Why are only Android users in
+                                  the EU on app v4.2 seeing 503s
+                                  but only after 14:00?"          -> ad-hoc query
 
-// Complete observability setup for a Spring Boot service
-@Service
-public class OrderServiceWithObservability {
-    private static final Logger log = LoggerFactory.getLogger(OrderServiceWithObservability.class);
-
-    // ─── Metrics ───────────────────────────────────────────────
-    private final Counter ordersCreated;
-    private final Counter ordersFailed;
-    private final Timer orderProcessingTime;
-    private final AtomicInteger activeOrders;
-
-    public OrderServiceWithObservability(MeterRegistry registry) {
-        this.ordersCreated = Counter.builder("orders.created")
-            .description("Total orders created")
-            .register(registry);
-        this.ordersFailed = Counter.builder("orders.failed")
-            .description("Total orders that failed")
-            .register(registry);
-        this.orderProcessingTime = Timer.builder("orders.processing.time")
-            .description("Time to process an order")
-            .publishPercentiles(0.5, 0.95, 0.99)  // p50, p95, p99
-            .register(registry);
-        this.activeOrders = registry.gauge("orders.active",
-            new AtomicInteger(0));                  // live gauge
-    }
-
-    // ─── Service Method with Logging + Metrics ──────────────────
-    public OrderResult createOrder(CreateOrderRequest req) {
-        String requestId = org.slf4j.MDC.get("requestId");
-
-        log.info("Creating order customerId={} productId={} qty={}",
-            req.customerId(), req.productId(), req.quantity());
-
-        activeOrders.incrementAndGet();
-        long start = System.currentTimeMillis();
-
-        try {
-            // Business logic
-            if (req.quantity() <= 0) throw new IllegalArgumentException("Quantity must be positive");
-            String orderId = "ORD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-
-            ordersCreated.increment();
-            long durationMs = System.currentTimeMillis() - start;
-            orderProcessingTime.record(Duration.ofMillis(durationMs));
-
-            log.info("Order created orderId={} customerId={} durationMs={}",
-                orderId, req.customerId(), durationMs);
-
-            return new OrderResult(orderId, "CREATED");
-
-        } catch (Exception e) {
-            ordersFailed.increment();
-            log.error("Order failed customerId={} error={}", req.customerId(), e.getMessage(), e);
-            throw e;
-        } finally {
-            activeOrders.decrementAndGet();
-        }
-    }
-
-    // ─── Health check contributing to /actuator/health ──────────
-    @org.springframework.stereotype.Component
-    static class OrderServiceHealth
-            implements org.springframework.boot.actuate.health.HealthIndicator {
-        private final AtomicInteger failureCount = new AtomicInteger(0);
-
-        @Override
-        public org.springframework.boot.actuate.health.Health health() {
-            int failures = failureCount.get();
-            if (failures > 10) {
-                return org.springframework.boot.actuate.health.Health.down()
-                    .withDetail("recentFailures", failures).build();
-            }
-            return org.springframework.boot.actuate.health.Health.up()
-                .withDetail("recentFailures", failures).build();
-        }
-    }
-
-    record CreateOrderRequest(String customerId, String productId, int quantity) {}
-    record OrderResult(String orderId, String status) {}
-}`,
-              `# Prometheus alerting rules (prometheus/alerts.yml)
-# These fire when metrics cross thresholds
-
-groups:
-  - name: application-alerts
-    rules:
-      # High error rate
-      - alert: HighErrorRate
-        expr: |
-          rate(http_server_requests_seconds_count{status=~"5.."}[5m])
-          / rate(http_server_requests_seconds_count[5m]) > 0.05
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "High HTTP error rate: {{ $value | humanizePercentage }}"
-          description: "Error rate is above 5% for 2 minutes"
-
-      # High latency
-      - alert: HighP99Latency
-        expr: |
-          histogram_quantile(0.99,
-            rate(http_server_requests_seconds_bucket[5m])) > 2
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "P99 latency > 2s: {{ $value }}s"
-
-      # JVM heap pressure
-      - alert: JvmHeapHigh
-        expr: |
-          jvm_memory_used_bytes{area="heap"}
-          / jvm_memory_max_bytes{area="heap"} > 0.85
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "JVM heap usage > 85%: {{ $value | humanizePercentage }}"
-
-      # Service down
-      - alert: ServiceDown
-        expr: up{job="myapp"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Service is DOWN"`
+Right place for each dimension by cardinality:
+  status_code   (~5 values)     -> metric label   OK
+  region        (~20 values)    -> metric label   OK
+  customer_id   (millions)      -> log field / trace attribute   (NEVER a metric label)
+  trace_id      (unbounded)     -> trace + log correlation field  (NEVER a metric label)`
+              }
             ],
             flashcards: [
               {
-                q: `What are the three pillars of observability and what question does each answer?`,
-                a: `Logs: what happened? — timestamped events with context (user IDs, order IDs, stack traces). Best for debugging specific errors. Structured JSON logs + MDC (request ID, user ID in every line) make them searchable. Metrics: how much/often? — numeric time-series data (request rate, error rate, latency percentiles, heap usage). Aggregated and queryable over time. Drives dashboards and alerts. Traces: where did time go? — records the journey of one request through multiple services. Shows which service was slow or errored. Uses TraceId/SpanId propagated via headers. Need all three: metrics tell you something is wrong; logs tell you what the error was; traces tell you where in the system it happened.`
+                q: `Monitoring vs observability in one sentence?`,
+                a: `Monitoring watches predefined signals for known failure modes (known unknowns); observability is the property that lets you ask arbitrary new questions about system behavior from its outputs, without deploying new code, to debug unanticipated failures (unknown unknowns).`
               },
               {
-                q: `What is MDC (Mapped Diagnostic Context) and why is it critical for logs?`,
-                a: `MDC is a per-thread key-value store that SLF4J automatically includes in every log line. You set it once per request (e.g. in a filter or interceptor): MDC.put("requestId", uuid); MDC.put("userId", "42"). Then EVERY log statement from that thread — across all classes — automatically includes requestId and userId in the output, without passing them through method parameters. Critical for production: when debugging an issue for a specific user or request, you can grep/filter by requestId and see all log lines for exactly that request across all service layers. Always clear MDC after the request (MDC.clear() in a finally block or afterCompletion).`
+                q: `What are the three pillars and what does each answer?`,
+                a: `Logs: what exactly happened in one event (detail). Metrics: aggregate rates/trends/distributions over time (cheap to store, alert on). Traces: where time went across services for a single request (causal span tree).`
               },
               {
-                q: `What is the difference between a Counter, Timer, and Gauge in Micrometer?`,
-                a: `Counter: monotonically increasing number — only goes up. Use for: requests processed, errors occurred, payments charged. Rate of change (requests per second) calculated by Prometheus. Timer: records both count AND duration of events. Use for: latency of operations. Automatically tracks count, total time, and histogram buckets (for percentile calculation). Publish p50/p95/p99 for latency SLOs. Gauge: a current value that can go up or down. Use for: active connections, queue depth, JVM heap usage, thread pool size. Sampled at query time. Rule: most things are Counters or Timers; Gauges are for "how many right now" questions.`
+                q: `What is cardinality and why does it matter for observability?`,
+                a: `Cardinality is the number of distinct values a dimension can take. It is the budget that decides where data belongs: high-cardinality fields are cheap per-event in logs/traces but explode the number of time series in metrics, which is expensive and can crash the TSDB.`
+              },
+              {
+                q: `Why not put user_id or request_id in a Prometheus metric label?`,
+                a: `Each unique label-set is a separate time series stored and indexed forever. Unbounded labels like user_id cause a cardinality explosion — runaway memory/disk and a crashed metrics backend. Put them in logs/traces instead.`
+              },
+              {
+                q: `Known unknowns vs unknown unknowns?`,
+                a: `Known unknowns are failure modes you anticipated and built dashboards/alerts for. Unknown unknowns are novel, emergent failures you could not have predicted — observability (high-cardinality, slice-able telemetry) is what lets you investigate them.`
+              },
+              {
+                q: `How do the three pillars work together in an investigation?`,
+                a: `Metrics detect and alert (p99 spiked); traces localize (which span/hop was slow for that request); logs explain (the exception, SQL, or parameter). A shared trace ID lets you pivot between them.`
+              },
+              {
+                q: `Why are metrics cheap but logs expensive at scale?`,
+                a: `Metrics are pre-aggregated numeric time series — a fixed small set of series regardless of request volume (until cardinality grows). Logs store a record per event, so cost scales with raw event volume in bytes.`
+              },
+              {
+                q: `Is having all three pillars the same as being observable?`,
+                a: `No. Observability is about being able to answer new questions, which requires high-cardinality, high-dimensionality, correlated data you can query arbitrarily — not merely emitting logs, metrics, and traces in silos.`
+              },
+              {
+                q: `Which pillar do you alert on, and why not alert on traces/logs directly?`,
+                a: `Alert primarily on metrics: they are cheap, continuous, and aggregate. Traces are sampled and logs are voluminous/unstructured for thresholds; you derive metrics from them or use them to investigate after a metric alert fires.`
+              },
+              {
+                q: `Give an example of a low- vs high-cardinality dimension.`,
+                a: `Low: http_status (~5), region (~20), method (~7). High/unbounded: user_id, request_id, trace_id, email, full URL with IDs. Low belongs in metric labels; high belongs in log fields / span attributes.`
+              },
+              {
+                q: `What does "high-dimensionality" add beyond "high-cardinality"?`,
+                a: `Cardinality is values per dimension; dimensionality is the number of distinct attributes per event (region, device, app version, build, customer tier...). High-dimensionality wide events let you slice by many attributes to isolate unknown unknowns.`
+              },
+              {
+                q: `Why can't you simply log everything and skip metrics/traces?`,
+                a: `Logs alone are expensive to store, slow to aggregate for trends, and lack causal linkage across services. Metrics give cheap aggregates for alerting; traces give cross-service causality. Each pillar optimizes a different question.`
+              }
+            ]
+          },
+          {
+            id: `9.3.2`,
+            title: `Structured Logging`,
+            notes: `## Structured Logging
+
+Unstructured \`log.info("user " + id + " did " + action)\` is grep-able by humans and nothing else. **Structured logging** emits machine-parseable key/value events (usually JSON) so a log platform can index, filter, and aggregate them.
+
+### Levels (use them deliberately)
+
+| Level | When | On-call wakes up? |
+|-------|------|-------------------|
+| \`ERROR\` | A request/operation failed and needs attention | Maybe (if it alerts) |
+| \`WARN\` | Recoverable anomaly, degraded path, retry | No, but watch the rate |
+| \`INFO\` | Significant business events (started, order placed) | No |
+| \`DEBUG\` | Developer detail, off in prod by default | No |
+| \`TRACE\` | Very fine-grained, rarely in prod | No |
+
+> [!WARNING]
+> Logging at \`ERROR\` for things that are not actionable is the fastest route to **alert fatigue** and ignored logs. If nobody should act on it, it is not an ERROR. Conversely, swallowing real failures at DEBUG hides incidents. Level discipline is a senior signal.
+
+### Correlation / trace IDs & MDC
+In a distributed system a single user request fans out across services and threads. A **correlation ID** (or the **trace ID**) threads through every log line of that request so you can reassemble the story.
+
+- **MDC (Mapped Diagnostic Context)** in SLF4J/Logback is a thread-local map. You put \`traceId\`, \`userId\`, \`tenant\` into the MDC at the request edge (a filter/interceptor), and every log line on that thread automatically includes them.
+- Propagate the ID across thread-pool boundaries (copy MDC into async tasks) and across service calls (HTTP/gRPC headers, e.g. W3C \`traceparent\`).
+
+> [!TIP]
+> With OpenTelemetry the trace/span IDs are injected into the MDC automatically, so your JSON logs carry \`trace_id\`/\`span_id\` and your log platform can deep-link a log line to its trace. This **trace-log correlation** is the single highest-leverage observability setup.
+
+### JSON logs & aggregation
+Ship one JSON object per event to a central platform: **ELK** (Elasticsearch + Logstash/Beats + Kibana) or **Grafana Loki** (label-indexed, cheaper, pairs with Prometheus/Tempo). Aggregation gives full-text search, dashboards, and cross-service correlation by \`trace_id\`.
+
+> [!DANGER]
+> **What NOT to log — PII and secrets.** Never log passwords, tokens, API keys, full card numbers (PCI), national IDs, health data, or raw request bodies that may contain them. Logs are widely accessible, retained, and replicated. Leaking PII into logs is a **GDPR/PCI/HIPAA violation** and a breach. Mask/redact at the logging layer, allow-list fields, and treat logs as a data store subject to retention and access controls.
+
+> [!EU]
+> Under **GDPR** log lines containing personal data are personal data: they fall under data-subject access/erasure rights, retention limits, and the records of processing. "We just logged it for debugging" is not a lawful basis. Pseudonymize (log a hashed/opaque user key, not the email), set retention, and document it.`,
+            code: [
+              {
+                lang: `java`,
+                code: `// Edge filter: put correlation context into the MDC for every request
+import org.slf4j.MDC;
+
+public class TraceContextFilter implements jakarta.servlet.Filter {
+  public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
+      throws java.io.IOException, ServletException {
+    String traceId = ((HttpServletRequest) req).getHeader("traceparent");
+    if (traceId == null) traceId = java.util.UUID.randomUUID().toString();
+    MDC.put("trace_id", traceId);
+    MDC.put("tenant", resolveTenant(req));
+    try {
+      chain.doFilter(req, res);        // every log line on this thread now carries trace_id
+    } finally {
+      MDC.clear();                     // ALWAYS clear: thread is pooled and reused
+    }
+  }
+}
+
+// Propagating MDC across an async boundary (thread pools lose thread-locals)
+var ctx = MDC.getCopyOfContextMap();
+executor.submit(() -> {
+  MDC.setContextMap(ctx);
+  try { doWork(); } finally { MDC.clear(); }
+});`
+              },
+              {
+                lang: `text`,
+                code: `<!-- logback-spring.xml: JSON encoder so logs are machine-parseable -->
+<appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+  <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+    <!-- includes MDC keys (trace_id, tenant) as top-level JSON fields -->
+  </encoder>
+</appender>
+
+Resulting log event (one JSON object per line):
+{"ts":"2026-06-25T14:02:11.412Z","level":"ERROR","logger":"PaymentSvc",
+ "msg":"charge failed","trace_id":"4bf92f...a3ce","tenant":"acme",
+ "exception":"java.net.SocketTimeoutException: connect timed out"}
+
+// DO NOT log PII -- redact before it ever reaches the appender
+log.info("login ok user={}", hash(email));   // GOOD: opaque key
+log.info("login ok user={}", email);          // BAD: PII in logs (GDPR)`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why structured (JSON) logging over plain text?`,
+                a: `Machine-parseable key/value events can be indexed, filtered, and aggregated by a log platform. You can query by field (trace_id, tenant, status) and build dashboards, instead of brittle regex over free text.`
+              },
+              {
+                q: `What is MDC and how is it used for correlation?`,
+                a: `Mapped Diagnostic Context is a thread-local key/value map in SLF4J/Logback. You populate trace_id/user/tenant at the request edge, and every log line on that thread auto-includes them. Must be cleared in a finally because threads are pooled.`
+              },
+              {
+                q: `Why must you clear the MDC in a finally block?`,
+                a: `Server threads are pooled and reused. If you do not clear MDC, the next request handled by that thread inherits stale context (wrong trace_id/user) — a correctness and privacy bug.`
+              },
+              {
+                q: `How do you propagate correlation context across async/thread-pool boundaries?`,
+                a: `Thread-locals (MDC) do not follow tasks to other threads. Capture MDC.getCopyOfContextMap() on the submitting thread and MDC.setContextMap(...) inside the task (then clear). Many frameworks/OTel provide context-propagating wrappers.`
+              },
+              {
+                q: `What is a correlation ID / trace ID and why is it essential?`,
+                a: `A single identifier threaded through every log line and service hop of one request. It lets you reassemble a request's full story across services and threads, and pivot from a log to its trace. Without it, distributed logs are unjoinable.`
+              },
+              {
+                q: `When should something be ERROR vs WARN vs INFO?`,
+                a: `ERROR: an operation failed and someone should act. WARN: recoverable/degraded anomaly worth watching the rate of. INFO: significant business events. DEBUG/TRACE: developer detail, off in prod. Mis-leveling causes alert fatigue or hidden incidents.`
+              },
+              {
+                q: `What should you NEVER log?`,
+                a: `Passwords, tokens/API keys, full card numbers (PCI), national IDs, health data (HIPAA), and raw request bodies that may contain them. Logs are broadly accessible and retained; leaking PII is a GDPR/PCI/HIPAA breach. Redact/mask at the logging layer.`
+              },
+              {
+                q: `How does GDPR view log lines containing personal data?`,
+                a: `They are personal data: subject to access/erasure rights, retention limits, and records of processing. "For debugging" is not a lawful basis. Pseudonymize (hashed/opaque user key), set retention, document the processing.`
+              },
+              {
+                q: `ELK vs Loki — what is the difference?`,
+                a: `ELK (Elasticsearch/Logstash/Kibana) full-text indexes log content — powerful search, heavier/costlier. Loki indexes only labels (not content), storing log bodies cheaply in object storage — cheaper, pairs with Prometheus/Grafana/Tempo.`
+              },
+              {
+                q: `How does trace-log correlation work concretely?`,
+                a: `An instrumentation layer (e.g. OpenTelemetry) injects the active trace_id/span_id into the MDC, so JSON logs carry them. The platform can then deep-link a log line to its trace and back, letting you pivot metric -> trace -> log.`
+              },
+              {
+                q: `What is the cost of logging at ERROR for non-actionable events?`,
+                a: `Alert fatigue: on-call learns to ignore ERROR, and real failures get missed. If no one should act on it, it is not an ERROR. Level discipline keeps ERROR meaningful and alertable.`
+              },
+              {
+                q: `How do you redact PII while keeping logs useful?`,
+                a: `Log an opaque/pseudonymized key (e.g. a salted hash or surrogate id) instead of the raw value, allow-list which fields may be logged, and apply masking at the encoder/appender layer so raw PII never reaches storage.`
+              }
+            ]
+          },
+          {
+            id: `9.3.3`,
+            title: `Metrics`,
+            notes: `## Metrics
+
+A **metric** is a numeric measurement sampled over time and stored as a **time series** identified by a name plus a set of **labels/tags**. Cheap to store and aggregate, ideal for alerting and trends.
+
+### The four core instrument types
+
+| Type | Semantics | Example | Aggregatable? |
+|------|-----------|---------|---------------|
+| **Counter** | Monotonically increasing total; you query its **rate** | requests_total, errors_total | Yes (sum, then rate) |
+| **Gauge** | A value that goes up and down; current snapshot | queue_depth, threads_active, memory_used | Yes (avg/max/min) |
+| **Histogram** | Bucketed distribution of observations; client-side buckets | request_duration_seconds_bucket | **Yes — buckets sum across instances** |
+| **Summary** | Client-computed quantiles over a sliding window | request_duration_summary{quantile="0.99"} | **No — quantiles cannot be aggregated** |
+
+> [!WARNING]
+> **Histogram vs Summary** is a favorite question. A **summary** computes quantiles *on each instance* — you cannot average two instances' p99s to get a fleet p99 (it is mathematically wrong). A **histogram** ships bucket counts, which **do** sum across instances, so the backend (Prometheus \`histogram_quantile\`) computes a correct aggregated percentile. Prefer histograms for anything you aggregate across pods. The trade-off: histograms need well-chosen buckets and percentile accuracy depends on bucket granularity.
+
+### Percentiles vs averages — why p99 matters
+> [!DANGER]
+> **Averages lie.** A 50ms mean latency can hide that 1% of requests take 5 seconds. With fan-out, a single user request touches dozens of backends, so a 1-in-100 slow response (p99) means **most real user journeys hit at least one slow hop**. Users feel the tail, not the mean. Track **p50/p90/p99/p99.9**, and remember percentiles are **not additive** — you cannot add per-service p99s to get end-to-end p99.
+
+### Micrometer + Prometheus
+**Micrometer** is the JVM metrics facade (the "SLF4J of metrics"); it exports to Prometheus, Datadog, etc. **Prometheus** scrapes a \`/actuator/prometheus\` endpoint, stores time series, and you query with **PromQL**.
+
+### RED and USE — two complementary methods
+
+| Method | For | The three signals |
+|--------|-----|-------------------|
+| **RED** | Request-driven **services** | **R**ate (req/s), **E**rrors (failed req/s), **D**uration (latency distribution) |
+| **USE** | **Resources** (CPU, disk, pool, queue) | **U**tilization (% busy), **S**aturation (queue/backlog), **E**rrors |
+
+> [!TIP]
+> RED tells you whether *users* are happy (it is the basis of most SLOs). USE tells you whether a *resource* is the bottleneck. Use RED on every endpoint/service and USE on every resource (thread pool, DB connection pool, CPU, disk). A saturated connection pool (USE) often explains rising request duration (RED).
+
+### Cardinality explosions (again, here it bites hardest)
+> [!DANGER]
+> Every distinct combination of label values = one stored time series. \`http_requests_total{path="/orders/123", user="u_88"}\` with per-ID labels generates millions of series, exhausting Prometheus memory and bringing down monitoring during the very incident you need it. **Rules:** keep labels low-cardinality and bounded; never use raw IDs/emails/full URLs as labels; template paths (\`/orders/{id}\`); cap or drop unbounded labels at the collector.`,
+            code: [
+              {
+                lang: `java`,
+                code: `// Micrometer instrumentation: counter, gauge, timer(histogram)
+import io.micrometer.core.instrument.*;
+
+MeterRegistry reg = /* injected PrometheusMeterRegistry */;
+
+// Counter -> you query rate(orders_total[5m])
+Counter orders = reg.counter("orders_total", "type", "online");
+orders.increment();
+
+// Gauge -> current snapshot of a live value
+reg.gauge("queue_depth", queue, Queue::size);
+
+// Timer with histogram buckets -> aggregatable percentiles in Prometheus
+Timer http = Timer.builder("http_server_requests")
+    .tag("uri", "/orders/{id}")     // TEMPLATED, not /orders/123 (cardinality!)
+    .publishPercentileHistogram()    // emit buckets, not client-side quantiles
+    .register(reg);
+http.record(() -> handleRequest());`
+              },
+              {
+                lang: `text`,
+                code: `# PromQL: the RED signals for a service
+# Rate (requests/sec)
+sum(rate(http_server_requests_seconds_count[5m])) by (uri)
+
+# Errors (fraction of 5xx)
+sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+  / sum(rate(http_server_requests_seconds_count[5m]))
+
+# Duration: aggregated p99 ACROSS pods from histogram buckets
+histogram_quantile(0.99,
+  sum(rate(http_server_requests_seconds_bucket[5m])) by (le, uri))
+
+# USE on a connection pool: saturation = pending / max
+hikaricp_connections_pending / hikaricp_connections_max`
+              },
+              {
+                lang: `java`,
+                code: `// PercentileDemo.java -- compiles & runs on a bare JDK: \`javac PercentileDemo.java && java PercentileDemo\`
+// Shows WHY p99 (from histogram buckets) matters and why the average hides the tail.
+import java.util.Arrays;
+
+public class PercentileDemo {
+  // Exact percentile from a sorted sample (nearest-rank method).
+  static double percentile(long[] sortedAscending, double p) {
+    if (sortedAscending.length == 0) return 0;
+    int rank = (int) Math.ceil(p / 100.0 * sortedAscending.length) - 1;
+    rank = Math.max(0, Math.min(rank, sortedAscending.length - 1));
+    return sortedAscending[rank];
+  }
+
+  // Prometheus-style histogram: fixed upper-bound buckets, count per bucket,
+  // then linear-interpolate within the bucket that contains the target quantile.
+  static double histogramQuantile(long[] bounds, long[] counts, double q) {
+    long total = 0; for (long c : counts) total += c;
+    double target = q * total;
+    long cumulative = 0; double prevBound = 0;
+    for (int i = 0; i < bounds.length; i++) {
+      long bucketCount = counts[i];
+      if (cumulative + bucketCount >= target) {
+        double within = (target - cumulative) / Math.max(1, bucketCount);
+        return prevBound + within * (bounds[i] - prevBound);
+      }
+      cumulative += bucketCount; prevBound = bounds[i];
+    }
+    return bounds[bounds.length - 1];
+  }
+
+  public static void main(String[] args) {
+    // 990 fast requests (~50ms) and 10 slow ones (~5000ms): a typical tail.
+    long[] latencies = new long[1000];
+    for (int i = 0; i < 990; i++) latencies[i] = 45 + (i % 10);   // 45..54 ms
+    for (int i = 990; i < 1000; i++) latencies[i] = 5000;          // tail
+
+    double sum = 0; for (long v : latencies) sum += v;
+    double avg = sum / latencies.length;
+
+    long[] sorted = latencies.clone(); Arrays.sort(sorted);
+
+    // Build histogram buckets (ms upper bounds) like Micrometer would export.
+    long[] bounds = {50, 100, 250, 500, 1000, 2500, 5000, 10000};
+    long[] counts = new long[bounds.length];
+    for (long v : latencies) {
+      for (int b = 0; b < bounds.length; b++) {
+        if (v <= bounds[b]) { counts[b]++; break; }
+      }
+    }
+
+    System.out.printf("average      = %.1f ms  <- looks fine, hides the tail%n", avg);
+    System.out.printf("exact p50    = %.0f ms%n", percentile(sorted, 50));
+    System.out.printf("exact p99    = %.0f ms  <- the truth users feel%n", percentile(sorted, 99));
+    System.out.printf("hist  p99    = %.0f ms  (from buckets, aggregatable across pods)%n",
+        histogramQuantile(bounds, counts, 0.99));
+  }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Counter vs gauge?`,
+                a: `A counter only increases (or resets to 0) and you query its rate — totals like requests/errors. A gauge goes up and down and represents a current snapshot — queue depth, active threads, memory used.`
+              },
+              {
+                q: `Histogram vs summary — and which to prefer?`,
+                a: `A summary computes quantiles client-side per instance; those quantiles cannot be aggregated across instances. A histogram ships bucket counts, which sum across instances so the backend computes a correct fleet-wide percentile. Prefer histograms for anything aggregated across pods.`
+              },
+              {
+                q: `Why can't you average p99s from two instances?`,
+                a: `Percentiles are not additive or averageable — the average of two p99s is not the combined p99. You need the underlying distribution. That is why histogram buckets (which do sum) beat pre-computed summary quantiles for aggregation.`
+              },
+              {
+                q: `Why does p99 matter more than the average?`,
+                a: `Averages hide the tail: a 50ms mean can mask 1% of 5s requests. With request fan-out, most user journeys touch a slow hop, so the tail is what users actually experience. Track p50/p90/p99/p99.9.`
+              },
+              {
+                q: `Are percentiles additive across services?`,
+                a: `No. You cannot add per-service p99 latencies to get end-to-end p99. End-to-end tail must be measured directly (e.g. from traces) or modeled, not summed.`
+              },
+              {
+                q: `What is the RED method?`,
+                a: `For request-driven services: Rate (requests/sec), Errors (failed requests/sec), Duration (latency distribution). It captures user-facing health and underpins most SLOs.`
+              },
+              {
+                q: `What is the USE method?`,
+                a: `For resources: Utilization (% time busy), Saturation (queued/backlogged work), Errors. Applied to CPU, disk, thread pools, connection pools — it finds the bottleneck resource. A saturated pool (USE) often explains rising duration (RED).`
+              },
+              {
+                q: `When do you use RED vs USE?`,
+                a: `RED on every service/endpoint to know if users are happy; USE on every resource to know if something is the bottleneck. They are complementary: RED detects symptoms, USE localizes the constrained resource.`
+              },
+              {
+                q: `What is a cardinality explosion in metrics and how do you prevent it?`,
+                a: `Each unique label-value combination is a separate time series. Unbounded labels (user_id, raw URL with IDs) create millions of series and exhaust the TSDB. Prevent by templating paths (/orders/{id}), keeping labels low-cardinality and bounded, and dropping unbounded labels at the collector.`
+              },
+              {
+                q: `What is Micrometer and how does it relate to Prometheus?`,
+                a: `Micrometer is a vendor-neutral JVM metrics facade (like SLF4J for metrics). It instruments your code once and exports to many backends; for Prometheus it exposes a scrape endpoint that Prometheus pulls and you query with PromQL.`
+              },
+              {
+                q: `How does Prometheus compute an aggregated percentile?`,
+                a: `histogram_quantile(0.99, sum(rate(..._bucket[5m])) by (le)). It sums bucket rates across instances by the le (less-or-equal) bound, then interpolates within the bucket containing the target quantile.`
+              },
+              {
+                q: `Why template the URI label instead of using the real path?`,
+                a: `Real paths embed IDs (/orders/123), making the label unbounded and exploding cardinality. Templating to /orders/{id} keeps one series per route, preserving aggregation without blowing up the TSDB.`
+              }
+            ]
+          },
+          {
+            id: `9.3.4`,
+            title: `Distributed Tracing`,
+            notes: `## Distributed Tracing
+
+A single request crosses many services; logs and metrics per service do not show the **causal path** or where the time went. **Distributed tracing** reconstructs the full request as a tree of timed operations.
+
+### Spans & traces
+- A **span** is one timed unit of work (an HTTP handler, a DB query, an outbound call) with a name, start/end time, **span ID**, **parent span ID**, **trace ID**, and key/value **attributes** (status, db.statement, http.method) plus **events**.
+- A **trace** is the tree of spans sharing one trace ID — the whole request across all services.
+- The **root span** is the first; children nest under their parent, producing a waterfall you can read for latency.
+
+\`\`\`mermaid
+flowchart TD
+    A["Trace 4bf92f... (root: GET /checkout) 1.9s"] --> B["api-gateway.route 1.85s"]
+    B --> C["order-svc.create 1.7s"]
+    C --> D["db.insert order 40ms"]
+    C --> E["payment-svc.charge 1.6s  <-- the slow hop"]
+    E --> F["gateway.http POST 1.55s  (3 retries)"]
+    C --> G["inventory-svc.reserve 60ms"]
+\`\`\`
+
+### Context propagation
+> [!TIP]
+> Tracing works only if the **trace context** (trace ID + current span ID + sampling flag) is **propagated** across every hop. In-process it flows via a thread-local (and must be carried across async boundaries). Across services it travels in headers — the **W3C Trace Context** standard \`traceparent\`/\`tracestate\` headers (gRPC metadata for gRPC). Each service extracts the incoming context, starts a child span, and injects the context into outbound calls. Miss one hop and the trace breaks into disconnected fragments.
+
+### OpenTelemetry (OTel)
+**OpenTelemetry** is the vendor-neutral CNCF standard: one set of APIs/SDKs + an **auto-instrumentation Java agent** that traces common frameworks (Spring, JDBC, HTTP clients, Kafka) with zero code changes, plus the **OTel Collector** that receives, processes, and exports to backends (Jaeger, Tempo, Zipkin, vendors). It unifies traces, metrics, and logs under one context model.
+
+### Sampling
+> [!WARNING]
+> Tracing every request is expensive (storage, network, backend). **Sampling** keeps a subset. Two strategies: **head-based** (decide at the root, e.g. keep 1%, cheap but may miss the rare slow/error trace) and **tail-based** (buffer spans and decide after the trace completes, e.g. keep all errors and all slow traces — far more useful but needs the Collector to hold spans and is heavier). A sound default: tail-sample to retain 100% of errors and slow traces plus a baseline of normal ones. Whatever you choose, the **sampling decision must be consistent across the whole trace** (propagated in the flag) or you get partial traces.
+
+### Trace-log correlation
+> [!SUCCESS]
+> Inject the active \`trace_id\`/\`span_id\` into the logging MDC so every log line carries them. Then from a slow span you jump straight to its logs, and from an error log you jump straight to its trace. This is the payoff that makes the three pillars one connected story.`,
+            code: [
+              {
+                lang: `java`,
+                code: `// OpenTelemetry: manual span around a unit of work (auto-agent does this for frameworks)
+import io.opentelemetry.api.trace.*;
+import io.opentelemetry.context.Scope;
+
+Tracer tracer = openTelemetry.getTracer("order-svc");
+
+Span span = tracer.spanBuilder("order.create")
+    .setSpanKind(SpanKind.SERVER)
+    .startSpan();
+try (Scope scope = span.makeCurrent()) {        // makes context current -> children + logs link to it
+    span.setAttribute("order.id", orderId);     // attribute, NOT a metric label (high cardinality OK here)
+    span.setAttribute("tenant", tenant);
+    chargePayment();                            // outbound call inherits & injects the context
+} catch (Exception e) {
+    span.recordException(e);
+    span.setStatus(StatusCode.ERROR);           // tail-sampler keeps error traces
+    throw e;
+} finally {
+    span.end();
+}`
+              },
+              {
+                lang: `text`,
+                code: `# W3C Trace Context header propagated on every outbound HTTP call:
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+#            ^ver ^------------ trace-id -----------^ ^-- parent span-^ ^sampled=01
+
+# Run a Java service with zero-code auto-instrumentation (OTel agent):
+java -javaagent:opentelemetry-javaagent.jar \\
+     -Dotel.service.name=order-svc \\
+     -Dotel.traces.sampler=parentbased_traceidratio \\
+     -Dotel.traces.sampler.arg=0.05 \\
+     -Dotel.exporter.otlp.endpoint=http://otel-collector:4317 \\
+     -jar app.jar`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is a span vs a trace?`,
+                a: `A span is one timed unit of work (handler, query, outbound call) with a span ID, parent span ID, trace ID, attributes and events. A trace is the tree of all spans sharing one trace ID — the whole request across services.`
+              },
+              {
+                q: `What is context propagation and why is it critical?`,
+                a: `Passing the trace context (trace ID + current span ID + sampling flag) across every hop so spans link into one trace. In-process via thread-local (carried across async); across services via headers (W3C traceparent). Miss one hop and the trace fragments.`
+              },
+              {
+                q: `What is the W3C Trace Context standard?`,
+                a: `A vendor-neutral HTTP header format (traceparent and tracestate) carrying version, trace-id, parent span-id, and sampling flag, so different vendors/services interoperate when propagating trace context.`
+              },
+              {
+                q: `Head-based vs tail-based sampling?`,
+                a: `Head-based decides at the root (e.g. keep 1%) — cheap but may discard the rare error/slow trace. Tail-based buffers all spans and decides after completion (keep all errors and slow traces) — far more useful but heavier and requires the collector to hold spans.`
+              },
+              {
+                q: `Why must the sampling decision be consistent across a trace?`,
+                a: `The decision is propagated in the sampling flag. If services decide independently, some keep and some drop spans of the same request, yielding partial/broken traces. The root (or tail sampler) decides once and everyone honors it.`
+              },
+              {
+                q: `What is OpenTelemetry and why does it matter?`,
+                a: `The CNCF vendor-neutral standard for traces/metrics/logs: one set of APIs/SDKs, a Java auto-instrumentation agent (zero-code tracing of Spring/JDBC/HTTP/Kafka), and a Collector to process and export to any backend. It avoids vendor lock-in and unifies the three pillars.`
+              },
+              {
+                q: `How do auto-instrumentation agents work without code changes?`,
+                a: `The OTel Java agent (-javaagent) uses bytecode instrumentation to wrap known framework entry points (servlet, JDBC, HTTP clients, messaging), starting/ending spans and propagating context automatically — no application code edits.`
+              },
+              {
+                q: `How do you correlate traces with logs?`,
+                a: `Inject the active trace_id/span_id into the logging MDC so every log line carries them. Then you pivot from a slow span to its logs and from an error log to its trace — connecting the pillars.`
+              },
+              {
+                q: `What does a high-cardinality attribute like order.id belong on — a span or a metric?`,
+                a: `On a span (as an attribute) — traces store per-event data, so high cardinality is fine and useful for filtering. Never as a metric label, where it would explode time-series cardinality.`
+              },
+              {
+                q: `How do you read a trace waterfall to find a latency problem?`,
+                a: `Look at the span tree by duration: the root's total time is dominated by its longest child path. Drill into the longest span; a single deep span (e.g. payment.charge with retries) reveals the slow hop, not visible from per-service metrics.`
+              },
+              {
+                q: `Why aren't per-service metrics enough; why add tracing?`,
+                a: `Metrics aggregate and lose the per-request causal path; you see service A and B are both slow but not that B is slow only when called by A for this request type. Traces give the causal, per-request breakdown across services.`
+              },
+              {
+                q: `What is the SpanKind and why set it?`,
+                a: `It classifies a span as SERVER, CLIENT, PRODUCER, CONSUMER, or INTERNAL, telling the backend the role in communication so it can render relationships and compute things like service maps correctly.`
+              }
+            ]
+          },
+          {
+            id: `9.3.5`,
+            title: `SLI/SLO/SLA, Error Budgets & Alerting`,
+            notes: `## SLI / SLO / SLA, Error Budgets & Alerting
+
+Observability data is only useful if it drives **decisions**. The SRE framework turns metrics into a contract about reliability and a budget for change.
+
+### The three terms (don't mix them up)
+
+| Term | What it is | Audience | Example |
+|------|-----------|----------|---------|
+| **SLI** | A measured **I**ndicator of service health | Engineering | "% of requests served < 300ms and 2xx" |
+| **SLO** | An internal **O**bjective/target for an SLI | Engineering / product | "99.9% of requests meet the SLI over 30 days" |
+| **SLA** | An **A**greement with the customer, with penalties | Legal / business | "99.5% uptime or service credits" |
+
+> [!TIP]
+> SLI is the measurement, SLO is your internal target (stricter), SLA is the external contract (looser, with consequences). You set the SLO tighter than the SLA so you have margin before you breach a contract. Good SLIs are **user-centric** (latency, availability, correctness) — measure what users feel, not CPU%.
+
+### Error budgets
+> [!SUCCESS]
+> An **error budget** is the inverse of the SLO: a 99.9% SLO permits 0.1% failures = **~43 minutes of downtime per 30 days**. This budget is a currency: while budget remains, ship fast and take risks; when it is exhausted, **freeze risky releases and prioritize reliability**. It turns "dev wants velocity vs ops wants stability" from a fight into a shared, data-driven rule.
+
+| SLO | Error budget / 30 days |
+|-----|------------------------|
+| 99% | ~7.2 hours |
+| 99.9% | ~43 minutes |
+| 99.95% | ~21.6 minutes |
+| 99.99% | ~4.3 minutes |
+
+### Alerting: symptom vs cause
+> [!DANGER]
+> **Alert on symptoms (user pain), not causes.** "CPU > 80%" is a cause that may be totally fine; "p99 latency > SLO" or "error rate > budget burn" is a symptom users feel. Cause-based alerts produce **alert fatigue**: too many pages, most non-actionable, so on-call stops trusting them and misses the real one. Every alert must be **actionable, urgent, and tied to user impact** — otherwise it is a dashboard, not a page.
+
+- Use **multi-window, multi-burn-rate** alerting (Google SRE): page fast on a high burn rate (budget gone soon), ticket on a slow burn. This balances detection speed against false positives.
+- Tier alerts: **page** (wake someone, urgent + actionable) vs **ticket/ticket-only** (look during business hours).
+
+### Dashboards
+Build dashboards around **RED per service** and **USE per resource**, ordered top-down (user-facing SLOs first, then dependencies). A good dashboard answers "are users in pain, and if so where" in 30 seconds; avoid wall-of-graphs vanity boards.
+
+### On-call & incident response basics
+- **Detect** (alert fires) -> **Triage/Acknowledge** -> **Mitigate first** (stop user pain: rollback, failover, scale, feature-flag off — *before* root-causing) -> **Resolve** -> **Blameless postmortem**.
+- Roles in a real incident: **Incident Commander** (coordinates, decides), **Comms** (stakeholders/status page), **Ops/SME** (hands on keyboard).
+- **Blameless postmortems** focus on systemic causes and action items, not individuals — psychological safety is what makes people surface the real failure modes.
+
+> [!WARNING]
+> **Mitigate before you diagnose.** The instinct to find root cause first prolongs the outage. Restore service (roll back the deploy, fail over, shed load), *then* investigate from telemetry and the trace/log trail. MTTR is dominated by detection + mitigation time, which is exactly what good observability shortens.`,
+            code: [
+              {
+                lang: `text`,
+                code: `# SLO as code: availability SLI = good requests / valid requests
+SLI  = sum(rate(http_requests_total{status!~"5.."}[28d]))
+     / sum(rate(http_requests_total[28d]))
+SLO  = 0.999            # target over the 28-day window
+
+# Error budget remaining (fraction of allowed failures still unspent)
+budget_remaining = 1 - ( (1 - SLI) / (1 - SLO) )
+#   SLI=0.9995, SLO=0.999  -> (1-.9995)/(1-.999)=0.5 -> 50% budget left
+
+# Multi-burn-rate PAGE alert (fast burn: 2% of 30d budget in 1h)
+#   page if short AND long windows both show high burn
+( error_ratio[5m]  > 14.4 * (1-SLO) )
+and
+( error_ratio[1h]  > 14.4 * (1-SLO) )
+
+# 30-day error budget in minutes for common SLOs:
+#   99.0%  -> 432 min | 99.9% -> 43 min | 99.99% -> 4.3 min`
+              }
+            ],
+            flashcards: [
+              {
+                q: `SLI vs SLO vs SLA?`,
+                a: `SLI is a measured indicator of health (e.g. % requests < 300ms and 2xx). SLO is your internal target for that SLI (e.g. 99.9% over 30d). SLA is an external contract with penalties (e.g. 99.5% or credits). SLO is set stricter than the SLA for margin.`
+              },
+              {
+                q: `Why set the SLO tighter than the SLA?`,
+                a: `So you have a safety margin: you alert and react when you approach the internal SLO, well before you breach the contractual SLA that triggers penalties/credits.`
+              },
+              {
+                q: `What is an error budget and how is it used?`,
+                a: `The allowed failure fraction = 1 - SLO (e.g. 99.9% -> 0.1% -> ~43 min/30d). While budget remains you ship fast; when exhausted you freeze risky releases and invest in reliability. It turns velocity-vs-stability into a data-driven rule.`
+              },
+              {
+                q: `How much downtime does 99.9% allow per 30 days?`,
+                a: `About 43 minutes. 99% is ~7.2 hours, 99.95% ~21.6 minutes, 99.99% ~4.3 minutes. Each extra nine roughly divides the budget by ten.`
+              },
+              {
+                q: `Why alert on symptoms instead of causes?`,
+                a: `Symptoms (p99 over SLO, error-budget burn) reflect real user pain and are actionable. Cause alerts (CPU>80%) are often non-actionable and cause alert fatigue, so on-call stops trusting pages and misses real incidents.`
+              },
+              {
+                q: `What makes a good (page-worthy) alert?`,
+                a: `It is actionable, urgent, and tied to user impact — someone must do something now. Anything informational or non-urgent should be a ticket or a dashboard, not a page.`
+              },
+              {
+                q: `What is multi-window multi-burn-rate alerting?`,
+                a: `A Google-SRE pattern: page on a high burn rate confirmed over both a short and a long window (fast budget consumption, real and not a blip); open a ticket on slow burn. It balances fast detection against false positives.`
+              },
+              {
+                q: `What is alert fatigue and how do you fight it?`,
+                a: `Too many non-actionable pages desensitize on-call so the real alert is missed. Fight it by alerting on symptoms/SLO burn only, making every page actionable, tiering page vs ticket, and pruning noisy alerts.`
+              },
+              {
+                q: `In an incident, why mitigate before diagnosing?`,
+                a: `Restoring service (rollback, failover, shed load, flag-off) stops user pain immediately; root cause can be found afterward from telemetry. MTTR is dominated by detection + mitigation, so diagnosing first needlessly prolongs the outage.`
+              },
+              {
+                q: `What are the key roles in incident response?`,
+                a: `Incident Commander (coordinates and decides), Communications (stakeholders/status page), and Ops/SME (hands-on remediation). Separating coordination from hands-on work keeps a major incident organized.`
+              },
+              {
+                q: `Why blameless postmortems?`,
+                a: `They focus on systemic causes and action items, not individual fault. Psychological safety means people surface real failure modes honestly, so the system actually improves instead of people hiding mistakes.`
+              },
+              {
+                q: `What makes a good SLI?`,
+                a: `It is user-centric and measures what users feel — availability, latency, correctness/quality — typically as good events / valid events. Resource metrics like CPU% are not SLIs; they are causes, not user-facing symptoms.`
               }
             ]
           }
@@ -48780,222 +49979,969 @@ console.log("Key steps:", Object.keys(systemDesignTemplate).join(" → "));`
     modules: [
       {
         id: `11.1`,
-        title: `Multi-Module Maven Monolith Design`,
-        hours: 3,
+        title: `Multi-Module Maven Project Design`,
+        hours: 4,
         sections: [
           {
-            title: `Maven Multi-Module Architecture — Design & Best Practices`,
-            notes: `## Maven Multi-Module Architecture — Design & Best Practices
+            id: `11.1.1`,
+            title: `Maven Fundamentals: Lifecycle, Reactor, GAV & Dependency Resolution`,
+            notes: `# Maven Fundamentals
 
-### Why Multi-Module Maven?
+Maven is a **convention-over-configuration** build tool. At staff level you are not
+expected to recite plugin XML from memory — you are expected to reason about the
+*reactor*, *dependency resolution*, and *reproducibility*, and to explain trade-offs
+to a team.
 
-\`\`\`
-Single-module JAR:
-  All code in one module → build everything to change anything
-  Long build times, hard to enforce layering, easy to create circular deps
+## Coordinates (GAV)
 
-Multi-module Maven:
-  Each module = a separate Maven project with its own pom.xml
-  Parent pom.xml orchestrates the build
+Every artifact is uniquely addressed by **groupId : artifactId : version** (plus
+optional \`classifier\` and \`packaging\`/type). This tuple is what ends up in
+your lockfile-equivalent and what a CVE scanner matches against.
 
-Benefits:
-  - Enforce dependency direction (web cannot import db-core directly)
-  - Parallel builds: mvn -T 4 clean package (4 threads)
-  - Faster incremental builds (only changed modules rebuild)
-  - Each module has clear responsibility + can be tested in isolation
-  - Can evolve into microservices: extract a module = one deployment unit
-\`\`\`
+| Part | Example | Meaning |
+|------|---------|---------|
+| groupId | \`com.acme.billing\` | Reverse-DNS namespace, owns the artifact |
+| artifactId | \`billing-domain\` | The module/jar name |
+| version | \`1.4.2\` or \`1.5.0-SNAPSHOT\` | Release vs mutable snapshot |
+| packaging | \`jar\` / \`pom\` / \`war\` | \`pom\` = aggregator/BOM only |
+| classifier | \`sources\`, \`javadoc\` | Secondary artifact of same GAV |
 
-### Typical Multi-Module Layout
+> [!WARNING]
+> \`-SNAPSHOT\` versions are **mutable**: the same coordinate can resolve to different
+> bytes over time. Never depend on a SNAPSHOT from a released artifact — it destroys
+> reproducibility and is a supply-chain risk.
 
-\`\`\`
-my-platform/
-├── pom.xml                    ← parent (packaging=pom)
-├── common/                    ← shared DTOs, utils, exceptions
-│   └── pom.xml
-├── domain/                    ← entities, value objects, domain services
-│   └── pom.xml                depends on: common
-├── infrastructure/            ← JPA repos, external clients, configs
-│   └── pom.xml                depends on: domain, common
-├── application/               ← use cases / services (orchestrates domain + infra)
-│   └── pom.xml                depends on: domain, infrastructure, common
-├── web/                       ← REST controllers, DTOs, security
-│   └── pom.xml                depends on: application, common
-└── app/                       ← Spring Boot main class, resources, Flyway
-    └── pom.xml                depends on: web (all transitively)
-\`\`\`
+## The lifecycle and phases
 
-### Parent POM — Dependency Management
+The **default** lifecycle is an ordered list of *phases*. Running a phase runs every
+phase before it. The ones that matter in interviews:
 
-\`\`\`xml
-<!-- parent pom.xml -->
-<groupId>com.example</groupId>
-<artifactId>my-platform</artifactId>
-<version>1.0.0-SNAPSHOT</version>
-<packaging>pom</packaging>
+\`validate → compile → test → package → verify → install → deploy\`
 
-<modules>
-  <module>common</module>
-  <module>domain</module>
-  <module>infrastructure</module>
-  <module>application</module>
-  <module>web</module>
-  <module>app</module>
-</modules>
+- \`test\` runs unit tests via **surefire**; \`verify\` runs integration tests via
+  **failsafe** plus quality gates (jacoco, enforcer).
+- \`install\` writes to the local \`~/.m2/repository\`; \`deploy\` pushes to a remote
+  (Nexus/Artifactory). There are two other lifecycles: \`clean\` and \`site\`.
 
-<properties>
-  <java.version>21</java.version>
-  <spring-boot.version>3.2.5</spring-boot.version>
-</properties>
+> [!TIP]
+> \`mvn verify\` is the right local "did I break it" command — it runs integration
+> tests and coverage gates. \`mvn install\` is overused: it pollutes \`.m2\` and hides
+> reactor problems. Prefer \`mvn -pl module -am verify\` for a focused build.
 
+## The reactor
+
+When you build a multi-module project, Maven computes a **reactor** — a topologically
+sorted DAG of the modules. It builds dependencies before dependents in one JVM session.
+Key flags:
+
+- \`-pl <modules>\` — project list (build only these)
+- \`-am\` — also make (build upstream deps the selected modules need)
+- \`-amd\` — also make dependents
+- \`-T 1C\` — parallel build, one thread per core
+- \`-rf <module>\` — resume from a module after a failure
+- \`-o\` — offline; \`-U\` — force snapshot update check
+
+## Dependency scopes
+
+| Scope | Compile | Test | Runtime | Transitive | Typical use |
+|-------|:------:|:---:|:------:|:----------:|-------------|
+| \`compile\` (default) | yes | yes | yes | yes | core libs |
+| \`provided\` | yes | yes | no | no | servlet-api, lombok |
+| \`runtime\` | no | yes | yes | yes | JDBC driver |
+| \`test\` | no | yes | no | no | junit, mockito |
+| \`system\` | yes | yes | no | no | avoid — explicit local path |
+| \`import\` | n/a | n/a | n/a | n/a | only in \`dependencyManagement\` for a BOM |
+
+> [!DANGER]
+> A JDBC driver belongs in \`runtime\` scope, not \`compile\`. If you compile against
+> the driver you leak vendor classes into your code and make swapping databases a
+> compile-breaking change. \`provided\` is for things the runtime container supplies.
+
+## Transitive dependencies & conflict resolution
+
+Maven flattens the transitive graph and, on version conflict, uses **nearest-wins**:
+the dependency at the **shortest path** from the root wins. Ties are broken by
+**declaration order** (first-declared wins). This is *not* "highest version wins"
+(that is Gradle's default), and it is the #1 source of "works on my machine" jar hell.
+
+> [!WARNING]
+> Nearest-wins can silently *downgrade* a transitive dependency. If A→B→C:2.0 but you
+> also declare C:1.0 directly, the **direct** C:1.0 wins because it is nearer (depth 1).
+> Diagnose with \`mvn dependency:tree -Dverbose\` and pin with
+> \`dependencyManagement\`.
+
+## BOM & dependencyManagement
+
+\`dependencyManagement\` declares *versions and exclusions* without adding the
+dependency. Child modules then declare the dependency **without a version**, inheriting
+it. A **BOM** (Bill Of Materials) is a \`pom\`-packaged artifact full of
+\`dependencyManagement\` entries, consumed via \`scope=import\`. This is how
+Spring Boot keeps 200+ libraries aligned.
+
+> [!SUCCESS]
+> Rule of thumb: **import BOMs, manage your own versions, declare without versions in
+> children.** A version string in a leaf module \`pom\` is usually a smell.`,
+            code: [
+              {
+                lang: `text`,
+                label: `pom.xml — BOM import + version-free dependency`,
+                code: `<!-- parent / aggregator pom.xml -->
 <dependencyManagement>
   <dependencies>
-    <!-- BOM: controls all Spring Boot dependency versions centrally -->
+    <!-- import a BOM: pulls in 200+ managed versions, adds nothing -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-dependencies</artifactId>
-      <version>\${spring-boot.version}</version>
+      <version>3.3.2</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
-    <!-- Own modules: define version once here -->
+    <!-- pin a transitive that nearest-wins gets wrong -->
     <dependency>
-      <groupId>com.example</groupId>
-      <artifactId>common</artifactId>
-      <version>\${project.version}</version>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.17.2</version>
     </dependency>
   </dependencies>
 </dependencyManagement>
 
-<build>
-  <pluginManagement>
-    <plugins>
-      <plugin>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-maven-plugin</artifactId>
-      </plugin>
-    </plugins>
-  </pluginManagement>
-</build>
-\`\`\`
-
-### Child Module POM
-
-\`\`\`xml
-<!-- web/pom.xml -->
-<parent>
-  <groupId>com.example</groupId>
-  <artifactId>my-platform</artifactId>
-  <version>1.0.0-SNAPSHOT</version>
-  <relativePath>../pom.xml</relativePath>
-</parent>
-<artifactId>web</artifactId>
-
+<!-- child module: NO version here, inherited from management -->
 <dependencies>
-  <!-- Own module dep — no version (controlled by parent) -->
-  <dependency>
-    <groupId>com.example</groupId>
-    <artifactId>application</artifactId>
-  </dependency>
-  <!-- Spring Boot dep — no version (BOM in parent controls it) -->
   <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-web</artifactId>
   </dependency>
-</dependencies>
-\`\`\`
+  <dependency>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
+    <scope>runtime</scope>
+  </dependency>
+</dependencies>`
+              },
+              {
+                lang: `bash`,
+                label: `Diagnosing dependency conflicts in the reactor`,
+                code: `# Full transitive tree, showing omitted/conflicted nodes
+mvn dependency:tree -Dverbose -Dincludes=com.fasterxml.jackson.core
 
-### Enforcing Layering
+# Why is THIS version on the classpath?
+mvn dependency:tree -Dincludes=org.slf4j:slf4j-api
 
-\`\`\`
-Use maven-enforcer-plugin to ban illegal cross-module imports:
-  → web module must NOT directly import infrastructure (DB layer)
-  → domain must NOT import Spring annotations
+# Build only the web module + everything it needs, in parallel, resume on fail
+mvn -pl services/web -am -T 1C verify
+mvn -rf services/web verify
 
-// Or use ArchUnit in tests
-@Test
-public void domainShouldNotDependOnSpring() {
-    JavaClasses classes = new ClassFileImporter()
-        .importPackages("com.example.domain");
-    noClasses().that().resideInAPackage("com.example.domain..")
-        .should().dependOnClassesThat()
-        .resideInAPackage("org.springframework..")
-        .check(classes);
-}
-\`\`\``,
-            code: [
-              `// ArchUnit — architecture tests to enforce module layering
-// Add to test dependencies: com.tngtech.archunit:archunit-junit5
-
-import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.lang.syntax.ArchRuleDefinition;
-import com.tngtech.archunit.library.Architectures;
-import org.junit.jupiter.api.Test;
-
-public class ArchitectureTest {
-
-    private final com.tngtech.archunit.core.domain.JavaClasses allClasses =
-        new ClassFileImporter().importPackages("com.example");
-
-    // Rule 1: Controller depends on Service, not Repository directly
-    @Test
-    void controllersDoNotAccessRepositories() {
-        ArchRuleDefinition.noClasses()
-            .that().resideInAPackage("..controller..")
-            .should().dependOnClassesThat()
-            .resideInAPackage("..repository..")
-            .check(allClasses);
-    }
-
-    // Rule 2: Domain layer has no Spring dependency
-    @Test
-    void domainHasNoSpringDependency() {
-        ArchRuleDefinition.noClasses()
-            .that().resideInAPackage("..domain..")
-            .should().dependOnClassesThat()
-            .resideInAPackage("org.springframework..")
-            .check(allClasses);
-    }
-
-    // Rule 3: Layered architecture definition
-    @Test
-    void layeredArchitectureIsRespected() {
-        Architectures.layeredArchitecture()
-            .consideringAllDependencies()
-            .layer("Web").definedBy("..web..")
-            .layer("Application").definedBy("..application..")
-            .layer("Domain").definedBy("..domain..")
-            .layer("Infrastructure").definedBy("..infrastructure..")
-            .whereLayer("Web").mayOnlyAccessLayers("Application")
-            .whereLayer("Application").mayOnlyAccessLayers("Domain", "Infrastructure")
-            .whereLayer("Infrastructure").mayOnlyAccessLayers("Domain")
-            .whereLayer("Domain").mayNotAccessAnyLayer()
-            .check(allClasses);
-    }
-
-    // Rule 4: Services are annotated correctly
-    @Test
-    void serviceClassesAreAnnotated() {
-        ArchRuleDefinition.classes()
-            .that().haveSimpleNameEndingWith("Service")
-            .and().resideInAPackage("..application..")
-            .should().beAnnotatedWith(org.springframework.stereotype.Service.class)
-            .check(allClasses);
-    }
-}`
+# Detect dependencies you USE but did not DECLARE (transitive leakage)
+mvn dependency:analyze`
+              }
             ],
             flashcards: [
               {
-                q: `What is the difference between dependencyManagement and dependencies in a Maven parent POM?`,
-                a: `dependencyManagement: declares versions and scope but does NOT add the dependency to any module. Child modules that declare the same dependency (without version) inherit the managed version. Use this in the parent to centralise version control without forcing the dependency on all children. dependencies (in parent): actually adds the dependency to ALL child modules — every module inherits it regardless of whether they need it. Rule: put shared test utils (JUnit, Mockito) in parent dependencies if truly universal. Put all other dependencies in dependencyManagement so each module explicitly declares what it needs — avoids implicit transitive pollution.`
+                q: `What uniquely identifies a Maven artifact?`,
+                a: `The GAV coordinate: groupId, artifactId, version (plus optional packaging/type and classifier). CVE scanners and the dependency graph key off this tuple.`
               },
               {
-                q: `What is a Maven BOM (Bill of Materials) and when do you use one?`,
-                a: `A BOM is a POM with packaging=pom that contains only dependencyManagement — it declares versions for a related set of artifacts. Importing a BOM (scope=import, type=pom in dependencyManagement) gives you all its version declarations without adding transitive deps. Spring Boot provides spring-boot-dependencies BOM: import it in parent → all Spring/Spring Boot dependency versions are controlled centrally. You never specify versions for spring-boot-starter-web, jackson, hibernate, etc. — the BOM sets them. Benefits: consistent, tested version combinations; upgrade Spring Boot version in one place and all 30+ deps update together.`
+                q: `Explain Maven nearest-wins conflict resolution.`,
+                a: `When the same artifact appears at multiple versions in the transitive graph, the one at the shortest path from the root wins; ties break by declaration order. It is NOT highest-version-wins (that is Gradle). It can silently downgrade a transitive dep.`
               },
               {
-                q: `How do you enforce module boundaries in a multi-module Maven project?`,
-                a: `Option 1: Maven module structure itself. Web module's pom.xml only declares dependencies on Application module — it physically cannot import classes from Infrastructure unless it adds that dependency. Misuse creates a compile error. Option 2: maven-enforcer-plugin with banned dependencies rule — CI fails if web declares a direct dependency on infrastructure. Option 3: ArchUnit (architecture tests) — write JUnit tests that assert no class in the web package imports from the infrastructure package. Runs as part of normal test suite. Best practice: combine all three — Maven structure prevents most violations, ArchUnit catches any sneaky attempts via transitive imports.`
+                q: `What does running the \`package\` phase actually run?`,
+                a: `Every phase up to and including package in the default lifecycle: validate, compile, test (surefire), then package. Phases are cumulative — you cannot run package without compile/test running first (unless skipped).`
+              },
+              {
+                q: `Difference between \`mvn install\` and \`mvn deploy\`?`,
+                a: `install copies artifacts to the local ~/.m2 repository; deploy pushes them to a remote repository (Nexus/Artifactory). deploy is for sharing across machines/CI; install is local-only.`
+              },
+              {
+                q: `When do you use \`provided\` vs \`runtime\` scope?`,
+                a: `provided: needed to compile but supplied by the runtime/container at execution (servlet-api, lombok) — not packaged, not transitive. runtime: not needed to compile but needed to run (JDBC driver) — packaged and transitive.`
+              },
+              {
+                q: `What is a BOM and how is it consumed?`,
+                a: `A Bill Of Materials: a pom-packaged artifact containing only dependencyManagement entries. Consumed with type=pom and scope=import inside dependencyManagement. It aligns versions across many libraries (e.g. spring-boot-dependencies) without adding any dependency.`
+              },
+              {
+                q: `What does \`dependencyManagement\` do vs \`dependencies\`?`,
+                a: `dependencyManagement declares versions/exclusions but adds nothing to the classpath; children then declare the dependency without a version and inherit it. dependencies actually puts the artifact on the classpath.`
+              },
+              {
+                q: `What is the Maven reactor?`,
+                a: `The topologically-sorted DAG of modules in a multi-module build. Maven orders modules so dependencies build before dependents within a single invocation.`
+              },
+              {
+                q: `What do \`-pl\`, \`-am\`, and \`-rf\` do?`,
+                a: `-pl selects a project list (subset of modules); -am also-makes the upstream dependencies those modules need; -rf resumes the build from a given module after a failure.`
+              },
+              {
+                q: `Why are \`-SNAPSHOT\` dependencies dangerous in a released artifact?`,
+                a: `They are mutable — the same coordinate can resolve to different bytes over time, breaking reproducibility and opening a supply-chain risk. Releases must depend only on fixed versions.`
+              },
+              {
+                q: `How do you find dependencies you use but did not declare?`,
+                a: `mvn dependency:analyze reports used-but-undeclared (you rely on a transitive — fragile) and declared-but-unused dependencies.`
+              },
+              {
+                q: `What does scope \`import\` mean and where is it valid?`,
+                a: `Only valid inside dependencyManagement with type=pom; it imports another POM\\u2019s dependencyManagement section (a BOM) into yours. It is not a real classpath scope.`
+              }
+            ]
+          },
+          {
+            id: `11.1.2`,
+            title: `Multi-Module Structure & the Modular Monolith`,
+            notes: `# Multi-Module Structure & the Modular Monolith
+
+## Parent POM vs aggregator
+
+Two distinct roles often combined in one file:
+
+- **Parent** (\`<parent>\` inheritance): shares config, plugin management, properties,
+  \`dependencyManagement\`. Children point *up* to it.
+- **Aggregator** (\`<modules>\` list): groups modules for the reactor. It points
+  *down* to children.
+
+A typical root \`pom.xml\` is **both** parent and aggregator, with \`packaging=pom\`.
+
+## A pragmatic module layout
+
+\`\`\`text
+acme-platform/                 (pom; parent + aggregator)
+├── pom.xml
+├── platform-bom/              (pom; our internal BOM)
+├── common/                    (cross-cutting utils, NO business logic)
+├── billing-domain/            (pure domain: entities, value objects, ports)
+├── billing-application/       (use cases / services; depends on domain)
+├── billing-adapters/
+│   ├── billing-rest/          (inbound adapter: controllers)
+│   ├── billing-persistence/   (outbound adapter: JPA repos)
+│   └── billing-messaging/     (outbound adapter: Kafka)
+└── billing-app/               (Spring Boot wiring + main(); the only fat jar)
+\`\`\`
+
+> [!TIP]
+> Only the **boot/app** module produces a runnable fat jar (\`spring-boot-maven-plugin\`
+> with \`repackage\`). Library modules stay plain jars so they can be reused and so
+> the reactor stays fast.
+
+## api vs impl modules
+
+Expose an **api** module (interfaces, DTOs, events) that consumers depend on, and an
+**impl** module that nobody depends on at compile time. This lets you swap or refactor
+the implementation without recompiling consumers, and enforces boundaries the compiler
+can check.
+
+## Sharing a common/domain module
+
+A \`common\` module is fine for *technical* cross-cutting code (ids, result types,
+clock abstractions). It is **not** a dumping ground. Business rules belong in a
+**domain** module, kept framework-free (next section).
+
+> [!WARNING]
+> The "god common module" anti-pattern: everything depends on \`common\`, \`common\`
+> depends on everything (Spring, JPA, Jackson). It becomes a recompile bottleneck and a
+> hidden cyclic-coupling hub. Keep \`common\` tiny and dependency-light.
+
+## Module dependency graph
+
+\`\`\`mermaid
+graph TD
+    REST[billing-rest<br/>inbound adapter] --> APP[billing-application]
+    MSG[billing-messaging<br/>outbound] --> APP
+    PERS[billing-persistence<br/>outbound] --> APP
+    APP --> DOM[billing-domain<br/>framework-free]
+    REST --> DOM
+    PERS --> DOM
+    BOOT[billing-app<br/>Spring Boot main] --> REST
+    BOOT --> PERS
+    BOOT --> MSG
+    BOOT --> APP
+    COMMON[common<br/>tiny utils] --> DOM
+    classDef core fill:#1f6feb,stroke:#0b3d91,color:#fff;
+    class DOM,APP core;
+\`\`\`
+
+Note the arrows all point **inward** toward the domain. The domain depends on nothing.
+
+## Modular monolith vs microservices
+
+| Concern | Modular monolith | Microservices |
+|---------|------------------|---------------|
+| Deploy unit | 1 process | N processes |
+| Module boundary | compile-time (Maven) | network + contract |
+| Refactoring across boundary | easy (one repo, one build) | hard (versioned APIs) |
+| Failure isolation | shared JVM/heap | per-service |
+| Operational cost | low | high (mesh, tracing, CI×N) |
+| Right when | <~20 devs, evolving domain | independent scaling/teams |
+
+> [!SUCCESS]
+> **Default to a modular monolith.** Enforce module boundaries in the build now, so the
+> seams are real. If a module genuinely needs independent scaling or an independent
+> team owns it, *that* module graduates to a service — and your clean boundaries make
+> the extraction cheap. This is the "monolith-first" / "start with a modular monolith"
+> guidance from Fowler and Tilkov.
+
+> [!EU]
+> For EU deployments, where a module's data lives is a GDPR/data-residency concern.
+> A modular monolith pins all data to one region trivially; splitting a module into a
+> service later means re-evaluating cross-border data flows under the data-residency
+> rules. Plan residency at the module boundary, not after extraction.`,
+            code: [
+              {
+                lang: `text`,
+                label: `Root pom.xml — parent + aggregator`,
+                code: `<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.acme</groupId>
+  <artifactId>acme-platform</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <packaging>pom</packaging>           <!-- aggregator/parent -->
+
+  <modules>                            <!-- reactor membership -->
+    <module>platform-bom</module>
+    <module>common</module>
+    <module>billing-domain</module>
+    <module>billing-application</module>
+    <module>billing-adapters/billing-rest</module>
+    <module>billing-adapters/billing-persistence</module>
+    <module>billing-app</module>
+  </modules>
+
+  <properties>
+    <java.version>21</java.version>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+</project>`
+              },
+              {
+                lang: `text`,
+                label: `Domain module pom.xml — deliberately framework-free`,
+                code: `<project>
+  <parent>
+    <groupId>com.acme</groupId>
+    <artifactId>acme-platform</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+  <artifactId>billing-domain</artifactId>
+
+  <!-- NOTE: no spring, no jpa, no jackson here. Pure Java + tiny common. -->
+  <dependencies>
+    <dependency>
+      <groupId>com.acme</groupId>
+      <artifactId>common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Parent POM vs aggregator POM — what is the difference?`,
+                a: `A parent shares config/dependencyManagement via <parent> inheritance (children point up). An aggregator lists <modules> to drive the reactor (it points down). One root pom commonly plays both roles with packaging=pom.`
+              },
+              {
+                q: `Why should only the boot/app module produce a fat jar?`,
+                a: `Library modules stay plain jars so they are reusable and the reactor stays fast. Only the app module runs spring-boot-maven-plugin repackage to bundle a runnable, self-contained executable jar.`
+              },
+              {
+                q: `What is the value of separate api and impl modules?`,
+                a: `Consumers depend only on the api (interfaces/DTOs/events); nobody compiles against impl. You can refactor or swap the implementation without recompiling consumers, and the compiler enforces the boundary.`
+              },
+              {
+                q: `Describe the "god common module" anti-pattern.`,
+                a: `A common module that everything depends on while it itself depends on everything (Spring, JPA, Jackson). It becomes a recompile bottleneck and a hidden hub of cyclic coupling. Keep common tiny and dependency-light.`
+              },
+              {
+                q: `When is a modular monolith the right choice over microservices?`,
+                a: `When you have a small/medium team and an evolving domain: you get easy cross-boundary refactoring, low operational cost, and shared transactions, while still enforcing module seams at build time. Extract a service only when a module needs independent scaling or ownership.`
+              },
+              {
+                q: `How are module boundaries enforced in a modular monolith vs microservices?`,
+                a: `Modular monolith: compile-time, via Maven module dependencies (and tools like ArchUnit/JPMS). Microservices: at runtime via network calls and versioned API contracts.`
+              },
+              {
+                q: `What does "monolith-first" guidance argue?`,
+                a: `Start with a well-modularized monolith because you rarely understand the boundaries up front; premature microservices lock in wrong seams at high operational cost. Extract services later once boundaries are proven and a real driver (scaling/team) exists.`
+              },
+              {
+                q: `Why keep the domain module free of Spring/JPA?`,
+                a: `So business rules are testable without a container, immune to framework churn, and reusable. Frameworks are details that live in adapters; the domain should not import them.`
+              },
+              {
+                q: `In a clean module graph, which way do dependency arrows point?`,
+                a: `Inward, toward the domain. Adapters depend on application, application depends on domain, and the domain depends on nothing (only tiny technical common code).`
+              },
+              {
+                q: `What is a sensible role for a \`common\` module?`,
+                a: `Technical cross-cutting code only: ids, result/Either types, clock abstractions, small utilities. Not business logic and not a place to aggregate framework dependencies.`
+              },
+              {
+                q: `How does a modular monolith ease later extraction to a service?`,
+                a: `Because boundaries are already real (separate modules, explicit api, no cyclic deps), promoting a module to a service is mostly adding a transport adapter, not untangling a ball of mud.`
+              },
+              {
+                q: `Name a GDPR consideration when splitting a module into a service.`,
+                a: `Data residency / cross-border transfer: a monolith pins data to one region trivially; extracting a module that stores personal data may create new cross-border data flows that must be re-evaluated against EU data-residency rules.`
+              }
+            ]
+          },
+          {
+            id: `11.1.3`,
+            title: `Clean / Hexagonal / Layered Architecture`,
+            notes: `# Clean / Hexagonal / Layered Architecture in Java
+
+## The dependency rule (the one idea that matters)
+
+> Source-code dependencies point **only inward**. Nothing in an inner layer knows
+> anything about an outer layer.
+
+Concentric rings: **Domain (entities) → Application (use cases) → Adapters/Interfaces →
+Frameworks/Infrastructure**. The database, the web framework, and Kafka are all
+**outer** details. The compiler should make it impossible for the domain to import them.
+
+## Ports & adapters (hexagonal)
+
+- A **port** is an interface owned by the *inside* (application/domain).
+- An **inbound (driving) adapter** calls an inbound port: REST controller, message
+  listener, CLI.
+- An **outbound (driven) adapter** implements an outbound port: JPA repository, HTTP
+  client, Kafka producer.
+
+\`\`\`mermaid
+graph LR
+    subgraph Outside
+      REST[REST Controller]
+      KAFKA[Kafka Listener]
+    end
+    subgraph Core
+      IN([Inbound Port]) --> UC[Use Case / Service]
+      UC --> OUT([Outbound Port])
+    end
+    subgraph Driven
+      JPA[JPA Adapter]
+      HTTP[Payment HTTP Adapter]
+    end
+    REST --> IN
+    KAFKA --> IN
+    OUT --> JPA
+    OUT --> HTTP
+\`\`\`
+
+The use case depends on the **outbound port interface**, never on the JPA adapter. At
+runtime Spring injects the adapter — **dependency inversion** makes the arrow at compile
+time point from adapter → port (inward), even though control flows outward.
+
+## Keeping the domain framework-free
+
+Concrete techniques:
+
+- Domain types are plain Java (records, sealed interfaces). No \`@Entity\`,
+  \`@Component\`, \`@JsonProperty\` on domain classes.
+- Persistence uses a **separate JPA entity** in the persistence adapter, mapped to/from
+  the domain object. Do not let the ORM dictate your aggregate.
+- Enforce it: a Maven module with no Spring/JPA on the classpath, plus an **ArchUnit**
+  test that fails the build on forbidden imports.
+
+> [!DANGER]
+> The most common "clean architecture" failure: annotating the domain entity with
+> \`@Entity\` "to save a class". Now the ORM's lazy-loading, dirty-checking, and
+> no-arg-constructor requirements bleed into your business model, and you cannot unit
+> test the aggregate without a persistence context. Pay the mapping cost.
+
+## Package-by-feature vs package-by-layer
+
+| | Package-by-layer | Package-by-feature |
+|--|------------------|--------------------|
+| Layout | \`controller/ service/ repository/\` | \`billing/ shipping/ catalog/\` |
+| Change locality | a feature touches every package | one package per change |
+| Visibility | everything public across layers | package-private within feature |
+| Scales to | small apps | large apps & later extraction |
+
+> [!SUCCESS]
+> Prefer **package-by-feature** at the top level, then layer *inside* each feature
+> (\`billing/domain\`, \`billing/application\`, \`billing/adapter\`). It maximizes
+> package-private encapsulation and means a feature ≈ a future module ≈ a future service.
+
+> [!TIP]
+> You can enforce "domain must not depend on Spring" mechanically. An ArchUnit rule in
+> CI is worth more than ten code-review comments because it never gets tired.`,
+            code: [
+              {
+                lang: `java`,
+                label: `Ports & adapters: framework-free core + injected adapter`,
+                code: `// ---- domain module (no framework imports) ----
+package com.acme.billing.domain;
+public record Money(long cents, String currency) {}
+public record Invoice(String id, Money total, boolean paid) {
+    public Invoice markPaid() { return new Invoice(id, total, true); }
+}
+
+// ---- application module: outbound PORT (owned by the inside) ----
+package com.acme.billing.application;
+import com.acme.billing.domain.Invoice;
+public interface InvoiceRepository {          // a port, plain interface
+    Invoice load(String id);
+    void save(Invoice invoice);
+}
+public final class PayInvoiceUseCase {
+    private final InvoiceRepository repo;     // depends on the PORT
+    public PayInvoiceUseCase(InvoiceRepository repo) { this.repo = repo; }
+    public void pay(String id) { repo.save(repo.load(id).markPaid()); }
+}
+
+// ---- persistence adapter module: IMPLEMENTS the port, knows JPA ----
+package com.acme.billing.adapter.persistence;
+import org.springframework.stereotype.Repository;
+import com.acme.billing.application.InvoiceRepository;
+import com.acme.billing.domain.Invoice;
+
+@Repository
+class JpaInvoiceRepository implements InvoiceRepository {
+    private final InvoiceJpaDao dao;          // Spring Data, JPA entities here
+    JpaInvoiceRepository(InvoiceJpaDao dao) { this.dao = dao; }
+    public Invoice load(String id) { return dao.findById(id).orElseThrow().toDomain(); }
+    public void save(Invoice inv) { dao.save(InvoiceEntity.from(inv)); }
+}`
+              },
+              {
+                lang: `java`,
+                label: `ArchUnit test that fails the build if the domain imports a framework`,
+                code: `import com.tngtech.archunit.junit.AnalyzeClasses;
+import com.tngtech.archunit.junit.ArchTest;
+import com.tngtech.archunit.lang.ArchRule;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+
+@AnalyzeClasses(packages = "com.acme.billing")
+class ArchitectureTest {
+
+    @ArchTest
+    static final ArchRule domain_is_framework_free =
+        noClasses().that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("org.springframework..", "jakarta.persistence..");
+
+    @ArchTest
+    static final ArchRule dependencies_point_inward =
+        noClasses().that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat().resideInAPackage("..adapter..");
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the dependency rule of clean architecture.`,
+                a: `Source-code dependencies point only inward, toward the domain. Inner layers know nothing about outer layers; the database, web framework, and messaging are outer details.`
+              },
+              {
+                q: `What is a port vs an adapter in hexagonal architecture?`,
+                a: `A port is an interface owned by the inside (application/domain). An adapter is the outside implementation/caller: inbound (driving) adapters call inbound ports (REST controller); outbound (driven) adapters implement outbound ports (JPA repo).`
+              },
+              {
+                q: `How does dependency inversion keep compile-time arrows pointing inward while control flows out?`,
+                a: `The use case depends on an outbound port interface it owns; the adapter implements that interface, so the compile-time dependency runs adapter→port (inward). At runtime DI injects the adapter, so control flows outward to the DB/HTTP.`
+              },
+              {
+                q: `Why not annotate the domain entity with \`@Entity\`?`,
+                a: `It drags ORM concerns (no-arg constructor, lazy loading, dirty checking, identity) into your business model and prevents unit-testing the aggregate without a persistence context. Use a separate JPA entity in the persistence adapter and map to/from the domain.`
+              },
+              {
+                q: `How do you mechanically enforce a framework-free domain?`,
+                a: `Two layers: a Maven module with no Spring/JPA on its classpath, plus an ArchUnit test in CI asserting the domain package depends on no org.springframework/jakarta.persistence classes. The build fails on violation.`
+              },
+              {
+                q: `Package-by-layer vs package-by-feature — which scales and why?`,
+                a: `Package-by-feature. A change stays in one package, you get package-private encapsulation, and a feature maps to a future module/service. Package-by-layer spreads every change across controller/service/repository packages and forces everything public.`
+              },
+              {
+                q: `What is the recommended hybrid packaging?`,
+                a: `Package-by-feature at the top level, then layer inside each feature (billing/domain, billing/application, billing/adapter). Feature ≈ future module ≈ future service.`
+              },
+              {
+                q: `Where do DTOs and JSON annotations belong in hexagonal architecture?`,
+                a: `In the inbound adapter (web) layer, on request/response DTOs — not on domain types. The controller maps DTO↔domain so serialization concerns never touch the core.`
+              },
+              {
+                q: `Who owns the outbound port interface — the domain or the adapter?`,
+                a: `The inside (application/domain) owns it. The persistence/HTTP adapter merely implements it. This is what inverts the dependency so infrastructure depends on the core, not vice versa.`
+              },
+              {
+                q: `Why is an ArchUnit rule better than a code-review comment for boundaries?`,
+                a: `It runs every build and never tires or forgets, so violations cannot creep in over time; code-review enforcement is inconsistent and degrades as the team grows.`
+              },
+              {
+                q: `What are the concentric rings of clean architecture, inner to outer?`,
+                a: `Domain entities → application use cases → interface adapters → frameworks/infrastructure. Dependencies cross the boundaries only inward.`
+              },
+              {
+                q: `How does package-by-feature aid later microservice extraction?`,
+                a: `Each feature package is already a self-contained vertical slice with minimal cross-feature coupling, so promoting it to a module and then a service is mostly adding a transport, not detangling layers.`
+              }
+            ]
+          },
+          {
+            id: `11.1.4`,
+            title: `Build, Quality & Reproducibility`,
+            notes: `# Build, Quality & Reproducibility
+
+## Plugins & the build contract
+
+Maven does nothing without plugins. Manage versions in \`pluginManagement\` so every
+module behaves identically. The quality gates that matter at staff level:
+
+| Plugin | Gate | Why |
+|--------|------|-----|
+| \`maven-enforcer-plugin\` | banned deps, Java/Maven version, no SNAPSHOTs in release, no dep convergence conflicts | fail fast on supply-chain & env drift |
+| \`jacoco-maven-plugin\` | coverage threshold | regression guardrail (not a vanity metric) |
+| \`spotless\` / \`checkstyle\` | formatting & style | kill bikeshedding, clean diffs |
+| \`maven-surefire\` / \`failsafe\` | unit / integration tests | the actual signal |
+| \`versions-maven-plugin\` | report outdated deps | upgrade hygiene |
+
+## Profiles
+
+Profiles activate config conditionally (by \`-P\`, OS, property, or missing file).
+Use them for \`ci\` vs local, or to toggle expensive integration tests — **not** for
+environment-specific *runtime* config (that belongs in 12-factor env vars, see 11.2).
+
+> [!WARNING]
+> Profiles that change *which dependencies ship* are a reproducibility trap: your CI
+> artifact differs from what a developer built. Keep profiles to build-time behavior;
+> never let a profile alter the shipped classpath.
+
+## Enforcer & jacoco gates
+
+> [!TIP]
+> Set a **realistic** jacoco floor (e.g. 70% line / 60% branch on changed packages) and
+> ratchet it up. A 100% gate breeds meaningless tests and \`@Generated\` exclusions.
+> Bind enforcer and jacoco-check to the \`verify\` phase so \`mvn verify\` is the gate.
+
+## Reproducible builds
+
+A reproducible build produces **byte-identical** artifacts from the same source.
+Levers:
+
+- \`project.build.outputTimestamp\` — strips/normalizes timestamps in the jar.
+- Pin **every** plugin version (no version ranges anywhere).
+- Avoid SNAPSHOTs; use the Maven Wrapper (\`./mvnw\`) so the Maven version is pinned too.
+
+> [!SUCCESS]
+> Reproducibility is a security property: it lets you (and auditors) verify that the
+> published binary really came from the tagged source — the foundation of SLSA-style
+> supply-chain provenance.
+
+## Maven vs Gradle
+
+| Dimension | Maven | Gradle |
+|-----------|-------|--------|
+| Model | declarative XML, fixed lifecycle | imperative/DSL (Groovy/Kotlin), task graph |
+| Conflict resolution | nearest-wins | highest-version-wins |
+| Build speed | slower; \`-T\` parallel | faster: incremental + build cache + daemon |
+| Reproducibility/config | very predictable | powerful but easier to make non-reproducible |
+| Learning curve | low, ubiquitous | steeper, more flexible |
+| Best fit | standard Java services, governance | polyglot, custom builds, Android, big monorepos |
+
+> [!TIP]
+> Senior answer to "Maven or Gradle?": *"It depends on the team."* Maven's rigidity is a
+> feature for a large org that values convergence and auditability; Gradle's speed and
+> flexibility win for big monorepos and custom build logic. Don't migrate a healthy
+> Maven build for fashion.`,
+            code: [
+              {
+                lang: `text`,
+                label: `pom.xml — enforcer + jacoco gate + reproducible timestamp`,
+                code: `<properties>
+  <!-- single switch that makes the build byte-reproducible -->
+  <project.build.outputTimestamp>2024-01-01T00:00:00Z</project.build.outputTimestamp>
+</properties>
+
+<build><plugins>
+  <plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-enforcer-plugin</artifactId>
+    <executions><execution>
+      <id>enforce</id><goals><goal>enforce</goal></goals>
+      <configuration><rules>
+        <requireMavenVersion><version>[3.9,)</version></requireMavenVersion>
+        <requireJavaVersion><version>[21,)</version></requireJavaVersion>
+        <dependencyConvergence/>           <!-- fail on version conflicts -->
+        <banDuplicatePomDependencyVersions/>
+        <requireReleaseDeps>               <!-- no SNAPSHOTs in a release -->
+          <onlyWhenRelease>true</onlyWhenRelease>
+        </requireReleaseDeps>
+      </rules></configuration>
+    </execution></executions>
+  </plugin>
+
+  <plugin>
+    <groupId>org.jacoco</groupId>
+    <artifactId>jacoco-maven-plugin</artifactId>
+    <executions>
+      <execution><id>prepare</id><goals><goal>prepare-agent</goal></goals></execution>
+      <execution>
+        <id>check</id><phase>verify</phase><goals><goal>check</goal></goals>
+        <configuration><rules><rule>
+          <element>BUNDLE</element>
+          <limits><limit>
+            <counter>LINE</counter><value>COVEREDRATIO</value>
+            <minimum>0.70</minimum>
+          </limit></limits>
+        </rule></rules></configuration>
+      </execution>
+    </executions>
+  </plugin>
+</plugins></build>`
+              },
+              {
+                lang: `bash`,
+                label: `CI gate + reproducibility verification`,
+                code: `# the one command CI runs as the quality gate
+./mvnw -B -T 1C verify
+
+# auto-format / verify formatting (spotless)
+./mvnw spotless:apply
+./mvnw spotless:check
+
+# report dependencies with newer versions available
+./mvnw versions:display-dependency-updates
+
+# verify the build is byte-reproducible (compares two clean builds)
+./mvnw clean verify artifact:compare`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does the maven-enforcer-plugin guard against?`,
+                a: `Environment and supply-chain drift: it can require minimum Java/Maven versions, ban specific dependencies, fail on dependency convergence conflicts, and forbid SNAPSHOT dependencies in a release build — failing fast at build time.`
+              },
+              {
+                q: `How should you bind a jacoco coverage gate?`,
+                a: `Bind jacoco:check to the verify phase with a realistic threshold (e.g. 70% line) so that mvn verify is the gate. Ratchet the floor upward rather than demanding 100%, which breeds meaningless tests.`
+              },
+              {
+                q: `Why are profiles that change shipped dependencies dangerous?`,
+                a: `They break reproducibility: the artifact built under one profile differs from another, so CI output may not match a developer build. Profiles should only alter build-time behavior, never the shipped classpath.`
+              },
+              {
+                q: `What makes a Maven build reproducible?`,
+                a: `Byte-identical output from the same source: set project.build.outputTimestamp to normalize jar timestamps, pin every plugin version (no ranges), avoid SNAPSHOTs, and pin the Maven version via the wrapper.`
+              },
+              {
+                q: `Why is reproducibility a security property?`,
+                a: `It lets anyone verify the published binary was built from the tagged source (provenance), underpinning SLSA-style supply-chain integrity and tamper detection.`
+              },
+              {
+                q: `Maven vs Gradle: how do they differ on conflict resolution?`,
+                a: `Maven uses nearest-wins (shortest path); Gradle defaults to highest-version-wins. This means the same dependency set can resolve to different versions under each tool.`
+              },
+              {
+                q: `Why is Gradle generally faster than Maven?`,
+                a: `Incremental task execution, a build cache that reuses outputs, and a long-lived daemon, plus fine-grained task-level parallelism. Maven parallelizes per-module (-T) but re-runs more work.`
+              },
+              {
+                q: `Give a senior answer to "Maven or Gradle?"`,
+                a: `It depends on the team. Maven\\u2019s rigidity aids convergence/auditability in large orgs and standard Java services; Gradle\\u2019s speed and flexibility win for polyglot monorepos and custom build logic. Do not migrate a healthy build for fashion.`
+              },
+              {
+                q: `What does enforcer\\u2019s \`dependencyConvergence\` rule do?`,
+                a: `Fails the build when the transitive graph pulls the same artifact at multiple versions, forcing you to resolve the conflict explicitly via dependencyManagement instead of relying on silent nearest-wins.`
+              },
+              {
+                q: `Where do spotless/checkstyle add value beyond aesthetics?`,
+                a: `They remove formatting bikeshedding from code review, keep diffs minimal/meaningful, and can enforce real rules (no wildcard imports, no System.out). Auto-formatting (spotless:apply) makes compliance free.`
+              },
+              {
+                q: `Why prefer the Maven Wrapper (\`./mvnw\`) in CI and locally?`,
+                a: `It pins the exact Maven version per repo, so builds are identical across developer machines and CI, removing a reproducibility variable and onboarding friction.`
+              },
+              {
+                q: `What is the difference between surefire and failsafe?`,
+                a: `Surefire runs unit tests in the test phase and fails the build immediately; failsafe runs integration tests around the package in the integration-test/verify phases, allowing post-test cleanup before failing.`
+              }
+            ]
+          },
+          {
+            id: `11.1.5`,
+            title: `Dependency & Version Management at Scale`,
+            notes: `# Dependency & Version Management at Scale
+
+## The problem
+
+Across 30 modules and 300 transitive dependencies, the questions are: *what version of X
+is actually on the classpath, who chose it, and is it vulnerable?* Answering this by hand
+does not scale. You need a **single source of truth** for versions and **automated**
+vulnerability detection.
+
+## BOMs as the single source of truth
+
+Maintain an **internal BOM** module that imports upstream BOMs (Spring, Jackson,
+testcontainers) and pins your own libraries. Every service imports *only your BOM*. One
+PR to the BOM aligns the entire fleet.
+
+\`\`\`mermaid
+graph TD
+    UB1[spring-boot-dependencies BOM] --> OURBOM[acme-platform-bom]
+    UB2[jackson-bom] --> OURBOM
+    UB3[testcontainers-bom] --> OURBOM
+    OURBOM --> SVCA[service-a]
+    OURBOM --> SVCB[service-b]
+    OURBOM --> SVCC[service-c]
+    classDef bom fill:#8957e5,color:#fff;
+    class OURBOM bom;
+\`\`\`
+
+## Version catalogs
+
+Gradle has first-class **version catalogs** (\`libs.versions.toml\`) — a typed,
+centralized table of versions and bundles referenced as \`libs.spring.web\`. Maven's
+equivalent is the BOM + \`<properties>\` for versions. Either way the principle is the
+same: **one place to change a version.**
+
+## Security scanning & CVEs
+
+| Tool | What it does |
+|------|--------------|
+| \`OWASP dependency-check\` | maps GAVs to CVEs (NVD), fails build above a CVSS threshold |
+| \`Dependabot / Renovate\` | opens automated upgrade PRs |
+| \`Trivy / Grype\` | scans the built jar **and** the container image |
+| \`mvn versions:*\` | reports available upgrades |
+
+> [!DANGER]
+> A transitive CVE (e.g. Log4Shell in \`log4j-core\`) is *your* problem even though you
+> never declared it. You remediate by **overriding the version in your BOM /
+> dependencyManagement** so nearest-wins picks the patched version everywhere at once.
+> Excluding it is rarely enough — pin the fixed version.
+
+## Upgrade strategy
+
+> [!TIP]
+> - **Renovate/Dependabot** for a steady drip of small, reviewable PRs beats a yearly
+>   big-bang upgrade.
+> - Group patch/minor updates; review majors individually.
+> - Keep a green pipeline (the quality gates from §4) so auto-merge of low-risk updates
+>   is safe.
+> - Treat the framework BOM bump (e.g. Spring Boot N→N+1) as a planned epic with its own
+>   testing, not a routine PR.
+
+## Splitting the monolith later
+
+When a module must become a service, the version story changes from *compile-time
+convergence* to *runtime contract compatibility*:
+
+1. The module already has a clean **api** and no inbound coupling (you enforced this in
+   §2–§3), so extraction is mechanical.
+2. Publish the api/events as a **versioned artifact** consumers depend on.
+3. Replace the in-process port adapter with a **transport adapter** (REST/gRPC/Kafka).
+   The use case code does not change — only the outbound adapter.
+4. Introduce **contract tests** (e.g. Spring Cloud Contract) so the now-network boundary
+   stays compatible across independent deploys.
+
+> [!SUCCESS]
+> The payoff of all the earlier discipline: extracting a service is "swap one adapter and
+> publish the api", not "rewrite". Boundaries you enforced at build time become the
+> network boundaries — for free.
+
+> [!EU]
+> When a CVE hits a dependency that processes personal data, the EU **NIS2** directive and
+> GDPR breach-notification clocks can start *before* you've patched. Automated scanning +
+> a fleet-wide BOM override is not just hygiene — it shortens your legal exposure window.`,
+            code: [
+              {
+                lang: `text`,
+                label: `Internal BOM module that the whole fleet imports`,
+                code: `<!-- acme-platform-bom/pom.xml : packaging=pom, the org's single source of truth -->
+<project>
+  <artifactId>acme-platform-bom</artifactId>
+  <packaging>pom</packaging>
+  <properties><jackson.version>2.17.2</jackson.version></properties>
+
+  <dependencyManagement><dependencies>
+    <!-- import upstream BOMs -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-dependencies</artifactId>
+      <version>3.3.2</version><type>pom</type><scope>import</scope>
+    </dependency>
+    <!-- OVERRIDE a transitive CVE fleet-wide (nearest-wins picks this) -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>\${jackson.version}</version>
+    </dependency>
+    <!-- pin our own libs -->
+    <dependency>
+      <groupId>com.acme</groupId><artifactId>billing-api</artifactId>
+      <version>1.4.0</version>
+    </dependency>
+  </dependencies></dependencyManagement>
+</project>`
+              },
+              {
+                lang: `bash`,
+                label: `CVE scanning in the pipeline`,
+                code: `# Maven: map dependencies to CVEs, fail above CVSS 7
+./mvnw org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=7
+
+# Scan the final container image (filesystem + OS packages + jars)
+trivy image --severity HIGH,CRITICAL acme/billing-app:1.4.0
+
+# What would Renovate/Dependabot upgrade? (local preview)
+./mvnw versions:display-dependency-updates
+./mvnw versions:display-plugin-updates`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How do you create a single source of truth for versions across many services?`,
+                a: `Maintain an internal BOM module that imports upstream BOMs and pins your own libraries; every service imports only that BOM. One PR to the BOM realigns the whole fleet.`
+              },
+              {
+                q: `How do you remediate a CVE in a transitive dependency you never declared?`,
+                a: `Override the fixed version in your BOM/dependencyManagement so nearest-wins selects the patched version everywhere at once. Exclusion alone is usually insufficient — pin the fixed version.`
+              },
+              {
+                q: `What is a Gradle version catalog and the Maven equivalent?`,
+                a: `A version catalog (libs.versions.toml) is a typed, centralized table of versions/bundles referenced like libs.spring.web. Maven\\u2019s equivalent is a BOM plus <properties> versions — same principle: one place to change a version.`
+              },
+              {
+                q: `Why prefer Renovate/Dependabot over annual big-bang upgrades?`,
+                a: `A steady drip of small, reviewable PRs keeps drift low, each change is easy to bisect, and low-risk updates can auto-merge on a green pipeline; a yearly mega-upgrade is high-risk and hard to debug.`
+              },
+              {
+                q: `What does OWASP dependency-check do?`,
+                a: `It maps your dependency GAVs to known CVEs from the NVD and can fail the build above a configured CVSS threshold, catching vulnerable transitive dependencies at build time.`
+              },
+              {
+                q: `Why scan the container image in addition to the dependency graph?`,
+                a: `Image scanners (Trivy/Grype) also catch OS-package and base-image vulnerabilities and the actually-bundled jars, which a build-time dependency scan of the POM does not cover.`
+              },
+              {
+                q: `When extracting a module to a service, what replaces the in-process adapter?`,
+                a: `A transport adapter (REST/gRPC/Kafka) implementing the same outbound port. The use case is unchanged; only the adapter and wiring change.`
+              },
+              {
+                q: `Why publish a module\\u2019s api/events as a versioned artifact during extraction?`,
+                a: `Because the boundary becomes a runtime contract between independently deployed services; consumers must compile against a stable, versioned api rather than the in-process implementation.`
+              },
+              {
+                q: `What are contract tests and why are they needed after extraction?`,
+                a: `Tests (e.g. Spring Cloud Contract) that verify provider and consumer agree on the API shape, so the now-network boundary stays compatible across independent deploys where you can no longer recompile both sides together.`
+              },
+              {
+                q: `How should a major framework BOM bump (Spring Boot N→N+1) be treated?`,
+                a: `As a planned epic with dedicated testing and a migration plan, not a routine auto-merged PR, because it can change defaults, dependencies, and behavior across the whole fleet.`
+              },
+              {
+                q: `How does build-time boundary discipline pay off at extraction time?`,
+                a: `The module already has a clean api, no inbound coupling, and an outbound port, so extraction is "swap one adapter and publish the api" rather than a rewrite — build boundaries become network boundaries for free.`
+              },
+              {
+                q: `Why can a dependency CVE start GDPR/NIS2 clocks before you patch?`,
+                a: `If the vulnerable dependency processes personal data, the breach-notification and incident-reporting obligations can be triggered by disclosure/exposure, so fast fleet-wide remediation shortens the legal exposure window, not just technical risk.`
               }
             ]
           }
@@ -49003,276 +50949,869 @@ public class ArchitectureTest {
       },
       {
         id: `11.2`,
-        title: `Production Infrastructure: Docker, Caddy & VPS`,
-        hours: 3,
+        title: `Production Deployment: Docker, Reverse Proxy & VPS`,
+        hours: 4,
         sections: [
           {
-            title: `Production Deployment — Docker Compose + Caddy + Hetzner VPS`,
-            notes: `## Production Deployment — Docker Compose + Caddy + Hetzner VPS
+            id: `11.2.1`,
+            title: `Packaging for Production: Fat Jar, Layered Images & JVM in Containers`,
+            notes: `# Packaging for Production
 
-### Architecture Overview
+## The Spring Boot fat jar
 
-\`\`\`
-Internet
-   │ HTTPS (443)
-   ▼
-Caddy (reverse proxy, auto TLS via Let's Encrypt)
-   │ HTTP (internal)
-   ├──▶ Spring Boot App :8080
-   │       └── connects to PostgreSQL :5432 (internal)
-   ├──▶ UI (static files, Caddy serves directly)
-   └──▶ /grafana → Grafana :3000
+\`spring-boot-maven-plugin\` \`repackage\` produces an **executable fat jar**: your
+classes plus all dependencies plus a tiny launcher, runnable with \`java -jar app.jar\`.
+Simple and self-contained — but it is one big opaque blob, which hurts Docker layer
+caching.
 
-All services run as Docker containers on a single Hetzner VPS (e.g. CX21: 2 vCPU, 4GB RAM, ~€7/mo)
-docker-compose.yml defines the stack; Caddy handles TLS, routing, compression
-\`\`\`
+## Layered jars & layered images
 
-### docker-compose.yml — Production
+A modern Spring Boot jar is **layered** (\`dependencies\`, \`spring-boot-loader\`,
+\`snapshot-dependencies\`, \`application\`). In a Dockerfile you copy each layer
+separately so that the rarely-changing dependency layer is **cached** and only your
+small \`application\` layer is rebuilt on a code change.
 
-\`\`\`yaml
-services:
-  app:
-    image: ghcr.io/org/myapp:\${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-      DB_URL: jdbc:postgresql://db:5432/mydb
-      DB_USER: \${DB_USER}
-      DB_PASS: \${DB_PASS}
-      JWT_SECRET: \${JWT_SECRET}
-    depends_on:
-      db:
-        condition: service_healthy
-    networks: [app-net]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+| Approach | Image rebuild on code change | Cache reuse | Notes |
+|----------|------------------------------|-------------|-------|
+| Fat jar copied whole | re-pushes the entire jar (~50MB+) | poor | simplest |
+| Layered (extracted) | re-pushes only the app layer (~KBs) | excellent | recommended |
+| Buildpacks (\`spring-boot:build-image\`) | layered automatically | excellent | no Dockerfile, opinionated |
+| Native image (GraalVM) | n/a | n/a | fast start, low RAM, slow build |
 
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: mydb
-      POSTGRES_USER: \${DB_USER}
-      POSTGRES_PASSWORD: \${DB_PASS}
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    networks: [app-net]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \${DB_USER}"]
-      interval: 10s
-      retries: 5
+> [!TIP]
+> Use a **multi-stage** Dockerfile: stage 1 builds, stage 2 is a slim JRE that copies the
+> *extracted layers*. Always run as a **non-root** user and use a real JRE base
+> (eclipse-temurin), not the full JDK, in the runtime image.
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data       # TLS certificates
-      - caddy_config:/config
-      - ./ui/dist:/srv/ui      # static UI files
-    networks: [app-net]
+## JVM ergonomics in a container
 
-networks:
-  app-net:
+Modern JVMs are **container-aware**: they read cgroup limits, so by default the heap is a
+*percentage* of the **container** memory limit, not the host. The flags that matter:
 
-volumes:
-  pg_data:
-  caddy_data:
-  caddy_config:
-\`\`\`
+- \`-XX:MaxRAMPercentage=75.0\` — heap as % of container limit (preferred over \`-Xmx\`
+  so it tracks the limit you set in compose/k8s).
+- \`-XX:InitialRAMPercentage\`, \`-XX:+UseG1GC\` (or \`ZGC\` for low pause).
+- \`-XX:+ExitOnOutOfMemoryError\` — die fast so the orchestrator restarts you, instead
+  of limping in a degraded GC-thrash state.
 
-### Caddyfile — Routing + Auto-TLS
+> [!DANGER]
+> Heap is **not** total memory. Metaspace, thread stacks, direct buffers, JIT code cache,
+> and GC structures live **off-heap**. If you set \`MaxRAMPercentage=100\`, the kernel
+> OOM-kills the container the moment off-heap grows. 75% is a sane starting point; leave
+> headroom.
 
-\`\`\`
-myapp.example.com {
-    # Auto-obtains + renews Let's Encrypt certificate
-    encode gzip zstd
+## Config & secrets via environment (12-factor)
 
-    # API routes → Spring Boot
-    handle /api/* {
-        reverse_proxy app:8080
-    }
+The **12-factor** rule: **store config in the environment**, never in the image. The same
+image promotes from staging to prod with only env vars changing. Spring Boot maps
+\`SPRING_DATASOURCE_URL\` → \`spring.datasource.url\` automatically (relaxed binding).
 
-    # Auth/broker callbacks → Spring Boot
-    handle /broker/* {
-        reverse_proxy app:8080
-    }
+> [!WARNING]
+> Never bake secrets into the image or commit them. A secret in a Docker layer is
+> *permanently* in the image history even if a later layer deletes it. Inject at runtime
+> via env (from a secrets manager / \`docker secret\` / \`--env-file\` not in git).
 
-    # V2 UI — static files
-    handle /v2/* {
-        root * /srv/ui
-        file_server
-        try_files {path} /v2/index.html   # SPA routing
-    }
-
-    # Default: redirect to UI
-    handle {
-        redir /v2/ permanent
-    }
-}
-\`\`\`
-
-### Deployment Workflow
-
-\`\`\`bash
-# On developer machine: build and push image
-docker build -t ghcr.io/org/myapp:1.5.3 .
-docker push ghcr.io/org/myapp:1.5.3
-
-# On VPS: pull and redeploy (zero-downtime with depends_on + healthcheck)
-ssh root@178.105.239.120 'cd /opt/app && IMAGE_TAG=1.5.3 docker compose up -d --pull always'
-
-# Or via GitHub Actions (automated):
-# - Build image on push to main
-# - SSH into VPS and run docker compose up -d
-
-# First-time VPS setup:
-# 1. Install Docker: curl -fsSL https://get.docker.com | sh
-# 2. Copy docker-compose.yml, Caddyfile, .env to /opt/app/
-# 3. docker compose up -d
-# That's it — Caddy gets TLS, Spring Boot starts, Postgres initializes
-\`\`\`
-
-### Secrets Management on VPS
-
-\`\`\`bash
-# .env file on VPS — NEVER commit to git
-# /opt/app/.env
-DB_USER=myapp
-DB_PASS=s3cr3t-password-here
-JWT_SECRET=very-long-random-string-here
-GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-xxx
-
-# chmod 600 /opt/app/.env  — owner-only read
-# docker compose reads .env automatically
-\`\`\``,
+> [!SUCCESS]
+> Twelve-factor in one line: **one codebase, build once, run anywhere via env, treat the
+> app as a stateless process, logs to stdout.** It is the contract that makes containers
+> and reverse proxies compose cleanly.`,
             code: [
-              `#!/bin/bash
-# deploy.sh — one-command deploy to VPS
-# Usage: ./deploy.sh 1.5.3
-# Or:    ./deploy.sh (uses current git SHA)
+              {
+                lang: `dockerfile`,
+                label: `Multi-stage, layered, non-root Dockerfile`,
+                code: `# ---- stage 1: build ----
+FROM eclipse-temurin:21-jdk AS build
+WORKDIR /src
+COPY .mvn/ .mvn/
+COPY mvnw pom.xml ./
+RUN ./mvnw -B dependency:go-offline      # cache deps layer
+COPY src ./src
+RUN ./mvnw -B clean package -DskipTests
+# extract the layered jar
+RUN java -Djarmode=layertools -jar target/app.jar extract --destination /layers
 
-set -euo pipefail
+# ---- stage 2: slim runtime ----
+FROM eclipse-temurin:21-jre AS runtime
+RUN useradd -r -u 10001 appuser
+WORKDIR /app
+# copy stable -> volatile so docker layer cache stays warm
+COPY --from=build /layers/dependencies/         ./
+COPY --from=build /layers/spring-boot-loader/   ./
+COPY --from=build /layers/snapshot-dependencies/ ./
+COPY --from=build /layers/application/          ./
+USER appuser
+EXPOSE 8080
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+ENTRYPOINT ["java","org.springframework.boot.loader.launch.JarLauncher"]`
+              },
+              {
+                lang: `bash`,
+                label: `Running with a memory limit (heap tracks the limit)`,
+                code: `# 512m limit -> JVM sizes heap to ~75% of 512m, leaves off-heap headroom
+docker run -d --name billing \\
+  --memory=512m --memory-swap=512m \\
+  -e SPRING_PROFILES_ACTIVE=prod \\
+  --env-file ./secrets.env \\
+  -p 127.0.0.1:8080:8080 \\
+  acme/billing-app:1.4.0
 
-VERSION="\${1:-$(git rev-parse --short HEAD)}"
-VPS_HOST="root@178.105.239.120"
-APP_DIR="/opt/app"
-REGISTRY="ghcr.io/org/myapp"
-
-echo "=== Deploying $VERSION ==="
-
-# 1. Build and push image
-echo "[1/4] Building image..."
-docker build -t "$REGISTRY:$VERSION" .
-docker tag "$REGISTRY:$VERSION" "$REGISTRY:latest"
-
-echo "[2/4] Pushing to registry..."
-docker push "$REGISTRY:$VERSION"
-docker push "$REGISTRY:latest"
-
-# 2. Run DB migration if needed
-echo "[3/4] Running DB migration..."
-ssh "$VPS_HOST" "cd $APP_DIR && IMAGE_TAG=$VERSION docker compose run --rm app java -jar app.jar --migrate-only" || true
-
-# 3. Deploy new version
-echo "[4/4] Deploying to VPS..."
-ssh "$VPS_HOST" "cd $APP_DIR && IMAGE_TAG=$VERSION docker compose up -d --pull always app"
-
-# 4. Health check
-echo "Waiting for health check..."
-sleep 10
-HEALTH=$(ssh "$VPS_HOST" "curl -s http://localhost:8080/actuator/health | python3 -c \\"import sys,json;d=json.load(sys.stdin);print(d.get('status','UNKNOWN'))\\"")
-echo "Health: $HEALTH"
-
-if [ "$HEALTH" != "UP" ]; then
-    echo "HEALTH CHECK FAILED — rolling back!"
-    ssh "$VPS_HOST" "cd $APP_DIR && docker compose up -d --pull always --no-recreate app"
-    exit 1
-fi
-
-echo "=== Deploy complete: $VERSION is UP ==="`,
-              `# Caddyfile — production-grade with security headers, rate limiting, compression
-
-myapp.example.com {
-    # Compression
-    encode gzip zstd
-
-    # Security headers
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        # CSP: allow scripts only from same origin + CDN
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
-    }
-
-    # Rate limiting (requires caddy-ratelimit plugin)
-    # rate_limit {
-    #     zone api_zone {
-    #         match path /api/*
-    #         key {remote_ip}
-    #         events 100
-    #         window 1m
-    #     }
-    # }
-
-    # API → Spring Boot app
-    handle /api/* {
-        reverse_proxy app:8080 {
-            health_uri /actuator/health
-            health_interval 30s
-        }
-    }
-
-    # Broker OAuth callbacks → Spring Boot
-    handle /broker/* {
-        reverse_proxy app:8080
-    }
-
-    # Spring Boot login pages
-    handle /login {
-        reverse_proxy app:8080
-    }
-
-    # V2 SPA — serve static files, fallback to index.html for client-side routing
-    handle /v2/* {
-        root * /srv/ui
-        file_server
-        try_files {path} /v2/index.html
-    }
-
-    # Root → redirect to app
-    handle / {
-        redir /v2/ 301
-    }
-
-    # Access log
-    log {
-        output file /var/log/caddy/access.log
-        format json
-    }
-}`
+# verify what the JVM actually decided
+docker exec billing java -XX:+PrintFlagsFinal -version | grep -i maxheap`
+              }
             ],
             flashcards: [
               {
-                q: `Why use Caddy instead of Nginx for a VPS deployment?`,
-                a: `Caddy's killer feature: automatic HTTPS via Let's Encrypt with zero configuration. No need to: install certbot, write cron jobs for renewal, configure SSL certificate paths, handle renewal failures. Caddy auto-obtains and renews TLS certificates. Caddyfile syntax is dramatically simpler than Nginx config — 10 lines vs 50 lines for the same setup. Caddy also handles HTTP/2 and HTTP/3 by default. Trade-offs: Nginx has wider ecosystem, better documented edge cases, more community examples, proven performance at extreme scale. For a VPS / small team / side project: Caddy wins on simplicity and zero-ops TLS.`
+                q: `What is a Spring Boot fat jar and its downside for Docker?`,
+                a: `An executable jar bundling your classes, all dependencies, and a launcher, runnable with java -jar. Its downside is being one opaque blob: any code change invalidates the whole jar layer, hurting image cache reuse and push size.`
               },
               {
-                q: `How does Docker Compose healthcheck + depends_on ensure database-ready startup?`,
-                a: `Without healthcheck: depends_on: db just waits for the db CONTAINER to start — not for Postgres to be ready to accept connections. The Spring Boot app starts, tries to connect to Postgres, fails (pg is still initializing), and crashes. With healthcheck on db service: pg_isready -U user runs every 10s; Compose marks db as "healthy" only when it returns 0. depends_on with condition: service_healthy makes the app wait until db is truly ready before starting. This eliminates the startup race condition. Spring Boot then connects successfully on first attempt.`
+                q: `How do layered jars improve Docker builds?`,
+                a: `The jar is split into layers (dependencies, loader, snapshot-dependencies, application). The Dockerfile copies each separately so the large, rarely-changing dependency layer stays cached and only the tiny application layer rebuilds on a code change.`
               },
               {
-                q: `What is the .env file pattern for Docker Compose secrets and what are its limitations?`,
-                a: `Docker Compose automatically reads a .env file in the same directory and substitutes $VAR or \${VAR} in docker-compose.yml. Production workflow: .env is .gitignored, manually maintained on the VPS with chmod 600, contains DB passwords, JWT secrets, API keys. Limitations: .env is a plain text file on disk — if the server is compromised, all secrets are exposed. Better alternatives: Docker Swarm secrets (encrypted), Kubernetes Secrets (base64, mountable), cloud secret managers (AWS Secrets Manager, HashiCorp Vault) which inject secrets at runtime. For personal projects and small teams: .env + chmod 600 + disk encryption (most VPS providers offer) is acceptable. For enterprise: use a proper secret store.`
+                q: `Why use a multi-stage Dockerfile for a Java app?`,
+                a: `Stage 1 uses a JDK to build; stage 2 copies only the extracted layers onto a slim JRE base. The build toolchain and source never ship, producing a smaller, lower-attack-surface runtime image.`
+              },
+              {
+                q: `Why prefer \`-XX:MaxRAMPercentage\` over \`-Xmx\` in containers?`,
+                a: `MaxRAMPercentage sizes the heap relative to the container memory limit, so it automatically tracks whatever limit you set in compose/k8s. A hardcoded -Xmx drifts out of sync when the limit changes.`
+              },
+              {
+                q: `Why is setting \`MaxRAMPercentage=100\` dangerous?`,
+                a: `Heap is not total memory — metaspace, thread stacks, direct/NIO buffers, JIT code cache, and GC structures live off-heap. At 100% the off-heap growth pushes the container past its limit and the kernel OOM-kills it. Leave headroom (~75%).`
+              },
+              {
+                q: `What does \`-XX:+ExitOnOutOfMemoryError\` buy you?`,
+                a: `The JVM exits immediately on OOM so the orchestrator restarts a fresh process, instead of the app limping in a degraded GC-thrash state and serving errors indefinitely.`
+              },
+              {
+                q: `How are modern JVMs container-aware?`,
+                a: `They read cgroup CPU and memory limits, so default heap sizing and available-processor counts are derived from the container limits rather than the host machine\\u2019s resources.`
+              },
+              {
+                q: `State the 12-factor rule for configuration.`,
+                a: `Store config in the environment, not in the image or code. The same built artifact promotes across environments with only env vars changing, keeping the app a stateless process.`
+              },
+              {
+                q: `Why must secrets never be baked into a Docker image?`,
+                a: `Image layers are immutable history: a secret added in one layer remains recoverable from the image even if a later layer deletes it. Inject secrets at runtime via env/secrets manager, never in a committed layer.`
+              },
+              {
+                q: `How does Spring Boot map \`SPRING_DATASOURCE_URL\` to a property?`,
+                a: `Via relaxed binding: uppercase, underscore-delimited env vars map to dotted property names, so SPRING_DATASOURCE_URL sets spring.datasource.url with no extra config.`
+              },
+              {
+                q: `What are buildpacks (\`spring-boot:build-image\`) and a trade-off?`,
+                a: `They build an OCI image with optimized layers and no hand-written Dockerfile. Trade-off: convenient and consistent but opinionated and less customizable than a hand-tuned Dockerfile.`
+              },
+              {
+                q: `Why run the container as a non-root user?`,
+                a: `Least privilege: if the app is compromised, a non-root process limits what the attacker can do inside the container and reduces the impact of a container escape. Create a dedicated user and USER it before ENTRYPOINT.`
+              }
+            ]
+          },
+          {
+            id: `11.2.2`,
+            title: `Reverse Proxy & TLS: Caddy / Nginx, Let’s Encrypt, X-Forwarded-*`,
+            notes: `# Reverse Proxy & TLS
+
+## Why a reverse proxy at all
+
+Put **Caddy** or **Nginx** in front of the app to terminate TLS, serve on 80/443, add
+compression and security headers, rate-limit, and route multiple apps on one host. The
+Spring app then binds only to \`127.0.0.1:8080\` and is never exposed directly.
+
+\`\`\`mermaid
+sequenceDiagram
+    participant U as Internet (client)
+    participant C as Caddy :443 (reverse proxy)
+    participant A as Spring app :8080 (localhost)
+    U->>C: HTTPS GET /api/invoices (TLS)
+    Note over C: terminate TLS, gzip,<br/>add X-Forwarded-*, rate-limit
+    C->>A: HTTP GET /api/invoices<br/>X-Forwarded-Proto: https
+    A-->>C: 200 JSON
+    C-->>U: 200 JSON (compressed, HSTS header)
+\`\`\`
+
+## Automatic HTTPS (Let's Encrypt)
+
+> [!SUCCESS]
+> **Caddy gets automatic HTTPS for free.** Point a domain at the host, put the domain in
+> the Caddyfile, and Caddy provisions and *auto-renews* a Let's Encrypt certificate via
+> the ACME protocol (HTTP-01 or TLS-ALPN-01 challenge). No cron, no certbot. This alone is
+> why Caddy is the pragmatic default for a VPS.
+
+Nginx needs \`certbot\` (or \`acme.sh\`) to obtain/renew certs and reload nginx — more
+moving parts but maximal control.
+
+## Reverse-proxy feature comparison
+
+| Feature | Caddy | Nginx |
+|---------|-------|-------|
+| Automatic HTTPS | built-in, auto-renew | via certbot/cron |
+| Config | tiny Caddyfile | verbose, very flexible |
+| HTTP/3 | default | needs build/config |
+| gzip/zstd | \`encode\` directive | \`gzip on\` |
+| Rate limiting | plugin/module | \`limit_req\` built-in |
+| Ecosystem/perf at huge scale | smaller | battle-tested, ubiquitous |
+
+## Serving behind a proxy — X-Forwarded-*
+
+After TLS terminates at the proxy, the app sees plain HTTP from \`127.0.0.1\`. The proxy
+must pass, and the app must **trust**, forwarding headers:
+
+- \`X-Forwarded-For\` — original client IP (for logging, rate limiting, geo).
+- \`X-Forwarded-Proto\` — \`https\`, so the app builds correct \`https://\` redirect
+  URLs and treats the request as secure.
+- \`X-Forwarded-Host\` / \`Forwarded\` — original Host.
+
+> [!DANGER]
+> If Spring doesn't honor \`X-Forwarded-Proto\`, every redirect and \`Location\` header
+> comes out as \`http://\` → infinite redirect loops or mixed-content. Set
+> \`server.forward-headers-strategy=framework\` (or \`native\` behind a trusted proxy).
+
+> [!WARNING]
+> \`X-Forwarded-For\` is **client-controllable** unless the edge overwrites it. Only
+> trust it from your known proxy IP; otherwise an attacker spoofs their IP to bypass
+> IP-based rate limits or allowlists. Configure a \`trusted-proxies\` CIDR.`,
+            code: [
+              {
+                lang: `text`,
+                label: `Caddyfile — automatic HTTPS, gzip, headers, rate limit, proxy`,
+                code: `# Caddyfile  (lang shown as text)
+api.example.com {
+    encode zstd gzip                       # compression
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server                            # strip server banner
+    }
+
+    # rate limit (caddy ratelimit module): 20 req / 10s / client IP
+    rate_limit {
+        zone api { key {remote_host}; events 20; window 10s }
+    }
+
+    reverse_proxy 127.0.0.1:8080 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-For   {remote_host}
+        health_uri /actuator/health/readiness
+        health_interval 10s
+    }
+}`
+              },
+              {
+                lang: `text`,
+                label: `nginx.conf equivalent (TLS via certbot)`,
+                code: `# /etc/nginx/sites-available/api  (lang shown as text)
+server {
+    listen 443 ssl http2;
+    server_name api.example.com;
+    ssl_certificate     /etc/letsencrypt/live/api.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.example.com/privkey.pem;
+
+    gzip on;
+    gzip_types application/json text/plain;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    limit_req_zone $binary_remote_addr zone=api:10m rate=2r/s;
+
+    location / {
+        limit_req zone=api burst=10 nodelay;
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+server { listen 80; server_name api.example.com; return 301 https://$host$request_uri; }`
+              },
+              {
+                lang: `properties`,
+                label: `Spring Boot: trust the proxy headers`,
+                code: `# tell Spring it sits behind a trusted reverse proxy
+server.forward-headers-strategy=framework
+# only trust forwarded headers from the local proxy
+server.tomcat.remoteip.trusted-proxies=127\\\\.0\\\\.0\\\\.1
+server.tomcat.remoteip.protocol-header=X-Forwarded-Proto
+server.tomcat.remoteip.remote-ip-header=X-Forwarded-For`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why put a reverse proxy in front of a Spring Boot app?`,
+                a: `To terminate TLS, listen on 80/443, add compression and security headers, rate-limit, and route multiple apps on one host. The app then binds only to localhost:8080 and is never directly exposed.`
+              },
+              {
+                q: `How does Caddy provide automatic HTTPS?`,
+                a: `It implements the ACME protocol: given a domain in the Caddyfile and DNS pointing at the host, it provisions and auto-renews a Let\\u2019s Encrypt certificate (HTTP-01 or TLS-ALPN-01 challenge) with no certbot or cron.`
+              },
+              {
+                q: `How does TLS certificate management differ between Caddy and Nginx?`,
+                a: `Caddy obtains and auto-renews certs itself, built in. Nginx relies on an external client (certbot/acme.sh) plus a cron job and an nginx reload — more moving parts but more control.`
+              },
+              {
+                q: `What is \`X-Forwarded-For\` and why is it security-sensitive?`,
+                a: `It carries the original client IP through the proxy. It is client-controllable unless the trusted edge overwrites it, so the app must only trust it from known proxy IPs; otherwise attackers spoof IPs to bypass rate limits or allowlists.`
+              },
+              {
+                q: `What does \`X-Forwarded-Proto\` do and what breaks without it?`,
+                a: `It tells the app the original scheme was https after TLS terminated at the proxy. Without honoring it, the app builds http:// redirects/Location headers, causing redirect loops or mixed-content errors.`
+              },
+              {
+                q: `How do you make Spring Boot honor forwarding headers?`,
+                a: `Set server.forward-headers-strategy=framework (or native behind a trusted proxy) and configure trusted-proxies so it only trusts X-Forwarded-* from your proxy\\u2019s IP/CIDR.`
+              },
+              {
+                q: `Why terminate TLS at the proxy instead of the app?`,
+                a: `Centralizes cert management and renewal, offloads crypto from the app, lets one cert serve multiple backends, and keeps the JVM out of the public TLS attack surface. The app speaks plain HTTP on localhost.`
+              },
+              {
+                q: `What security headers should the edge add?`,
+                a: `Strict-Transport-Security (HSTS), X-Content-Type-Options: nosniff, X-Frame-Options/CSP, and stripping the Server banner. Setting them once at the edge covers all backends consistently.`
+              },
+              {
+                q: `Where should rate limiting live and why at the edge?`,
+                a: `At the reverse proxy, so abusive traffic is dropped before reaching the app, protecting backend resources. Nginx uses limit_req; Caddy uses its rate_limit module keyed on client IP.`
+              },
+              {
+                q: `Why bind the app to \`127.0.0.1:8080\` rather than \`0.0.0.0\`?`,
+                a: `So the app is reachable only via the reverse proxy on localhost, not directly from the internet. Combined with a firewall, this guarantees all traffic passes through the TLS/headers/rate-limit layer.`
+              },
+              {
+                q: `What is the ACME challenge and which types does Caddy use?`,
+                a: `ACME proves you control a domain before issuing a cert. Caddy uses HTTP-01 (serve a token on port 80) or TLS-ALPN-01 (over port 443), choosing automatically based on environment.`
+              },
+              {
+                q: `Why enable gzip/zstd at the proxy?`,
+                a: `To compress JSON/text responses, cutting bandwidth and latency for clients. Doing it at the edge offloads compression from the app and applies uniformly across backends.`
+              }
+            ]
+          },
+          {
+            id: `11.2.3`,
+            title: `The VPS Deploy: systemd vs Docker, Firewall & SSH Hardening`,
+            notes: `# The VPS Deploy
+
+## systemd service vs Docker
+
+Two legitimate ways to run the app on a single VPS:
+
+| Aspect | systemd (java -jar) | Docker |
+|--------|---------------------|--------|
+| Isolation | process only | namespaces + cgroups + fs |
+| Dependency packaging | host JRE must match | self-contained image |
+| Resource limits | \`MemoryMax=\`, \`CPUQuota=\` | \`--memory\`, \`--cpus\` |
+| Restart policy | \`Restart=on-failure\` | \`restart: unless-stopped\` |
+| Rollback | swap jar + restart | repoint to previous image tag |
+| Footprint | lowest | ~slight overhead, huge convenience |
+| Best for | single app, minimal host | multiple apps, parity with CI |
+
+> [!TIP]
+> For a single Java service on a small VPS, a **systemd unit running the fat jar** is
+> beautifully simple and uses the least RAM. For multiple services or CI/prod parity,
+> **Docker (Compose)** wins. Both are correct — match the tool to the host.
+
+## A hardened systemd unit
+
+> [!SUCCESS]
+> systemd doubles as a sandbox: \`NoNewPrivileges\`, \`ProtectSystem=strict\`,
+> \`PrivateTmp\`, a dedicated \`User=\`, and \`MemoryMax=\` give you most of a
+> container's isolation with zero extra tooling.
+
+## Zero-downtime restart & health checks
+
+A plain restart drops in-flight requests. Patterns:
+
+- **systemd**: enable graceful shutdown (\`server.shutdown=graceful\`) and set
+  \`TimeoutStopSec\` > the app's grace period so in-flight requests drain.
+- **Docker single host**: run two containers (blue/green) and flip the reverse-proxy
+  upstream once the new one passes its health check — true zero-downtime (see §4).
+- Expose \`/actuator/health/readiness\` and \`/liveness\`; the proxy/orchestrator
+  routes traffic only to **ready** instances.
+
+## Log rotation
+
+App logs to **stdout** (12-factor). The platform rotates:
+
+- Docker: \`json-file\` driver with \`max-size\`/\`max-file\`, or ship to a log stack.
+- systemd: logs go to the **journal** (\`journalctl -u app\`); cap with
+  \`SystemMaxUse=\` in \`journald.conf\`, or rotate a file appender with \`logrotate\`.
+
+> [!DANGER]
+> Unbounded logs fill the disk and take the box down — including the database and SSH.
+> *Always* cap log size. A full root filesystem is one of the most common "the whole VPS
+> died" incidents.
+
+## Firewall (ufw) & SSH hardening
+
+> [!WARNING]
+> The default-deny firewall is your perimeter. Allow only \`22\` (or a moved SSH port),
+> \`80\`, \`443\`. **Never** expose \`8080\` or the database port publicly — bind them
+> to \`127.0.0.1\`. A Postgres on \`0.0.0.0:5432\` is found by scanners within minutes.
+
+SSH hardening checklist: **key-only auth** (\`PasswordAuthentication no\`), disable
+\`PermitRootLogin\`, use a non-root sudo user, \`fail2ban\` on the SSH jail (see §5).
+
+## DNS / DuckDNS
+
+Point an A record at the VPS IP. No static IP / no paid domain? **DuckDNS** (or similar
+dynamic DNS) gives a free \`yourname.duckdns.org\` hostname and a tiny cron/updater that
+keeps it pointed at your current IP — perfect for a hobby/home-lab VPS, and Caddy will
+still issue a Let's Encrypt cert for it.`,
+            code: [
+              {
+                lang: `text`,
+                label: `/etc/systemd/system/billing.service — hardened unit`,
+                code: `[Unit]
+Description=Billing API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=appuser
+Group=appuser
+WorkingDirectory=/opt/billing
+# read secrets from a root-owned 0600 file, not the unit
+EnvironmentFile=/opt/billing/app.env
+ExecStart=/usr/bin/java -XX:MaxRAMPercentage=75 -jar /opt/billing/app.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=40           # > graceful shutdown grace period
+# --- sandboxing ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/billing/data
+MemoryMax=600M
+
+[Install]
+WantedBy=multi-user.target`
+              },
+              {
+                lang: `bash`,
+                label: `VPS hardening: ufw firewall + SSH + journald cap`,
+                code: `# --- firewall: default deny, allow only ssh + web ---
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp
+ufw allow 80,443/tcp
+ufw enable
+# NOTE: app(8080) and postgres(5432) are NOT opened -> bound to 127.0.0.1 only
+
+# --- SSH hardening (/etc/ssh/sshd_config) ---
+#   PermitRootLogin no
+#   PasswordAuthentication no
+#   PubkeyAuthentication yes
+systemctl reload ssh
+
+# --- cap journal disk usage so logs never fill the disk ---
+sed -i 's/#SystemMaxUse=/SystemMaxUse=500M/' /etc/systemd/journald.conf
+systemctl restart systemd-journald
+
+# --- deploy + view logs ---
+systemctl daemon-reload && systemctl enable --now billing
+journalctl -u billing -f --no-pager`
+              },
+              {
+                lang: `bash`,
+                label: `DuckDNS dynamic DNS updater (cron every 5 min)`,
+                code: `# /opt/duckdns/update.sh
+echo url="https://www.duckdns.org/update?domains=myapp&token=$DUCKDNS_TOKEN&ip=" \\
+  | curl -k -o /opt/duckdns/duck.log -K -
+# crontab -e :
+# */5 * * * * /opt/duckdns/update.sh >/dev/null 2>&1`
+              }
+            ],
+            flashcards: [
+              {
+                q: `When would you run the app under systemd vs Docker on a VPS?`,
+                a: `systemd (java -jar fat jar) for a single service on a small host: least RAM, simplest, no daemon. Docker/Compose for multiple services or CI/prod parity and self-contained dependency packaging. Both are valid; match the host.`
+              },
+              {
+                q: `How does a systemd unit provide container-like isolation?`,
+                a: `Directives like NoNewPrivileges, ProtectSystem=strict, ProtectHome, PrivateTmp, a dedicated User=, and MemoryMax/CPUQuota sandbox the process and cap resources without any container runtime.`
+              },
+              {
+                q: `How do you achieve a graceful (non-dropping) restart under systemd?`,
+                a: `Enable server.shutdown=graceful in Spring so in-flight requests drain, and set TimeoutStopSec greater than the grace period so systemd waits for drain before killing the process.`
+              },
+              {
+                q: `What is the role of readiness vs liveness health endpoints?`,
+                a: `Readiness tells the proxy/orchestrator the instance can accept traffic (route only to ready ones); liveness tells it the process is healthy and should be restarted if not. Spring exposes /actuator/health/readiness and /liveness.`
+              },
+              {
+                q: `Why must you always cap log size on a VPS?`,
+                a: `Unbounded logs fill the disk, which takes down everything on the box including the database and SSH. Capping (Docker max-size/max-file, journald SystemMaxUse, or logrotate) prevents one of the most common total-outage incidents.`
+              },
+              {
+                q: `What is the minimal correct ufw firewall ruleset for this setup?`,
+                a: `Default deny incoming, allow outgoing, and open only 22 (SSH), 80, and 443. The app port (8080) and database port (5432) stay closed and bound to 127.0.0.1.`
+              },
+              {
+                q: `Why never expose the app or DB port publicly?`,
+                a: `They bypass the TLS/headers/rate-limit edge and are trivially found by internet scanners within minutes. Bind them to 127.0.0.1 so only the local reverse proxy can reach them.`
+              },
+              {
+                q: `List core SSH hardening steps.`,
+                a: `Key-only auth (PasswordAuthentication no), disable root login (PermitRootLogin no), use a non-root sudo user, optionally move the port, and run fail2ban on the SSH jail to throttle brute force.`
+              },
+              {
+                q: `How do logs flow under systemd vs Docker?`,
+                a: `systemd: app stdout goes to the journal, viewed with journalctl -u app and capped via SystemMaxUse. Docker: stdout goes to the logging driver (json-file with max-size/max-file) or is shipped to a log stack.`
+              },
+              {
+                q: `What problem does DuckDNS solve?`,
+                a: `It provides free dynamic DNS: a yourname.duckdns.org hostname plus a small cron updater that keeps it pointed at a changing/non-static VPS IP, and Caddy can still issue a Let\\u2019s Encrypt cert for it.`
+              },
+              {
+                q: `Why set \`TimeoutStopSec\` carefully and \`SuccessExitStatus=143\`?`,
+                a: `TimeoutStopSec must exceed the app\\u2019s shutdown grace so requests drain before SIGKILL. 143 = 128+15 (SIGTERM) is a normal JVM shutdown exit code, so marking it success prevents systemd flagging a clean stop as a failure.`
+              },
+              {
+                q: `Why read secrets from an EnvironmentFile instead of the unit file?`,
+                a: `The unit file is world-readable; a separate root-owned 0600 EnvironmentFile keeps secrets off the process list and out of readable config, applying least privilege to credentials.`
+              }
+            ]
+          },
+          {
+            id: `11.2.4`,
+            title: `Reliability & Ops: Backups, Monitoring, Blue-Green & Rollbacks`,
+            notes: `# Reliability & Ops
+
+## Backups
+
+> [!DANGER]
+> "It's on the VPS" is not a backup. A single disk, a single region, no copies = data loss
+> waiting to happen. Back up the **database** (logical \`pg_dump\` + physical/WAL),
+> store **off-host** (object storage in another region), and — critically — **test
+> restores**. An untested backup is a hope, not a backup.
+
+The 3-2-1 rule: **3** copies, **2** media, **1** off-site. Automate \`pg_dump\` to object
+storage on a cron, with retention and a periodic restore drill.
+
+## Monitoring & alerting
+
+Expose \`/actuator/prometheus\` (Micrometer), scrape with **Prometheus**, dashboard in
+**Grafana**, alert via **Alertmanager**. Watch the **golden signals**: latency, traffic,
+errors, saturation. Alert on *symptoms users feel* (error rate, p99 latency, health-check
+failing), not on every CPU blip.
+
+> [!TIP]
+> The cheapest useful alert on a hobby VPS: an external uptime check (e.g. UptimeRobot)
+> hitting \`/actuator/health\` every minute and paging you on failure. It catches the
+> "whole box is down" case that internal monitoring cannot report.
+
+## Graceful shutdown
+
+On \`SIGTERM\`, the app should stop accepting new requests, finish in-flight ones, close
+the connection pool and Kafka consumers, then exit. Spring: \`server.shutdown=graceful\`
++ \`spring.lifecycle.timeout-per-shutdown-phase\`. The proxy/orchestrator must mark the
+instance **not ready** *before* sending SIGTERM so no new traffic arrives mid-drain.
+
+## Blue-green on a single host
+
+Run two instances (\`blue\` on 8081, \`green\` on 8082). Deploy the new version to the
+idle color, wait for its health check, then **flip the reverse proxy** to it; keep the old
+one warm for instant rollback. Zero downtime on one VPS, no orchestrator.
+
+\`\`\`mermaid
+graph LR
+    PROXY[Caddy / Nginx] -->|active| GREEN[green :8082 v1.5]
+    PROXY -.->|standby<br/>instant rollback| BLUE[blue :8081 v1.4]
+    DEPLOY[deploy script] -->|1 start + healthcheck| GREEN
+    DEPLOY -->|2 flip upstream| PROXY
+    DEPLOY -->|3 keep warm| BLUE
+\`\`\`
+
+## Rollbacks
+
+> [!SUCCESS]
+> A rollback must be **faster and more boring** than a fix-forward. With immutable image
+> tags or kept jars, rollback = repoint the proxy / restart with the previous artifact —
+> seconds, no rebuild. Never rollback by editing files on the box; rollback to a known
+> artifact.
+
+## Push-to-deploy
+
+A minimal pipeline: push to \`main\` → CI builds + tests + scans → pushes image (or
+\`scp\`s the jar) → triggers a deploy script on the VPS (webhook or \`ssh\`) that does the
+blue-green flip. Keep it **idempotent** and **logged**, and gate prod on a green pipeline.
+
+> [!WARNING]
+> Auto-deploy is only safe with the guardrails from 11.1 §4: passing tests, coverage and
+> CVE gates, and a fast rollback. Push-to-deploy without a rollback path is push-to-outage.`,
+            code: [
+              {
+                lang: `bash`,
+                label: `Off-host Postgres backup to object storage (cron)`,
+                code: `#!/usr/bin/env bash
+set -euo pipefail
+STAMP=$(date +%F-%H%M)
+FILE="/tmp/billing-$STAMP.sql.gz"
+# logical dump, compressed
+pg_dump --no-owner --format=plain billing | gzip > "$FILE"
+# ship OFF-HOST to object storage in another region
+aws s3 cp "$FILE" "s3://acme-backups/billing/$STAMP.sql.gz" \\
+  --storage-class STANDARD_IA
+rm -f "$FILE"
+# retention: delete dumps older than 30 days handled by bucket lifecycle policy
+# crontab: 15 3 * * * /opt/billing/backup.sh >> /var/log/billing-backup.log 2>&1
+# AND: monthly RESTORE DRILL into a scratch db -> verify row counts`
+              },
+              {
+                lang: `bash`,
+                label: `Blue-green deploy + flip + rollback (single host)`,
+                code: `#!/usr/bin/env bash
+set -euo pipefail
+NEW_TAG=$1
+# figure out idle color
+ACTIVE=$(cat /opt/billing/active_color)        # e.g. "blue"
+IDLE=$([ "$ACTIVE" = blue ] && echo green || echo blue)
+PORT=$([ "$IDLE" = blue ] && echo 8081 || echo 8082)
+
+# 1. start new version on idle color
+docker run -d --name "billing-$IDLE" --memory=600m \\
+  -e SPRING_PROFILES_ACTIVE=prod --env-file /opt/billing/app.env \\
+  -p 127.0.0.1:$PORT:8080 "acme/billing-app:$NEW_TAG"
+
+# 2. wait for readiness (fail -> abort, old version untouched)
+for i in $(seq 1 30); do
+  curl -fs "http://127.0.0.1:$PORT/actuator/health/readiness" && break
+  [ "$i" = 30 ] && { echo "unhealthy, aborting"; docker rm -f "billing-$IDLE"; exit 1; }
+  sleep 2
+done
+
+# 3. flip reverse proxy upstream to the new port, reload (no dropped conns)
+sed -i "s/127.0.0.1:[0-9]*/127.0.0.1:$PORT/" /etc/caddy/Caddyfile
+caddy reload --config /etc/caddy/Caddyfile
+echo "$IDLE" > /opt/billing/active_color
+
+# 4. keep old container warm briefly for instant rollback, then retire
+echo "Deployed $NEW_TAG on $IDLE. Rollback: re-point proxy to $ACTIVE."`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is "it lives on the VPS" not a backup, and what is the 3-2-1 rule?`,
+                a: `A single disk in a single region with no copies is a single point of total data loss. 3-2-1: keep 3 copies on 2 media types with 1 off-site. Automate dumps off-host and, crucially, test restores.`
+              },
+              {
+                q: `Why is an untested backup dangerous?`,
+                a: `A backup you have never restored may be corrupt, incomplete, or unrestorable; you only discover this during a real incident. Periodic restore drills are what turn a hope into a real recovery capability.`
+              },
+              {
+                q: `What are the four golden signals to monitor?`,
+                a: `Latency, traffic, errors, and saturation. Alert on user-visible symptoms (error rate, p99 latency, health-check failure) rather than on every resource blip.`
+              },
+              {
+                q: `What is the cheapest high-value alert for a hobby VPS?`,
+                a: `An external uptime check (e.g. UptimeRobot) hitting /actuator/health every minute and paging on failure — it catches whole-box outages that internal, on-box monitoring cannot report because it is down too.`
+              },
+              {
+                q: `Describe correct graceful shutdown on SIGTERM.`,
+                a: `Stop accepting new requests, drain in-flight ones, close the DB pool and message consumers, then exit. The proxy must mark the instance not-ready before SIGTERM. Spring: server.shutdown=graceful plus a per-phase shutdown timeout.`
+              },
+              {
+                q: `How does blue-green deployment work on a single host?`,
+                a: `Run two instances on different ports (blue 8081, green 8082). Deploy the new version to the idle color, wait for its health check, then flip the reverse-proxy upstream to it. Keep the old one warm for instant rollback — zero downtime, no orchestrator.`
+              },
+              {
+                q: `Why should rollback be "more boring" than fix-forward?`,
+                a: `Rollback to a known-good immutable artifact (previous image tag or kept jar) is seconds and predictable: repoint the proxy or restart with the old artifact. Fixing forward under pressure risks a second bad deploy.`
+              },
+              {
+                q: `Why never roll back by editing files on the server?`,
+                a: `It produces an un-reproducible, untracked state you cannot redeploy or reason about. Roll back to a known versioned artifact so the running system always corresponds to a build you can rebuild.`
+              },
+              {
+                q: `What does a minimal push-to-deploy pipeline look like?`,
+                a: `Push to main → CI builds, tests, and runs CVE/coverage gates → pushes the image (or scps the jar) → triggers an idempotent, logged deploy script on the VPS that performs the blue-green flip, gated on a green pipeline.`
+              },
+              {
+                q: `Why is push-to-deploy unsafe without a fast rollback path?`,
+                a: `Any automated bad deploy reaches production immediately; without instant rollback it becomes push-to-outage. Auto-deploy must be paired with passing gates and a quick, boring rollback.`
+              },
+              {
+                q: `How do you store database backups for resilience?`,
+                a: `Off-host in object storage in a different region from the VPS, with automated cron dumps, lifecycle-based retention, and periodic restore verification — so losing the VPS or its region does not lose the data.`
+              },
+              {
+                q: `Why must the load balancer mark an instance not-ready before SIGTERM?`,
+                a: `So no new requests are routed to it during the drain window; otherwise traffic arrives at an instance that has begun shutting down, causing dropped or failed requests despite "graceful" shutdown.`
+              }
+            ]
+          },
+          {
+            id: `11.2.5`,
+            title: `Security & Hardening: Least Privilege, Secrets, Scanning & fail2ban`,
+            notes: `# Security & Hardening
+
+## Least privilege everywhere
+
+> [!SUCCESS]
+> The single highest-leverage habit: **least privilege at every layer.** Non-root
+> container user, non-root sudo SSH user, app DB account scoped to its own schema (not
+> superuser), firewall default-deny, capabilities dropped. Each layer assumes the one
+> outside it may be breached.
+
+## Secrets management
+
+| Anti-pattern | Do instead |
+|--------------|-----------|
+| secret in image layer | inject at runtime via env / \`docker secret\` |
+| secret committed to git | secrets manager / \`.env\` in \`.gitignore\`, 0600 |
+| same secret across envs | per-environment secrets, rotated |
+| secret in process args | env var or file (args show in \`ps\`) |
+
+> [!DANGER]
+> A leaked credential is exploited in **minutes** once public (GitHub is scraped
+> continuously by bots). Treat any committed secret as compromised: **rotate it**, do not
+> just delete the commit — the history and the bots already have it.
+
+## Image scanning & slim base
+
+Scan images in CI (\`trivy\`/\`grype\`) and **block** HIGH/CRITICAL. Shrink the attack
+surface: a **distroless** or slim JRE base has no shell, no package manager, far fewer
+CVEs. Rebuild regularly so OS-level patches in the base image flow through.
+
+## CORS & CSRF at the edge
+
+- **CORS** is a *browser* mechanism: the server declares allowed origins via
+  \`Access-Control-Allow-Origin\`. Lock it to your known frontends; \`*\` with credentials
+  is forbidden and dangerous.
+- **CSRF** matters for cookie/session auth; a stateless token (Bearer JWT) API in Spring
+  typically disables CSRF *because* it isn't cookie-driven — but if you use cookies, keep
+  CSRF protection and \`SameSite\` cookies.
+
+> [!WARNING]
+> Don't confuse CORS with security. CORS *relaxes* the same-origin policy; it is not an
+> authn/authz control. A permissive \`Access-Control-Allow-Origin: *\` does not protect
+> anything — your real authz still has to be enforced server-side on every request.
+
+## fail2ban
+
+\`fail2ban\` watches log files (SSH, the reverse proxy) and **bans IPs** (via firewall
+rules) after N failed attempts in a window. It blunts brute-force and credential-stuffing
+on SSH and login endpoints with near-zero config.
+
+## Keep the OS patched
+
+> [!TIP]
+> Enable **unattended security upgrades** (\`unattended-upgrades\` on Debian/Ubuntu) so
+> kernel and library CVEs are patched automatically, and reboot on a schedule for kernel
+> updates (or use livepatch). An unpatched public box is the most common breach vector —
+> more than app bugs.
+
+> [!EU]
+> Under **GDPR Article 32** you must apply "appropriate technical measures" — which courts
+> and regulators read to include timely patching, encryption in transit (your TLS), and
+> least privilege. The hardening in this section is not optional polish; for personal
+> data it is a **legal baseline**, and demonstrable controls reduce liability after an
+> incident.`,
+            code: [
+              {
+                lang: `yaml`,
+                label: `docker-compose.yml — hardened runtime + secrets`,
+                code: `services:
+  app:
+    image: acme/billing-app:1.4.0
+    read_only: true                 # immutable container fs
+    tmpfs: [ /tmp ]
+    cap_drop: [ ALL ]               # drop all Linux capabilities
+    security_opt: [ "no-new-privileges:true" ]
+    user: "10001:10001"             # non-root
+    mem_limit: 600m
+    ports: [ "127.0.0.1:8080:8080" ]  # localhost only, behind proxy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    secrets: [ db_password ]        # mounted as file, not in image/env history
+    healthcheck:
+      test: ["CMD","wget","-qO-","http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt   # 0600, gitignored`
+              },
+              {
+                lang: `bash`,
+                label: `fail2ban + unattended security upgrades + image scan`,
+                code: `# --- fail2ban: ban brute-force SSH after 5 fails / 10 min ---
+apt-get install -y fail2ban
+cat >/etc/fail2ban/jail.local <<'EOF'
+[sshd]
+enabled  = true
+maxretry = 5
+findtime = 10m
+bantime  = 1h
+EOF
+systemctl enable --now fail2ban
+fail2ban-client status sshd
+
+# --- automatic OS security patches ---
+apt-get install -y unattended-upgrades
+dpkg-reconfigure -plow unattended-upgrades
+
+# --- block deploy on HIGH/CRITICAL image CVEs (CI step) ---
+trivy image --exit-code 1 --severity HIGH,CRITICAL acme/billing-app:1.4.0`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does "least privilege at every layer" mean concretely?`,
+                a: `Non-root container user, non-root sudo SSH user, an app DB account scoped to its own schema (not superuser), firewall default-deny, and dropped Linux capabilities. Each layer assumes the layer outside it may be breached.`
+              },
+              {
+                q: `Why must a leaked secret be rotated, not just deleted from git?`,
+                a: `Public repos are scraped by bots within minutes, so the credential is already harvested and remains in git history. Deleting the commit does nothing; only rotating (invalidating) the secret removes the risk.`
+              },
+              {
+                q: `Why pass secrets via env/file rather than command-line args?`,
+                a: `Process arguments are visible to any user via ps and in process listings, leaking the secret host-wide. Env vars or mounted files (e.g. docker secret) keep them out of the process table.`
+              },
+              {
+                q: `What is the benefit of a distroless or slim JRE base image?`,
+                a: `No shell or package manager and far fewer OS packages, which shrinks the attack surface and the CVE count. An attacker who gains code execution has no shell/tools to pivot with.`
+              },
+              {
+                q: `Clarify CORS vs CSRF.`,
+                a: `CORS is a browser mechanism letting a server relax the same-origin policy for chosen origins (Access-Control-Allow-Origin). CSRF is an attack against cookie/session auth; stateless Bearer-token APIs often disable CSRF, but cookie-based auth needs CSRF tokens and SameSite cookies.`
+              },
+              {
+                q: `Why is CORS not a security control?`,
+                a: `CORS relaxes, not restricts, the same-origin policy and is enforced only by browsers, not by attackers using non-browser clients. Real authentication/authorization must still be enforced server-side on every request regardless of CORS.`
+              },
+              {
+                q: `What does fail2ban do?`,
+                a: `It watches log files (SSH, reverse proxy) and dynamically adds firewall rules to ban IPs after N failed attempts in a time window, blunting brute-force and credential-stuffing with minimal configuration.`
+              },
+              {
+                q: `Why enable unattended security upgrades on the VPS?`,
+                a: `An unpatched public host is the most common breach vector — more than app bugs. Automatic security patching plus scheduled reboots/livepatch ensures kernel and library CVEs are closed without manual toil.`
+              },
+              {
+                q: `Why scan images in CI and block HIGH/CRITICAL?`,
+                a: `To stop known-vulnerable base images and bundled libraries from reaching production. trivy/grype with --exit-code 1 fails the pipeline so a vulnerable image is never deployed.`
+              },
+              {
+                q: `What hardening do \`read_only\`, \`cap_drop: ALL\`, and \`no-new-privileges\` provide?`,
+                a: `An immutable container filesystem (no tampering/persistence), removal of all Linux capabilities (no privileged syscalls), and prevention of privilege escalation via setuid binaries — collectively shrinking what a compromised process can do.`
+              },
+              {
+                q: `How does GDPR Article 32 relate to this hardening?`,
+                a: `It requires "appropriate technical measures," read to include timely patching, encryption in transit (TLS), and least privilege. For personal data this hardening is a legal baseline, and demonstrable controls reduce liability after an incident.`
+              },
+              {
+                q: `Why scope the app\\u2019s database account instead of using a superuser?`,
+                a: `So a compromised app cannot drop other schemas, read unrelated data, or alter server config. Granting only the privileges on its own schema contains the blast radius of an application breach.`
               }
             ]
           }
