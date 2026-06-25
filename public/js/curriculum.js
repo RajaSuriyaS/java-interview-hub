@@ -7,6 +7,1063 @@
    ============================================================ */
 
 const CURRICULUM = [
+/* ===================== PHASE 0: FOUNDATIONS ===================== */
+{
+  id: 'p0',
+  title: 'Java Foundations — Zero to Basics',
+  icon: 'zap',
+  blurb: 'Master variables, data types, operators, and the memory model that everything else rests on.',
+  modules: [
+    {
+      id: '0.1',
+      title: 'Variables, Data Types & Operators',
+      hours: 3,
+      sections: [
+
+        /* ── SECTION 1 ─────────────────────────────────────────────── */
+        {
+          title: 'Variables & Memory: Stack vs Heap',
+          notes: `
+# Variables & Memory: Stack vs Heap
+
+## What Is a Variable?
+
+A **variable** is a named location in memory that holds a value. When you write:
+
+\`\`\`java
+int age = 25;
+String name = "Alice";
+\`\`\`
+
+You're telling the JVM: "Reserve space in memory, label it 'age' and 'name', and store these values there."
+
+But **where** in memory? The answer depends on the *type* of the variable: primitive or reference.
+
+## Primitive Types — Stored on the Stack
+
+Java has **eight primitive types**: \`byte\`, \`short\`, \`int\`, \`long\`, \`float\`, \`double\`, \`boolean\`, \`char\`. Their values are stored **directly in local variable memory**, which is typically on the **JVM stack**.
+
+\`\`\`java
+public void example() {
+    int age = 25;           // 4 bytes on the stack
+    double salary = 50000.0; // 8 bytes on the stack
+    boolean isActive = true; // 1 byte on the stack
+    // All three values are RIGHT HERE in the stack frame, no indirection
+}
+\`\`\`
+
+**Key insight:** Primitives are **fast** — the value is right there, no pointer chasing.
+
+\`\`\`mermaid
+graph TB
+    subgraph STACK["JVM Stack (method frame)"]
+        AGE["age: 25\n(4 bytes)"]
+        SAL["salary: 50000.0\n(8 bytes)"]
+        ACT["isActive: true\n(1 byte)"]
+    end
+    subgraph HEAP["Heap"]
+        EMPTY["(empty — no objects here)"]
+    end
+    style STACK fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+    style HEAP fill:#2d1515,stroke:#ef4444,color:#fca5a5
+\`\`\`
+
+## Reference Types — Stored on the Heap
+
+Everything else — objects, arrays, strings — is a **reference type**. The *value* is on the **heap**, and the *reference* (a pointer) is on the **stack**.
+
+\`\`\`java
+public void example() {
+    String name = "Alice";  // Reference on stack, value on heap
+    int[] scores = {90, 85, 92}; // Reference on stack, array on heap
+}
+\`\`\`
+
+Here's what actually happens:
+
+1. \`name\` is a variable whose *value* is a reference (pointer) — stored on the stack
+2. That reference points to the actual String "Alice" on the heap
+3. \`scores\` is a variable whose *value* is a reference — stored on the stack
+4. That reference points to the actual array on the heap
+
+\`\`\`mermaid
+graph LR
+    subgraph STACK["JVM Stack (method frame)"]
+        NAMEREF["name: 0x7f2a01\n(reference/pointer)"]
+        SCORESREF["scores: 0x7f2b10\n(reference/pointer)"]
+    end
+    subgraph HEAP["Heap"]
+        NAMEOBJ["String object\n'Alice'\nat 0x7f2a01"]
+        SCORESOBJ["int array\n[90, 85, 92]\nat 0x7f2b10"]
+    end
+    NAMEREF -->|"points to"| NAMEOBJ
+    SCORESREF -->|"points to"| SCORESOBJ
+    style STACK fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
+    style HEAP fill:#2d1b69,stroke:#818cf8,color:#c4b5fd
+\`\`\`
+
+## The \`null\` Reference
+
+A reference can be **null** — meaning it doesn't point anywhere:
+
+\`\`\`java
+String name = null; // Reference that points to nothing
+name.length();      // NullPointerException! The reference is null, so there's no object.
+\`\`\`
+
+This is one of the most common Java errors. Always check for null before calling methods on objects.
+
+## Variable Scope & Lifetime
+
+A variable exists only within its **scope** — the block where it's declared:
+
+\`\`\`java
+public void demo() {
+    {
+        int x = 10;  // x exists here
+        System.out.println(x); // x is accessible
+    }
+    // x no longer exists here — would be a compile error
+}
+\`\`\`
+
+When a method returns or a block closes, its local variables are **popped off the stack** — their memory is reclaimed. Objects on the heap are reclaimed by the **garbage collector** when no references point to them anymore.
+
+> [!TIP]
+> Stack memory is reclaimed automatically when variables go out of scope. Heap memory is reclaimed by the garbage collector when objects are no longer reachable. Understanding this distinction is crucial for writing memory-efficient Java.
+
+> [!EU]
+> At a fintech company: "Our trading engine was running low on memory under high load. We profiled and found millions of reference types being created in hot loops, flooding the heap. We switched to primitives and primitive arrays (int[], long[]) where possible. Memory footprint dropped 70%, GC pauses dropped from 500ms to 5ms, and throughput doubled." That's a real impact of understanding stack vs heap.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Stack vs Heap: visibility and memory lifetime',
+              code: `public class StackVsHeapDemo {
+    static class Person {
+        String name;
+        int age;
+        Person(String name, int age) { this.name = name; this.age = age; }
+    }
+
+    public void methodA() {
+        // Primitives on stack
+        int localInt = 42;
+
+        // Reference on stack, object on heap
+        Person person = new Person("Alice", 30);
+
+        methodB(person);
+        System.out.println("After methodB: " + person.name); // still "Alice"
+
+        // Stack vars go out of scope here — memory freed
+        // Person object stays on heap (still referenced)
+    }
+
+    public void methodB(Person p) {
+        // p is a NEW stack variable (parameter), but points to the SAME heap object
+        p.name = "Bob";  // modifies the heap object
+        p.age = 31;
+    }
+
+    public static void main(String[] args) {
+        var demo = new StackVsHeapDemo();
+        demo.methodA();
+
+        // person reference from methodA is gone, but the object
+        // might still exist if methodA returned a reference to it
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Null reference pitfall and defensive checks',
+              code: `public class NullReferencePitfall {
+    static class Config {
+        String apiUrl;
+        Config(String url) { this.apiUrl = url; }
+    }
+
+    // UNSAFE: assumes config is never null
+    static String getApiUrl(Config config) {
+        return config.apiUrl.toUpperCase(); // boom if config is null
+    }
+
+    // SAFE: defensive null check
+    static String getSafeApiUrl(Config config) {
+        if (config == null) {
+            return "DEFAULT_URL";
+        }
+        if (config.apiUrl == null) {
+            return "NO_URL";
+        }
+        return config.apiUrl.toUpperCase();
+    }
+
+    // MODERN: using Optional (Java 8+)
+    static String getOptionalApiUrl(java.util.Optional<Config> configOpt) {
+        return configOpt
+            .map(c -> c.apiUrl)
+            .filter(url -> url != null && !url.isEmpty())
+            .map(String::toUpperCase)
+            .orElse("DEFAULT_URL");
+    }
+
+    public static void main(String[] args) {
+        Config validConfig = new Config("https://api.example.com");
+        System.out.println(getApiUrl(validConfig)); // works
+
+        Config nullConfig = null;
+        try {
+            System.out.println(getApiUrl(nullConfig)); // NullPointerException!
+        } catch (NullPointerException e) {
+            System.out.println("CAUGHT: " + e);
+        }
+
+        System.out.println(getSafeApiUrl(nullConfig)); // returns "DEFAULT_URL"
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is the difference between a primitive type and a reference type in Java?', a: 'Primitive types (int, double, boolean, etc.) store their VALUE directly on the stack. Reference types (objects, arrays, strings) store a REFERENCE (pointer) on the stack that points to the actual object on the heap. Primitives are fast; references add one indirection level.' },
+            { q: 'Where do variables live in memory?', a: 'Primitive values live on the JVM stack (fast, reclaimed when scope ends). Reference type objects live on the heap (slower, reclaimed by garbage collector when no references point to them). The reference itself (the pointer) lives on the stack.' },
+            { q: 'What is null and why does it cause NullPointerException?', a: 'null is a reference that does not point to any object. Calling a method on a null reference (e.g., null.length()) causes NullPointerException because there is no actual object to invoke the method on. Always check for null before dereferencing.' },
+            { q: 'What happens to a variable when it goes out of scope?', a: 'Stack variables (primitives and references) are popped off the stack and their memory is reclaimed immediately. Objects on the heap are NOT immediately reclaimed — they are garbage collected only when no references point to them anymore.' },
+            { q: 'Can a primitive type variable be null?', a: 'No. Primitive types (int, double, boolean) always have a default value (0, 0.0, false). Only reference types can be null. If you need a nullable integer, use the wrapper class Integer or Optional<Integer>.' }
+          ]
+        },
+
+        /* ── SECTION 2 ─────────────────────────────────────────────── */
+        {
+          title: 'Primitive Data Types: Sizes, Ranges & Casting',
+          notes: `
+# Primitive Data Types: Sizes, Ranges & Casting
+
+## The Eight Primitives
+
+Java defines exactly eight primitive types. Each has a fixed size and range:
+
+\`\`\`mermaid
+graph LR
+    subgraph INT["Integer Types"]
+        B["byte\n1 byte\n-128 to 127"]
+        S["short\n2 bytes\n-32768 to 32767"]
+        I["int\n4 bytes\n-2B to 2B"]
+        L["long\n8 bytes\n-9.2Q to 9.2Q"]
+    end
+    subgraph FLOAT["Floating Point"]
+        F["float\n4 bytes\n~6 decimal digits"]
+        D["double\n8 bytes\n~15 decimal digits"]
+    end
+    subgraph BOOL["Boolean & Character"]
+        BO["boolean\n1 byte (or bit)\ntrue or false"]
+        C["char\n2 bytes\n0 to 65535 (Unicode)"]
+    end
+    style INT fill:#1e293b,stroke:#6366f1
+    style FLOAT fill:#1e293b,stroke:#818cf8
+    style BOOL fill:#1e293b,stroke:#f59e0b
+\`\`\`
+
+### Integer Types: byte, short, int, long
+
+Use the **smallest type that fits your range**:
+- \`byte\` for small numbers or bulk data (saves memory)
+- \`short\` rarely used; mostly historical
+- \`int\` is the default for whole numbers (most common)
+- \`long\` for large numbers (millisecond timestamps, file sizes, counters)
+
+\`\`\`java
+byte age = 25;                // fits, uses 1 byte
+short year = 2025;            // fits, uses 2 bytes
+int population = 8_000_000;   // uses 4 bytes, underscores for readability
+long fileSize = 1_234_567_890L; // Note the 'L' suffix — tells compiler this is long
+\`\`\`
+
+**Default literal type:** if you write \`123\`, it's an \`int\`. For \`long\`, add the \`L\` suffix: \`123L\`.
+
+### Floating Point: float & double
+
+Floating-point numbers use **IEEE 754 binary representation**. They are **not exact** — they are approximations:
+
+\`\`\`java
+double result = 0.1 + 0.2;    // Do NOT assume this equals 0.3
+System.out.println(result);   // 0.30000000000000004
+
+// For money, NEVER use float or double — use BigDecimal
+BigDecimal exact = new BigDecimal("0.1").add(new BigDecimal("0.2"));
+System.out.println(exact);    // 0.3 exactly
+\`\`\`
+
+\`double\` is the default (8 bytes, ~15 decimal digits of precision). \`float\` is smaller (4 bytes, ~6 digits) but rarely used unless you're processing millions of floating-point numbers and memory is tight.
+
+### boolean & char
+
+\`boolean\` is either \`true\` or \`false\`. There is no 0 or 1 alias (unlike C).
+
+\`char\` represents a single Unicode character (0–65535):
+
+\`\`\`java
+char letter = 'A';      // single quotes for char
+char emoji = '😀';      // Unicode works (stored as UTF-16)
+\`\`\`
+
+## Wrapper Classes & Auto-Boxing
+
+For each primitive, there's a corresponding **wrapper class** that allows the primitive to be treated as an object:
+
+| Primitive | Wrapper |
+|---|---|
+| int | Integer |
+| double | Double |
+| boolean | Boolean |
+| char | Character |
+| long | Long |
+
+**Auto-boxing** (Java 5+) converts primitives to wrappers automatically:
+
+\`\`\`java
+int x = 10;
+Integer y = x;           // auto-boxed to Integer(10)
+int z = y;               // auto-unboxed back to primitive
+
+List<Integer> numbers = new ArrayList<>();
+numbers.add(42);         // primitive int auto-boxed to Integer
+
+// WARNING: null unboxing causes NullPointerException
+Integer nullInt = null;
+int primitive = nullInt; // boom!
+\`\`\`
+
+Use wrappers when you need **nullable values** (\`Optional<Integer>\`) or when storing in collections. For raw computation, stick with primitives — they're faster and use less memory.
+
+## Type Casting & Conversions
+
+### Widening (Safe) Casts
+
+Converting from a smaller type to a larger type is always safe — no data loss:
+
+\`\`\`java
+int x = 100;
+long y = x;     // implicit widening — int fits in long
+double z = y;   // long fits in double
+\`\`\`
+
+### Narrowing (Unsafe) Casts
+
+Converting from a larger type to a smaller type requires an explicit cast and can lose data:
+
+\`\`\`java
+long big = 1_000_000_000_000L;
+int small = (int) big;  // explicit cast — may overflow or truncate
+System.out.println(small); // likely garbage
+
+double precise = 123.456;
+int rounded = (int) precise; // 123 (fractional part discarded)
+\`\`\`
+
+### Common Pitfalls
+
+**Integer division truncates:**
+\`\`\`java
+int result = 7 / 2;  // 3, not 3.5
+double exact = 7.0 / 2;  // 3.5 (one operand is double)
+\`\`\`
+
+**Overflow wraps silently:**
+\`\`\`java
+int max = Integer.MAX_VALUE; // 2147483647
+int overflow = max + 1;      // wraps to -2147483648 (no error!)
+\`\`\`
+
+> [!WARNING]
+> Never assume floating-point equality. Use \`BigDecimal\` for money. Check integer overflow in safety-critical code (use \`Math.addExact()\` or use \`long\`).
+
+> [!EU]
+> At a trading firm, one engineer lost money because they used \`float\` for prices instead of \`BigDecimal\`. Another quietly lost precision on a high-frequency tick counter by using \`int\` and not checking for overflow. Always use the right type from the start — the cost of refactoring is high.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Primitive types, ranges, and casting pitfalls',
+              code: `public class PrimitiveTypesPitfalls {
+    public static void main(String[] args) {
+        // --- Sizes and ranges ---
+        System.out.println("Byte range: " + Byte.MIN_VALUE + " to " + Byte.MAX_VALUE);
+        System.out.println("Int range: " + Integer.MIN_VALUE + " to " + Integer.MAX_VALUE);
+        System.out.println("Long range: " + Long.MIN_VALUE + " to " + Long.MAX_VALUE);
+
+        // --- Floating point imprecision ---
+        double result = 0.1 + 0.2;
+        System.out.println("0.1 + 0.2 = " + result);  // 0.30000000000000004
+        System.out.println("Equals 0.3? " + (result == 0.3)); // false
+
+        // --- Integer division truncates ---
+        int intDiv = 7 / 2;
+        double doubleDiv = 7.0 / 2;
+        System.out.println("7 / 2 (int) = " + intDiv);     // 3
+        System.out.println("7.0 / 2 = " + doubleDiv);      // 3.5
+
+        // --- Narrowing cast loses data ---
+        long bigValue = 987_654_321_098L;
+        int narrowed = (int) bigValue;
+        System.out.println("Long: " + bigValue + " -> Int: " + narrowed); // overflow
+
+        // --- Integer overflow wraps silently ---
+        int maxInt = Integer.MAX_VALUE;
+        int overflow = maxInt + 1;
+        System.out.println("MAX_VALUE + 1 = " + overflow); // -2147483648 (wrapped!)
+
+        // --- Auto-boxing and null unboxing ---
+        Integer boxedInt = 42;
+        int unboxed = boxedInt; // auto-unbox
+
+        Integer nullInt = null;
+        try {
+            int x = nullInt; // null unboxing → NullPointerException
+        } catch (NullPointerException e) {
+            System.out.println("CAUGHT: Null unboxing caused " + e.getClass().getSimpleName());
+        }
+
+        // --- Using BigDecimal for exact money ---
+        java.math.BigDecimal price1 = new java.math.BigDecimal("0.1");
+        java.math.BigDecimal price2 = new java.math.BigDecimal("0.2");
+        System.out.println("0.1 + 0.2 = " + price1.add(price2)); // 0.3 exactly
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Widening vs narrowing casts, and safe conversions',
+              code: `public class CastingExamples {
+    public static void main(String[] args) {
+        // --- Widening casts (safe, implicit) ---
+        byte b = 10;
+        short s = b;       // byte → short (implicit)
+        int i = s;         // short → int (implicit)
+        long l = i;        // int → long (implicit)
+        double d = l;      // long → double (implicit)
+        System.out.println("Widening chain: " + b + " → " + s + " → " + i + " → " + l + " → " + d);
+
+        // --- Narrowing casts (unsafe, explicit) ---
+        double precise = 123.456;
+        float approx = (float) precise;   // double → float (narrowing)
+        int rounded = (int) approx;       // float → int (truncates)
+        System.out.println("Narrowing: 123.456 (double) → " + approx + " (float) → " + rounded + " (int)");
+
+        // --- Safe integer conversion: check bounds first ---
+        long bigLong = 5_000_000_000L; // larger than Integer.MAX_VALUE
+        if (bigLong > Integer.MAX_VALUE) {
+            System.out.println("Cannot safely cast " + bigLong + " to int — overflow risk");
+        }
+
+        // --- Safe conversion with Math.toIntExact (throws on overflow) ---
+        long safeLong = 42L;
+        try {
+            int safe = Math.toIntExact(safeLong);
+            System.out.println("Safe conversion: " + safeLong + " → " + safe);
+        } catch (ArithmeticException e) {
+            System.out.println("Overflow detected: " + e.getMessage());
+        }
+
+        // --- String to primitive conversions ---
+        String numStr = "123";
+        int parsed = Integer.parseInt(numStr);
+        System.out.println("Parsed '" + numStr + "' as int: " + parsed);
+
+        try {
+            Integer.parseInt("not a number");
+        } catch (NumberFormatException e) {
+            System.out.println("NumberFormatException: invalid format");
+        }
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What are the eight primitive types in Java?', a: 'byte, short, int, long (integers); float, double (floating-point); boolean (true/false); char (Unicode character).' },
+            { q: 'What is the range of int and long?', a: 'int: -2,147,483,648 to 2,147,483,647 (2^31 range). long: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807 (2^63 range).' },
+            { q: 'Why should you never use float or double for money?', a: 'Floating-point numbers are binary approximations and cannot represent decimal fractions exactly. 0.1 + 0.2 ≠ 0.3 in binary. Use BigDecimal for exact decimal arithmetic.' },
+            { q: 'What is auto-boxing and auto-unboxing?', a: 'Auto-boxing automatically converts a primitive to its wrapper class (int → Integer). Auto-unboxing converts the wrapper back to the primitive (Integer → int). Unboxing a null value causes NullPointerException.' },
+            { q: 'What happens when you add 1 to Integer.MAX_VALUE?', a: 'It wraps silently to Integer.MIN_VALUE (negative). No exception is thrown. This is called integer overflow and is a common source of bugs. Use Math.addExact() if you need overflow detection.' },
+            { q: 'What is the difference between widening and narrowing casts?', a: 'Widening (e.g., int → long) is always safe and can be implicit. Narrowing (e.g., double → int) can lose data and requires an explicit cast operator. Narrowing may overflow or truncate.' }
+          ]
+        },
+
+        /* ── SECTION 3 ─────────────────────────────────────────────── */
+        {
+          title: 'Operators & Operator Precedence',
+          notes: `
+# Operators & Operator Precedence
+
+## Categories of Operators
+
+Java has six main categories of operators:
+
+\`\`\`mermaid
+graph TB
+    OPS["Java Operators"]
+    OPS --> ARITH["Arithmetic<br/>+ - * / %"]
+    OPS --> REL["Relational<br/>== != < > <= >="]
+    OPS --> LOG["Logical<br/>&& || !"]
+    OPS --> BIT["Bitwise<br/>& | ^ ~ << >> >>>"]
+    OPS --> ASSIGN["Assignment<br/>= += -= *= /="]
+    OPS --> TERN["Ternary<br/>? :"]
+    style ARITH fill:#1e293b,stroke:#6366f1
+    style REL fill:#1e293b,stroke:#818cf8
+    style LOG fill:#1e293b,stroke:#f59e0b
+    style BIT fill:#1e293b,stroke:#10b981
+    style ASSIGN fill:#1e293b,stroke:#a78bfa
+    style TERN fill:#1e293b,stroke:#f59e0b
+\`\`\`
+
+### Arithmetic Operators
+
+\`+\`, \`-\`, \`*\`, \`/\`, \`%\` (modulo/remainder)
+
+\`\`\`java
+int a = 10, b = 3;
+System.out.println(a + b);   // 13 (addition)
+System.out.println(a - b);   // 7  (subtraction)
+System.out.println(a * b);   // 30 (multiplication)
+System.out.println(a / b);   // 3  (integer division, truncates)
+System.out.println(a % b);   // 1  (remainder: 10 = 3*3 + 1)
+\`\`\`
+
+### Relational Operators
+
+\`==\`, \`!=\`, \`<\`, \`>\`, \`<=\`, \`>=\` return \`boolean\`
+
+\`\`\`java
+int x = 5;
+System.out.println(x == 5);   // true
+System.out.println(x != 5);   // false
+System.out.println(x < 10);   // true
+System.out.println(x >= 5);   // true
+\`\`\`
+
+**Warning:** For objects, use \`.equals()\` not \`==\`:
+\`\`\`java
+String a = "hello";
+String b = "hello";
+System.out.println(a == b);        // might be false (different objects)
+System.out.println(a.equals(b));   // true (same content)
+\`\`\`
+
+### Logical Operators
+
+\`&&\` (AND), \`||\` (OR), \`!\` (NOT). Results are \`boolean\`.
+
+\`\`\`java
+boolean isAdmin = true;
+boolean isActive = false;
+System.out.println(isAdmin && isActive);  // false (both must be true)
+System.out.println(isAdmin || isActive);  // true  (at least one must be true)
+System.out.println(!isAdmin);              // false (NOT inverts)
+\`\`\`
+
+**Short-circuit evaluation:** \`&&\` and \`||\` don't evaluate the right side if the result is already determined:
+
+\`\`\`java
+if (user != null && user.isActive()) { // if user is null, isActive() is NOT called
+    // ...
+}
+\`\`\`
+
+### Bitwise Operators
+
+\`&\`, \`|\`, \`^\`, \`~\`, \`<<\`, \`>>\`, \`>>>\` — operate on bits. Used for flags, performance hacks, low-level code.
+
+\`\`\`java
+int a = 5;      // 0101
+int b = 3;      // 0011
+System.out.println(a & b);   // 0001 = 1  (AND — both 1)
+System.out.println(a | b);   // 0111 = 7  (OR — at least one 1)
+System.out.println(a ^ b);   // 0110 = 6  (XOR — exactly one 1)
+System.out.println(~a);      // inverts all bits
+System.out.println(a << 1);  // 1010 = 10 (left shift — multiply by 2)
+System.out.println(a >> 1);  // 0010 = 2  (right shift — divide by 2, sign-extend)
+\`\`\`
+
+### Assignment & Compound Operators
+
+\`=\`, \`+=\`, \`-=\`, \`*=\`, \`/=\`, \`%=\`, \`&=\`, \`|=\`, \`^=\`, \`<<=\`, \`>>=\`, etc.
+
+\`\`\`java
+int x = 10;
+x += 5;    // x = x + 5 = 15
+x -= 3;    // x = x - 3 = 12
+x *= 2;    // x = x * 2 = 24
+x /= 4;    // x = x / 4 = 6
+\`\`\`
+
+### Ternary Operator
+
+\`condition ? valueIfTrue : valueIfFalse\`
+
+\`\`\`java
+int age = 18;
+String status = (age >= 18) ? "adult" : "minor";
+System.out.println(status); // "adult"
+\`\`\`
+
+## Operator Precedence
+
+**Higher precedence = evaluated first.**
+
+\`\`\`
+1. () [] . (method call)                 — highest
+2. ! ~ ++ -- (unary)
+3. * / %
+4. + -
+5. << >> >>>
+6. < > <= >= instanceof
+7. == !=
+8. &  (bitwise AND)
+9. ^  (bitwise XOR)
+10. | (bitwise OR)
+11. && (logical AND)
+12. || (logical OR)
+13. ? : (ternary)
+14. = += -= *= /=              — lowest
+\`\`\`
+
+Without parentheses, \`2 + 3 * 4\` evaluates as \`2 + (3 * 4) = 14\` (multiply first). When in doubt, **use parentheses** — they clarify intent and prevent bugs.
+
+\`\`\`java
+// Confusing without parens
+int result = 5 + 2 * 3 - 1 / 2 & 6;
+
+// Clear with parens
+int result = ((5 + (2 * 3)) - (1 / 2)) & 6;
+\`\`\`
+
+> [!WARNING]
+> Remember: \`==\` compares *references* for objects (is it the same object in memory?). Use \`.equals()\` to compare *values*. This is a frequent source of bugs.
+
+> [!TIP]
+> Short-circuit evaluation (\`&&\` and \`||\`) is not just for performance — it's critical for correctness. Always put the null check first: \`if (obj != null && obj.method())\`, never \`if (obj.method() && obj != null)\`.
+
+> [!EU]
+> A team at a high-frequency trading firm spent days debugging an issue where bitwise operators were used incorrectly to pack flags. A simple misunderstanding of precedence (\`~flag | OTHER\` vs \`~(flag | OTHER)\`) silently corrupted the state. In interviews, being precise about operator precedence shows you understand the language deeply.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'Operator precedence and common pitfalls',
+              code: `public class OperatorPrecedencePitfalls {
+    public static void main(String[] args) {
+        // --- Arithmetic precedence ---
+        int result1 = 2 + 3 * 4;  // 2 + (3 * 4) = 14, NOT (2 + 3) * 4 = 20
+        System.out.println("2 + 3 * 4 = " + result1);
+
+        // --- Integer division truncates ---
+        int result2 = 7 / 2;      // 3, not 3.5
+        System.out.println("7 / 2 = " + result2);
+
+        // --- String equals vs == ---
+        String s1 = new String("hello");
+        String s2 = new String("hello");
+        System.out.println(s1 == s2);        // false (different objects in memory)
+        System.out.println(s1.equals(s2));   // true (same content)
+
+        // --- Short-circuit evaluation ---
+        Object obj = null;
+        boolean safe = (obj != null) && obj.toString().length() > 0; // correct order
+        System.out.println("Safe short-circuit: " + safe); // false (obj is null, .toString() not called)
+
+        // --- Bitwise vs logical operators ---
+        boolean a = true, b = false;
+        System.out.println(a & b);   // false (bitwise AND on booleans, but use &&)
+        System.out.println(a && b);  // false (logical AND — also short-circuits)
+
+        // --- Ternary operator nesting (use parens) ---
+        int score = 85;
+        String grade = (score >= 90) ? "A" : (score >= 80) ? "B" : (score >= 70) ? "C" : "F";
+        System.out.println("Grade: " + grade);
+
+        // --- Modulo with negative numbers ---
+        System.out.println("7 % 3 = " + (7 % 3));    // 1
+        System.out.println("-7 % 3 = " + (-7 % 3));  // -1 (sign follows dividend)
+
+        // --- Increment/decrement pre vs post ---
+        int x = 5;
+        int preIncrement = ++x;     // x incremented first, then returned (x=6, result=6)
+        System.out.println("Pre-increment: ++x = " + preIncrement + ", x = " + x);
+
+        x = 5;
+        int postIncrement = x++;    // x returned first, then incremented (result=5, x=6)
+        System.out.println("Post-increment: x++ = " + postIncrement + ", x = " + x);
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'Relational, logical, and bitwise operators in action',
+              code: `public class OperatorExamples {
+    public static void main(String[] args) {
+        // --- Relational operators ---
+        int age = 25;
+        System.out.println("age < 18: " + (age < 18));      // false
+        System.out.println("age >= 21: " + (age >= 21));    // true
+        System.out.println("age == 25: " + (age == 25));    // true
+
+        // --- Logical operators with short-circuit ---
+        User user = null;
+        boolean isAuthorized = (user != null) && user.isAdmin();
+        System.out.println("Authorized (short-circuit): " + isAuthorized); // false, isAdmin() not called
+
+        // --- Bitwise operators ---
+        int flags = 0b0101; // 5
+        int mask = 0b0011;  // 3
+        System.out.println("Bitwise AND: " + (flags & mask));  // 0b0001 = 1
+        System.out.println("Bitwise OR:  " + (flags | mask));  // 0b0111 = 7
+        System.out.println("Bitwise XOR: " + (flags ^ mask));  // 0b0110 = 6
+
+        // --- Bit shifting for powers of 2 ---
+        int value = 1;
+        for (int i = 0; i < 5; i++) {
+            System.out.println("1 << " + i + " = " + (value << i)); // 1, 2, 4, 8, 16
+        }
+
+        // --- Ternary for inline conditional ---
+        int score = 75;
+        String result = (score >= 60) ? "PASS" : "FAIL";
+        System.out.println("Score " + score + ": " + result);
+    }
+
+    static class User {
+        boolean isAdmin() { return false; }
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is the difference between == and .equals() for objects?', a: '== checks if two variables point to the SAME object in memory (reference equality). .equals() checks if two objects have the SAME CONTENT (value equality). For strings and most objects, use .equals().' },
+            { q: 'What is operator precedence and why does it matter?', a: 'Operator precedence determines which operators are evaluated first in an expression. For example, * has higher precedence than +, so 2 + 3 * 4 = 14 (not 20). Always use parentheses when precedence is unclear to avoid bugs.' },
+            { q: 'What is short-circuit evaluation and when does it happen?', a: 'Short-circuit evaluation means && and || don\'t evaluate the right side if the result is already determined. If the left side of && is false, the right side is not evaluated (because the result is already false). Critical for avoiding NullPointerException.' },
+            { q: 'What is the difference between & and &&?', a: '& is bitwise AND (operates on bits); && is logical AND (operates on booleans). & always evaluates both sides; && short-circuits (doesn\'t evaluate the right side if the left is false). For boolean logic, always use &&.' },
+            { q: 'What is the ternary operator and how is it used?', a: 'The ternary operator: condition ? valueIfTrue : valueIfFalse. Example: String status = (age >= 18) ? "adult" : "minor";. Use it for simple inline conditionals; avoid nesting for clarity.' },
+            { q: 'What does the % (modulo) operator do with negative numbers?', a: 'The % operator returns the remainder with the sign of the dividend. -7 % 3 = -1 (not 2). For positive remainders, use ((a % b) + b) % b.' }
+          ]
+        },
+
+        /* ── SECTION 4 ─────────────────────────────────────────────── */
+        {
+          title: 'String Basics & Reference vs Value',
+          notes: `
+# String Basics & Reference vs Value
+
+## Strings Are Reference Types
+
+Strings are objects, not primitives. A String variable holds a **reference** (pointer) to a String object on the heap:
+
+\`\`\`java
+String name = "Alice";  // name is a reference pointing to a String object
+String name2 = "Alice"; // are these the SAME object or different objects?
+\`\`\`
+
+This is where Java gets tricky.
+
+## String Literals & The String Pool
+
+When you write \`"Alice"\`, the JVM stores this in the **String pool** — a special memory region for string literals. If two string literals are identical, they point to the SAME object:
+
+\`\`\`java
+String a = "hello";   // stored in String pool
+String b = "hello";   // reuses the same object from String pool
+System.out.println(a == b); // TRUE — they point to the same object!
+\`\`\`
+
+\`\`\`mermaid
+graph LR
+    subgraph STACK["Stack"]
+        VA["a: ref→0x101"]
+        VB["b: ref→0x101"]
+    end
+    subgraph POOL["String Pool (Heap)"]
+        OBJ["String 'hello'\nat 0x101"]
+    end
+    VA -->|"both point to"| OBJ
+    VB -->|"same object"| OBJ
+    style STACK fill:#0d2b1e,stroke:#10b981
+    style POOL fill:#2d1b69,stroke:#818cf8
+\`\`\`
+
+## String Literals vs String Objects
+
+But if you explicitly create a new String object, it's NOT pooled:
+
+\`\`\`java
+String a = "hello";              // literal — in String pool
+String b = new String("hello");  // explicit new — separate object on heap
+System.out.println(a == b);      // FALSE — different objects
+System.out.println(a.equals(b)); // TRUE — same content
+\`\`\`
+
+\`\`\`mermaid
+graph LR
+    subgraph STACK["Stack"]
+        VA["a: ref→0x101"]
+        VB["b: ref→0x200"]
+    end
+    subgraph POOL["String Pool"]
+        OBJ1["'hello'\nat 0x101"]
+    end
+    subgraph HEAP["Heap (non-pooled)"]
+        OBJ2["'hello'\nat 0x200"]
+    end
+    VA --> OBJ1
+    VB --> OBJ2
+    style STACK fill:#0d2b1e,stroke:#10b981
+    style POOL fill:#2d1b69,stroke:#818cf8
+    style HEAP fill:#2d1515,stroke:#ef4444
+\`\`\`
+
+## Immutability: Strings Never Change
+
+Strings are **immutable**. Once created, you cannot change the characters inside:
+
+\`\`\`java
+String s = "hello";
+s.toUpperCase();     // does NOT modify s
+System.out.println(s); // still "hello"
+
+String s2 = s.toUpperCase(); // this CREATES a new String
+System.out.println(s2); // "HELLO"
+\`\`\`
+
+This means string concatenation is **slow** in loops:
+
+\`\`\`java
+// SLOW: creates many temporary String objects
+String result = "";
+for (int i = 0; i < 1000; i++) {
+    result += "item";  // creates new String each iteration
+}
+
+// FAST: uses StringBuilder (mutable string buffer)
+StringBuilder result = new StringBuilder();
+for (int i = 0; i < 1000; i++) {
+    result.append("item"); // modifies the buffer in-place
+}
+String final = result.toString();
+\`\`\`
+
+## String Methods
+
+Common methods:
+
+| Method | Returns | Example |
+|---|---|---|
+| \`.length()\` | int | \`"hello".length() == 5\` |
+| \`.charAt(i)\` | char | \`"hello".charAt(0) == 'h'\` |
+| \`.substring(start, end)\` | String | \`"hello".substring(1, 4) == "ell"\` |
+| \`.indexOf(str)\` | int | \`"hello".indexOf("ll") == 2\` |
+| \`.equals(other)\` | boolean | \`"hello".equals("hello") == true\` |
+| \`.equalsIgnoreCase(other)\` | boolean | \`"Hello".equalsIgnoreCase("hello") == true\` |
+| \`.toUpperCase()\` | String | \`"hello".toUpperCase() == "HELLO"\` |
+| \`.toLowerCase()\` | String | \`"HELLO".toLowerCase() == "hello"\` |
+| \`.trim()\` | String | \`"  hello  ".trim() == "hello"\` |
+| \`.split(regex)\` | String[] | \`"a,b,c".split(",") == ["a", "b", "c"]\` |
+| \`.contains(substr)\` | boolean | \`"hello world".contains("world") == true\` |
+| \`.startsWith(prefix)\` | boolean | \`"hello".startsWith("he") == true\` |
+
+## String Comparison Cheat Sheet
+
+| Code | Result | Explanation |
+|---|---|---|
+| \`"hello" == "hello"\` | true | both are literals in String pool |
+| \`new String("hello") == "hello"\` | false | one is in pool, one is not |
+| \`new String("hello").equals("hello")\` | true | .equals() checks content, not reference |
+| \`"hello".equalsIgnoreCase("HELLO")\` | true | case-insensitive comparison |
+
+> [!WARNING]
+> ALWAYS use .equals() to compare strings, never ==. The == operator compares references, which is almost never what you want for string content.
+
+> [!TIP]
+> In loops, use StringBuilder instead of string concatenation with +=. StringBuilder is mutable and fast; repeated string concatenation is slow because each + creates a new immutable object.
+
+> [!EU]
+> At a trading firm, a junior engineer concatenated strings in a hot loop (thousands of times per second), creating millions of temporary objects and causing GC pauses. Switching to StringBuilder fixed the latency spike instantly. Understanding immutability and the String pool is not just academic — it's production-critical.
+`,
+          code: [
+            {
+              lang: 'java',
+              title: 'String pool, immutability, and the == vs .equals() pitfall',
+              code: `public class StringPoolPitfall {
+    public static void main(String[] args) {
+        // --- String pool behavior ---
+        String a = "hello";
+        String b = "hello";
+        System.out.println("a == b: " + (a == b));           // true (same object in pool)
+        System.out.println("a.equals(b): " + (a.equals(b))); // true (same content)
+
+        // --- Explicit String object (not pooled) ---
+        String c = new String("hello");
+        System.out.println("a == c: " + (a == c));           // false (different objects)
+        System.out.println("a.equals(c): " + (a.equals(c))); // true (same content)
+
+        // --- Immutability: methods return NEW Strings ---
+        String original = "hello";
+        String upper = original.toUpperCase();
+        System.out.println("Original: " + original);  // "hello" (unchanged)
+        System.out.println("Upper:    " + upper);     // "HELLO" (new String)
+
+        // --- String.intern() forces pooling ---
+        String d = new String("hello");
+        String e = d.intern();  // get the pooled version
+        String f = "hello";
+        System.out.println("d == f: " + (d == f));    // false (d is not pooled)
+        System.out.println("e == f: " + (e == f));    // true (e is pooled via intern)
+
+        // --- Why case-insensitive comparison matters ---
+        String user1 = "Alice";
+        String user2 = "ALICE";
+        System.out.println(user1.equals(user2));               // false (case-sensitive)
+        System.out.println(user1.equalsIgnoreCase(user2));     // true (ignores case)
+    }
+}`
+            },
+            {
+              lang: 'java',
+              title: 'String concatenation: slow += vs fast StringBuilder',
+              code: `public class StringConcatenationPerformance {
+    public static void main(String[] args) {
+        int iterations = 10_000;
+
+        // --- SLOW: += in a loop creates many temporary String objects ---
+        long start1 = System.currentTimeMillis();
+        String result1 = "";
+        for (int i = 0; i < iterations; i++) {
+            result1 += "item" + i + ", ";  // creates new String each iteration
+        }
+        long time1 = System.currentTimeMillis() - start1;
+        System.out.println("String += loop: " + time1 + "ms, length: " + result1.length());
+
+        // --- FAST: StringBuilder appends in-place ---
+        long start2 = System.currentTimeMillis();
+        StringBuilder result2 = new StringBuilder();
+        for (int i = 0; i < iterations; i++) {
+            result2.append("item").append(i).append(", ");  // modifies buffer in-place
+        }
+        long time2 = System.currentTimeMillis() - start2;
+        String finalResult = result2.toString();
+        System.out.println("StringBuilder loop: " + time2 + "ms, length: " + finalResult.length());
+
+        System.out.println("StringBuilder is ~" + (time1 / Math.max(time2, 1)) + "x faster");
+
+        // --- String methods creating new objects ---
+        String original = "hello world";
+        String upper = original.toUpperCase();      // new String
+        String trimmed = original.trim();           // new String (or same if no whitespace)
+        String[] words = original.split(" ");       // new String[] with new Strings
+        String replaced = original.replace("o", "0"); // new String
+        System.out.println("Each method creates new String objects (original: " + original + ")");
+    }
+}`
+            }
+          ],
+          flashcards: [
+            { q: 'What is the String pool and how does it affect == comparisons?', a: 'The String pool is a memory region where string literals are stored. If two literals are identical, they point to the SAME object. Therefore, "hello" == "hello" is true. But new String("hello") == "hello" is false because the new one is not pooled.' },
+            { q: 'Why should you use .equals() instead of == for strings?', a: '== compares whether two variables point to the SAME object in memory (reference equality). .equals() compares whether two strings have the SAME CONTENT (value equality). For string content, always use .equals().' },
+            { q: 'What is String immutability and why does it matter?', a: 'Strings are immutable — once created, their content cannot be changed. Methods like .toUpperCase() return a NEW String; they don\'t modify the original. This makes strings safe to share but means string concatenation with += in loops is slow.' },
+            { q: 'When should you use StringBuilder instead of string concatenation?', a: 'Use StringBuilder when building strings in loops or with many concatenations. StringBuilder is mutable and fast (modifies a buffer in-place). String += creates a new object each time, which is slow and wasteful. StringBuilder is orders of magnitude faster for large concatenations.' },
+            { q: 'What does String.intern() do?', a: 'String.intern() returns a reference to the pooled version of the string. If the string is not already in the pool, it is added. This forces a string to be interned, making it comparable with == to other pooled strings.' },
+            { q: 'What is the difference between .equals() and .equalsIgnoreCase()?', a: '.equals() performs case-sensitive comparison ("Hello" ≠ "hello"). .equalsIgnoreCase() performs case-insensitive comparison ("Hello" = "hello"). Use equalsIgnoreCase() for user input or case-insensitive matching.' }
+          ]
+        }
+
+      ]
+    },
+
+    {
+      id: '0.2',
+      title: 'Control Flow — Loops, Conditionals & Switch',
+      hours: 3,
+      notes: `*[Module 0.2 — under construction. Will cover: if/else, switch, for, while, do-while, break/continue, nested loops. Roadmap: commit 0.1 first, then build 0.2 iteratively.]*`
+    },
+
+    {
+      id: '0.3',
+      title: 'OOP I — Classes, Objects, Constructors',
+      hours: 4,
+      notes: `*[Module 0.3 — under construction. Will cover: class definition, fields, methods, constructors, this, new, static. Roadmap: build after 0.2.]*`
+    },
+
+    {
+      id: '0.4',
+      title: 'OOP II — Inheritance, Polymorphism, Interfaces',
+      hours: 4,
+      notes: `*[Module 0.4 — under construction. Will cover: extends, super, method overriding, interfaces, abstract classes, polymorphism. Roadmap: build after 0.3.]*`
+    },
+
+    {
+      id: '0.5',
+      title: 'OOP III — Encapsulation, Abstraction, Enums',
+      hours: 3,
+      notes: `*[Module 0.5 — under construction. Will cover: public/private/protected/package, getters/setters, abstract classes, enums, sealed classes. Roadmap: build after 0.4.]*`
+    },
+
+    {
+      id: '0.6',
+      title: 'Strings, StringBuilder & String Pool',
+      hours: 3,
+      notes: `*[Module 0.6 — under construction. Will cover: String immutability, pool, StringBuilder, StringBuffer, string methods. Roadmap: build after 0.5.]*`
+    },
+
+    {
+      id: '0.7',
+      title: 'Exception Handling & Custom Exceptions',
+      hours: 3,
+      notes: `*[Module 0.7 — under construction. Will cover: try/catch/finally, checked vs unchecked, throw, custom exceptions, best practices. Roadmap: build after 0.6.]*`
+    },
+
+    {
+      id: '0.8',
+      title: 'Generics — Wildcards, Bounded Types, PECS',
+      hours: 3,
+      notes: `*[Module 0.8 — under construction. Will cover: type parameters, bounded types, wildcards, PECS rule, type erasure. Roadmap: build after 0.7.]*`
+    },
+
+    {
+      id: '0.9',
+      title: 'Collections Deep Dive — List, Set, Map, Queue',
+      hours: 4,
+      notes: `*[Module 0.9 — under construction. Will cover: ArrayList, LinkedList, HashSet, TreeSet, HashMap, TreeMap, Queue, iteration, equals/hashCode. Roadmap: build after 0.8.]*`
+    },
+
+    {
+      id: '0.10',
+      title: 'Java 8 — Optional, Date/Time API, Method Refs',
+      hours: 3,
+      notes: `*[Module 0.10 — under construction. Will cover: Optional, java.time (LocalDate, Instant), method references. Roadmap: build after 0.9.]*`
+    },
+
+    {
+      id: '0.11',
+      title: 'File I/O — java.io, NIO2, Files API',
+      hours: 3,
+      notes: `*[Module 0.11 — under construction. Will cover: File, FileInputStream/OutputStream, NIO2 Paths, Files API, try-with-resources. Roadmap: build after 0.10.]*`
+    },
+
+    {
+      id: '0.12',
+      title: 'JDBC — Connections, PreparedStatement, Transactions',
+      hours: 3,
+      notes: `*[Module 0.12 — under construction. Will cover: Connection, Statement, PreparedStatement, ResultSet, transactions, connection pools. Roadmap: build after 0.11.]*`
+    },
+
+    {
+      id: '0.13',
+      title: 'Design Patterns — Creational, Structural, Behavioral',
+      hours: 5,
+      notes: `*[Module 0.13 — under construction. Will cover: Singleton, Factory, Builder, Adapter, Decorator, Strategy, Observer, Template Method. Roadmap: build after 0.12.]*`
+    }
+
+  ]
+},
+
 /* ===================== PHASE 1: JVM ===================== */
 {
   id: 'p1',
