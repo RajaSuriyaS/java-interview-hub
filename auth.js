@@ -84,12 +84,14 @@ function callbackUrl(req) {
 export function mountAuth(app, { onLogin } = {}) {
   // Begin login — redirect to Google's consent screen.
   app.get('/auth/google', (req, res) => {
-    if (!authConfigured()) return res.status(503).send('Google login is not configured on this server.');
+    if (!authConfigured()) return res.status(503).send('Google login is not configured on this server (set GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).');
+    const redirectUri = callbackUrl(req);
     const state = crypto.randomBytes(16).toString('hex');
     setCookie(res, req, STATE_COOKIE, state, STATE_MAX_AGE);
+    console.log('[auth] start login → redirect_uri=%s (this must be an Authorised redirect URI in Google)', redirectUri);
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
-      redirect_uri: callbackUrl(req),
+      redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'openid email profile',
       state,
@@ -103,13 +105,23 @@ export function mountAuth(app, { onLogin } = {}) {
   app.get('/auth/google/callback', async (req, res) => {
     try {
       if (!authConfigured()) return res.status(503).send('Google login is not configured on this server.');
-      const { code, state } = req.query;
+      const { code, state, error } = req.query;
       const cookies = parseCookies(req);
-      if (!code || !state || state !== cookies[STATE_COOKIE]) {
-        return res.status(400).send('Invalid OAuth state. Please try signing in again.');
+
+      // Google can bounce back with ?error=access_denied etc.
+      if (error) return res.status(400).send('Google declined the sign-in: ' + String(error));
+      if (!code) return res.status(400).send('Missing authorization code from Google.');
+      if (!cookies[STATE_COOKIE]) {
+        // The state cookie we set on /auth/google never came back — almost always a
+        // cookie/proxy issue (Secure/SameSite, or the proxy not forwarding cookies).
+        return res.status(400).send('Login state cookie was not received. Check that the site is served over HTTPS and cookies are not blocked, then try again.');
+      }
+      if (state !== cookies[STATE_COOKIE]) {
+        return res.status(400).send('OAuth state mismatch (possible CSRF or a stale tab). Please start sign-in again.');
       }
       res.clearCookie(STATE_COOKIE, { path: '/' });
 
+      const redirectUri = callbackUrl(req);
       const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -117,17 +129,29 @@ export function mountAuth(app, { onLogin } = {}) {
           code,
           client_id: CLIENT_ID,
           client_secret: CLIENT_SECRET,
-          redirect_uri: callbackUrl(req),
+          redirect_uri: redirectUri,
           grant_type: 'authorization_code',
         }),
       });
-      if (!tokenRes.ok) return res.status(502).send('Token exchange with Google failed.');
-      const tok = await tokenRes.json();
+      const tok = await tokenRes.json().catch(() => ({}));
+      if (!tokenRes.ok || !tok.access_token) {
+        // Surface Google's actual reason (e.g. redirect_uri_mismatch, invalid_client).
+        const reason = tok.error_description || tok.error || ('HTTP ' + tokenRes.status);
+        console.error('[auth] token exchange failed:', reason, '| redirect_uri used:', redirectUri);
+        return res.status(502).send(
+          'Google token exchange failed: ' + reason +
+          '\n\nThe redirect_uri this server used is:\n  ' + redirectUri +
+          '\nIt must be listed EXACTLY as an "Authorised redirect URI" on your Google OAuth client.'
+        );
+      }
 
       const uiRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
         headers: { Authorization: 'Bearer ' + tok.access_token },
       });
-      if (!uiRes.ok) return res.status(502).send('Could not fetch Google profile.');
+      if (!uiRes.ok) {
+        console.error('[auth] userinfo failed: HTTP', uiRes.status);
+        return res.status(502).send('Could not fetch your Google profile (HTTP ' + uiRes.status + ').');
+      }
       const ui = await uiRes.json();
 
       const user = {
@@ -163,5 +187,32 @@ export function mountAuth(app, { onLogin } = {}) {
   app.post('/auth/logout', (req, res) => {
     res.clearCookie(SESSION_COOKIE, { path: '/' });
     res.json({ ok: true });
+  });
+
+  // Safe diagnostics (no secrets) — open this in a browser to debug sign-in.
+  // The #1 thing to verify: `derivedCallbackUrl` must EXACTLY match an
+  // "Authorised redirect URI" on your Google OAuth client.
+  app.get('/auth/debug', (req, res) => {
+    const cookies = parseCookies(req);
+    res.json({
+      configured: authConfigured(),
+      clientIdSet: !!CLIENT_ID,
+      clientSecretSet: !!CLIENT_SECRET,
+      sessionSecretFromEnv: !!process.env.SESSION_SECRET,
+      derivedCallbackUrl: callbackUrl(req),
+      callbackOverride: CALLBACK_URL || null,
+      proxySees: {
+        xForwardedProto: req.headers['x-forwarded-proto'] || null,
+        xForwardedHost: req.headers['x-forwarded-host'] || null,
+        host: req.headers.host || null,
+        treatedAsSecure: isSecure(req),
+      },
+      cookies: {
+        sessionPresent: !!cookies[SESSION_COOKIE],
+        sessionValid: !!currentUser(req),
+        statePresent: !!cookies[STATE_COOKIE],
+      },
+      expectedRedirectUriToRegister: callbackUrl(req),
+    });
   });
 }
