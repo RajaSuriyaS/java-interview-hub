@@ -106,8 +106,14 @@ In the repo: **Settings → Secrets and variables → Actions → New repository
 | `VPS_SSH_PORT` | *(optional)* `22` |
 | `DEPLOY_STANDALONE` | *(optional)* `1` for Mode A; omit/`0` for Mode B |
 | `HEALTH_URL` | *(optional)* `https://javazerotoall.duckdns.org/health` to verify after deploy |
+| `GOOGLE_CLIENT_ID` | *(optional)* Google OAuth client id — enables sign-in |
+| `GOOGLE_CLIENT_SECRET` | *(optional)* Google OAuth client secret |
+| `SESSION_SECRET` | *(optional)* cookie-signing key; auto-generated on the VPS if omitted |
 
-You can reuse the same `VPS_SSH_KEY` you set up for SafeStrike.
+You can reuse the same `VPS_SSH_KEY` you set up for SafeStrike. The deploy job
+**writes `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `SESSION_SECRET` into the
+VPS `deploy/.env`** on each run, so you manage these from GitHub and never edit
+the server by hand (same approach as SafeStrike).
 
 After that, **every push to `main` auto-deploys**. You can also trigger manually: Actions → *Deploy to VPS* → *Run workflow*.
 
@@ -154,14 +160,24 @@ users **sign in with Google** and have their status/notes saved server-side
    - **Authorised redirect URI:** `https://javazerotoall.duckdns.org/auth/google/callback`
      (must match your domain exactly).
    - Copy the **Client ID** and **Client secret**.
-2. **Add to `deploy/.env`:**
+2. **Supply the credentials — pick one:**
+
+   **A) From GitHub (recommended — like SafeStrike, no SSH needed).** Add three
+   repo secrets in *Settings → Secrets and variables → Actions*: `GOOGLE_CLIENT_ID`,
+   `GOOGLE_CLIENT_SECRET`, and (optional) `SESSION_SECRET`. The deploy job writes
+   them into the VPS `deploy/.env` automatically on the next run.
+
+   **B) Directly on the VPS** (if you're not using the GitHub Actions deploy):
    ```bash
-   GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET=xxxxxxxx
-   SESSION_SECRET=$(openssl rand -hex 32)     # paste the generated value
+   cd /root/java-interview-hub && nano deploy/.env
+   #   GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
+   #   GOOGLE_CLIENT_SECRET=xxxxxxxx
+   #   SESSION_SECRET=...        # openssl rand -hex 32
+   ./deploy/redeploy.sh
    ```
-3. **Redeploy.** Verify with `curl -s .../health` → `"googleAuth":true`. A
-   **Sign in with Google** button appears in the sidebar.
+3. **Deploy** (push to `main`, or Actions → *Deploy to VPS* → *Run workflow*).
+   Verify with `curl -s .../health` → `"googleAuth":true`. A **Sign in with
+   Google** button appears in the sidebar.
 
 Notes:
 - The SQLite DB persists in the `jih_data` Docker volume (survives redeploys).

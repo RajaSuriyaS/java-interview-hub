@@ -9,6 +9,11 @@ name: Deploy to VPS
 #   VPS_SSH_PORT   defaults to 22
 #   DEPLOY_STANDALONE   "1" to also run the bundled Caddy (fresh VPS); omit on shared VPS
 #   HEALTH_URL     e.g. https://javahub.duckdns.org/health  (verified after deploy)
+#   # App secrets — injected into the VPS deploy/.env on each deploy so you manage
+#   # them in GitHub, never by hand on the server (the SafeStrike pattern):
+#   GOOGLE_CLIENT_ID       Google OAuth client id (enables sign-in)
+#   GOOGLE_CLIENT_SECRET   Google OAuth client secret
+#   SESSION_SECRET         cookie-signing key; auto-generated on the VPS if unset
 
 on:
   workflow_run:
@@ -54,7 +59,7 @@ jobs:
           port: ${{ secrets.VPS_SSH_PORT != '' && secrets.VPS_SSH_PORT || '22' }}
           script_stop: true
           command_timeout: 20m
-          envs: DEPLOY_STANDALONE
+          envs: DEPLOY_STANDALONE,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,SESSION_SECRET
           script: |
             set -euo pipefail
             REPO=/root/java-interview-hub
@@ -70,10 +75,34 @@ jobs:
               echo "::warning::deploy/.env not found — copying example. Fill in DuckDNS token!"
               cp deploy/.env.example deploy/.env
             fi
+
+            # --- Sync app secrets from GitHub into deploy/.env (idempotent upsert) ---
+            # Secrets are never committed; they live only in GitHub + this server file.
+            upsert_env() {
+              key="$1"; val="$2"; f="deploy/.env"
+              [ -n "$val" ] || return 0
+              touch "$f"
+              grep -v "^${key}=" "$f" > "${f}.tmp" 2>/dev/null || true
+              printf '%s=%s\n' "$key" "$val" >> "${f}.tmp"
+              mv "${f}.tmp" "$f"
+            }
+            upsert_env GOOGLE_CLIENT_ID     "${GOOGLE_CLIENT_ID:-}"
+            upsert_env GOOGLE_CLIENT_SECRET "${GOOGLE_CLIENT_SECRET:-}"
+            upsert_env SESSION_SECRET       "${SESSION_SECRET:-}"
+            # Ensure a stable cookie-signing secret exists even if none was provided.
+            if ! grep -q "^SESSION_SECRET=." deploy/.env; then
+              upsert_env SESSION_SECRET "$(openssl rand -hex 32)"
+              echo "Generated a SESSION_SECRET on the VPS (set one as a GitHub secret to control it)."
+            fi
+            chmod 600 deploy/.env || true
+
             export STANDALONE="${DEPLOY_STANDALONE:-0}"
             ./deploy/redeploy.sh
         env:
           DEPLOY_STANDALONE: ${{ secrets.DEPLOY_STANDALONE }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
 
       - name: Verify health
         if: ${{ env.HEALTH_URL != '' }}
