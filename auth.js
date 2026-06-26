@@ -27,6 +27,12 @@ const STATE_MAX_AGE   = 10 * 60 * 1000;           // 10 minutes
 
 export const authConfigured = () => !!(CLIENT_ID && CLIENT_SECRET);
 
+// Login wall: when REQUIRE_AUTH=true AND Google is configured, the whole app
+// requires sign-in. Guarded by authConfigured() so a missing client id can
+// never lock everyone out.
+export const loginWallEnabled = () =>
+  String(process.env.REQUIRE_AUTH || '').toLowerCase() === 'true' && authConfigured();
+
 /* ---------- signed-cookie session (HMAC-SHA256) ---------- */
 function sign(payload) {
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -179,6 +185,7 @@ export function mountAuth(app, { onLogin } = {}) {
     const u = currentUser(req);
     res.json({
       configured: authConfigured(),
+      requireLogin: loginWallEnabled(),
       user: u ? { id: u.sub, email: u.email, name: u.name, picture: u.picture } : null,
     });
   });

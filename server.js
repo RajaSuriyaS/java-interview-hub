@@ -5,7 +5,7 @@ import { dirname, join } from 'path';
 import { readFileSync, statSync } from 'fs';
 import { execSync } from 'child_process';
 import { initDb, dbReady, upsertUser, getState, replaceState } from './db.js';
-import { mountAuth, requireAuth, authConfigured } from './auth.js';
+import { mountAuth, requireAuth, authConfigured, currentUser, loginWallEnabled } from './auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -22,6 +22,10 @@ try {
   console.error('[db] init failed — server-side progress sync disabled:', e.message);
 }
 console.log(`[auth] Google login ${authConfigured() ? 'enabled' : 'NOT configured (localStorage-only mode)'}`);
+console.log(`[auth] Login wall ${loginWallEnabled() ? 'ON — sign-in required to use the app' : 'off (open access)'}`);
+
+// Login page shown to signed-out visitors when the wall is on.
+const loginPath = join(__dirname, 'public', 'login.html');
 
 // Cache-busting version: git short hash of THIS repo, else mtime of curriculum.js
 // cwd must be __dirname so git reads the right repo (not the shell's CWD)
@@ -46,6 +50,20 @@ app.use(express.json({ limit: '256kb' }));
 // ---- Auth (Google OAuth2) ----
 mountAuth(app, {
   onLogin: (user) => { if (DB_OK) { try { upsertUser(user); } catch (e) { console.error('[db] upsertUser:', e.message); } } },
+});
+
+// ---- Login wall ----------------------------------------------------------
+// When enabled, every request except auth/health requires a valid session.
+// Static assets (curriculum, app.js, …) and APIs are gated server-side, so the
+// content can't be scraped without signing in. /auth/* routes are registered
+// above this middleware, so they remain reachable for signing in.
+app.use((req, res, next) => {
+  if (!loginWallEnabled()) return next();
+  if (req.path === '/health' || req.path.startsWith('/auth/')) return next();
+  if (currentUser(req)) return next();
+  if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'login required' });
+  res.set('Cache-Control', 'no-store');
+  return res.type('html').sendFile(loginPath);
 });
 
 // ---- Progress sync API (requires a logged-in session) ----

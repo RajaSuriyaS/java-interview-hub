@@ -35,6 +35,10 @@ upsert() {
 upsert GOOGLE_CLIENT_ID     "$GID"
 upsert GOOGLE_CLIENT_SECRET "$GSEC"
 upsert SESSION_SECRET       "$SS"
+
+# Make sign-in mandatory (full login wall). Set to false to allow anonymous use.
+read -rp "Require sign-in to use the app (login wall)? [Y/n]: " WALL
+case "${WALL:-Y}" in [Nn]*) upsert REQUIRE_AUTH false ;; *) upsert REQUIRE_AUTH true ;; esac
 chmod 600 "$ENV_FILE"
 
 echo "Updated $ENV_FILE. Redeploying…"

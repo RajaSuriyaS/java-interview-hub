@@ -35,6 +35,8 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
       - SESSION_SECRET=${SESSION_SECRET:-}
+      # REQUIRE_AUTH=true makes Google sign-in mandatory (full login wall).
+      - REQUIRE_AUTH=${REQUIRE_AUTH:-}
     # Persist the SQLite progress DB across redeploys.
     volumes:
       - jih_data:/data
