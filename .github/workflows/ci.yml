@@ -15,7 +15,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22          # required for the built-in node:sqlite module
           cache: npm
 
       - name: Install deps
@@ -24,6 +24,8 @@ jobs:
       - name: Syntax-check all JS
         run: |
           node --check server.js
+          node --check db.js
+          node --check auth.js
           node --check public/js/curriculum.js
           node --check public/js/app.js
 
@@ -49,12 +51,16 @@ jobs:
 
       - name: Boot smoke test
         run: |
-          PORT=3099 node server.js &
+          PORT=3099 DATA_DIR="$RUNNER_TEMP/jih-data" \
+            node --disable-warning=ExperimentalWarning server.js &
           PID=$!
           sleep 2
+          body=$(curl -s http://localhost:3099/health)
           code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3099/health)
-          kill $PID
+          kill $PID || true
+          echo "health: $code $body"
           [ "$code" = "200" ] || { echo "health check failed: $code"; exit 1; }
+          echo "$body" | grep -q '"db":true' || { echo "sqlite did not initialise"; exit 1; }
           echo "health OK"
 
       - name: Docker build
