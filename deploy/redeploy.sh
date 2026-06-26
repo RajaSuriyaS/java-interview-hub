@@ -45,7 +45,9 @@ else
   echo "Mode: SHARED (app + duckdns; external Caddy '${CADDY_NETWORK:-deploy_default}' serves TLS)"
 fi
 
-docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" "${PROFILE_ARGS[@]}" up -d --build
+# --force-recreate guarantees env changes in deploy/.env actually take effect
+# (compose may otherwise keep a running container with its old environment).
+docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" "${PROFILE_ARGS[@]}" up -d --build --force-recreate
 
 # Recreate Caddy in standalone mode so a changed Caddyfile (new inode after git) is picked up
 if [ "${STANDALONE:-0}" = "1" ]; then
