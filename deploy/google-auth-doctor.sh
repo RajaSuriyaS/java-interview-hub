@@ -26,8 +26,20 @@ upsert(){ k="$1"; v="$2"; grep -v "^${k}=" "$ENV_FILE" > "${ENV_FILE}.tmp" 2>/de
 has(){ grep -q "^$1=." "$ENV_FILE"; }
 
 say "2) Credentials in $ENV_FILE"
-if has GOOGLE_CLIENT_ID && has GOOGLE_CLIENT_SECRET; then
+# --reset forces re-entering both values (use when Google says the secret is invalid).
+if [ "${1:-}" = "--reset" ]; then
+  echo "   --reset: re-entering credentials (old values will be overwritten)."
+  read -rp  "   GOOGLE_CLIENT_ID (…apps.googleusercontent.com): " GID
+  read -rsp "   GOOGLE_CLIENT_SECRET (hidden — paste once, press Enter): " GSEC; echo
+  if [ -z "${GID:-}" ] || [ -z "${GSEC:-}" ]; then echo "   Both are required. Aborting."; exit 1; fi
+  # strip stray whitespace/CR that breaks the secret
+  GID=$(printf '%s' "$GID" | tr -d '[:space:]')
+  GSEC=$(printf '%s' "$GSEC" | tr -d '[:space:]')
+  upsert GOOGLE_CLIENT_ID     "$GID"
+  upsert GOOGLE_CLIENT_SECRET "$GSEC"
+elif has GOOGLE_CLIENT_ID && has GOOGLE_CLIENT_SECRET; then
   echo "   GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are present."
+  echo "   (Google rejecting the secret? Re-run with:  ./deploy/google-auth-doctor.sh --reset)"
 else
   echo "   Missing — enter them now (the secret is typed hidden):"
   read -rp  "   GOOGLE_CLIENT_ID (…apps.googleusercontent.com): " GID

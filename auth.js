@@ -11,9 +11,12 @@
    ============================================================ */
 import crypto from 'node:crypto';
 
-const CLIENT_ID     = process.env.GOOGLE_CLIENT_ID || '';
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-const CALLBACK_URL  = process.env.GOOGLE_CALLBACK_URL || '';
+// trim() kills the classic "invalid client secret" caused by a trailing
+// space/CR that sneaks into deploy/.env when values are pasted.
+const clean = (v) => String(v || '').trim();
+const CLIENT_ID     = clean(process.env.GOOGLE_CLIENT_ID);
+const CLIENT_SECRET = clean(process.env.GOOGLE_CLIENT_SECRET);
+const CALLBACK_URL  = clean(process.env.GOOGLE_CALLBACK_URL);
 
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 if (!process.env.SESSION_SECRET) {
@@ -141,14 +144,26 @@ export function mountAuth(app, { onLogin } = {}) {
       });
       const tok = await tokenRes.json().catch(() => ({}));
       if (!tokenRes.ok || !tok.access_token) {
-        // Surface Google's actual reason (e.g. redirect_uri_mismatch, invalid_client).
+        // Surface Google's actual reason with a hint matched to THAT reason.
         const reason = tok.error_description || tok.error || ('HTTP ' + tokenRes.status);
         console.error('[auth] token exchange failed:', reason, '| redirect_uri used:', redirectUri);
-        return res.status(502).send(
-          'Google token exchange failed: ' + reason +
-          '\n\nThe redirect_uri this server used is:\n  ' + redirectUri +
-          '\nIt must be listed EXACTLY as an "Authorised redirect URI" on your Google OAuth client.'
-        );
+        let hint;
+        if (/client secret|invalid_client|unauthorized_client/i.test(reason)) {
+          hint = 'The CLIENT SECRET stored on this server does not match this client id.\n' +
+            'Fix: in Google Cloud console open this exact OAuth client, copy the CURRENT secret\n' +
+            '(or click "Reset secret" and copy the new one), then on the VPS re-run\n' +
+            '  ./deploy/google-auth-doctor.sh --reset\n' +
+            'and paste BOTH values again. Check /auth/debug: clientIdPreview must match the\n' +
+            'client you edited, and clientSecret.prefix should be "GOCSPX-".';
+        } else if (/redirect_uri/i.test(reason)) {
+          hint = 'The redirect_uri this server used is:\n  ' + redirectUri +
+            '\nIt must be listed EXACTLY as an "Authorised redirect URI" on your Google OAuth client.';
+        } else if (/invalid_grant/i.test(reason)) {
+          hint = 'The authorization code expired or was reused — just try signing in again.';
+        } else {
+          hint = 'redirect_uri used: ' + redirectUri + ' — see /auth/debug for full config state.';
+        }
+        return res.status(502).send('Google token exchange failed: ' + reason + '\n\n' + hint);
       }
 
       const uiRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
@@ -220,6 +235,15 @@ export function mountAuth(app, { onLogin } = {}) {
       configured: authConfigured(),
       clientIdSet: !!CLIENT_ID,
       clientSecretSet: !!CLIENT_SECRET,
+      // Fingerprints (safe): compare these against the Google console client.
+      // The client id is public by design; for the secret we expose only the
+      // standard "GOCSPX-" prefix, its length, and whether trimming was needed.
+      clientIdPreview: CLIENT_ID ? CLIENT_ID.slice(0, 20) + '…' : null,
+      clientSecret: CLIENT_SECRET ? {
+        prefix: CLIENT_SECRET.slice(0, 7),
+        length: CLIENT_SECRET.length,
+        hadWhitespaceTrimmed: (process.env.GOOGLE_CLIENT_SECRET || '') !== CLIENT_SECRET,
+      } : null,
       sessionSecretFromEnv: !!process.env.SESSION_SECRET,
       requireAuthEnv: process.env.REQUIRE_AUTH || null,
       loginWallActive: loginWallEnabled(),
