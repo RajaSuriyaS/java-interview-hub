@@ -55396,160 +55396,721 @@ and
       {
         id: `10.1`,
         title: `STAR Stories & Behavioral Rounds`,
-        hours: 2,
+        hours: 4,
         sections: [
           {
-            title: `Behavioral Interviews — STAR Framework & Common Questions`,
-            notes: `## Behavioral Interviews — STAR Framework & Common Questions
+            title: `How Behavioral Rounds Are Scored at Senior Level`,
+            notes: `## The round is not a chat — it is a scored assessment
 
-### The STAR Framework
+At senior level (12+ years, staff-adjacent expectations), the behavioral round is usually run against a **written competency rubric**. The interviewer is not asking "is this person nice?" — they are collecting **evidence** against 5–7 competencies and writing it up afterwards. Every question maps to a competency; every answer either produces evidence or doesn't.
 
+### The competencies panels actually probe
+
+| Competency | What they listen for | Typical question |
+|---|---|---|
+| **Ownership** | You held the outcome, not just your ticket; you acted outside your lane when needed | "Tell me about a production incident you owned" |
+| **Conflict resolution** | Disagreement handled with data and empathy, relationship intact afterwards | "A time you disagreed with a colleague" |
+| **Influence without authority** | Changing direction of peers/other teams without being their boss | "How did you get another team to adopt X?" |
+| **Failure & learning** | Real failure, real cost, real behavior change — not a humblebrag | "Your biggest failure" |
+| **Mentoring & multiplying** | You made *others* better, measurably | "Tell me about someone you developed" |
+| **Delivery under pressure** | Scope/quality trade-offs made explicitly, stakeholders managed | "Tightest deadline you've hit — or missed" |
+
+> [!TIP]
+> Before any interview, ask yourself: *for each row of this table, which of my stories is the evidence?* If a row has no story, the interviewer will find that gap for you — live.
+
+### What separates a senior answer from a mid-level one
+
+| Dimension | Mid-level answer | Senior answer |
+|---|---|---|
+| Impact | "It worked, everyone was happy" | Quantified: "cut p99 from 2.1s to 300ms, saved ~€40k/yr in compute" |
+| Trade-offs | Invisible — one path presented as obvious | Named explicitly: "we accepted slower writes to keep reads consistent because..." |
+| Fix | Heroics: "I stayed up all weekend and fixed it" | Systemic: "I fixed it, then added the alert/runbook/lint rule so nobody hits it again" |
+| Scope | Own ticket | Team/org: process changed, other teams unblocked |
+| Reflection | "It went well" | "In hindsight I'd have escalated a week earlier — here's the signal I missed" |
+
+The single biggest tell: **seniors change the system, mids fight the fire.** Heroics without a systemic follow-up actually score *worse* at senior level, because they suggest you tolerate a broken system as long as you get to be the hero.
+
+### Bar-raiser style calibration
+
+Amazon popularized it, but most large EU tech employers (Booking, Zalando, Spotify, Adyen, banks' tech arms) run a version: one interviewer who is **not** from the hiring team, whose job is to hold the company-wide bar and who can veto. Expect from them:
+
+- **Drill-downs**: "You said 'we decided' — who is *we*? What was *your* position before the decision?"
+- **Evidence hunger**: they keep digging until they hit a concrete, verifiable detail or the story collapses.
+- **The same competency twice**: a second story on the same theme to check the first wasn't your only one.
+
+> [!WARNING]
+> Interviewers are trained to distrust polish. A too-smooth story with no friction, no numbers, and no names of trade-offs reads as rehearsed fiction. Deliberately keep the messy detail in — the wrong first guess, the pushback you got — that's what makes it credible.
+
+### Common auto-fails
+
+> [!DANGER]
+> These end the interview even if everything else was strong:
+> - **Blaming**: "the previous team wrote terrible code", "my manager didn't get it". You can describe others' mistakes factually, but the moment your *explanation* for failure is other people, you fail ownership.
+> - **Vagueness under drilling**: if two follow-ups can't produce a concrete detail (a number, a date, a specific decision you made), the interviewer writes "could not substantiate".
+> - **"We" with no "I"**: team credit is fine, but every story needs at least three sentences that start with "I decided / I built / I convinced".
+> - **No failure available**: claiming you can't think of a real failure signals either low self-awareness or low honesty. Both are vetoes.
+> - **Confidentiality theater**: hiding behind "I can't talk about that" for everything. Anonymize, don't refuse.
+
+### How the write-up works
+
+After your interview, the interviewer writes something like: *"Strong hire on ownership — drove incident X end-to-end including cross-team fix; evidence specific and quantified. Mixed on conflict — story resolved by manager escalation rather than by candidate."* Your job in the room is to **dictate that write-up** by handing them specific, quantified, I-centered evidence for each competency.`,
+            code: [],
+            flashcards: [
+              {
+                q: `What is the interviewer actually doing during a senior behavioral round?`,
+                a: `Collecting written evidence against a competency rubric (ownership, conflict, influence, failure/learning, mentoring, delivery under pressure). Every answer either produces scoreable evidence or it doesn't — it is not a conversation, it is an assessment.`
+              },
+              {
+                q: `Name the six competencies senior behavioral panels most commonly probe.`,
+                a: `Ownership, conflict resolution, influence without authority, failure & learning, mentoring/multiplying others, delivery under pressure.`
+              },
+              {
+                q: `What are the three biggest markers that distinguish a senior answer from a mid-level one?`,
+                a: `1) Quantified impact (numbers, money, latency, time saved), 2) trade-offs named explicitly, 3) systemic fixes (process/alerting/tooling changed) rather than one-off heroics.`
+              },
+              {
+                q: `Why can a heroic 'I worked all weekend and saved the release' story score BADLY at senior level?`,
+                a: `Heroics without a systemic follow-up suggest you tolerate broken systems as long as you get to be the hero. Seniors are expected to fix the system (alerts, runbooks, process) so the fire can't recur.`
+              },
+              {
+                q: `What is a 'bar raiser' and how do they behave differently from other interviewers?`,
+                a: `An interviewer from outside the hiring team who holds the company-wide bar and can veto. They drill into 'we' statements, hunt for concrete verifiable detail, and often ask for a second story on the same competency to check depth.`
+              },
+              {
+                q: `List four behavioral auto-fails.`,
+                a: `Blaming others as the explanation for failure; vagueness that survives no drilling; 'we' with no 'I' (no personal actions identifiable); claiming to have no real failure to discuss.`
+              },
+              {
+                q: `'We decided to migrate to Kafka' — how does a trained interviewer react, and how should you preempt it?`,
+                a: `They ask 'who is we, and what did YOU do?' Preempt it: use 'we' for context, then switch — 'my part specifically was X; I decided Y; I convinced Z'. Aim for several explicit I-statements per story.`
+              },
+              {
+                q: `Why does a perfectly smooth, frictionless story hurt you?`,
+                a: `Trained interviewers distrust polish — no wrong turns, no pushback, no numbers reads as rehearsed fiction. Keeping the messy details (wrong first guess, resistance you hit) makes the story credible and shows learning.`
+              },
+              {
+                q: `How should you handle genuinely confidential work in a behavioral story?`,
+                a: `Anonymize, don't refuse: strip company-identifying numbers or scale them ('roughly 10x growth'), rename systems. Refusing to discuss anything concrete scores as vagueness.`
+              },
+              {
+                q: `What does 'quantified impact' look like if you don't have exact numbers anymore?`,
+                a: `Honest orders of magnitude with framing: 'roughly a 30% reduction', 'from about 2s to well under 500ms', 'saved the team a day per week'. Estimated-and-labeled beats fake precision and beats no numbers.`
+              },
+              {
+                q: `What is the practical goal of every answer you give, in terms of the interviewer's write-up?`,
+                a: `To dictate their write-up: hand them a specific, quantified, I-centered piece of evidence per competency so their notes read 'strong hire — concrete evidence' rather than 'could not substantiate'.`
+              },
+              {
+                q: `How do you prepare against the 'same competency, second story' technique?`,
+                a: `Have at least two stories per core competency in your story bank. If asked for another conflict/failure story, never reuse the first with new paint — interviewers check for exactly that.`
+              }
+            ]
+          },
+          {
+            title: `STAR Done Right — the Senior Version`,
+            notes: `## STAR plus the two senior extensions
+
+Classic STAR: **S**ituation, **T**ask, **A**ction, **R**esult. At senior level, add two more beats — call it **STARL(D)**:
+
+- **L — Learning**: what you now understand that you didn't before.
+- **D — what I'd do Differently**: the concrete change in your behavior, proven if possible ("...and six months later I applied that when...").
+
+\`\`\`mermaid
+flowchart LR
+    S["Situation<br/>~20s: context, stakes"] --> T["Task<br/>~10s: YOUR responsibility"]
+    T --> A["Action<br/>~90s: what I did,<br/>decisions + trade-offs<br/>(~60% of the answer)"]
+    A --> R["Result<br/>~20s: quantified outcome"]
+    R --> L["Learning<br/>~15s: what changed in me"]
+    L --> D["Differently<br/>~10s: proven behavior change"]
 \`\`\`
-S — Situation: context and background (1-2 sentences)
-T — Task:      what YOU needed to accomplish (1 sentence)
-A — Action:    what YOU specifically did (2-4 sentences, focus on YOUR role)
-R — Result:    measurable outcome (1-2 sentences with numbers if possible)
 
-Total: 90-120 seconds spoken. Practice until crisp.
-Never vague: "we did X" → "I proposed X, the team adopted it"
-\`\`\`
+### Time-boxing: the 2–3 minute answer
 
-### Most Common Behavioral Questions
+An unprompted monologue over ~3 minutes is a negative signal by itself (communication competency). Budget for a 2.5-minute answer:
 
-\`\`\`
-Leadership / Influence:
-  "Tell me about a time you led a technical decision without authority"
-  "How do you convince skeptical colleagues to adopt a change?"
+| Beat | Time | Share |
+|---|---|---|
+| Situation | ~20s | 13% |
+| Task | ~10s | 7% |
+| **Action** | **~90s** | **~60%** |
+| Result | ~20s | 13% |
+| Learning + Differently | ~25s | 15% |
 
-Conflict:
-  "Describe a disagreement with a team member. How did you resolve it?"
-  "Tell me about a time you had to push back on a requirement from a PM or manager"
+> [!TIP]
+> End with a hook, not a fade-out: "...and that's also why I now insist on load-testing before feature freeze. Happy to go deeper on the technical side or the stakeholder side." You hand the interviewer the drill-down menu instead of waiting for them to dig.
 
-Ownership / Initiative:
-  "Tell me about a project you took ownership of beyond your role"
-  "When did you identify and fix a problem that wasn't in your remit?"
+### How much context is enough?
 
-Failure / Learning:
-  "Tell me about a technical mistake you made. What did you learn?"
-  "Describe a project that failed. What would you do differently?"
+Enough that a stranger understands **the stakes and the constraint** — nothing more. Test: could the interviewer summarize your situation in one sentence after 20 seconds? Good: "We were a 6-person team owning the payments service; a regulatory deadline meant we had 8 weeks to migrate off a deprecated PSP API or lose card processing." Bad: three minutes of org chart and system history before anything happens.
 
-Ambiguity:
-  "Tell me about a time you had to make a decision with incomplete information"
-  "How do you handle changing requirements mid-project?"
+> [!WARNING]
+> The most common senior failure mode is **context flooding** — 12 years of experience means every story sits on a mountain of backstory you find fascinating. The interviewer does not need the 2019 reorg. Cut context until it hurts, then cut once more.
 
-Collaboration:
-  "Tell me about a time you had to work with a difficult colleague"
-  "Describe a successful cross-team collaboration"
-\`\`\`
+### Making Action ~60% — and keeping it "I"
 
-### STAR Template — Filled Example
+The Action section is where competencies are scored. Structure it as 3–4 decision points, each with the trade-off named:
 
-\`\`\`
-Q: "Tell me about a time you improved system performance under pressure"
+1. "First I did X *instead of* Y because..." (judgment)
+2. "The pushback was Z, so I..." (conflict/influence)
+3. "I delegated A to the team but kept B because..." (leadership + ownership)
+4. "When it went wrong at step 3, I..." (resilience — keep the friction in!)
 
-S: "At my previous company, our payment processing service was timing out
-    during peak Black Friday traffic, affecting 15% of checkout attempts."
+### Quantifying Results honestly
 
-T: "I was tasked with identifying the bottleneck and fixing it within 48 hours
-    before the weekend peak."
+- Tie the number to something the business cares about: latency, revenue, incidents, hiring, time-to-market.
+- If the number is estimated, **say so** — "back-of-envelope, roughly €X" reads as more senior than suspicious precision.
+- Include the *counterfactual* when strong: "without the migration we'd have lost card processing — roughly 100% of revenue for that market."
+- A neutral or bad result is fine **if the Learning is strong** — that's exactly what the failure questions want.
 
-A: "I started by adding distributed tracing (Jaeger) to map where latency
-    was accumulating. I discovered that 80% of the delay was a synchronous
-    call to a third-party fraud detection API (avg 3.2s response time).
-    I proposed and implemented an async approach: queue the fraud check,
-    allow checkout to proceed optimistically, and cancel only if fraud is
-    detected within 15 minutes. I wrote the Kafka consumer, updated the
-    order state machine, and deployed behind a feature flag so we could
-    roll back safely."
+### Surviving the follow-up drill: "what exactly did YOU do?"
 
-R: "Checkout success rate went from 85% to 99.2% during that weekend.
-    Fraud detection accuracy was maintained (< 0.1% false pass rate).
-    The pattern was adopted company-wide for all async vendor calls."
-\`\`\`
+This question is not hostility — it is the rubric forcing itself into the room. Prepare for the standard drill sequence:
 
-### Amazon Leadership Principles — Common Targets
+> [!SUCCESS]
+> Drill-proof answers survive this ladder:
+> 1. "What was your specific role?" → have a one-sentence role statement ready.
+> 2. "Who else was involved and what did they do?" → crediting others *precisely* proves you know the boundary of your own contribution.
+> 3. "What would have happened if you weren't there?" → the honest counterfactual is your value.
+> 4. "Walk me through the exact conversation/commit/decision." → have ONE zoom-in detail per story: an actual sentence you said, a config value, a graph you showed.
 
-\`\`\`
-Customer Obsession:   "Tell me about a time you went above and beyond for a customer"
-Ownership:           "Tell me about a time you took ownership outside your scope"
-Invent and Simplify: "Tell me about a time you simplified a complex process"
-Are Right, A Lot:    "Tell me about a time you made a decision others disagreed with"
-Bias for Action:     "Tell me about a time you took a calculated risk"
-Earn Trust:          "Tell me about a time you had to deliver difficult feedback"
-Dive Deep:           "Tell me about a bug you found that required deep investigation"
-Disagree and Commit: "Tell me about a time you disagreed but still executed"
-Deliver Results:     "Tell me about a time you delivered under a tight deadline"
-
-Prepare 5-6 stories that each cover MULTIPLE principles.
-\`\`\``,
+If you genuinely can't answer a drill question, say so and offer the nearest real detail: "I don't remember the exact figure, but the order of magnitude was X, and I remember it because..." — recovering honestly scores better than improvising a fact you may be asked to defend two questions later.`,
             code: [
-              `// STAR Stories Worksheet — fill this in before each interview
-// This is JavaScript for the interview hub, but treat it as a prep template
+              {
+                lang: `text`,
+                title: `STARL(D) skeleton — fill-in template (adapt, do not recite)`,
+                code: `SITUATION (~20s)
+  "At [company type/size], my team owned [system]. [Stake/constraint:
+  deadline, outage, regulation, growth] meant [what was at risk]."
 
-const starStories = [
-  {
-    title: "Performance Optimization Under Pressure",
-    situation: "Payment service timing out during peak traffic, affecting 15% of checkouts",
-    task: "Identify and fix bottleneck within 48 hours before Black Friday peak",
-    action: [
-      "Added distributed tracing (Jaeger) to map latency sources",
-      "Identified synchronous fraud API call as bottleneck (avg 3.2s)",
-      "Proposed async approach: optimistic checkout + background fraud check via Kafka",
-      "Implemented Kafka consumer, updated order state machine, deployed behind feature flag"
-    ],
-    result: "Checkout success: 85% → 99.2%. Pattern adopted company-wide.",
-    principles: ["Ownership", "Dive Deep", "Bias for Action", "Deliver Results"]
-  },
-  {
-    title: "Technical Disagreement with Senior Engineer",
-    situation: "Proposed microservice decomposition; senior engineer insisted on monolith due to timeline",
-    task: "Advocate for technical approach I believed was correct without damaging relationship",
-    action: [
-      "Wrote a 1-page technical brief with trade-offs, not just my opinion",
-      "Proposed a middle path: modular monolith (clean package boundaries, easy to split later)",
-      "Presented in architecture review with concrete data on expected maintenance cost",
-      "When team chose the senior engineer's approach, I documented concerns and committed fully"
-    ],
-    result: "Team delivered on timeline. 6 months later, modular approach was adopted when decomposition became necessary. Zero rework because boundaries were clean.",
-    principles: ["Are Right A Lot", "Disagree and Commit", "Earn Trust"]
-  },
-  {
-    title: "Debugging a Production Incident",
-    situation: "Orders silently failing for 2% of users — no exception in logs, money not charged",
-    task: "Find root cause in a distributed system with 8 microservices involved",
-    action: [
-      "Pulled distributed traces for affected orders using traceId from failed orders",
-      "Found that the notification service was swallowing exceptions in a try-catch",
-      "Traced further: notification service DB insert was failing due to a silent schema migration",
-      "The saga was marking the step complete even on failure (bug in compensating transaction logic)",
-      "Fixed both: proper exception propagation + saga correctness + added alerting on silent failures"
-    ],
-    result: "Root cause identified in 4 hours. No orders lost (idempotent retry recovered them). Added regression test that would have caught this earlier.",
-    principles: ["Dive Deep", "Customer Obsession", "Ownership"]
-  }
-];
+TASK (~10s)
+  "As [role], I was responsible for [the outcome — not the ticket]."
 
-// How to use:
-// 1. Read each story aloud — aim for 90-120 seconds
-// 2. Cut details until you hit the time. Quality over quantity.
-// 3. Have a follow-up story ready if they ask "tell me more about the technical detail"
-// 4. Customize the RESULT line with real numbers from your experience
+ACTION (~90s — 3-4 decision points, each with a trade-off)
+  1. "First, I [assessed/decided] X instead of Y, because [trade-off]."
+  2. "The main obstacle was [pushback/incident/unknown]. I [action]."
+  3. "I brought in [person/team] for [part], but kept [part] myself
+      because [reason]."
+  4. "[Something went wrong]. I [correction] — in hindsight the early
+      signal was [signal]."
 
-console.log("STAR Stories loaded:", starStories.length);
-starStories.forEach(s => console.log(" -", s.title, "→", s.principles.join(", ")));`
+RESULT (~20s)
+  "[Quantified outcome: metric before -> after, money, time, risk
+  avoided]. Confirmed by [how you know it's true]."
+
+LEARNING (~15s)
+  "The durable lesson for me was [transferable principle]."
+
+DIFFERENTLY (~10s)
+  "Today I'd [concrete change] — and I actually did that later
+  when [brief proof]."`
+              }
             ],
             flashcards: [
               {
-                q: `What is the STAR framework and how should you time each section?`,
-                a: `STAR: Situation (10-15s) — brief context, company/team/product background. Task (5-10s) — what YOU were responsible for solving. Action (45-60s) — what YOU specifically did; focus on your decisions and reasoning, not the team. Use "I proposed, I implemented, I negotiated" not "we did." Result (15-20s) — quantified outcome: percentages, time saved, incidents avoided, users affected. Total target: 90-120 seconds. Under 60s = too vague. Over 2 minutes = lose the interviewer. Practice aloud until you can hit the target every time.`
+                q: `What are the two senior extensions to STAR, and why do they matter?`,
+                a: `L — Learning (what you now understand) and D — what you'd do Differently (concrete behavior change, ideally with proof you applied it later). They convert a war story into evidence of growth, which is what senior rubrics score.`
               },
               {
-                q: `How do you structure a "tell me about a failure" answer without looking bad?`,
-                a: `Interviewers are testing self-awareness and learning, not looking for perfect records. Formula: (1) Be specific and honest about what failed — don't minimize it. (2) Own your part clearly: "I made the decision to X without validating Y." (3) Explain how you identified the failure and what you did to recover. (4) State what you changed as a result — a process, a habit, a technical practice. (5) If possible, show you applied the learning later. Red flags: blaming others, vague failures, saying "we" to diffuse responsibility, or claiming nothing went wrong. Saying "I would have done X differently" shows growth.`
+                q: `How long should an unprompted behavioral answer run, and what happens beyond that?`,
+                a: `2–3 minutes. Beyond ~3 minutes of monologue you start losing points on communication regardless of content — the interviewer needs airtime to drill.`
               },
               {
-                q: `How do you prepare stories that cover multiple behavioral competencies?`,
-                a: `Each strong story should cover 2-4 competencies simultaneously. Example: a story about debugging a production incident covers: Dive Deep (systematic investigation), Ownership (took responsibility beyond your ticket), Customer Obsession (urgency because users were affected), Deliver Results (resolved within SLA). Prepare 5-6 core stories, each with multiple tags. When the interviewer asks about "ownership," mentally scan your tagged stories and pick the best fit. This lets you answer 15-20 different questions with 5-6 prepared stories. Avoid preparing one story per question — you'll run out and become rigid.`
+                q: `What share of your answer should the Action section take, and how should it be structured?`,
+                a: `~60% (about 90 seconds of a 2.5-minute answer). Structure as 3–4 decision points, each with the alternative you rejected and why — decisions with trade-offs are what gets scored.`
+              },
+              {
+                q: `What is the test for 'enough context' in the Situation beat?`,
+                a: `After ~20 seconds a stranger should be able to state the stakes and the constraint in one sentence. If they'd need your org history to follow, you're context flooding — the classic 12-years-of-experience failure mode.`
+              },
+              {
+                q: `How do you end an answer so the follow-ups play to your strengths?`,
+                a: `Hand over a drill-down menu: '...happy to go deeper on the technical side or the stakeholder side.' You steer the interviewer toward the parts of the story you're strongest on.`
+              },
+              {
+                q: `Q: 'What exactly did YOU do?' — what is this really, and what four drills follow it?`,
+                a: `The rubric forcing itself into the room, not hostility. The ladder: your specific role; who else did what; what would have happened without you; walk through the exact conversation/decision. Prepare one zoom-in detail per story.`
+              },
+              {
+                q: `How do you quantify a result when you no longer have exact numbers?`,
+                a: `Give labeled estimates: 'back-of-envelope, roughly 30%', 'from ~2s to well under 500ms'. Say it's an estimate — honest orders of magnitude beat both fake precision and vagueness.`
+              },
+              {
+                q: `Why should you deliberately keep a mistake or wrong first guess inside the Action section?`,
+                a: `Friction makes the story credible (rehearsed-perfect stories are distrusted) and gives you material for the Learning beat. A corrected wrong turn shows resilience and judgment under uncertainty.`
+              },
+              {
+                q: `Is a story with a bad or neutral Result usable?`,
+                a: `Yes — for failure/learning questions it's mandatory. A bad result with strong, proven Learning and 'Differently' beats scores higher than a suspicious string of pure wins.`
+              },
+              {
+                q: `What is the 'counterfactual' technique for Results?`,
+                a: `State what would have happened without the work: 'without the migration we'd have lost card processing in that market'. It converts a technical outcome into business impact even when you lack precise metrics.`
+              },
+              {
+                q: `You're drilled on a detail you genuinely don't remember. What's the senior move?`,
+                a: `Say so, then anchor to the nearest real detail: 'I don't recall the exact number, but the order of magnitude was X, and I remember because Y.' Never improvise a fact you may have to defend two questions later.`
+              },
+              {
+                q: `How do you credit teammates without diluting your own evidence?`,
+                a: `Credit precisely, not vaguely: 'Maria built the migration tooling; my part was the cutover design and getting sign-off from risk.' Precise crediting proves you know exactly where your contribution's boundary is.`
+              }
+            ]
+          },
+          {
+            title: `Building Your Story Bank`,
+            notes: `## Mining 12 years into 8–10 reusable stories
+
+You do not need 40 stories. You need **8–10 well-chosen ones**, each drill-proof, each covering 2–3 competencies. The work is archaeological: go through your CV year by year and list, for each role:
+
+1. **Incidents** you owned (outages, data issues, security scares)
+2. **Migrations/deliveries** with a hard constraint (deadline, budget, regulation)
+3. **Disagreements** — technical and interpersonal — and how they resolved
+4. **People** you grew (mentees, hires, a struggling teammate)
+5. **Things you got wrong** — with real cost
+6. **Times you changed a decision above your pay grade** (influence)
+
+Then select for **coverage** using a competency × story matrix:
+
+### The competency × story matrix (fill in your own)
+
+| Your story (working title) | Ownership | Conflict | Influence | Failure | Mentoring | Pressure |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| S1: The payment-outage weekend | **P** | s | | s | | **P** |
+| S2: The Kafka-vs-queue disagreement | | **P** | **P** | | | |
+| S3: The migration I under-scoped | s | | | **P** | | s |
+| S4: Growing the junior who nearly quit | | s | | | **P** | |
+| S5: Killing my own pet project | **P** | | s | **P** | | |
+| S6: The cross-team API contract fight | | s | **P** | | | s |
+| S7: The deadline we renegotiated | **P** | | s | | | **P** |
+| S8: Introducing code review to a hostile team | | s | **P** | | **P** | |
+
+**P** = primary story for that competency, **s** = usable as secondary. Rules: every column needs one **P** and one **s** (the "second story" drill); every row should serve at least two columns, or the story isn't earning its slot.
+
+> [!TIP]
+> Write each story down in STARL(D) form — actually write it, don't just "know it". Writing exposes the missing numbers and vague spots that a bar raiser would find. Then rehearse **out loud**, once per story, at 2.5 minutes. Do not memorize word-for-word: memorized delivery is audible and reads as scripted.
+
+### Two fully worked examples
+
+> [!WARNING]
+> The two stories below are **templates to adapt to your own experience — not scripts to copy**. Interviewers at major employers have heard every canned story on the internet. Replace every fact with your own; keep only the *structure* and the *level of specificity*.
+
+See the two code blocks below: **Template A** (production incident owned end-to-end → Ownership + Pressure) and **Template B** (technical disagreement with a senior colleague resolved with data → Conflict + Influence).
+
+### One story, many questions
+
+A good story re-angles by changing which beat gets the 60%:
+
+| Question asked | Same story (Template A), re-angled |
+|---|---|
+| "Tell me about a production incident" | Action = incident response decisions |
+| "Tightest deadline?" | Action = the 48h fix window, triage choices |
+| "A time you were out of your depth" | Action = the unfamiliar subsystem, how you learned fast |
+| "Biggest failure?" | Only if the incident traces to *your* earlier decision — then Learning gets extra weight |
+| "How do you handle stress?" | Action = prioritization + communication cadence during the outage |
+
+> [!DANGER]
+> Re-angling has a limit: never present the same story twice **to the same panel**, even re-angled — interviewers compare notes across the loop. With 8–10 stories you can afford one story per question across a 4-interview loop.
+
+> [!EU]
+> EU panels (especially Netherlands and Nordics) often add a **collaboration-heavy** angle: "tell me about working with people very different from you" or "how do you land a decision when the team disagrees?" Make sure at least two stories feature *consensus-building across cultures or functions* — distributed/multicultural team experience is a genuine asset for EU roles, so surface it deliberately.`,
+            code: [
+              {
+                lang: `text`,
+                title: `Template A — production incident owned end-to-end (ADAPT: replace all facts with yours)`,
+                code: `[SITUATION] "Two years into my time at a mid-size fintech, my team of
+five owned the payment-processing service — roughly 200k transactions
+a day. On a Friday afternoon, settlement files started failing
+silently: money was moving but our ledger wasn't updating."
+
+[TASK] "I was the senior engineer on call. Formally my job was to
+restore service; I decided my actual job was to make sure no customer
+was double-charged and that finance could trust the books by Monday."
+
+[ACTION] "First call: I resisted the pressure to restart the ingestion
+service immediately — with silent failures, a blind restart risked
+reprocessing files and double-booking. I spent the first 30 minutes
+establishing blast radius instead: wrote a quick reconciliation query,
+found ~3,100 affected transactions, all in one direction. That changed
+everything — it meant pausing ingestion entirely was safe.
+  Second: I split the team — two people on root cause, one on a
+replay tool, while I handled comms: a status update to finance and
+support every hour, in plain language, with the next update time
+stated. Root cause turned out to be an upstream format change our
+parser swallowed without erroring — our fault for catching-and-logging
+instead of failing loudly.
+  Third: before replaying, I insisted on a dry-run mode for the replay
+tool even though it cost us three extra hours. The dry run caught 40
+transactions that would have double-booked."
+
+[RESULT] "Full reconciliation by Sunday noon: zero customer impact,
+zero double-charges, finance signed off Monday morning. Total exposure
+avoided was roughly EUR 400k in mis-booked settlements."
+
+[LEARNING] "The durable lesson: a swallowed exception is a time bomb —
+'resilient' parsing that hides failures is worse than crashing."
+
+[DIFFERENTLY] "I then drove a policy change: parsers fail loudly and
+alert on schema drift; we added a daily automated reconciliation check.
+It caught a similar upstream change eight months later — as an alert,
+not an incident."
+
+WHY THIS WORKS: quantified blast radius; three explicit decision points
+each with the rejected alternative; comms treated as first-class work;
+systemic fix, not heroics; the Learning is transferable.`
+              },
+              {
+                lang: `text`,
+                title: `Template B — technical disagreement with a senior colleague, resolved with data (ADAPT)`,
+                code: `[SITUATION] "We needed async processing for order events. Our most
+senior engineer — 8 years on the team, deeply respected — wanted to
+adopt Kafka. I believed our existing managed queue (SQS-class) was
+enough and Kafka would be an operational burden for a 6-person team."
+
+[TASK] "As the tech lead for the feature, I owned the recommendation.
+I wanted the right call — and I wanted it made in a way that didn't
+turn into a status contest with someone the team looked up to."
+
+[ACTION] "First, I steel-manned his position in writing: ordering
+guarantees, replay, future stream-processing needs. I sent it to him
+first with 'did I represent your view fairly?' — that one step changed
+the tone of everything after.
+  Second, I proposed we resolve it with data rather than opinions: a
+one-week spike with three concrete load scenarios based on real
+traffic projections (current, 5x, 20x), and agreed *in advance* what
+result would favor which option. Agreeing the decision rule before
+seeing data was the key move — neither of us could move the goalposts.
+  Third, the results were mixed: the queue handled 5x fine; at 20x,
+Kafka's partitioned consumers won clearly. So I proposed a staged
+decision: ship on the queue now behind a thin abstraction, with an
+agreed migration trigger — sustained throughput above a threshold we
+wrote into the ADR. He challenged the abstraction as speculative; I
+conceded half of it and we kept only the producer-side interface."
+
+[RESULT] "We shipped six weeks earlier than the Kafka path would have
+allowed. Two years later, one high-volume topic crossed the trigger and
+was migrated to Kafka in under a sprint — the ADR trigger did its job.
+The relationship survived; he later asked me to review his own ADRs."
+
+[LEARNING] "Senior disagreements are rarely about the technology —
+they're about which future you're betting on. Making the bet explicit
+and testable removes the ego from the room."
+
+[DIFFERENTLY] "I'd involve him in designing the load scenarios from
+day one instead of presenting them — co-authorship would have gotten
+us to yes a week faster."
+
+WHY THIS WORKS: names the power dynamic honestly; steel-manning shown
+as a concrete act; decision rule agreed before data; a real concession
+(keeps it credible); relationship outcome stated; verifiable long tail.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How many prepared stories does a senior candidate need, and what must each one do?`,
+                a: `8–10, each written out in STARL(D) form, each drill-proof, and each covering 2–3 competencies. Every competency column needs a primary AND a secondary story (for the 'tell me about another time' drill).`
+              },
+              {
+                q: `What six categories should you mine when going through 12 years of CV history?`,
+                a: `Incidents you owned; deliveries/migrations under a hard constraint; disagreements (technical and interpersonal); people you grew; things you got wrong with real cost; times you changed a decision above your pay grade.`
+              },
+              {
+                q: `What is the competency × story matrix and what two rules govern it?`,
+                a: `A table mapping each story to the competencies it can evidence (Primary/secondary). Rules: every competency column needs one P and one s; every story row must serve at least 2 competencies or it's cut.`
+              },
+              {
+                q: `Why write stories down rather than just 'knowing' them — and why not memorize them word-for-word?`,
+                a: `Writing exposes missing numbers and vague spots a bar raiser would find. But memorized delivery is audible and reads as scripted — rehearse out loud from the structure, not from a script.`
+              },
+              {
+                q: `How do you adapt one incident story to five different questions?`,
+                a: `Re-angle by changing which part gets the ~60% Action focus: incident-response decisions, the deadline triage, learning an unfamiliar system fast, the failure that caused it, or your comms/prioritization under stress.`
+              },
+              {
+                q: `What is the hard limit on story reuse in a single interview loop?`,
+                a: `Never tell the same story twice to the same panel, even re-angled — interviewers compare notes across the loop. 8–10 stories lets you keep one story per question across 4+ interviews.`
+              },
+              {
+                q: `In the incident template, why does refusing to restart the service immediately signal seniority?`,
+                a: `It shows blast-radius-first thinking: with silent failures, a blind restart risks double-processing. Establishing the damage boundary before acting is the judgment being scored, not the fix itself.`
+              },
+              {
+                q: `In the disagreement template, what is the single highest-leverage move and why?`,
+                a: `Agreeing the decision rule BEFORE running the experiment ('we agree in advance which result favors which option'). It removes goalpost-moving and ego — the data decides, not the loudest senior.`
+              },
+              {
+                q: `What is 'steel-manning' in a conflict story and how do you evidence it concretely?`,
+                a: `Writing down the other side's argument at its strongest and asking THEM 'did I represent your view fairly?' before arguing back. Cite that step explicitly — it's checkable behavior, not a claimed attitude.`
+              },
+              {
+                q: `Why should a conflict story include a concession you made?`,
+                a: `A story where you were 100% right and gave up nothing reads as ego or fiction. A real concession ('I dropped half the abstraction he called speculative') makes both the story and your collaboration credible.`
+              },
+              {
+                q: `What extra story angle do EU panels (NL, Nordics) frequently probe that US-style prep under-covers?`,
+                a: `Consensus-building and working across cultures/functions: 'how do you land a decision when the team disagrees?' Keep at least two stories featuring multicultural or cross-functional consensus work.`
+              },
+              {
+                q: `Are the worked templates in this section safe to use verbatim?`,
+                a: `No — they are structure/specificity references only. Interviewers have heard canned internet stories; every fact must be replaced with your own experience, or drilling will collapse the story in two questions.`
+              }
+            ]
+          },
+          {
+            title: `The Classic Questions Decoded`,
+            notes: `## What each classic is REALLY testing
+
+For each classic: the hidden rubric, the red flags, and a weak-vs-strong sketch.
+
+### 1. "Tell me about your biggest failure"
+- **Really testing:** self-awareness, honesty calibration, whether failure changed your behavior.
+- **Red flags:** humblebrag ("I work too hard"), trivial failure, blaming, no behavior change.
+- **Weak:** "A project was late once because requirements kept changing." **Strong:** "I under-scoped a migration by 3 months because I estimated from the happy path and didn't audit the data quality first. It cost us a customer commitment. Since then I run a data audit before any migration estimate — on the next one it surfaced two blockers in week one."
+
+### 2. "A conflict with a colleague"
+- **Really testing:** do you resolve with data and empathy, and does the *relationship* survive.
+- **Red flags:** you won by escalation; the other person is painted as an idiot; conflict avoided rather than resolved.
+- **Weak:** "We disagreed, I explained my reasoning, they came around." **Strong:** names the disagreement, the steel-manning step, the objective decision mechanism, a concession you made, and the state of the relationship afterwards.
+
+### 3. "Your tightest deadline"
+- **Really testing:** triage judgment — do you cut scope *explicitly* or cut quality *silently*.
+- **Red flags:** heroic all-nighters as the whole answer; quality silently sacrificed; no stakeholder renegotiation.
+- **Weak:** "We worked evenings and made it." **Strong:** "I split scope into must/should/could with the PM in week one, dropped the 'coulds' publicly, and flagged the one corner we consciously cut — with the follow-up ticket that closed it two sprints later."
+
+### 4. "A time you disagreed with your manager"
+- **Really testing:** courage + disagree-and-commit. Can you push back upward *professionally*, and can you commit fully once overruled?
+- **Red flags:** never disagreed (compliance), undermined the decision after losing, or relitigated for months.
+- **Weak:** "I shared my concerns and accepted the decision." **Strong:** "I disagreed in private with a one-pager and data, was overruled for business reasons I only partly agreed with — then executed the plan properly, and set a checkpoint where we'd revisit with real numbers. At the checkpoint, half my concern was validated and we adjusted."
+
+### 5. "Tell me about mentoring someone"
+- **Really testing:** multiplier behavior — is developing others real work you do deliberately, with results.
+- **Red flags:** "I'm always available for questions" (passive), no named outcome for the mentee.
+- **Weak:** "I onboard juniors and do thorough code reviews." **Strong:** one specific person, their specific gap, your specific method (pairing cadence, stretch task with a safety net, feedback style), and their measurable outcome (promoted, owns a service, stayed instead of quitting).
+
+### 6. "A decision you got wrong"
+- **Really testing:** intellectual honesty about *judgment* (not just execution) and how quickly you noticed and corrected.
+- **Red flags:** the "wrong decision" was actually right, or wrong only because of others; no correction speed.
+- **Weak:** "I chose framework X and it was fine but Y would have been better." **Strong:** "I chose to build in-house sync instead of buying — my bias, because it was the fun problem. Nine months in, maintenance ate 20% of the team. I recommended killing my own project and migrating. The lesson: I now write down my build-vs-buy reasoning and have someone senior attack it *before* committing."
+
+### 7. "A time you influenced without authority"
+- **Really testing:** persuasion mechanics — evidence, allies, incentives — not charm.
+- **Red flags:** "I kept explaining until they agreed" (persistence is not influence); secretly doing it anyway.
+- **Strong ingredients:** you understood *their* incentives, made the cost/benefit legible to them, ran a small proof, recruited an ally, and made it easy to say yes.
+
+### 8. "Your proudest achievement"
+- **Really testing:** what you *value* — do you pick scale, impact, people, or a shiny tech toy?
+- **Red flags:** technically-cool-but-impactless; solo glory on a team result.
+- **Strong:** business or people impact first, technology second: "proudest of X because it changed how the whole department ships, not because it was clever."
+
+### 9. "Why are you leaving / why this company?"
+- **Really testing:** motivation authenticity and whether you're running *toward* something. For sponsored roles: are you serious about the move or spraying applications?
+- **Red flags:** badmouthing current employer; answers that fit any company; "mainly for the visa/location".
+- **Strong:** 2–3 specific, checkable reasons tied to *this* company's domain, engineering culture, or product — plus a positive, short framing of why now.
+
+### 10. "How do you handle underperformance in your team?"
+- **Really testing:** fairness + spine. Do you address it early, directly, and humanely — or avoid it?
+- **Red flags:** immediate escalation to the manager; public shaming; or infinite tolerance ("everyone has bad phases").
+- **Strong:** private early conversation, diagnose cause (skill? clarity? personal?), concrete support with a timeline, honest escalation as the *last* step — with one real, anonymized example.
+
+> [!TIP]
+> Universal pattern: every classic has a **trap axis** (blame ↔ ownership, heroics ↔ system, compliance ↔ courage, avoidance ↔ spine). Before answering, locate the trap and steer to the senior end explicitly.
+
+> [!EU]
+> "Why THIS company, in THIS country?" carries extra weight when a visa is involved — panels are burnt by candidates who vanish after the offer or leave after a year. Have a country-specific answer ready (see next section), not just a company-specific one.`,
+            code: [],
+            flashcards: [
+              {
+                q: `Q: 'Tell me about your biggest failure' — what are they testing and what must your answer contain?`,
+                a: `Testing self-awareness and whether failure changed your behavior. Must contain: a real failure with real cost, YOUR causal contribution (no blame), the specific behavior change, and ideally proof you applied it later. Never a humblebrag.`
+              },
+              {
+                q: `Q: 'A conflict with a colleague' — what is the pass/fail signal most candidates miss?`,
+                a: `The state of the relationship AFTERWARDS. Winning by escalation or painting the other person as incompetent fails; resolving with data + empathy, making a visible concession, and a working relationship after is the pass.`
+              },
+              {
+                q: `Q: 'Your tightest deadline' — what distinguishes a strong answer from a heroic one?`,
+                a: `Explicit scope triage, not silent quality cuts: must/should/could negotiated with stakeholders, cuts announced publicly, any consciously-cut corner flagged with a follow-up that later closed it. All-nighters alone = weak.`
+              },
+              {
+                q: `Q: 'A time you disagreed with your manager' — what two behaviors must BOTH appear?`,
+                a: `1) Professional upward pushback (private, with data, e.g. a one-pager) and 2) genuine disagree-and-commit after being overruled — full execution plus a data checkpoint to revisit, not sabotage or eternal relitigating.`
+              },
+              {
+                q: `Q: 'Tell me about mentoring someone' — what makes the answer scoreable?`,
+                a: `One specific person, their specific gap, your deliberate method (pairing cadence, stretch task with safety net), and a measurable mentee outcome (promoted, owns a service, retained). 'I'm always available for questions' scores zero.`
+              },
+              {
+                q: `Q: 'A decision you got wrong' — how does it differ from the biggest-failure question?`,
+                a: `It targets JUDGMENT, not execution: a call that was wrong given what you could have known, your bias behind it (e.g. build-vs-buy because building was fun), how fast you noticed, and the correction — ideally killing your own work.`
+              },
+              {
+                q: `Q: 'Influenced without authority' — what mechanics does a strong answer show instead of persistence?`,
+                a: `Understanding the other side's incentives, making cost/benefit legible in their terms, a small proof-of-concept, recruiting an ally, and making 'yes' cheap. 'I kept explaining until they agreed' is a red flag.`
+              },
+              {
+                q: `Q: 'Your proudest achievement' — what is it secretly testing?`,
+                a: `Your values. Picking a technically-cool-but-impactless toy, or taking solo credit for a team result, are the traps. Strong answers lead with business/people impact and treat the technology as the means.`
+              },
+              {
+                q: `Q: 'Why are you leaving your current job?' — the two red flags and the safe structure?`,
+                a: `Red flags: badmouthing the current employer, and generic answers that fit any company. Safe: short positive framing of 'why now', then 2–3 specific checkable reasons tied to THIS company's domain/culture/product.`
+              },
+              {
+                q: `Q: 'How do you handle an underperformer?' — what sequence signals senior judgment?`,
+                a: `Early private conversation, diagnose the cause (skill vs clarity vs personal), concrete support with a timeline, escalation only as last step — plus one real anonymized example. Instant escalation OR infinite tolerance both fail.`
+              },
+              {
+                q: `What is the 'trap axis' technique for any behavioral classic?`,
+                a: `Every classic hides an axis: blame↔ownership, heroics↔systemic fix, compliance↔courage, avoidance↔spine. Identify which axis the question sits on, then explicitly steer your answer to the senior end.`
+              },
+              {
+                q: `For visa-sponsored roles, what extra weight does 'why this company?' carry?`,
+                a: `Panels screen for flight risk — candidates who vanish post-offer or leave within a year. You need a country-specific answer (why THIS country, with evidence of research into life/work there), not just a company-specific one.`
+              }
+            ]
+          },
+          {
+            title: `EU-Specific Strategy — Visa, Salary, Culture`,
+            notes: `## Interviewing for visa-sponsorship roles
+
+> [!EU]
+> When a company sponsors, it invests €2–10k and 2–4 months of process in you. Every interviewer silently asks: *will this person actually come, stay, and function here?* Your job is to remove that doubt proactively.
+
+**Addressing relocation/visa questions confidently:**
+- Answer "why here?" with **researched specifics**: name the tech scene (e.g. Amsterdam's payments cluster, Berlin's startup density, Stockholm's engineering culture), and one or two life factors you have genuinely considered (schools, language, family situation). Vague "I love Europe" reads as flight risk.
+- Know your own paperwork better than the recruiter: for Germany, the **EU Blue Card** salary threshold (recalculated annually — check the current figure, reduced threshold for shortage occupations including IT); Netherlands, the **Highly Skilled Migrant (kennismigrant)** route via a recognized sponsor + the **30% ruling** tax facility (check current terms — it has been repeatedly trimmed); Sweden/Denmark, standard work permits with employer offers meeting collective-agreement terms. Saying "I've checked — I qualify for the Blue Card at this salary level" converts risk into confidence.
+- **Timing expectations:** communicate honestly — typically 1–3 months from signed offer to first day across DE/NL/Nordics when the employer is an experienced sponsor. If asked "when could you start?", give a realistic range and show you know the steps ("visa appointment, apostilled documents, housing — I've mapped it").
+- Never lead compensation talks with the visa. The visa is logistics; your leverage is your engineering value.
+
+## Salary negotiation norms: DE / NL / Nordics
+
+> [!EU]
+> Key mental shift for candidates from US-style markets: EU offers are quoted as **annual gross salary** (Brutto/bruto), equity is rarer and smaller outside big tech, and the negotiation range is tighter — typically **5–15%** movement, not 30%. But negotiation is still expected at senior level; not negotiating at all can even read as junior.
+
+| Topic | Germany | Netherlands | Nordics (SE/DK/NO/FI) |
+|---|---|---|---|
+| Quoted as | Annual gross (Brutto), often ×12 or ×13 payments — ask which | Annual gross incl. 8% statutory holiday allowance — ask if included | Monthly gross is common — convert carefully to annual |
+| Extras to probe | Bonus %, car/transport, pension top-up | 30% ruling eligibility (huge net difference), 13th month, pension | Pension contributions (often generous), collective agreements, vacation (25–30 days norm) |
+| Range culture | Ranges increasingly published (EU Pay Transparency Directive rolling in) | Often shared by recruiter if asked directly | Compressed bands, smaller spread junior↔senior than US/UK |
+| When to name a number | Deflect once ("I'd like to understand the role's band first"), then give a researched range | Same; Dutch directness means a straight question — a straight range answer works well | Name a range confidently but expect less headroom; over-anchoring can price you out |
+
+**When to name a number:** first, try to get the band ("could you share the budgeted range for this role?" — increasingly answerable under EU pay-transparency rules). If pressed, give a **researched range** anchored to local market data (levels.fyi has EU data; local sources: Gehalt.de/kununu for DE, Loonwijzer/Intermediair for NL, union stats in Nordics) and state it as gross annual including what you know of bonus/holiday allowance. Account for the **net difference**: NL with 30% ruling can beat a nominally higher German gross; Nordic taxes are higher but pensions/benefits are substantial.
+
+> [!WARNING]
+> Comparing offers across countries by gross salary alone is the classic relocation mistake. Model: net after tax (with/without 30% ruling), pension contributions, vacation days, healthcare setup, and cost of living (Munich ≠ Leipzig, Amsterdam ≠ Eindhoven).
+
+## Working language & cultural notes
+
+- **Dutch directness:** feedback is blunt and immediate, hierarchy is flat, meetings are for *discussion*, and pushing back on your interviewer (respectfully, with reasons) scores points. Being over-polished or indirect can read as evasive.
+- **German engineering culture:** thoroughness is a virtue — deep technical follow-ups are normal, "I don't know, but here's how I'd find out" beats bluffing by a mile. Punctuality to interviews is table stakes. Titles and process matter more than in NL.
+- **Scandinavian consensus:** decisions are made *with* the team, not announced to it. Lone-hero stories land badly; stories about aligning a group land well. Flat hierarchy is real — the interviewer may be very senior and utterly unassuming ("Jantelagen" humility). Overselling yourself is a cultural mismatch signal.
+- **Meeting culture generally:** agendas honored, meetings end on time, calendars respected. Work-life boundaries are genuine — an interviewer asking "how do you switch off?" wants a real answer, not "I'm always on".
+- **Working language:** confirm it explicitly — most tech teams in these markets work in English, but *company* language may differ (all-hands, docs, HR). Ask "is the working language of the team and of the wider company English?" Learning basics of the local language is a plus signal for staying power, but rarely a requirement in tech.
+
+## Smart questions to ask the panel
+
+1. "How many engineers have you sponsored through relocation in the last two years, and does HR or an agency run the process?" (tests sponsorship maturity)
+2. "What does the path from senior to staff/principal look like here — and is there a real IC track?" (many EU companies still push seniors into management)
+3. "How are technical decisions made between teams — RFCs, architecture board, or team autonomy?"
+4. "What's the on-call model and how is it compensated?" (varies wildly in the EU; sometimes regulated or paid separately)
+5. "How did the team handle the last serious production incident?" (culture X-ray: blame vs learning)
+6. "What would make the person in this role clearly successful after 12 months?"
+
+## Red flags to watch as a candidate
+
+> [!DANGER]
+> - Sponsorship promised only verbally, "we'll sort the visa after you sign" — insist on the visa/relocation terms **in the offer letter**.
+> - No one at the company has ever been relocated before and there's no relocation partner: expect months of improvisation.
+> - Salary quoted ambiguously (monthly vs annual, holiday allowance in or out) that no one can pin down in writing.
+> - "Probation period" (up to 6 months in DE/NL — normal!) combined with vague role definition: normal probation is fine, but know that your residence status is tied to the job in the early years — role clarity matters more for you than for a local hire.
+> - Interviewers who can't answer question 5 above, or who describe incidents in blame language.
+
+> [!SUCCESS]
+> The confident closing posture for a sponsored candidate: "I've researched the visa route and I qualify; my timeline is X; my range, gross annual, is Y based on Z market data; and here's why this company and this country specifically." Every sentence removes a doubt the panel already had.`,
+            code: [
+              {
+                lang: `text`,
+                title: `Phrase bank — visa & salary conversations (adapt to your situation)`,
+                code: `VISA / RELOCATION
+"I've researched the route: at this salary level I qualify for the
+ EU Blue Card / Highly Skilled Migrant scheme, so the process should
+ be the standard 1-3 months. I've already collected the documents
+ that need apostilles."
+"My family and I have discussed the move seriously - [specific,
+ honest factor: schools / partner's plans / language course booked]."
+"To confirm my planning: is the visa handled by internal HR or a
+ relocation partner, and is that written into the offer?"
+
+SALARY - GETTING THE BAND FIRST
+"Could you share the budgeted range for this role? With EU pay
+ transparency I assume there's a defined band."
+"Before numbers - is that annual gross, and does it include the
+ holiday allowance / 13th month / bonus target?"
+
+SALARY - NAMING A RANGE (when pressed)
+"Based on [levels.fyi / local source] for senior backend roles in
+ [city], I'm targeting X-Y gross annual, including holiday allowance.
+ I'm flexible on the split between base and bonus if the total works."
+
+DEFLECTING A LOWBALL WITHOUT BURNING THE BRIDGE
+"That's below the market data I'm seeing for this scope. If the band
+ is fixed, could we look at [pension top-up / extra vacation /
+ relocation budget / earlier review]? The role is the right fit -
+ I'd like to make the numbers work."
+
+CLOSING POSTURE
+"I want to be transparent: you're my preferred option because
+ [specific reason]. I have [state honestly: other processes /
+ a timeline]. What does your decision timeline look like?"`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What silent question does every interviewer have about a visa-sponsorship candidate, and how do you neutralize it?`,
+                a: `'Will this person actually come, stay, and function here?' Neutralize proactively: researched country-specific reasons, knowledge of your own visa route ('I qualify for the Blue Card at this level'), a realistic start timeline, and evidence the move is family-agreed.`
+              },
+              {
+                q: `Name the main visa routes for senior engineers in Germany and the Netherlands.`,
+                a: `Germany: EU Blue Card — salary threshold recalculated annually, reduced for shortage occupations including IT. Netherlands: Highly Skilled Migrant (kennismigrant) via a recognized sponsor, plus the 30% tax ruling (check current, repeatedly-trimmed terms).`
+              },
+              {
+                q: `How is salary quoted in DE vs NL vs the Nordics, and what must you always clarify?`,
+                a: `DE: annual gross (Brutto), sometimes 12 vs 13 payments. NL: annual gross — ask if the 8% statutory holiday allowance is included. Nordics: often MONTHLY gross. Always pin down: gross vs net, annual vs monthly, holiday allowance/13th month in or out — in writing.`
+              },
+              {
+                q: `How much negotiation headroom is typical in EU offers, and is negotiating expected?`,
+                a: `Typically 5–15%, far tighter than US-style 30% swings — but negotiating IS expected at senior level; accepting instantly can even read as junior. If base is capped, negotiate pension top-up, vacation, relocation budget, review timing.`
+              },
+              {
+                q: `When should you name a salary number, and how?`,
+                a: `Try to get the band first ('could you share the budgeted range?' — increasingly answerable under the EU Pay Transparency Directive). If pressed, give a researched RANGE, stated as gross annual including holiday allowance, anchored to named market data.`
+              },
+              {
+                q: `Why can a nominally lower Dutch offer beat a higher German one?`,
+                a: `The 30% ruling can make a large portion of NL income effectively tax-advantaged, changing the net dramatically. Compare offers on net income + pension + vacation + cost of living — never on gross alone.`
+              },
+              {
+                q: `How should you adjust your interview style for a Dutch panel?`,
+                a: `Expect and mirror directness: blunt questions are normal, flat hierarchy is real, and pushing back respectfully with reasons scores points. Over-polished, indirect, or evasive-sounding answers cost you.`
+              },
+              {
+                q: `How should you adjust for a Scandinavian panel?`,
+                a: `Consensus culture: lone-hero stories land badly; aligning-the-group stories land well. Humility norms (Jante) mean overselling is a mismatch signal — let quantified results carry the bragging. The unassuming interviewer may be the most senior person in the room.`
+              },
+              {
+                q: `What is the German-panel norm when you hit a question you can't answer?`,
+                a: `Thoroughness culture rewards 'I don't know, but here's exactly how I'd find out' over any bluff. Deep technical follow-up chains are normal, not hostility. Punctuality and preparation are table stakes.`
+              },
+              {
+                q: `Give three high-signal questions a senior candidate should ask an EU panel.`,
+                a: `1) 'How many engineers have you relocated in the last two years, and who runs the process?' 2) 'Is there a real IC track beyond senior, or does growth mean management?' 3) 'How did the team handle its last serious incident?' (blame vs learning X-ray).`
+              },
+              {
+                q: `Name four red flags for a sponsored candidate evaluating an offer.`,
+                a: `Visa promised verbally but absent from the offer letter; no relocation track record or partner; salary structure nobody will pin down in writing (monthly/annual, allowance in/out); blame-language answers about past incidents.`
+              },
+              {
+                q: `Is a 6-month probation period in a German or Dutch offer a red flag?`,
+                a: `No — up to 6 months probation is standard and legal in DE/NL. The real issue is probation COMBINED with a vague role definition: since your residence status is tied to the job early on, insist on role clarity and written visa/relocation terms.`
               }
             ]
           }
@@ -55558,193 +56119,647 @@ starStories.forEach(s => console.log(" -", s.title, "→", s.principles.join(", 
       {
         id: `10.2`,
         title: `System Design Communication`,
-        hours: 3,
+        hours: 4,
         sections: [
           {
-            title: `System Design Interviews — Framework & Common Questions`,
-            notes: `## System Design Interviews — Framework & Communication
+            title: `What's Actually Scored in a Design Interview`,
+            notes: `## There is no "right answer" — there is a scored performance
 
-### The RADAD Framework
+A senior system-design round is scored on **how you think out loud**, not on whether you reproduce the interviewer's favorite architecture. Two candidates can draw nearly identical boxes and receive opposite outcomes. The rubric behind most scorecards:
 
+| What's scored | What it looks like in the room |
+|---|---|
+| **Structure** | A visible plan announced up front, followed, and adjusted openly |
+| **Requirements discipline** | Functional + non-functional scope pinned down *before* any technology appears |
+| **Trade-off reasoning** | Every choice has a named alternative and a reason tied to the requirements |
+| **Depth on demand** | You can zoom from boxes to partition keys to failure modes when poked |
+| **Collaboration** | The interviewer feels like a design partner, not an audience |
+| **Time management** | You reach a working end-to-end design with deep dives, not a beautiful fragment |
+
+### Driving vs being dragged
+
+The single strongest senior signal is **driving**: you propose the agenda, you decide what to deepen, you check in ("I'd like to go deep on the storage layer next — or is there an area you'd rather explore?"). Being dragged looks like: silence until prompted, answering exactly what was asked and stopping, waiting for permission before every move.
+
+> [!TIP]
+> Driving is not monologuing. The rhythm is: **propose → check → proceed**. "I'll start with requirements, then estimate scale, then the API and data model, then the high-level design, and we'll go deep wherever it's most interesting — does that work for you?" Ten seconds, and you've already banked the structure points.
+
+### Collaboration signals interviewers write down
+
+- You **incorporate hints immediately**. An interviewer's question is nearly always a hint. "How would that behave if a region goes down?" means *your design has a regional failure problem — find it.* Candidates who brush past hints ("it'd be fine") fail; candidates who treat them as design input ("good push — let me trace that... actually the session store is a single point, let me fix that") pass.
+- You **verbalize uncertainty honestly**: "I've not run Cassandra in production; I'd validate this with someone who has, but from its design the wide-row model fits here."
+- You **ask before assuming on genuine forks**, and **assume-and-state on trivia** (details in the next section).
+
+### How seniors lose
+
+> [!DANGER]
+> The classic senior failure modes — all avoidable:
+> - **Silence while thinking.** Thirty silent seconds gives the interviewer nothing to score. Think out loud, even messily: "two options come to mind, let me weigh them."
+> - **Buzzword architecture.** "We'll use Kafka, Redis, Kubernetes and CQRS" with no *why*. Every named technology is an invitation to drill; unjustified name-drops are self-planted landmines.
+> - **Jumping to tech before requirements.** Drawing microservices in minute two tells the panel you design by pattern-matching, not by need. It's the most common auto-downgrade for experienced candidates.
+> - **Ignoring hints.** See above — it's scored as poor collaboration *and* poor judgment.
+> - **The perfect corner.** Spending 30 minutes gold-plating ingestion and never reaching storage, reads as inability to prioritize — exactly what senior roles exist to prevent.
+> - **Fighting the interviewer.** Defending a challenged choice to the death instead of exploring the challenge. You can disagree — gracefully, once, with a reason (see the curveballs section).
+
+### Seniority is calibration, not vocabulary
+
+A mid-level engineer names concepts; a senior *ranks* them for the situation at hand. "Consistency matters here for the payment path, but the feed can be eventually consistent — so I'll split the design along that line" is worth more than any list of theorems. Show that you know **which parts of the problem deserve the expensive treatment** — that judgment is the actual product of a senior design round.
+
+> [!EU]
+> EU panels (especially NL and Nordics) weight the collaboration column heavily — a candidate who steamrolls the interviewer can lose the round *despite* a flawless design. Check in more often than feels natural, invite pushback ("what would you challenge here?"), and treat the session explicitly as pair-design.`,
+            code: [],
+            flashcards: [
+              {
+                q: `What is actually scored in a senior system-design interview?`,
+                a: `Structure (visible plan), requirements discipline, trade-off reasoning (named alternatives + reasons), depth on demand, collaboration, and time management. NOT whether you reproduce a specific 'correct' architecture.`
+              },
+              {
+                q: `What does 'driving vs being dragged' mean, and what's the rhythm of healthy driving?`,
+                a: `Driving: you propose the agenda, choose deep-dive areas, and check in. Dragged: silence until prompted, minimal answers. Rhythm: propose → check → proceed ('I'll do requirements, estimation, API, design, then deep dives — does that work?').`
+              },
+              {
+                q: `How should you interpret almost any interviewer question mid-design?`,
+                a: `As a hint that your design has an issue there. 'What if a region goes down?' = there's a regional failure problem — trace it, find it, fix it visibly. Brushing hints aside ('it'd be fine') is scored as poor collaboration AND poor judgment.`
+              },
+              {
+                q: `Why is silence while thinking a scored failure, and what's the fix?`,
+                a: `The interviewer can only score what they observe; 30 silent seconds produces zero evidence. Fix: narrate the deliberation — 'two options come to mind: X gives us..., Y gives us...; given the write volume I'll take Y.'`
+              },
+              {
+                q: `Why is buzzword architecture ('Kafka + Redis + CQRS') self-destructive?`,
+                a: `Every named technology is an invitation to drill. Name-dropping without a requirement-tied justification plants landmines: the follow-up 'why Kafka and not a simple queue?' will expose the pattern-matching.`
+              },
+              {
+                q: `What is the most common auto-downgrade for EXPERIENCED design candidates?`,
+                a: `Jumping to technology/boxes before pinning requirements. Drawing microservices in minute two signals design-by-pattern-matching. Seniors visibly derive the design from stated functional and non-functional requirements.`
+              },
+              {
+                q: `What is the 'perfect corner' failure mode?`,
+                a: `Gold-plating one component (say, ingestion) for 30 minutes and never completing an end-to-end design. It's scored as inability to prioritize — a complete rough design with 1–2 deep dives always beats a beautiful fragment.`
+              },
+              {
+                q: `How do you handle a technology you've never run in production but want to propose?`,
+                a: `Verbalize the uncertainty honestly: 'I haven't operated Cassandra in production; from its design the wide-row model fits, and I'd validate operational aspects with someone who has.' Honest calibration is a senior signal; bluffed experience collapses under drilling.`
+              },
+              {
+                q: `What distinguishes senior calibration from mid-level vocabulary?`,
+                a: `Ranking concerns for THIS problem: 'payments need strong consistency, the feed can be eventual — I'll split the design along that line.' Knowing which parts deserve the expensive treatment beats naming every theorem.`
+              },
+              {
+                q: `How do EU panels (NL/Nordics) weight the rubric differently, and how do you adapt?`,
+                a: `Collaboration is weighted heavily — steamrolling the interviewer can sink a technically flawless round. Check in more often than feels natural, explicitly invite pushback ('what would you challenge here?'), treat it as pair-design.`
+              },
+              {
+                q: `The interviewer challenges a choice you believe is right. What's the scored-well response pattern?`,
+                a: `Explore the challenge first (steel-man it against your design), then either adopt it or respectfully hold with a reason tied to requirements — once. Fighting to the death is a collaboration fail; instant capitulation is a conviction fail.`
+              }
+            ]
+          },
+          {
+            title: `A Repeatable Framework with a Time Budget`,
+            notes: `## Seven stages, two clock speeds
+
+One framework, rehearsed until automatic, so your working memory goes to the *problem* instead of the *process*:
+
+**Requirements → Estimation → API → Data model → High-level design → Deep dives → Wrap**
+
+\`\`\`mermaid
+flowchart TD
+    A["1. Requirements<br/>functional + non-functional<br/>45min: 5' / 60min: 7'"] --> B["2. Estimation<br/>QPS, storage, bandwidth<br/>45: 3' / 60: 5'"]
+    B --> C["3. API sketch<br/>core endpoints/contracts<br/>45: 3' / 60: 5'"]
+    C --> D["4. Data model<br/>entities, keys, indexes<br/>45: 4' / 60: 5'"]
+    D --> E["5. High-level design<br/>end-to-end boxes + flows<br/>45: 10' / 60: 13'"]
+    E --> F["6. Deep dives x2<br/>scaling, consistency,<br/>failure modes<br/>45: 15' / 60: 20'"]
+    F --> G["7. Wrap<br/>bottlenecks, evolution,<br/>what I'd do differently<br/>45: 3' / 60: 5'"]
+    A -. "requirements change?<br/>loop back openly" .-> E
 \`\`\`
-R — Requirements:   functional + non-functional; clarify before designing
-A — Assumptions:    state what you're assuming (scale, usage patterns)
-D — Data model:     entities, relationships, storage choices
-A — APIs:           key endpoints and their contracts
-D — Deep dive:      bottlenecks, scaling, failure modes, trade-offs
-\`\`\`
 
-### Requirements Phase — What to Ask
+### The time budget
 
-\`\`\`
-Functional requirements (what the system does):
-  "What are the core user actions? Create/read/update/delete?"
-  "Who are the users — consumers, businesses, internal?"
-  "What are the read vs write patterns?"
+| Stage | 45-min round | 60-min round | Exit criterion (move on when...) |
+|---|---|---|---|
+| 1. Requirements | 5 min | 7 min | You can state scope in 2 sentences + 3–4 NFR numbers |
+| 2. Estimation | 3 min | 5 min | QPS + storage order-of-magnitude, and a conclusion drawn from them |
+| 3. API | 3 min | 5 min | 3–5 core endpoints, no exhaustive CRUD |
+| 4. Data model | 4 min | 5 min | Main entities, the partition/primary key question raised |
+| 5. High-level design | 10 min | 13 min | Every requirement traceable to a box; a request traced end-to-end |
+| 6. Deep dives (×2) | 15 min | 20 min | Chosen jointly; each dive names a failure mode + mitigation |
+| 7. Wrap | 3 min | 5 min | Bottlenecks named, evolution path stated |
 
-Non-functional requirements (how well it does it):
-  "What scale? Daily active users? Requests per second?"
-  "What's the acceptable latency? P99 < 200ms? P50 < 50ms?"
-  "What consistency do we need? Strong (banking) or eventual (social feed)?"
-  "Availability target? 99.9% (8.7h/year downtime) or 99.99% (52m/year)?"
-  "Geographic distribution? Single region or global?"
+> [!WARNING]
+> The budget's job is the **exit criteria**, not the stopwatch. Requirements past 8 minutes is stalling; estimation past 5 minutes is arithmetic theater — round aggressively (100k/day ≈ 1/s sustained, ~×10 for peak; 86,400 ≈ 10^5 seconds/day) and *draw a conclusion*: "that's ~2 TB/year — fits one Postgres primary for years, so no sharding on day one."
 
-Common clarifications:
-  "Should we handle media (images, video) or just text/structured data?"
-  "Do we need real-time (WebSocket) or near-real-time polling?"
-  "Is read >> write (10:1, 100:1) or roughly balanced?"
-\`\`\`
+### Transition phrases — the connective tissue
 
-### Back-of-Envelope Estimates
+Stage transitions are where structure points are won. Memorize the *function* of each phrase, adapt the words:
 
-\`\`\`
-Very rough numbers to size the system:
-  DAU (Daily Active Users) → 10M users
-  Requests per user per day → 10 reads, 1 write
-  Total reads/day: 100M → 100M/86400 ≈ 1,200 read RPS
-  Total writes/day: 10M → 10M/86400 ≈ 115 write RPS
+- **Into requirements:** "Before I draw anything, let me confirm scope — who are the users, what are the top three operations, and what scale are we designing for?"
+- **Requirements → estimation:** "I think I have enough to size this. Let me do quick math to see what class of problem we're in."
+- **Estimation → API:** "So we're read-heavy at roughly 10:1 — that will shape everything. Let me pin the API before the boxes."
+- **API → data model:** "These endpoints imply three core entities — let me sketch how they're stored, because the partition key choice will drive the design."
+- **Data model → high-level:** "Now I'll draw the end-to-end picture — I'll start simple and we can stress it afterwards."
+- **High-level → deep dives:** "The skeleton is complete. I see two areas worth going deep on: X and Y. Which is more interesting for you — or shall I pick?"
+- **Into wrap (self-initiated at T-minus-5):** "Let me use the last minutes to summarize: what we built, the main trade-offs, the bottlenecks I'd watch, and what I'd evolve first."
 
-  Write 1KB per event → 115 KB/s → ~10 GB/day → ~300 GB/month
-  Read objects 10KB avg → 1,200 × 10KB = 12 MB/s bandwidth
+> [!TIP]
+> The deep-dive handoff phrase ("which is more interesting for you — or shall I pick?") is the highest-value sentence in the entire round: it demonstrates driving *and* collaboration in one breath, and it steers the dive toward your strengths if the interviewer has no preference.
 
-  With 3× replication + 5× buffer → need ~150 GB/month storage initially
+### When to ask vs when to assume-and-state
 
-Use these to justify choices:
-  "1,200 RPS is well within a single Postgres server's capacity"
-  "For 12 MB/s read throughput, we'd want Redis caching the hot 20%"
-\`\`\`
+| Situation | Move |
+|---|---|
+| Genuine fork that changes the architecture (read/write ratio, consistency needs, scale, mobile vs API consumers) | **Ask.** "Is this read-heavy like a feed, or write-heavy like telemetry?" |
+| Detail that doesn't change the shape (exact retention days, auth provider, tie-breaking rules) | **Assume and state.** "I'll assume 30-day retention — adjustable later." |
+| Interviewer answers "you decide" | Decide *out loud* with a reason, and record the assumption on the diagram |
+| You've asked ~5 questions already | Stop asking. Requirements interrogation past ~5 questions reads as stalling — switch to assume-and-state mode |
 
-### Common System Design Questions & Key Points
+> [!SUCCESS]
+> Write assumptions in a corner of the diagram as you make them ("ASSUME: 30d retention, 10:1 read/write, EU-only launch"). It shows discipline, and in the wrap you can revisit them in one glance.
 
-\`\`\`
-Design a URL Shortener (bit.ly):
-  - Key insight: write-once, read-many (100:1 read:write)
-  - 7-char base62 key → 62^7 = 3.5 trillion URLs
-  - Hash (SHA-256 → take 7 chars) or auto-increment + base62 encode
-  - Heavy cache: top 20% URLs get 80% traffic → Redis TTL cache
-  - Single writer (no collision risk), read replicas for scale
-
-Design a Notification System:
-  - Fan-out: user has 10M followers → can't do synchronously
-  - Pre-compute: store notifications per user at write time
-  - Push (websocket/FCM/APNS) vs Pull (polling) vs mix
-  - Priority queues: transactional > marketing
-
-Design a Rate Limiter:
-  - Token Bucket: smooth bursts; Fixed Window: simple; Sliding Window: accurate
-  - Redis INCR with TTL per user per window
-  - Distributed: Redis cluster (centralised) or per-node + gossip
-
-Design a Search Service:
-  - Inverted index: word → list of document IDs
-  - Elasticsearch: pre-built, handles scoring, fuzzy match, aggregations
-  - Separate indexing pipeline from query pipeline
-  - Cache hot queries: same search happens many times
-\`\`\`
-
-### Trade-off Communication
-
-\`\`\`
-The interviewer is testing: do you understand WHY, not just WHAT.
-Always say "I chose X over Y because..." and mention the trade-off you accept.
-
-Examples:
-  "I'd use Kafka over RabbitMQ here because our throughput is 50k msg/sec and we
-   need replay capability for the analytics team. Trade-off: higher operational
-   complexity and no message TTL expiry built in."
-
-  "I'd use Redis for this counter rather than Postgres because we need < 1ms
-   write latency and can tolerate losing up to 1 second of data on Redis restart.
-   If the counter were financial, I'd accept the latency and use Postgres."
-
-  "I'd denormalize this table for the read path because our read:write ratio is 100:1.
-   Trade-off: writes become slightly more complex and data duplication requires
-   a sync job."
-\`\`\``,
+> [!EU]
+> Many EU rounds are 60 minutes and *conversational* — interviewers may interrupt with "what would you do differently on-prem?" or GDPR-flavored constraints ("this data must stay in the EU"). Budget slack for it, and treat data-residency as a first-class NFR: mentioning EU data residency unprompted in the requirements stage is a strong regional signal.`,
             code: [
-              `// System Design Cheat Sheet — key numbers to memorise
-// Use these in back-of-envelope calculations
+              {
+                lang: `text`,
+                title: `Transition phrase bank — one line per stage boundary (adapt wording)`,
+                code: `OPENING (structure declaration)
+"Here's how I'd like to run this: requirements, quick estimation,
+ API, data model, high-level design, then deep dives where it's most
+ interesting. Sound good?"
 
-const NUMBERS_TO_KNOW = {
-  // Time
-  L1_cache_reference: "0.5ns",
-  L2_cache_reference: "7ns",
-  RAM_read_1MB:       "250μs",
-  SSD_read_1MB:       "1ms",
-  HDD_read_1MB:       "20ms",
-  network_roundtrip:  "0.5ms (same DC), 150ms (US↔Europe)",
+BEFORE ANY DRAWING
+"Before I draw anything, let me confirm scope: top three user
+ operations, and the scale we're designing for."
 
-  // Scale
-  seconds_per_day: 86400,
-  requests_per_second_calc: "1M / 86400 ≈ 12 RPS per million users per day",
+CLOSING REQUIREMENTS
+"Summary: we're building X for Y users, prioritizing Z. Non-functional:
+ ~N QPS, p99 under M ms, availability over consistency for the feed.
+ I'll write these in the corner and design against them."
 
-  // Storage
-  one_tweet:        "~280 bytes",
-  one_photo:        "~200KB",
-  one_video_minute: "~50MB",
-  postgres_single:  "~50k QPS reads, ~10k QPS writes",
-  redis_single:     "~100k RPS",
-  kafka_partition:  "~100MB/s throughput",
+ESTIMATION WITH A CONCLUSION
+"~100k writes/day is about 1/s sustained, call it 10/s peak - tiny.
+ Reads at 10:1 -> ~100/s. Conclusion: one database with a cache
+ handles this; the interesting problem is the fan-out, not raw scale."
 
-  // Availability
-  "99.9%":  "8.7 hours downtime/year",
-  "99.99%": "52 minutes downtime/year",
-  "99.999%":"5 minutes downtime/year",
-};
+FORCED ASSUMPTION
+"I'll assume 30-day retention and EU-only launch - noted on the board,
+ easy to revisit if wrong."
 
-// Design framework template
-const systemDesignTemplate = {
-  step1_requirements: {
-    functional:    ["Core user actions", "Read/write patterns", "User types"],
-    nonFunctional: ["Scale (DAU, RPS)", "Latency (P99)", "Availability", "Consistency"]
-  },
-  step2_estimates: {
-    questions: [
-      "DAU × actions/day ÷ 86400 = RPS",
-      "RPS × payload size = bandwidth",
-      "bandwidth × 30 × 12 = yearly storage"
-    ]
-  },
-  step3_dataModel: {
-    identify:  "Core entities and their relationships",
-    storage:   "SQL (relational, ACID) vs NoSQL (flexible schema, scale)",
-    consider:  "Sharding key, indexing strategy, normalization vs denormalization"
-  },
-  step4_apis: {
-    format:  "REST endpoints with request/response",
-    include: "Auth headers, pagination, rate limiting headers"
-  },
-  step5_deepDive: {
-    bottlenecks: ["Where is the hot path?", "What fails first under load?"],
-    scaling:     ["Read replicas", "Caching", "CDN", "Sharding", "Async processing"],
-    tradeoffs:   ["Consistency vs Availability (CAP)", "Latency vs Durability", "Cost vs Performance"]
-  }
-};
+ENTERING DEEP DIVES
+"The skeleton covers every requirement. Two areas deserve depth:
+ the fan-out strategy and the storage partitioning. Which is more
+ interesting for you - or shall I pick?"
 
-// Trade-off vocabulary — use these phrases
-const tradeoffPhrases = [
-  "I chose X over Y because... the trade-off I accept is...",
-  "This is eventually consistent, which is acceptable because...",
-  "We'd fan-out at write time rather than read time because our read:write ratio is...",
-  "This denormalization is justified by our 100:1 read:write ratio",
-  "We'd start with a single-region deployment and add geo-replication if...",
-];
-
-console.log("System Design Framework loaded");
-console.log("Key steps:", Object.keys(systemDesignTemplate).join(" → "));`
+SELF-INITIATED WRAP (at T-5)
+"Let me wrap: what we built, the two big trade-offs, the first
+ bottleneck at 10x, and what I'd build first in week one."`
+              }
             ],
             flashcards: [
               {
-                q: `What questions should you always ask before designing a system?`,
-                a: `Functional: What are the core user actions? Who are the users? What are the read vs write patterns? Are there media uploads? Real-time requirements? Non-functional (these drive architecture choices): Scale — DAU, RPS, data size? Latency — P99 < X ms? Availability — 99.9% vs 99.99%? Consistency — strong (banking) or eventual (social feed)? Geography — single region or global? Rule: spend 5 minutes on requirements. Designs that skip this phase fail because they optimize for the wrong thing. Say explicitly: "Let me make sure I understand the requirements before designing."`
+                q: `Recite the seven-stage design-interview framework in order.`,
+                a: `Requirements → Estimation → API sketch → Data model → High-level design → Deep dives (×2) → Wrap. Rehearse until automatic so working memory goes to the problem, not the process.`
               },
               {
-                q: `How do you calculate RPS from DAU in a back-of-envelope estimate?`,
-                a: `Formula: RPS = (DAU × actions_per_user_per_day) / 86400. Example: 10M DAU, 10 reads per user per day → 100M reads/day ÷ 86400 ≈ 1,200 read RPS. 1 write per user → 115 write RPS. Quick rule: 1M daily events ≈ 12 RPS. Storage: RPS × payload_size × seconds_per_day × retention_days. Use these to justify: "1,200 RPS is within a single Postgres read replica's capacity, so we don't need sharding initially." Interviewers value the reasoning, not the exact number. Say your assumptions aloud.`
+                q: `Give the approximate 45-minute time budget across the seven stages.`,
+                a: `Requirements 5', estimation 3', API 3', data model 4', high-level design 10', deep dives 15', wrap 3' (≈43' + slack). In 60 minutes: 7/5/5/5/13/20/5.`
               },
               {
-                q: `What is the CAP theorem and how should you apply it in a system design interview?`,
-                a: `CAP: a distributed system can guarantee at most 2 of 3: Consistency (all nodes return same data), Availability (every request gets a response), Partition tolerance (system works despite network splits). Network partitions WILL happen — so the real choice is CP vs AP. CP (Consistency + Partition tolerance): on partition, refuse requests rather than return stale data. Use for: banking, inventory (correctness > availability). Example: Zookeeper, HBase. AP (Availability + Partition tolerance): on partition, serve stale data rather than fail. Use for: social feeds, shopping carts (availability > strong consistency). Example: DynamoDB, Cassandra. In interviews: state your choice and justify it based on the requirements you clarified.`
+                q: `What is the exit criterion for the requirements stage, and what does overstaying signal?`,
+                a: `Scope statable in two sentences plus 3–4 non-functional numbers (QPS, latency, availability/consistency priority). Past ~8 minutes (or ~5 questions) it reads as stalling — switch to assume-and-state.`
+              },
+              {
+                q: `What makes estimation valuable — and what makes it 'arithmetic theater'?`,
+                a: `Valuable: rounded orders of magnitude that produce a CONCLUSION ('~2TB/year — one Postgres primary for years, no day-one sharding'). Theater: precise long division with no design consequence drawn from the result.`
+              },
+              {
+                q: `What's the standard mental math for converting daily volume to QPS?`,
+                a: `A day is ~10^5 seconds (86,400). So 100k/day ≈ 1/s sustained; multiply ~10x for peak. 10M/day ≈ 100/s sustained, ~1000/s peak. Round aggressively and state the conclusion the number implies.`
+              },
+              {
+                q: `When do you ASK the interviewer vs ASSUME-AND-STATE?`,
+                a: `Ask on genuine architectural forks (read/write ratio, consistency needs, scale class). Assume-and-state on shape-neutral details (retention days, auth provider) — say the assumption, note it on the diagram, mark it revisable.`
+              },
+              {
+                q: `The interviewer answers your scoping question with 'you decide'. What's the scored move?`,
+                a: `Decide out loud with a requirement-tied reason and write the assumption on the board: 'then I'll optimize for read latency since feeds are read-dominated — noted as an assumption.' It's a test of decisiveness, not a brush-off.`
+              },
+              {
+                q: `What is the single highest-value sentence in the round, and why?`,
+                a: `The deep-dive handoff: 'I see two areas worth depth — X and Y; which interests you more, or shall I pick?' It proves driving AND collaboration simultaneously, and steers the dive toward your strengths when they don't care.`
+              },
+              {
+                q: `Why should the wrap be self-initiated, and when?`,
+                a: `Time management is explicitly scored; needing to be told 'we have 5 minutes left' loses those points. At T-minus-5, announce: 'let me summarize — what we built, the key trade-offs, first bottleneck at 10x, what I'd build first.'`
+              },
+              {
+                q: `What is the transition phrase INTO the requirements stage that banks structure points immediately?`,
+                a: `'Before I draw anything, let me confirm scope: who are the users, the top three operations, and the scale we're designing for?' — plus the 10-second agenda declaration before it.`
+              },
+              {
+                q: `How do you handle assumptions so they help rather than haunt you?`,
+                a: `Write them in a corner of the diagram as you make them ('ASSUME: 30d retention, 10:1 R/W, EU-only'). Visible assumptions show discipline, invite early correction, and give the wrap a checklist to revisit.`
+              },
+              {
+                q: `What EU-specific NFR should you raise unprompted, and why?`,
+                a: `Data residency / GDPR: 'if we launch in the EU, personal data residency becomes a constraint — I'll keep user data in EU regions.' EU interviewers treat privacy-by-design as a first-class requirement, and raising it unprompted is a strong regional signal.`
+              }
+            ]
+          },
+          {
+            title: `Diagramming & Narration`,
+            notes: `## The diagram is your shared memory — treat it that way
+
+The whiteboard/canvas is not decoration: it is the **externalized state** of the design conversation. A good diagram lets the interviewer point ("what happens *here* under load?") and lets you keep the whole design in view while you dive into one corner.
+
+### Drawing order: follow the request
+
+Draw in the direction a request flows — it doubles as your narration script:
+
+1. **Clients** (browser / mobile / third-party API consumers) — leftmost or top.
+2. **Edge**: DNS → CDN → load balancer → API gateway (only the ones you need — each drawn box is a box you must justify).
+3. **Services**: start with ONE box ("API service"), split it only when a requirement forces the split — narrate the force: "the feed generation is CPU-heavy and scales differently from the CRUD path, so I'll split it."
+4. **Async spine**: queues/streams between services, drawn with distinct arrows.
+5. **Data layer** (rightmost/bottom): databases, caches, object storage, search indexes.
+6. Add **numbers on the arrows** as they become known: QPS, payload sizes, fan-out factors.
+
+### Labeling conventions that read well remotely
+
+- Every box: a **noun** naming its responsibility ("Feed Service"), not a product name ("Kafka") — put the technology *in parentheses* after the responsibility: "Event log (Kafka)". This keeps the design requirement-first and survives "what if you couldn't use Kafka?"
+- Every arrow: **verb + protocol** where it matters ("publishes order-events, async", "reads-through, Redis").
+- **Solid arrows = synchronous, dashed = async** — say the convention out loud once, then it works for free forever.
+- A **corner box for assumptions and NFR numbers** — your requirements stay visible all round.
+
+> [!TIP]
+> Keep the diagram **alive**. When a decision changes — you split a service, add a cache, drop a component — update the drawing *at that moment*, narrating: "so this box splits into two... and this arrow becomes async." A diagram that stops matching the conversation after minute 20 forces the interviewer to hold your design in their head — the exact failure the diagram exists to prevent. Cross out rather than erase where possible: visible design history is a feature.
+
+### Narration: talk while drawing, in layers
+
+Silent drawing is dead air; describing every pixel is noise. The senior pattern is **layered narration**:
+
+1. *Announce the layer*: "I'll add the edge next — CDN and load balancer."
+2. *Draw while giving the reason*: "CDN because 80% of this traffic is static media."
+3. *Land on the consequence*: "which means the API layer only sees ~200 QPS, so two instances behind the LB is plenty to start."
+
+Announce → reason → consequence. The interviewer hears a design decision, not a stationery inventory.
+
+### Remote-interview specifics (Excalidraw / Miro / diagram-in-doc)
+
+> [!WARNING]
+> Remote rounds are won and lost on logistics that have nothing to do with design:
+> - **Practice in the actual tool.** Ten minutes of Excalidraw rectangle-fumbling in front of the interviewer is real signal damage. Learn the three shortcuts you need: rectangle (R), arrow (A), text (T) — that's 95% of usage.
+> - **Boxes and text beat art.** Nobody scores rounded corners. Speed and legibility win.
+> - **Say what you're doing during silences**: on a remote call the interviewer can't see you thinking — "I'm just rearranging so the data layer is on the right" keeps the channel alive.
+> - **Zoom discipline**: keep the whole design visible between deep dives; zoom into a region while discussing it, zoom out when done. Narrate zooms ("zooming into the write path").
+> - Ask upfront: "shall I diagram in Excalidraw, or would you prefer I type a doc as we go?" — some EU companies (bank/enterprise loops especially) run design-in-a-Google-Doc interviews where prose + ASCII sketches are the medium.
+
+### The "can you write the API / schema?" moment
+
+This is a **precision probe** — the interviewer is checking that your boxes cash out into concrete contracts. Don't dump exhaustive CRUD; write the 2–3 contracts that carry the design's interesting decisions:
+
+- API: method, path, key params, response shape, and the *interesting* bits — pagination strategy (cursor vs offset — say why), idempotency keys on writes, auth boundary.
+- Schema: the main table/collection with its **primary/partition key reasoning** spoken aloud ("partition by user_id so a feed read is a single-partition query"), one index you'd add and its write cost.
+
+> [!SUCCESS]
+> Treat the schema question as a gift: partition-key reasoning is the single densest place to demonstrate senior data-layer judgment in under three minutes.
+
+> [!EU]
+> On EU remote loops, add one logistics line at the start: confirm the tool works ("I have Excalidraw open and shared — can you see it?") and keep a fallback ("if the tool dies, I'll switch to typing structured notes in the doc"). Remote-first companies in the EU treat smooth remote collaboration itself as a scored competency — it predicts how you'll work with their distributed teams.`,
+            code: [
+              {
+                lang: `text`,
+                title: `Diagram conventions cheat sheet (state them once, out loud)`,
+                code: `DRAWING ORDER      clients -> edge -> services -> async spine -> data
+BOX LABELS         responsibility noun + tech in parens: "Event log (Kafka)"
+ARROW LABELS       verb + protocol: "publishes order-events (async)"
+LINE STYLE         solid = sync request/response, dashed = async
+NUMBERS            write QPS / sizes ON the arrows as they become known
+CORNER BOX         ASSUME: 30d retention | 10:1 R/W | EU data residency
+                   NFR: 5k QPS peak | p99 < 200ms | 99.95%
+CHANGES            cross out, don't erase - design history is a feature
+
+NARRATION LOOP     announce layer -> draw with the reason -> land the
+                   consequence ("...so the API tier sees only 200 QPS")
+
+API MOMENT         2-3 contracts max, show the interesting decisions:
+                   POST /orders  (Idempotency-Key header - retries safe)
+                   GET  /feed?cursor=...&limit=50   (cursor, not offset:
+                        stable under inserts, no deep-page scans)
+
+SCHEMA MOMENT      main table + partition key REASONING out loud:
+                   posts: PK (user_id, created_at DESC)
+                   "partition by user_id -> a feed source read is a
+                    single-partition query; hot-user skew is the risk,
+                    I'd watch partition metrics for it"`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the correct drawing order for a system diagram, and why that order?`,
+                a: `Clients → edge (DNS/CDN/LB/gateway) → services → async spine (queues/streams) → data layer. It follows the request flow, so the drawing order doubles as your narration script for tracing a request end-to-end.`
+              },
+              {
+                q: `How should boxes be labeled, and why not just write 'Kafka'?`,
+                a: `Responsibility noun first, technology in parentheses: 'Event log (Kafka)'. Keeps the design requirement-first, survives 'what if you couldn't use Kafka?', and avoids buzzword-first impressions.`
+              },
+              {
+                q: `What arrow conventions make a diagram self-explanatory?`,
+                a: `Solid = synchronous, dashed = async (state the convention out loud once); label arrows verb + protocol ('publishes order-events, async'); write QPS/payload numbers on arrows as they become known.`
+              },
+              {
+                q: `What does 'keeping the diagram alive' mean and why does it matter?`,
+                a: `Update the drawing at the moment a decision changes (split a box, add a cache) while narrating the change. A stale diagram forces the interviewer to hold your design in their head — the exact failure the diagram exists to prevent. Cross out rather than erase: visible history is a feature.`
+              },
+              {
+                q: `Describe the three-beat narration loop for drawing without dead air or noise.`,
+                a: `Announce the layer ('adding the edge next') → draw while giving the reason ('CDN because 80% is static media') → land the consequence ('so the API tier sees only ~200 QPS'). Decision-level narration, not pixel commentary.`
+              },
+              {
+                q: `When you split one service box into two, what must you narrate?`,
+                a: `The force that mandates the split: 'feed generation is CPU-heavy and scales differently from the CRUD path.' Start with one box and split only under requirement pressure — pre-emptive microservices without a force is a red flag.`
+              },
+              {
+                q: `Name four remote-interview (Excalidraw/Miro) etiquette rules.`,
+                a: `1) Practice the tool beforehand (R/A/T shortcuts cover 95%); 2) speed and legibility over art; 3) narrate silences ('just rearranging the data layer'); 4) zoom discipline — zoom into regions with narration, return to full view between dives. Plus: confirm screen-share works upfront and have a fallback.`
+              },
+              {
+                q: `'Can you write the API for this?' — what are they probing and what's the right scope?`,
+                a: `A precision probe: do your boxes cash out into concrete contracts? Write 2–3 endpoints carrying the interesting decisions — cursor vs offset pagination (with the why), idempotency keys on writes, auth boundary. Never exhaustive CRUD.`
+              },
+              {
+                q: `Why is cursor pagination the usual senior answer over offset, in one breath?`,
+                a: `'Cursor, not offset: stable under concurrent inserts and avoids deep-page scans; offset N forces the store to skip N rows and shifts under writes.' One sentence, decision + reason — the format all API answers should take.`
+              },
+              {
+                q: `'Can you sketch the schema?' — what single element carries the most senior signal?`,
+                a: `Partition/primary key reasoning spoken aloud: 'PK (user_id, created_at) so a feed-source read is a single-partition query; the risk is hot-user skew — I'd watch partition metrics.' Key choice + access pattern + named risk in under a minute.`
+              },
+              {
+                q: `What belongs in the diagram's corner box, and what does it buy you?`,
+                a: `Assumptions ('30d retention, 10:1 R/W, EU-only') and NFR numbers ('5k QPS peak, p99<200ms, 99.95%'). It keeps requirements visible all round, invites early correction, and hands the wrap stage a ready-made checklist.`
+              },
+              {
+                q: `Some EU enterprise loops run design interviews in a Google Doc, not a whiteboard. How do you adapt?`,
+                a: `Ask upfront which medium they prefer. In a doc: structured headings mirroring the framework stages, short prose decisions, ASCII sketches for flows. Same framework, different rendering — and keep a fallback if the shared tool fails.`
+              }
+            ]
+          },
+          {
+            title: `Handling Curveballs`,
+            notes: `## Curveballs are the interview
+
+The prepared portion of a design round tests your preparation; the curveballs test *you*. Interviewers inject pushback, scope changes, and pressure deliberately — the reaction is the data.
+
+### "That won't scale."
+
+Never defend reflexively, never fold instantly. The three-step:
+
+1. **Locate**: "Let me check — at which point do you see it breaking: the fan-out write amplification, or the storage?"
+2. **Quantify**: run the math where they point. Either it holds ("at 10k QPS with 200-follower average, that's 2M feed writes/s... you're right, that breaks") or it doesn't ("at our stated 500 QPS this is ~100k writes/s across the cluster — within range, but it's the first thing to revisit if scale grows").
+3. **Adapt or hold with a reason** — both are wins if step 2 was honest. Folding without math and defending without math both lose.
+
+### Scope injections: "Now make it multi-region."
+
+The test is whether you **re-derive from requirements** rather than bolt on boxes:
+
+- First ask the driver: "Multi-region for latency (EU users far from us-east), for availability (region failure), or for data residency? They lead to different designs."
+- Then name the new hard problem out loud — usually replication and consistency: "reads are easy — replicas everywhere; the design question is writes: single write region with async replication (simple, lag on failover) vs multi-master (conflict resolution). For this workload I'd start single-write-region because..."
+
+> [!EU]
+> In EU interviews, *volunteer* the residency angle: "and if the driver is GDPR data residency, that's not multi-region replication at all — that's partitioning by jurisdiction, EU data pinned to EU regions." Interviewers at EU companies inject this deliberately; candidates who conflate residency with latency-driven replication fail the injection.
+
+### The 10x question: "Now it's 10x the traffic."
+
+A layered sweep beats panic re-architecture. Walk the request path and say what breaks *first*: "At 10x: LB fine, stateless API scales horizontally — first break is the database at ~50k writes/s: vertical headroom is gone, so now we shard, and the partition key we chose earlier becomes the critical decision. Second break: cache fan-out..." The senior signal is **ordering the breakpoints**, not redrawing everything. Bonus: state what you *wouldn't* change — "the queue absorbs the burst either way."
+
+### "Five minutes left — wrap up."
+
+Drop everything mid-sentence if needed and deliver the wrap you rehearsed: **(1)** what we built, one sentence; **(2)** the two decisions that matter most and their trade-offs; **(3)** first bottleneck and its fix; **(4)** what I'd build first / do differently with more time. Ninety seconds, structured, calm. Rambling through the last five minutes undoes half the round's impression — recency bias is real.
+
+### Recovering when stuck
+
+> [!TIP]
+> The unlock is **narrating option space instead of searching silently for the answer**:
+> "Let me think out loud. I see three directions: precompute the feeds (storage-heavy, fast reads), compute on read (cheap writes, slow reads), or hybrid — precompute for active users only. Given the 10:1 read ratio, I'll take the hybrid and we can stress it."
+> Options → criteria → pick → invite pressure. You've turned a stall into a demonstration of exactly the judgment being scored. If genuinely blank: zoom out to the requirements list — "let me re-anchor on what we're optimizing for" — it restarts thinking and looks like discipline, because it is.
+
+### Disagreeing with the interviewer gracefully
+
+Sometimes the hint is wrong, or tests whether you have a spine. Protocol: **steel-man → evidence → offer the fork → concede the frame.**
+"You're suggesting event sourcing here — the replay/audit benefits are real. My hesitation: this team also owns ops, and ES brings schema-evolution and rebuild costs that bite at exactly our growth stage. I'd propose plain CRUD with an outbox — we keep the integration events without the rebuild machinery. But if audit is a hard requirement I'm missing, ES becomes the right call — is it?"
+Disagree **once**, with a reason tied to requirements. If they push again, adopt their direction genuinely and design it well — the point is made, and flexibility is now the signal being scored.
+
+### "I don't know" — the senior version
+
+> [!SUCCESS]
+> Formula: **honest gap + adjacent knowledge + discovery plan.**
+> "I don't know Cassandra's exact compaction trade-offs — I haven't operated it. What I do know: LSM-based stores turn random writes into sequential ones at the cost of read amplification, and compaction strategy is where that cost is tuned. To decide, I'd benchmark our actual read pattern against the two main strategies and ask someone who's run it at this scale."
+> This scores *higher* than a shaky correct answer: senior roles are full of unknowns, and interviewers are scoring how you'll behave in them.
+
+> [!DANGER]
+> The one unrecoverable curveball response: **bluffing**. A confident wrong answer about a technology's guarantees, followed by two drill-downs, ends the round's credibility. Every "I don't know, here's how I'd find out" costs you a point; a caught bluff costs you the interview.`,
+            code: [],
+            flashcards: [
+              {
+                q: `The interviewer says 'that won't scale'. What is the three-step response?`,
+                a: `1) Locate: 'where do you see it breaking — the fan-out or the storage?' 2) Quantify: run the math at that point honestly. 3) Adapt or hold, based on the math. Folding without math and defending without math both lose.`
+              },
+              {
+                q: `'Now make it multi-region' — what must you ask before drawing anything?`,
+                a: `The driver: latency, availability, or data residency? Latency → read replicas; availability → failover and write-region strategy; residency → jurisdiction partitioning (EU data pinned to EU), which is a different design entirely.`
+              },
+              {
+                q: `In a multi-region dive, what is THE design question to name out loud?`,
+                a: `Writes. Reads are easy (replicas everywhere); the fork is single-write-region with async replication (simple, failover lag) vs multi-master (conflict resolution cost). Name the fork, pick with a reason tied to the workload.`
+              },
+              {
+                q: `Why is conflating GDPR data residency with latency-driven multi-region a scored failure in EU interviews?`,
+                a: `Residency is a jurisdictional partitioning constraint (EU data must STAY in EU regions), not a replication topology. Volunteering the distinction — 'residency means partitioning by jurisdiction, not replicating everywhere' — is the pass; EU interviewers inject this deliberately.`
+              },
+              {
+                q: `What is the senior pattern for the 10x-traffic question?`,
+                a: `Walk the request path and ORDER the breakpoints: 'LB fine, stateless API scales out, first break is the DB at ~50k writes/s → now we shard and the partition key matters; second break is cache fan-out.' Plus state what survives unchanged. No panic re-architecture.`
+              },
+              {
+                q: `'Five minutes left — wrap up.' What is the 90-second wrap structure?`,
+                a: `1) What we built, one sentence. 2) The two highest-stakes decisions and their trade-offs. 3) First bottleneck and its fix. 4) What I'd build first / do differently. Stop mid-sentence to deliver it — a rambling final five minutes poisons the whole write-up via recency.`
+              },
+              {
+                q: `You're stuck and your mind is blank. What is the recovery move?`,
+                a: `Narrate option space: 'three directions — precompute (storage-heavy, fast reads), compute-on-read (cheap writes, slow reads), hybrid for active users; given 10:1 reads, hybrid.' Options → criteria → pick → invite pressure. If truly blank, re-anchor out loud on the requirements list.`
+              },
+              {
+                q: `What is the four-part protocol for disagreeing with the interviewer's suggestion?`,
+                a: `Steel-man their idea → give your evidence/hesitation tied to requirements → offer the fork ('if audit is a hard requirement, your way wins — is it?') → if they push again, adopt their direction genuinely. Disagree once, with a reason; then flexibility is the signal.`
+              },
+              {
+                q: `Give the formula for a senior 'I don't know'.`,
+                a: `Honest gap + adjacent principled knowledge + discovery plan: 'I haven't operated Cassandra; I do know LSM stores trade read amplification for write throughput; I'd benchmark our read pattern and consult someone who's run it at scale.'`
+              },
+              {
+                q: `Why does a caught bluff cost more than several honest 'I don't know's?`,
+                a: `An 'I don't know + how I'd find out' costs a point and can even gain credibility; a confident wrong claim about a technology's guarantees, exposed by two drill-downs, destroys trust in EVERYTHING else you said. Interviewers drill precisely to find bluffs.`
+              },
+              {
+                q: `How do you tell whether an interviewer's pushback is a real hint or a spine test?`,
+                a: `You mostly can't — so use a protocol that wins both ways: quantify honestly, disagree once with a requirement-tied reason, then commit to their direction if they insist. Genuine hint → you adapted; spine test → you showed conviction plus flexibility.`
+              },
+              {
+                q: `What should you do when a scope injection invalidates part of your existing diagram?`,
+                a: `Update it visibly and narrate: 'multi-region breaks this session-store assumption — crossing it out, replacing with...' Treating the injection as design input (not an attack) and keeping the diagram truthful is exactly the collaboration signal being scored.`
+              }
+            ]
+          },
+          {
+            title: `Senior Trade-off Vocabulary & Self-Assessment`,
+            notes: `## Talking like the engineer they want to hire
+
+The strongest senior signals are small phrases that reveal *conditional thinking* — the habit of ranking solutions against context instead of owning a favorite architecture.
+
+### The phrase bank (see code block for the full set)
+
+Five families of senior signal:
+
+1. **Conditionality** — "it depends on the read/write ratio; at 10:1 I'd cache aggressively, at 1:1 the cache barely earns its invalidation complexity."
+2. **Evolutionary sizing** — "I'd start with a single Postgres and shard when we approach ~10k sustained writes/s — sharding on day one is complexity we'd pay for years before needing."
+3. **Unprompted failure modes** — "what breaks here: if the cache tier dies we get a thundering herd on the DB, so request coalescing goes in from the start."
+4. **Explicit consistency choices** — "the payment path needs read-your-writes; the activity feed can be eventual with a few seconds of lag — I'll split the design along that line."
+5. **Cost & operability awareness** — "this is a three-person team; every stateful system we add is an on-call burden, which is why I'm buying the managed queue instead of running our own."
+
+> [!TIP]
+> The pattern behind all five: **claim + condition + consequence**. Any technology statement you make in the round should survive the question "under what conditions would you do the opposite?" — pre-answering it is the vocabulary.
+
+### The anti-pattern list
+
+> [!DANGER]
+> Phrases that mark you down instantly:
+> - "We'll just use Kafka/Redis/K8s" — *just* hides the trade-off; the name hides the requirement.
+> - "That's a solved problem" — dismissiveness where depth was invited.
+> - "It'll scale because it's microservices / because the cloud handles it" — architecture as incantation.
+> - "We don't need to worry about failures at this stage" — you volunteered that you don't think about failures.
+> - "NoSQL because it's faster" / "SQL doesn't scale" — decade-old cargo cult; instant depth-probe magnet.
+> - Silence, or "hmm, let me think" followed by 40 mute seconds — narrate the thinking.
+> - "In my company we did X so I'll do X here" — experience offered as precedent instead of reasoning. Cite the experience, then re-derive for THIS problem's requirements.
+
+### Self-scoring rubric — grade every practice run
+
+Record yourself (audio is enough) doing a full 45-minute mock, then score honestly:
+
+| Dimension | 1 (fail) | 3 (bar) | 5 (strong senior) |
+|---|---|---|---|
+| **Structure** | No visible plan; wandered | Announced the framework, mostly followed it | Framework followed, transitions crisp, deviations announced and justified |
+| **Trade-offs** | Choices asserted without alternatives | Most choices had an alternative + reason | Every major choice: alternative, reason tied to a requirement, and reversal condition |
+| **Depth** | Stayed at box level throughout | One genuine deep dive (keys, failure modes) | Two dives with quantified reasoning; correct depth chosen for THIS problem |
+| **Collaboration** | Ignored hints; monologued or went silent | Responded to hints; some check-ins | Hints incorporated visibly; interviewer treated as design partner; pushback invited |
+| **Time** | Never finished the design | End-to-end design + 1 dive + squeezed wrap | Budget held; wrap self-initiated at T-5; nothing important unvisited |
+
+**Scoring discipline:** 20+/25 = interview-ready for that problem class. Any dimension at ≤2 = that dimension is your next practice focus, regardless of total. The two chronic senior weak spots are **Time** (over-investing in requirements or a pet component) and **Collaboration** (soloing the design at the interviewer).
+
+\`\`\`mermaid
+flowchart LR
+    P["Pick a case study<br/>(module 5.4)"] --> M["45-min mock<br/>recorded, real tool"]
+    M --> S["Self-score the rubric<br/>(honest, per dimension)"]
+    S --> W["Lowest dimension =<br/>next run's single focus"]
+    W --> P
+\`\`\`
+
+> [!SUCCESS]
+> **Your practice material is already in this hub: module 5.4's six system-design case studies are the problems to run this framework against.** Rotate through them — one mock per case study, one rubric column as the focus per run. Six runs with honest scoring beats thirty unstructured "let me think about how I'd design Twitter" showers.
+
+> [!EU]
+> Calibrate the vocabulary for EU panels: cost-consciousness and operability ("who carries the pager for this?") land especially well in European engineering cultures, which tend to be leaner-teamed and less blitz-scaled than US counterparts. And in Dutch/Nordic rooms, "I'd start simple" is not a modesty tic — it is the culturally *expected* engineering posture, so lead with it.
+
+> [!WARNING]
+> Vocabulary without substance is perfume on a pig — interviewers drill one level below every phrase. "It depends on the read/write ratio" must be followed, on request, by what you'd actually do at 10:1 vs 1:1. Learn the phrases as *index entries* into real understanding you've built in phases 1–9, not as a script.`,
+            code: [
+              {
+                lang: `text`,
+                title: `Senior phrase bank — trade-off vocabulary (index entries, not incantations)`,
+                code: `CONDITIONALITY
+"It depends on the read/write ratio - at 10:1 I'd cache aggressively;
+ at 1:1 the cache barely earns its invalidation complexity."
+"For this access pattern a relational store wins; if we were
+ append-only at high volume I'd say LSM-based instead."
+
+EVOLUTIONARY SIZING
+"I'd start simple - one Postgres primary - and shard when we approach
+ ~10k sustained writes/s; premature sharding is complexity we'd carry
+ for years before needing."
+"This monolith-first shape is deliberate: we split the feed service
+ out when its scaling curve diverges from the CRUD path."
+
+FAILURE MODES, UNPROMPTED
+"What breaks here: cache tier dies -> thundering herd on the DB.
+ So request coalescing and a short TTL jitter go in from day one."
+"The queue decouples us, but now we own redelivery: consumers must
+ be idempotent - I'll key dedup on the event ID."
+
+EXPLICIT CONSISTENCY CHOICES
+"Payments need read-your-writes; the feed tolerates seconds of lag.
+ I'll split the design along that consistency line."
+"I'm choosing availability over consistency for the cart - a stale
+ cart embarrasses us; a down cart loses revenue."
+
+COST & OPERABILITY
+"Three-person team: every stateful system we run ourselves is pager
+ load. I'm buying the managed queue, not running our own."
+"Object storage for the media at ~2 cents/GB-month; the database
+ stores only the pointer."
+
+RECOVERY & HONESTY
+"Two options and I'm genuinely torn - let me pick by naming the
+ failure I'd rather have..."
+"I don't know its exact guarantees; here's what I'd verify before
+ committing: ..."`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the underlying pattern of all senior trade-off vocabulary?`,
+                a: `Claim + condition + consequence. Every technology statement should pre-answer 'under what conditions would you do the opposite?' — e.g. 'at 10:1 reads I'd cache aggressively; at 1:1 the cache barely earns its invalidation complexity.'`
+              },
+              {
+                q: `Give the 'evolutionary sizing' phrase pattern and why it signals seniority.`,
+                a: `'I'd start with one Postgres and shard when we approach ~10k sustained writes/s.' It shows you price complexity over time — start simple, name the trigger metric for evolving — instead of building for imaginary scale on day one.`
+              },
+              {
+                q: `Why does naming failure modes UNPROMPTED score so highly?`,
+                a: `It proves production scars: 'if the cache dies we get a thundering herd, so request coalescing goes in from day one.' Interviewers otherwise have to drag failure thinking out of candidates; volunteering it is the difference between designing on paper and having operated systems.`
+              },
+              {
+                q: `What does an explicit consistency choice sound like, and what's the anti-pattern?`,
+                a: `'Payments need read-your-writes; the feed tolerates seconds of lag — I'll split the design along that line.' Anti-pattern: one implicit global consistency level, or CAP words used decoratively without a per-path decision.`
+              },
+              {
+                q: `Name five instant-markdown anti-pattern phrases.`,
+                a: `'We'll JUST use Kafka'; 'that's a solved problem'; 'it'll scale because microservices/cloud'; 'we don't need to worry about failures at this stage'; 'NoSQL because it's faster / SQL doesn't scale'. Each hides a trade-off or invites a depth probe you'll lose.`
+              },
+              {
+                q: `Why is 'in my last company we did X, so X' a weak argument, and what's the fix?`,
+                a: `It offers experience as precedent instead of reasoning — the interviewer's problem has different requirements. Fix: cite the experience as evidence, then re-derive: 'we ran X at similar scale and the pain was Y — here, given Z differs, I'd adjust to...'`
+              },
+              {
+                q: `What are the five dimensions of the self-scoring rubric?`,
+                a: `Structure, Trade-offs, Depth, Collaboration, Time — each scored 1–5 against anchored descriptions. 20+/25 = ready for that problem class; any dimension ≤2 becomes the single focus of the next practice run.`
+              },
+              {
+                q: `What does a 5/5 on the Trade-offs dimension require?`,
+                a: `Every major choice comes with: a named alternative, a reason tied to a stated requirement, and a reversal condition ('I'd revisit this if writes exceed X'). Asserted choices without alternatives = 1/5.`
+              },
+              {
+                q: `What are the two chronic weak dimensions for experienced candidates?`,
+                a: `Time (over-investing in requirements or a pet component and never finishing end-to-end) and Collaboration (soloing the design at the interviewer instead of with them). Score yourself hardest there.`
+              },
+              {
+                q: `Describe the practice loop this module prescribes, and where the practice problems live.`,
+                a: `Pick one of module 5.4's six case studies → recorded 45-min mock in the real tool → honest rubric self-score → lowest dimension becomes next run's single focus → repeat. Six deliberate scored runs beat thirty unstructured ones.`
+              },
+              {
+                q: `What is the danger of learning the phrase bank as a script?`,
+                a: `Interviewers drill one level below every phrase — 'it depends on the read/write ratio' must cash out into what you'd DO at 10:1 vs 1:1. The phrases are index entries into real understanding from phases 1–9, not incantations.`
+              },
+              {
+                q: `Which vocabulary families land especially well with EU panels, and why?`,
+                a: `Cost-consciousness and operability ('who carries the pager for this?', buying managed services for a small team) — EU engineering orgs run leaner than blitz-scaled US ones. In Dutch/Nordic rooms 'I'd start simple' is the culturally expected posture, so lead with it.`
               }
             ]
           }
