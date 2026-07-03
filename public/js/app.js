@@ -12,8 +12,34 @@
   const STATUS_NEXT = { not_started: 'in_progress', in_progress: 'completed', completed: 'not_started' };
 
   // ---- persistent state ----
-  const defaultState = () => ({ status: {}, notes: {}, openPhases: {}, lastModule: null });
+  // activity: { 'YYYY-MM-DD': 1 } study-day log (drives the streak); resumeModule
+  // survives dashboard visits (lastModule is nulled there for restore-on-reload).
+  const defaultState = () => ({ status: {}, notes: {}, openPhases: {}, lastModule: null, resumeModule: null, activity: {} });
   let state = load();
+
+  // ---- study streak ----
+  const dayKey = (d = new Date()) => {
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+  function markActivity() {
+    if (!state.activity) state.activity = {};
+    const k = dayKey();
+    if (state.activity[k]) return false;
+    state.activity[k] = 1;
+    // keep the log bounded (~13 months)
+    const keys = Object.keys(state.activity).sort();
+    while (keys.length > 400) delete state.activity[keys.shift()];
+    return true;
+  }
+  function studyStreak() {
+    const act = state.activity || {};
+    let streak = 0;
+    const d = new Date();
+    if (!act[dayKey(d)]) d.setDate(d.getDate() - 1); // allow "yesterday" so a morning visit doesn't show 0
+    while (act[dayKey(d)]) { streak++; d.setDate(d.getDate() - 1); }
+    return streak;
+  }
 
   // ---- auth / cloud sync state ----
   let auth = { configured: false, user: null }; // populated from /auth/me
@@ -180,6 +206,36 @@
     const content = $('#content');
     const remainingHours = g.totalHours - g.doneHours;
 
+    // ---- "continue studying" hero data ----
+    const flat = allModules();
+    const resume = state.resumeModule ? flat.find(x => x.module.id === state.resumeModule) : null;
+    // next module worth studying: first not-completed after the resume point (wrapping), else first not-completed
+    let next = null;
+    if (flat.length) {
+      const startIdx = resume ? flat.findIndex(x => x.module.id === resume.module.id) + 1 : 0;
+      for (let i = 0; i < flat.length; i++) {
+        const cand = flat[(startIdx + i) % flat.length];
+        if (statusOf(cand.module.id) !== 'completed' && (!resume || cand.module.id !== resume.module.id)) { next = cand; break; }
+      }
+    }
+    const streak = studyStreak();
+
+    const heroCard = (kicker, item, primary) => item ? `
+      <button data-open="${esc(item.module.id)}" class="hero-open flex-1 min-w-[240px] text-left rounded-xl p-5 transition group border ${primary
+        ? 'bg-gradient-to-br from-brand/25 to-indigo-900/30 border-brand/50 hover:border-brand shadow-lg shadow-brand/10'
+        : 'bg-slate-900/50 border-slate-800 hover:border-slate-600'}">
+        <div class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider ${primary ? 'text-brand' : 'text-slate-500'} mb-2">
+          <i data-lucide="${primary ? 'play-circle' : 'arrow-right-circle'}" class="w-4 h-4"></i> ${kicker}
+        </div>
+        <div class="font-semibold ${primary ? 'text-white' : 'text-slate-200'} leading-snug group-hover:text-brand transition">
+          <span class="font-mono text-[12px] opacity-60 mr-1.5">${esc(item.module.id)}</span>${esc(item.module.title)}
+        </div>
+        <div class="text-[11px] text-slate-500 mt-1.5 flex items-center gap-2">
+          <span>${esc(item.phase.title)}</span>
+          <span class="status-dot status-${statusOf(item.module.id)}"></span>
+        </div>
+      </button>` : '';
+
     const statCard = (icon, value, label, accent) => `
       <div class="rounded-xl border border-slate-800 bg-slate-900/50 p-5 flex items-center gap-4">
         <div class="grid place-items-center w-12 h-12 rounded-lg ${accent}">
@@ -201,6 +257,17 @@
           <div class="text-right shrink-0">
             <div class="text-4xl font-extrabold text-brand leading-none">${g.pct}%</div>
             <div class="text-xs text-slate-500 mt-1">overall ready</div>
+          </div>
+        </div>
+
+        <!-- continue studying / streak hero -->
+        <div class="flex flex-wrap items-stretch gap-4 mb-8">
+          ${heroCard(resume ? 'Continue studying' : 'Start here', resume || next, true)}
+          ${resume ? heroCard('Up next', next, false) : ''}
+          <div class="rounded-xl border border-slate-800 bg-slate-900/50 px-5 py-4 flex flex-col items-center justify-center min-w-[120px]">
+            <div class="text-2xl leading-none mb-1">${streak > 0 ? '🔥' : '🌱'}</div>
+            <div class="text-2xl font-extrabold ${streak > 0 ? 'text-amber-400' : 'text-slate-500'} leading-none">${streak}</div>
+            <div class="text-[10px] text-slate-500 mt-1 text-center leading-tight">day streak<br/>${streak > 0 ? 'keep it up!' : 'study today'}</div>
           </div>
         </div>
 
@@ -249,6 +316,9 @@
         </div>
         <div class="h-8"></div>
       </div>`;
+
+    content.querySelectorAll('.hero-open').forEach(btn =>
+      btn.addEventListener('click', () => openModule(btn.getAttribute('data-open'))));
 
     content.querySelectorAll('.phase-card').forEach(card => {
       card.addEventListener('click', () => {
@@ -384,6 +454,25 @@
     });
   }
 
+  /* ── Copy buttons on study-guide code blocks ─────────────────────── */
+  function addCopyButtons(root) {
+    root.querySelectorAll('pre').forEach(pre => {
+      if (pre.querySelector('.pre-copy') || pre.querySelector('code.language-mermaid')) return;
+      const btn = el('button', { class: 'pre-copy', title: 'Copy code' }, 'Copy');
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const code = pre.querySelector('code');
+        try {
+          await navigator.clipboard.writeText(code ? code.innerText : pre.innerText);
+          btn.textContent = '✓ Copied';
+          btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1400);
+        } catch (err) {}
+      });
+      pre.appendChild(btn);
+    });
+  }
+
   /* ── Mermaid diagram rendering after DOM is set ──────────────────── */
   function renderMermaidIn(root) {
     if (typeof mermaid === 'undefined') return;
@@ -407,7 +496,10 @@
     const found = findModule(id);
     if (!found) return;
     const { phase, module } = found;
-    state.lastModule = id; save();
+    state.lastModule = id;
+    state.resumeModule = id;
+    markActivity();
+    save();
     closeSidebarMobile();
 
     const flat = allModules();
@@ -487,6 +579,7 @@
       notesEl.querySelectorAll('pre code:not(.language-mermaid)').forEach(b => {
         try { hljs.highlightElement(b); } catch (e) {}
       });
+      addCopyButtons(notesEl);
       renderMermaidIn(notesEl);
       initJourneyWidgets(notesEl);
       appendInterviewQuestions(notesEl, module, src);
@@ -599,6 +692,7 @@
     updateStatusBtn();
     $('#status-btn').addEventListener('click', () => {
       state.status[id] = STATUS_NEXT[statusOf(id)];
+      markActivity();
       save();
       updateStatusBtn();
       renderNav($('#search').value);
@@ -907,43 +1001,113 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
     });
   }
 
-  /* ===================== FLASHCARDS ===================== */
+  /* ===================== FLASHCARDS (study mode) ===================== */
   function renderFlashcards(module) {
     const pane = $('#tab-cards');
-    const cards = module.flashcards || [];
-    if (cards.length === 0) { pane.innerHTML = '<p class="text-slate-400">No flashcards for this module yet.</p>'; return; }
+    const allCards = module.flashcards || [];
+    if (allCards.length === 0) { pane.innerHTML = '<p class="text-slate-400">No flashcards for this module yet.</p>'; return; }
 
-    pane.innerHTML = `
-      <div class="flex items-center justify-between mb-4">
-        <p class="text-sm text-slate-400 flex items-center gap-2"><i data-lucide="brain" class="w-4 h-4 text-brand"></i>
-          Active recall — click a card to reveal the answer. <span class="text-slate-500">${cards.length} cards</span></p>
-        <button id="flip-all" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">Flip all</button>
-      </div>
-      <div class="grid sm:grid-cols-2 gap-4" id="cards-grid">
-        ${cards.map((c, i) => `
-          <div class="flip-card" data-i="${i}">
-            <div class="flip-inner">
-              <div class="flip-face flip-front">
-                <div class="text-[10px] uppercase tracking-wider text-brand font-bold mb-2">Question ${i + 1}</div>
-                <div class="text-[15px] text-slate-100 font-medium leading-snug">${esc(c.q)}</div>
-                <div class="mt-auto pt-3 text-[10px] text-slate-500 flex items-center gap-1"><i data-lucide="mouse-pointer-click" class="w-3 h-3"></i> click to flip</div>
-              </div>
-              <div class="flip-face flip-back">
-                <div class="text-[10px] uppercase tracking-wider text-success font-bold mb-2">Answer</div>
-                <div class="text-[13.5px] text-slate-200 leading-relaxed">${esc(c.a)}</div>
-              </div>
-            </div>
-          </div>`).join('')}
-      </div>`;
+    // session-scoped marks: q -> 'known' | 'again'
+    const marks = new Map();
 
-    pane.querySelectorAll('.flip-card').forEach(card =>
-      card.addEventListener('click', () => card.classList.toggle('flipped')));
-    $('#flip-all').addEventListener('click', () => {
-      const cards = pane.querySelectorAll('.flip-card');
-      const anyUnflipped = [...cards].some(c => !c.classList.contains('flipped'));
-      cards.forEach(c => c.classList.toggle('flipped', anyUnflipped));
-    });
-    icons();
+    const shuffled = (arr) => {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+      return a;
+    };
+
+    function renderDeck(deck, label) {
+      pane.innerHTML = `
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <p class="text-sm text-slate-400 flex items-center gap-2"><i data-lucide="brain" class="w-4 h-4 text-brand"></i>
+            Active recall — flip, then mark <strong class="text-emerald-300">Got it</strong> or <strong class="text-amber-300">Review</strong>.
+            ${label ? `<span class="text-amber-400 font-semibold">${esc(label)}</span>` : ''}</p>
+          <div class="flex items-center gap-2">
+            <button id="shuffle-cards" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition inline-flex items-center gap-1.5"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i> Shuffle</button>
+            <button id="flip-all" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">Flip all</button>
+          </div>
+        </div>
+
+        <!-- session score -->
+        <div class="flex items-center gap-3 mb-4 text-[12px]">
+          <div class="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden flex">
+            <div id="score-known" class="h-full bg-success transition-all duration-300" style="width:0%"></div>
+            <div id="score-again" class="h-full bg-amber-400 transition-all duration-300" style="width:0%"></div>
+          </div>
+          <span class="text-slate-500 shrink-0"><span id="score-text">0 / ${deck.length} marked</span></span>
+          <button id="review-missed" class="hidden shrink-0 text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40 hover:bg-amber-500/30 transition font-semibold"></button>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4" id="cards-grid">
+          ${deck.map((c, i) => `
+            <div class="flip-card" data-q="${esc(c.q)}">
+              <div class="flip-inner">
+                <div class="flip-face flip-front">
+                  <div class="text-[10px] uppercase tracking-wider text-brand font-bold mb-2">Question ${i + 1}</div>
+                  <div class="text-[15px] text-slate-100 font-medium leading-snug">${esc(c.q)}</div>
+                  <div class="mt-auto pt-3 text-[10px] text-slate-500 flex items-center gap-1"><i data-lucide="mouse-pointer-click" class="w-3 h-3"></i> click to flip</div>
+                </div>
+                <div class="flip-face flip-back">
+                  <div class="text-[10px] uppercase tracking-wider text-success font-bold mb-2">Answer</div>
+                  <div class="text-[13.5px] text-slate-200 leading-relaxed">${esc(c.a)}</div>
+                  <div class="mark-row mt-auto pt-3 flex items-center gap-2">
+                    <button class="mark-btn mark-known flex-1 text-[11px] font-bold px-2 py-1.5 rounded-lg bg-success/15 text-emerald-300 ring-1 ring-success/40 hover:bg-success/30 transition">✓ Got it</button>
+                    <button class="mark-btn mark-again flex-1 text-[11px] font-bold px-2 py-1.5 rounded-lg bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/40 hover:bg-amber-500/30 transition">↻ Review</button>
+                  </div>
+                </div>
+              </div>
+            </div>`).join('')}
+        </div>`;
+
+      const cardEls = pane.querySelectorAll('.flip-card');
+
+      function updateScore() {
+        let known = 0, again = 0;
+        deck.forEach(c => { const m = marks.get(c.q); if (m === 'known') known++; else if (m === 'again') again++; });
+        const kb = pane.querySelector('#score-known'), ab = pane.querySelector('#score-again');
+        if (kb) kb.style.width = (known / deck.length * 100) + '%';
+        if (ab) ab.style.width = (again / deck.length * 100) + '%';
+        const st = pane.querySelector('#score-text');
+        if (st) st.textContent = `${known} got it · ${again} to review · ${deck.length - known - again} left`;
+        const rm = pane.querySelector('#review-missed');
+        if (rm) {
+          if (again > 0 && known + again === deck.length) {
+            rm.classList.remove('hidden');
+            rm.textContent = `Review the ${again} you missed →`;
+          } else rm.classList.add('hidden');
+        }
+      }
+
+      cardEls.forEach(card => {
+        const q = card.getAttribute('data-q');
+        const applyMark = () => {
+          card.classList.toggle('card-known', marks.get(q) === 'known');
+          card.classList.toggle('card-again', marks.get(q) === 'again');
+        };
+        applyMark();
+        card.addEventListener('click', () => card.classList.toggle('flipped'));
+        const kBtn = card.querySelector('.mark-known'), aBtn = card.querySelector('.mark-again');
+        kBtn.addEventListener('click', (e) => { e.stopPropagation(); marks.set(q, 'known'); applyMark(); card.classList.remove('flipped'); updateScore(); });
+        aBtn.addEventListener('click', (e) => { e.stopPropagation(); marks.set(q, 'again'); applyMark(); card.classList.remove('flipped'); updateScore(); });
+      });
+
+      pane.querySelector('#flip-all').addEventListener('click', () => {
+        const anyUnflipped = [...cardEls].some(c => !c.classList.contains('flipped'));
+        cardEls.forEach(c => c.classList.toggle('flipped', anyUnflipped));
+      });
+      pane.querySelector('#shuffle-cards').addEventListener('click', () => renderDeck(shuffled(deck), label));
+      const rm = pane.querySelector('#review-missed');
+      rm.addEventListener('click', () => {
+        const missed = deck.filter(c => marks.get(c.q) === 'again');
+        missed.forEach(c => marks.delete(c.q));           // fresh round for the missed set
+        renderDeck(shuffled(missed), `reviewing ${missed.length} missed`);
+      });
+
+      updateScore();
+      icons();
+    }
+
+    renderDeck(allCards, '');
   }
 
   /* ===================== MY NOTES ===================== */
@@ -1120,6 +1284,15 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
 
     $('#search').addEventListener('input', (e) => renderNav(e.target.value));
     $('#dashboard-btn').addEventListener('click', renderDashboard);
+
+    // reading progress bar — fills as the content pane scrolls
+    const contentEl = $('#content'), readBar = document.getElementById('read-progress');
+    if (contentEl && readBar) {
+      contentEl.addEventListener('scroll', () => {
+        const max = contentEl.scrollHeight - contentEl.clientHeight;
+        readBar.style.width = max > 200 ? (contentEl.scrollTop / max * 100).toFixed(1) + '%' : '0%';
+      }, { passive: true });
+    }
     $('#reset-btn').addEventListener('click', () => {
       if (confirm('Reset ALL progress, notes, and statuses? This cannot be undone.')) {
         state = defaultState();

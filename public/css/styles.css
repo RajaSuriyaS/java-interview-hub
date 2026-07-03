@@ -306,3 +306,29 @@ html, body { height: 100%; }
 .nav-phase.open .nav-phase-body { max-height: 2000px; }
 .nav-phase.open .chevron { transform: rotate(90deg); }
 .chevron { transition: transform .2s ease; }
+
+/* ─── Copy button on study-guide code blocks ─────────────────────────── */
+.prose-notes pre { position: relative; }
+.pre-copy {
+  position: absolute; top: 8px; right: 8px;
+  font-size: 11px; font-weight: 600; font-family: inherit;
+  padding: 3px 9px; border-radius: 6px; cursor: pointer;
+  background: rgba(30, 41, 59, .9); color: #94a3b8;
+  border: 1px solid #334155; opacity: 0; transition: opacity .15s, color .15s;
+}
+.prose-notes pre:hover .pre-copy { opacity: 1; }
+.pre-copy:hover { color: #e2e8f0; border-color: #64748b; }
+.pre-copy.copied { color: #34d399; border-color: rgba(16,185,129,.5); opacity: 1; }
+@media (hover: none) { .pre-copy { opacity: .75; } }  /* always visible on touch */
+[data-theme="light"] .pre-copy { background: rgba(241,245,249,.95); color: #475569; border-color: #cbd5e1; }
+
+/* ─── Flashcard study-mode marks ─────────────────────────────────────── */
+.flip-card.card-known .flip-front { border-color: rgba(16,185,129,.55); box-shadow: 0 0 0 1px rgba(16,185,129,.25); opacity: .55; }
+.flip-card.card-again .flip-front { border-color: rgba(245,158,11,.6); box-shadow: 0 0 0 1px rgba(245,158,11,.3); }
+.flip-card.card-known .flip-front::after,
+.flip-card.card-again .flip-front::after {
+  position: absolute; top: 10px; right: 12px; font-size: 15px; font-weight: 800;
+}
+.flip-card.card-known .flip-front::after { content: '✓'; color: #34d399; }
+.flip-card.card-again .flip-front::after { content: '↻'; color: #fbbf24; }
+.flip-front { position: relative; }
