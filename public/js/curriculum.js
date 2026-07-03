@@ -22746,6 +22746,1539 @@ public class ModernJavaFeatures {
             ]
           }
         ]
+      },
+      {
+        id: `2.6`,
+        title: `Testing: JUnit 5, Mockito & Testcontainers`,
+        hours: 5,
+        sections: [
+          {
+            title: `Testing Strategy & the Test Pyramid`,
+            notes: `## Why strategy matters more than tooling
+
+At 12 years of experience, nobody is testing whether you can write \`@Test\`. Interviewers probe whether you can **design a testing strategy for a team**: where to invest effort, what to test at which layer, and how to keep a suite fast, trustworthy and maintainable as the codebase grows. The classic mental model is the **test pyramid** (Mike Cohn, popularised by Fowler and the Google Testing Blog).
+
+\`\`\`mermaid
+flowchart TB
+    subgraph pyramid["The Test Pyramid"]
+        E2E["E2E / UI tests<br/>few, slow, expensive, flaky-prone<br/>(whole system, real env)"]
+        INT["Integration tests<br/>some — component boundaries<br/>(DB, HTTP, messaging — Testcontainers)"]
+        UNIT["Unit tests<br/>many — fast, isolated, deterministic<br/>(pure logic, milliseconds each)"]
+    end
+    E2E --> INT --> UNIT
+    style UNIT fill:#1b5e20,color:#fff
+    style INT fill:#e65100,color:#fff
+    style E2E fill:#b71c1c,color:#fff
+\`\`\`
+
+### Cost/speed trade-offs by layer
+
+| Layer | Speed | Cost to write/maintain | Confidence per test | Failure diagnosis | What to test here |
+|---|---|---|---|---|---|
+| **Unit** | ms | Low | Narrow but precise | Trivial — points at one class | Domain logic, algorithms, edge cases, error branches |
+| **Integration** | 100ms–s | Medium | Real wiring: SQL, serialization, transactions | Moderate | Repository queries, HTTP contract, messaging, config |
+| **E2E** | s–min | High (env, data, flakiness) | Broad, whole-journey | Hard — anything could have failed | A handful of critical user journeys, smoke tests |
+
+The pyramid is about **economics**: the higher you go, the more each test costs in runtime, maintenance and debugging time — so push every check to the *lowest layer that can catch the bug*. A validation rule doesn't need a Selenium test; a native SQL query cannot be trusted to a unit test with a mocked repository.
+
+> [!WARNING]
+> The anti-pattern is the **ice-cream cone** (inverted pyramid): hundreds of slow E2E tests, few unit tests. Symptoms: 45-minute CI, "retry until green" culture, developers afraid to refactor. If you inherited one, the senior move is to ratchet — new code needs unit coverage, and you replace E2E tests with lower-layer equivalents as you touch each area. Also know the modern counterpoint: the **testing trophy** (Kent C. Dodds) and the "write tests, not too many, mostly integration" school argue that with fast containers, integration tests give the best confidence-per-line. A senior answer acknowledges both and reasons from *cost of feedback*, not dogma.
+
+### Test doubles taxonomy (Meszaros / Fowler)
+
+"Mock" is used loosely; in an interview, use the precise vocabulary:
+
+| Double | What it does | Verification style | Example |
+|---|---|---|---|
+| **Dummy** | Passed around, never used — just fills a parameter | None | \`new Order(null, dummyClock)\` |
+| **Stub** | Returns canned answers to calls | **State**: assert on the SUT's output | Stub repo returns fixed \`Customer\` |
+| **Spy** | Real behaviour, but records calls (or a stub that records) | State + call recording | Records emails "sent" for later assertion |
+| **Mock** | Pre-programmed with **expectations** about calls | **Behaviour/interaction**: verify calls happened | \`verify(mailer).send(any())\` |
+| **Fake** | Working lightweight implementation | State | In-memory \`Map\`-backed repository, embedded broker |
+
+> [!TIP]
+> The state-vs-behaviour distinction is the interview gold. **Prefer state verification** (stubs/fakes) — it survives refactoring. Interaction verification (mocks + \`verify\`) couples the test to *how* the code works and should be reserved for genuine outbound side effects you cannot observe otherwise (emails, events published, external calls). This is the classicist (Detroit) vs mockist (London) school debate — know both names.
+
+### FIRST principles
+
+Good unit tests are **F**ast (ms — or people stop running them), **I**solated/**I**ndependent (no order dependence, no shared mutable state), **R**epeatable (same result on any machine, any time — no real clock/network/random without seeding), **S**elf-validating (pass/fail without a human reading logs), **T**imely (written with — ideally before — the production code, not backfilled a sprint later).
+
+### Coverage is a tool, not a goal
+
+- Line/branch coverage (JaCoCo) tells you what is **definitely untested**. It says nothing about assertion quality: a test that calls code and asserts nothing scores 100%.
+- Coverage gates (e.g. "80% on new code" via SonarQube) are useful as a **ratchet on diffs**, harmful as an absolute target — teams game them with assertion-free tests.
+- **Mutation testing** (PIT/pitest for Java) fixes this: it mutates your bytecode (flip \`>\` to \`>=\`, remove a call, return null) and re-runs your tests. If tests still pass, the mutant "survived" — your assertions are weak. Mutation score measures whether tests would *catch bugs*, which is the only thing that matters. Too slow for every build; run it nightly or on critical modules.
+
+> [!SUCCESS]
+> **How a senior talks about strategy in an interview:** (1) start from risk — what breaks the business? (2) push tests down the pyramid for cost reasons; (3) state verification over interaction verification; (4) real dependencies via Testcontainers at the integration layer instead of mock-everything; (5) coverage as a signal, mutation testing as the honest metric; (6) treat flaky tests as production incidents — quarantine, fix root cause, never normalise retries; (7) tests are a design pressure — hard-to-test code is badly factored code.
+
+> [!EU]
+> In regulated environments (finance, medical — common in EU interviews), traceability matters: requirements linked to tests, audit-ready reports (e.g. via \`@DisplayName\`/\`@Tag\` conventions and CI test reports). Mention that testing strategy is also a compliance artefact, not just an engineering one.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Hand-rolled test doubles — stub, spy, mock, fake (no libraries)`,
+                code: `import java.util.*;
+
+/**
+ * Demonstrates the test-doubles taxonomy WITHOUT any framework.
+ * Understanding this is what makes Mockito non-magical:
+ * a Mockito mock is just a generated class like these.
+ */
+public class TestDoublesDemo {
+
+    // ---- The port our SUT depends on ----
+    interface MailGateway {
+        boolean send(String to, String body);
+    }
+
+    // ---- SUT: business logic we want to test ----
+    static class WelcomeService {
+        private final MailGateway mail;
+        WelcomeService(MailGateway mail) { this.mail = mail; }
+
+        String welcome(String email) {
+            if (email == null || !email.contains("@")) return "INVALID";
+            boolean ok = mail.send(email, "Welcome!");
+            return ok ? "SENT" : "QUEUED_FOR_RETRY";
+        }
+    }
+
+    // ---- STUB: canned answer, no recording. Enables STATE verification ----
+    static class StubMail implements MailGateway {
+        private final boolean answer;
+        StubMail(boolean answer) { this.answer = answer; }
+        public boolean send(String to, String body) { return answer; }
+    }
+
+    // ---- SPY: records interactions for later inspection ----
+    static class SpyMail implements MailGateway {
+        final List<String> recipients = new ArrayList<>();
+        public boolean send(String to, String body) {
+            recipients.add(to);
+            return true;
+        }
+    }
+
+    // ---- MOCK: holds an EXPECTATION and can verify it itself ----
+    static class MockMail implements MailGateway {
+        private String expectedTo; private int calls = 0;
+        void expectSendTo(String to) { this.expectedTo = to; }
+        public boolean send(String to, String body) {
+            if (!Objects.equals(expectedTo, to))
+                throw new AssertionError("Unexpected recipient: " + to);
+            calls++;
+            return true;
+        }
+        void verify() {
+            if (calls != 1) throw new AssertionError("Expected exactly 1 send, got " + calls);
+        }
+    }
+
+    // ---- FAKE: a real, working, lightweight implementation ----
+    static class FakeMailbox implements MailGateway {
+        final Map<String, List<String>> inbox = new HashMap<>();
+        public boolean send(String to, String body) {
+            inbox.computeIfAbsent(to, k -> new ArrayList<>()).add(body);
+            return true;
+        }
+    }
+
+    public static void main(String[] args) {
+        // 1. STUB -> state verification: assert on the RESULT
+        var stubbed = new WelcomeService(new StubMail(false));
+        assertEquals("QUEUED_FOR_RETRY", stubbed.welcome("a@b.com"), "stub/state");
+
+        // 2. SPY -> inspect recorded calls after the fact
+        var spy = new SpyMail();
+        new WelcomeService(spy).welcome("a@b.com");
+        assertEquals(List.of("a@b.com"), spy.recipients, "spy recorded");
+
+        // 3. MOCK -> behaviour verification: expectation set UP FRONT
+        var mock = new MockMail();
+        mock.expectSendTo("a@b.com");
+        new WelcomeService(mock).welcome("a@b.com");
+        mock.verify();
+        System.out.println("PASS: mock expectation verified");
+
+        // 4. FAKE -> full lightweight impl, richest state assertions
+        var fake = new FakeMailbox();
+        new WelcomeService(fake).welcome("a@b.com");
+        assertEquals(List.of("Welcome!"), fake.inbox.get("a@b.com"), "fake inbox");
+
+        // 5. Guard clause needs NO double at all (dummy would do)
+        assertEquals("INVALID", new WelcomeService(null).welcome("nope"), "no double needed");
+
+        System.out.println("All taxonomy demos passed.");
+    }
+
+    static void assertEquals(Object expected, Object actual, String label) {
+        if (!Objects.equals(expected, actual))
+            throw new AssertionError(label + ": expected " + expected + " but was " + actual);
+        System.out.println("PASS: " + label + " -> " + actual);
+    }
+}`,
+                runnable: true,
+                note: `Self-contained plain Java — run it to see all five doubles in action.`
+              },
+              {
+                lang: `java`,
+                title: `PIT mutation testing — Maven config (concept reference)`,
+                code: `<!-- pom.xml: mutation testing with pitest.
+     PIT mutates bytecode (negate conditionals, remove calls, change returns)
+     and re-runs tests. Surviving mutants = weak assertions. -->
+<plugin>
+    <groupId>org.pitest</groupId>
+    <artifactId>pitest-maven</artifactId>
+    <version>1.16.1</version>
+    <dependencies>
+        <dependency> <!-- JUnit 5 support -->
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-junit5-plugin</artifactId>
+            <version>1.2.1</version>
+        </dependency>
+    </dependencies>
+    <configuration>
+        <targetClasses><param>com.acme.pricing.*</param></targetClasses>
+        <mutationThreshold>75</mutationThreshold> <!-- fail build below this -->
+        <threads>4</threads>
+    </configuration>
+</plugin>
+<!-- mvn org.pitest:pitest-maven:mutationCoverage
+     Run nightly / on critical modules; too slow for every commit. -->`,
+                runnable: false,
+                note: `Maven XML — reference only.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What economic argument underlies the test pyramid?`,
+                a: `Cost per test rises as you go up: E2E tests are slower to run, more expensive to maintain, harder to diagnose and flakier. So every check should be pushed to the LOWEST layer that can catch that bug — many unit tests, fewer integration tests, very few E2E journeys.`
+              },
+              {
+                q: `Name the five test doubles in Meszaros's taxonomy and one-line definitions.`,
+                a: `Dummy (fills a parameter, never used), Stub (canned answers), Spy (records calls, possibly with real/stubbed behaviour), Mock (pre-programmed expectations about interactions, verifies them), Fake (real lightweight working implementation, e.g. in-memory repo).`
+              },
+              {
+                q: `State verification vs behaviour (interaction) verification — which should you prefer and why?`,
+                a: `Prefer state verification (assert on outputs/state via stubs/fakes): it survives refactoring because it doesn't care HOW the result was computed. Interaction verification (verify() on mocks) couples tests to implementation; reserve it for outbound side effects you can't otherwise observe (emails, published events).`
+              },
+              {
+                q: `Classicist (Detroit) vs mockist (London) schools of TDD?`,
+                a: `Classicists use real collaborators/fakes and verify state, mocking only awkward boundaries. Mockists mock all collaborators and verify interactions, designing outside-in. Classicist tests are more refactor-proof; mockist tests give stronger design pressure on interfaces but are more brittle.`
+              },
+              {
+                q: `What do the FIRST principles stand for?`,
+                a: `Fast, Isolated/Independent (no order or shared-state dependence), Repeatable (deterministic anywhere — no real clock/network/unseeded random), Self-validating (clear pass/fail), Timely (written alongside or before the code).`
+              },
+              {
+                q: `Why is code coverage 'a tool, not a goal'?`,
+                a: `Coverage only proves what is NOT tested; it can't measure assertion quality — an assertion-free test still scores 100%. Use it to find untested areas and as a ratchet on new code, never as a target, because targets get gamed with meaningless tests.`
+              },
+              {
+                q: `What is mutation testing and what problem does it solve?`,
+                a: `A tool (PIT for Java) injects small bytecode faults (mutants: flip conditionals, remove calls, alter returns) and re-runs the tests. If tests still pass, the mutant survived — assertions are too weak. It measures fault-detection ability, which line coverage cannot.`
+              },
+              {
+                q: `What is the 'ice-cream cone' anti-pattern and how do you fix it incrementally?`,
+                a: `An inverted pyramid: mostly slow, flaky E2E tests, few unit tests — causing slow CI and retry culture. Fix by ratcheting: require unit tests on new/changed code, and replace E2E scenarios with equivalent lower-layer tests as areas are touched; keep only critical-journey E2E smoke tests.`
+              },
+              {
+                q: `What belongs at the integration layer rather than the unit layer?`,
+                a: `Anything crossing a process/technology boundary where the real behaviour lives outside your code: repository SQL/JPA mappings, HTTP serialization and status codes, transaction semantics, messaging, configuration binding. Mocked versions of these test nothing real.`
+              },
+              {
+                q: `What is the 'testing trophy' and when is it a reasonable counterpoint to the pyramid?`,
+                a: `A model favouring a large integration-test layer over many fine-grained unit tests ('write tests, not too many, mostly integration'). Reasonable when integration tests are fast (Testcontainers, slices) and the domain logic is thin glue; less so for algorithm-heavy domains where unit tests are cheaper and more precise.`
+              },
+              {
+                q: `How should a team treat flaky tests, strategically?`,
+                a: `Like production incidents: quarantine immediately (so they don't train people to ignore red), track them, fix root causes (time, async, ordering, shared state), and never normalise blind retries — a suite people don't trust is worse than no suite.`
+              },
+              {
+                q: `Give a crisp 30-second 'testing strategy' answer for a staff interview.`,
+                a: `Risk-driven pyramid: fast unit tests for domain logic; integration tests with real dependencies (Testcontainers) at boundaries; a handful of E2E smoke journeys. Prefer state over interaction verification, coverage as a signal with mutation testing for honesty, flaky tests treated as incidents, and testability as a first-class design constraint.`
+              }
+            ]
+          },
+          {
+            title: `JUnit 5 Mastery: Lifecycle, Parameterized, Dynamic Tests & Extensions`,
+            notes: `## JUnit 5 = Platform + Jupiter + Vintage
+
+JUnit 5 is three things: the **Platform** (launcher API that IDEs/build tools talk to — can also run other engines like Spock or Cucumber), **Jupiter** (the new programming model: annotations + extension API), and **Vintage** (an engine that runs JUnit 4 tests on the platform — migration bridge). Knowing this architecture is a classic senior filter question.
+
+| | JUnit 4 | JUnit 5 (Jupiter) |
+|---|---|---|
+| Extension model | \`@RunWith\` (ONE runner per class) + \`@Rule\` | \`@ExtendWith\` — **multiple, composable extensions** |
+| Lifecycle | \`@Before\`/\`@After\`/\`@BeforeClass\`/\`@AfterClass\` | \`@BeforeEach\`/\`@AfterEach\`/\`@BeforeAll\`/\`@AfterAll\` |
+| Visibility | public classes/methods required | package-private fine (bye, boilerplate) |
+| Expected exceptions | \`@Test(expected=...)\` (whole-method — imprecise) | \`assertThrows(...)\` (exact statement, returns the exception) |
+| Parameterized | Clunky \`@RunWith(Parameterized.class)\`, class-level | \`@ParameterizedTest\` per method, many sources |
+| Assumptions | \`Assume\` | \`Assumptions.assumeTrue/assumingThat\` |
+| Java baseline | Java 5 | Java 8+ (lambdas in assertions) |
+
+> [!TIP]
+> The killer difference: JUnit 4 allowed **one runner** per class (\`SpringJUnit4ClassRunner\` OR \`MockitoJUnitRunner\` — pick one, hack the other in as a rule). Jupiter's \`@ExtendWith(SpringExtension.class)\` + \`@ExtendWith(MockitoExtension.class)\` **compose**. Extensions implement interfaces (\`BeforeEachCallback\`, \`ParameterResolver\`, \`TestInstancePostProcessor\`...) instead of subclassing a runner.
+
+### Lifecycle — the detail seniors get asked
+
+- By default JUnit creates a **new test-class instance per test method** (\`Lifecycle.PER_METHOD\`) — that's why instance fields don't leak between tests, and why \`@BeforeAll\`/\`@AfterAll\` methods must be \`static\`.
+- \`@TestInstance(Lifecycle.PER_CLASS)\` switches to one instance for all tests: \`@BeforeAll\` can be non-static (handy in Kotlin, or to init expensive state), but now **you** own resetting mutable fields.
+- Execution order within a class is deliberately non-obvious (deterministic but pseudo-random); if you truly need order (rare — e.g. staged scenario tests) use \`@TestMethodOrder(OrderAnnotation.class)\` + \`@Order\`. Needing order in unit tests is usually a smell — hidden shared state.
+
+### Assertions
+
+\`assertEquals(expected, actual)\` — argument order matters for the failure message. \`assertAll\` groups assertions so **all** run and all failures report together (vs stopping at the first) — ideal for asserting several properties of one object. \`assertThrows\` returns the exception so you can assert on its message/state. Supplier-based messages \`() -> "..."\` avoid building expensive strings on the happy path.
+
+### Parameterized tests
+
+One test method, many inputs — the cure for copy-pasted tests: \`@ValueSource\` (single primitive/String arg), \`@CsvSource\` / \`@CsvFileSource\` (multiple args inline or from a file), \`@EnumSource\`, \`@MethodSource\` (a static method returning \`Stream<Arguments>\` — the powerhouse: arbitrary objects, computed cases), \`@NullSource\`/\`@EmptySource\` for edge cases. Custom \`ArgumentsProvider\`/\`@ArgumentsSource\` when reused across classes.
+
+### Organisation & dynamic tests
+
+- \`@Nested\` inner classes group tests by scenario ("when cart is empty / when cart has items"), each with its **own** \`@BeforeEach\` that stacks on the outer one — reads like a spec.
+- \`@TestFactory\` returns \`Stream<DynamicTest>\` — tests generated **at runtime** (e.g. one test per file in a directory, per row of a golden dataset). Caveat: dynamic tests have **no individual lifecycle callbacks** — no \`@BeforeEach\` per dynamic test.
+- \`@DisplayName\` for human-readable reports; \`@Tag("slow")\`/\`@Tag("integration")\` + build-tool filtering to split fast and slow suites in CI.
+
+### Assumptions, timeouts, parallelism
+
+- \`assumeTrue(env == CI)\` **aborts** (reports as skipped, not failed) — for tests valid only in certain environments. Don't use it to hide flakiness.
+- \`assertTimeout(duration, executable)\` runs in the same thread and waits for completion; \`assertTimeoutPreemptively\` kills via another thread — **dangerous** with anything ThreadLocal-bound (Spring transactions, security context). \`@Timeout(5)\` annotation is declarative per test/class.
+- Parallel execution is opt-in via \`junit-platform.properties\`: \`junit.jupiter.execution.parallel.enabled=true\` plus \`@Execution(CONCURRENT)\` or default-mode properties. \`@ResourceLock("db")\` serialises tests sharing a resource. Parallelism is free speed **only** if tests are truly isolated — it's also the fastest way to expose hidden shared state.
+
+> [!WARNING]
+> \`assertTimeoutPreemptively\` executes the lambda on a **different thread**. Any code relying on ThreadLocals — Spring's transaction manager, SecurityContextHolder, MDC — will silently misbehave. Prefer \`@Timeout\` or plain \`assertTimeout\` in Spring tests.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Lifecycle, assertAll, assertThrows, @Nested`,
+                code: `import org.junit.jupiter.api.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+class ShoppingCartTest {
+
+    static PriceCatalog catalog;          // expensive, shared, immutable
+    ShoppingCart cart;                    // fresh per test (PER_METHOD lifecycle)
+
+    @BeforeAll
+    static void startCatalog() {          // static: runs once, before instance creation
+        catalog = PriceCatalog.load();
+    }
+
+    @BeforeEach
+    void freshCart() {                    // new ShoppingCartTest instance each test
+        cart = new ShoppingCart(catalog);
+    }
+
+    @Test
+    @DisplayName("empty cart totals zero and has no discount")
+    void emptyCart() {
+        // assertAll: ALL assertions run; failures reported together
+        assertAll("empty cart invariants",
+            () -> assertEquals(0, cart.itemCount()),
+            () -> assertEquals(0, cart.total().signum()),
+            () -> assertFalse(cart.discountApplied()));
+    }
+
+    @Test
+    void rejectsNegativeQuantity() {
+        // assertThrows pins the exception to ONE statement and returns it
+        var ex = assertThrows(IllegalArgumentException.class,
+            () -> cart.add("SKU-1", -1));
+        assertTrue(ex.getMessage().contains("quantity"));
+    }
+
+    @Nested
+    @DisplayName("when cart holds 3 items")
+    class WithItems {
+        @BeforeEach
+        void addItems() { cart.add("SKU-1", 3); }   // stacks on outer @BeforeEach
+
+        @Test
+        void bulkDiscountApplies() {
+            assertTrue(cart.discountApplied());
+        }
+    }
+}`,
+                runnable: false,
+                note: `Needs JUnit 5 — reference.`
+              },
+              {
+                lang: `java`,
+                title: `@ParameterizedTest: ValueSource, CsvSource, MethodSource`,
+                code: `import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.*;
+import java.util.stream.Stream;
+import static org.junit.jupiter.api.Assertions.*;
+
+class IbanValidatorTest {
+
+    IbanValidator validator = new IbanValidator();
+
+    @ParameterizedTest(name = "[{index}] {0} is invalid")
+    @ValueSource(strings = {"", " ", "XX", "DE00"})
+    @NullSource                                    // adds a null case
+    void rejectsMalformed(String iban) {
+        assertFalse(validator.isValid(iban));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "DE89370400440532013000, true,  Germany",
+        "FR1420041010050500013M02606, true, France",
+        "DE89370400440532013001, false, 'bad checksum'"   // quotes for commas/spaces
+    })
+    void checksums(String iban, boolean valid, String label) {
+        assertEquals(valid, validator.isValid(iban), label);
+    }
+
+    @ParameterizedTest
+    @MethodSource("transferCases")                 // static Stream<Arguments>
+    void feeCalculation(Transfer transfer, Money expectedFee) {
+        assertEquals(expectedFee, new FeePolicy().feeFor(transfer));
+    }
+
+    static Stream<Arguments> transferCases() {     // arbitrary objects, computed data
+        return Stream.of(
+            Arguments.of(Transfer.sepa("DE...", 100), Money.eur("0.00")),
+            Arguments.of(Transfer.swift("US...", 100), Money.eur("12.50")),
+            Arguments.of(Transfer.swift("US...", 10_000), Money.eur("25.00")));
+    }
+}`,
+                runnable: false,
+                note: `Needs junit-jupiter-params — reference.`
+              },
+              {
+                lang: `java`,
+                title: `@TestFactory dynamic tests + a composable @ExtendWith extension`,
+                code: `import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.extension.*;
+import java.nio.file.*;
+import java.util.stream.Stream;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class GoldenFileTest {
+
+    // One DynamicTest per golden file — cases discovered at RUNTIME.
+    // Caveat: no @BeforeEach around each dynamic test.
+    @TestFactory
+    Stream<DynamicTest> rendersAllGoldenFiles() throws Exception {
+        return Files.list(Path.of("src/test/resources/golden"))
+            .map(file -> DynamicTest.dynamicTest(
+                "renders " + file.getFileName(),
+                () -> assertEquals(
+                        Files.readString(file),
+                        TemplateEngine.render(file.getFileName().toString()))));
+    }
+}
+
+// ---- Extension: replaces a JUnit 4 runner/rule pair; composable ----
+class TimingExtension implements BeforeTestExecutionCallback, AfterTestExecutionCallback {
+    @Override public void beforeTestExecution(ExtensionContext ctx) {
+        ctx.getStore(ExtensionContext.Namespace.create(getClass()))
+           .put("start", System.nanoTime());
+    }
+    @Override public void afterTestExecution(ExtensionContext ctx) {
+        long start = ctx.getStore(ExtensionContext.Namespace.create(getClass()))
+                        .remove("start", long.class);
+        System.out.printf("%s took %d ms%n",
+            ctx.getDisplayName(), (System.nanoTime() - start) / 1_000_000);
+    }
+}
+
+@ExtendWith(TimingExtension.class)     // stack as many extensions as you like
+// @ExtendWith(MockitoExtension.class) // ...unlike JUnit 4's single @RunWith
+class TimedSuite { /* ... */ }`,
+                runnable: false,
+                note: `Needs JUnit 5 — reference.`
+              },
+              {
+                lang: `java`,
+                title: `Parallel execution config + @ResourceLock`,
+                code: `// src/test/resources/junit-platform.properties
+// junit.jupiter.execution.parallel.enabled=true
+// junit.jupiter.execution.parallel.mode.default=concurrent
+// junit.jupiter.execution.parallel.mode.classes.default=concurrent
+// junit.jupiter.execution.parallel.config.strategy=dynamic   // ~1 thread per core
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.*;
+
+@Execution(ExecutionMode.CONCURRENT)
+class ParallelSafeTest {
+
+    @Test
+    void pureLogicRunsAnywhere() { /* no shared state -> safe */ }
+
+    @Test
+    @ResourceLock(value = "system.properties", mode = ResourceAccessMode.READ_WRITE)
+    void mutatesGlobalState() {
+        // Tests declaring the same READ_WRITE resource never run concurrently.
+        System.setProperty("feature.x", "on");
+    }
+}`,
+                runnable: false,
+                note: `Needs JUnit 5 — reference.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What are the three sub-projects of JUnit 5?`,
+                a: `Platform (launcher/engine SPI that IDEs and build tools integrate with), Jupiter (the new programming model and extension API), Vintage (engine running JUnit 4 tests on the platform for migration).`
+              },
+              {
+                q: `Why must @BeforeAll methods be static by default, and how do you avoid that?`,
+                a: `Default lifecycle is PER_METHOD: a new test-class instance per test, so class-level setup can't live on an instance. @TestInstance(Lifecycle.PER_CLASS) uses one instance for all tests, allowing non-static @BeforeAll/@AfterAll — but you then own resetting mutable fields between tests.`
+              },
+              {
+                q: `JUnit 4 @RunWith vs JUnit 5 @ExtendWith — the key difference?`,
+                a: `@RunWith allowed exactly ONE runner per class, forcing hacks when you needed Spring + Mockito. @ExtendWith registers multiple composable extensions implementing lifecycle interfaces (BeforeEachCallback, ParameterResolver, etc.).`
+              },
+              {
+                q: `What does assertAll give you over sequential asserts?`,
+                a: `All grouped assertions execute even if earlier ones fail, and failures are reported together (MultipleFailuresError). Sequential asserts stop at the first failure, hiding the rest — assertAll is ideal for checking several properties of one result.`
+              },
+              {
+                q: `Why is assertThrows better than JUnit 4's @Test(expected=...)?`,
+                a: `It scopes the expectation to one statement (with expected=, an exception from setup code also passes the test) and returns the thrown exception so you can assert its message and state.`
+              },
+              {
+                q: `Name four sources for @ParameterizedTest and when you'd pick @MethodSource.`,
+                a: `@ValueSource, @CsvSource/@CsvFileSource, @EnumSource, @MethodSource (plus @NullSource/@EmptySource). @MethodSource returns Stream<Arguments> from a static method — use it for multiple/complex object arguments or computed case sets.`
+              },
+              {
+                q: `What is @TestFactory and its main lifecycle caveat?`,
+                a: `A method returning Stream/Collection of DynamicTest — test cases generated at runtime (e.g. one per golden file). Caveat: dynamic tests don't get individual @BeforeEach/@AfterEach callbacks; the factory method shares one lifecycle.`
+              },
+              {
+                q: `Assumption vs assertion — what happens on failure?`,
+                a: `A failed assertion fails the test. A failed assumption (assumeTrue) ABORTS it — reported as skipped, not failed. Use for environment-dependent tests; abusing it to hide flaky tests destroys signal.`
+              },
+              {
+                q: `assertTimeout vs assertTimeoutPreemptively — the ThreadLocal trap?`,
+                a: `assertTimeout runs on the same thread and waits for completion; assertTimeoutPreemptively runs the code on ANOTHER thread and aborts it — so ThreadLocal-bound context (Spring transactions, SecurityContextHolder, MDC) is missing or wrong. Prefer @Timeout/assertTimeout in Spring tests.`
+              },
+              {
+                q: `How do you enable JUnit 5 parallel execution and protect shared resources?`,
+                a: `junit-platform.properties: junit.jupiter.execution.parallel.enabled=true plus default modes (or @Execution(CONCURRENT)). Guard shared state with @ResourceLock("name", READ_WRITE) so conflicting tests serialize. Parallelism also flushes out hidden shared-state bugs.`
+              },
+              {
+                q: `What are @Nested classes for and how do their @BeforeEach methods interact?`,
+                a: `Grouping tests by scenario/context so the class reads like a spec. Outer @BeforeEach runs first, then the nested class's — setup stacks from outside in, letting each context add its own arrangement.`
+              },
+              {
+                q: `How do you split fast and slow tests in CI with JUnit 5?`,
+                a: `Tag them (@Tag("integration"), @Tag("slow")) and filter in the build: Maven Surefire/Failsafe groups/excludedGroups or Gradle useJUnitPlatform { includeTags/excludeTags }. Typical setup: unit tests on every commit, tagged integration tests in a separate CI stage.`
+              }
+            ]
+          },
+          {
+            title: `Mockito in Depth: Stubbing, Verification & the Boundaries of Mocking`,
+            notes: `## What a mock actually is
+
+\`mock(OrderRepository.class)\` generates a subclass/implementation at runtime (ByteBuddy) whose every method records the invocation and returns a default ("nice mock" semantics): \`null\` for objects, \`0\`/\`false\` for primitives, **empty** collections/Optional — a deliberate design choice to avoid NPE storms. Stubbing overrides defaults per argument pattern; verification queries the recorded invocations.
+
+### mock vs spy
+
+- \`mock(X.class)\` — everything is fake; no real code runs.
+- \`spy(realObject)\` — a wrapper around a **real instance**: unstubbed calls hit real code, stubbed calls are intercepted. Use sparingly — legacy code you can't refactor, or verifying a real collaborator was invoked. A spy on your own class under test is a design smell (split the class instead).
+
+### when/thenReturn vs doReturn/when — a real semantic difference
+
+\`when(spy.list()).thenReturn(x)\` **actually calls** \`spy.list()\` during stubbing (the real method!) — it can throw, mutate state, or corrupt stubbing. \`doReturn(x).when(spy).list()\` intercepts **before** the call, so nothing real executes. Rules of thumb:
+
+- Plain mocks: prefer \`when/thenReturn\` — type-safe (compiler checks the return type), reads better.
+- **Spies**: always \`doReturn/when\` (or \`doThrow\`, \`doAnswer\`, \`doNothing\` for void methods).
+- \`when/thenReturn\` cannot stub void methods at all — \`doNothing()/doThrow().when(mock).voidMethod()\` is the only syntax.
+
+### Argument matchers — the "all raw or all matchers" rule
+
+\`when(repo.find(eq("DE"), anyInt()))\` — once you use ONE matcher, **every** argument must be a matcher (wrap literals in \`eq()\`). Why: matchers aren't values — they push onto an internal ThreadLocal stack and return dummy values; Mockito can't tell which positions your raw values belong to. Mixing throws \`InvalidUseOfMatchersException\`. Same mechanism explains why calling matchers outside stubbing/verification corrupts the next interaction.
+
+### Verification
+
+\`verify(mailer).send(msg)\` (implicit \`times(1)\`), \`times(n)\`, \`never()\`, \`atLeastOnce()\`, \`atMost(n)\`; \`inOrder(mockA, mockB)\` for cross-mock ordering; \`verifyNoMoreInteractions\` (use rarely — extremely brittle); \`verifyNoInteractions\` for "this path must not touch the DB".
+
+### ArgumentCaptor
+
+When an object is **built inside** the SUT and passed outward, you can't reference it — capture it: \`ArgumentCaptor<Email> cap = ArgumentCaptor.forClass(Email.class); verify(mailer).send(cap.capture()); assertThat(cap.getValue().to())...\`. This converts an interaction check into a rich **state** assertion on the payload. Use \`@Captor\` with \`MockitoExtension\` for generics-friendly creation. Capture in \`verify\`, never in stubbing.
+
+### Statics, constructions, and what NOT to mock
+
+- \`mockStatic(Clock.class)\` (mockito-inline / built-in since Mockito 5) returns a \`MockedStatic\` that **must** be closed (try-with-resources) — the static intercept is thread-registered, and leaking it poisons other tests. Same for \`mockConstruction\`.
+- Legit uses: legacy static gateways (\`LocalDate.now()\`, static factories) you can't refactor *yet*. The senior answer: needing \`mockStatic\` regularly means the design lacks an injectable seam — inject a \`Clock\` instead of mocking \`LocalDate.now()\`.
+
+> [!DANGER]
+> **Don't mock what you don't own** (the classic rule from *Growing Object-Oriented Software*): mocking \`RestTemplate\`, \`EntityManager\` or the AWS SDK bakes your (possibly wrong) understanding of a third-party contract into green tests — they keep passing when the library's real behaviour differs or changes. Instead, wrap the library in **your own port** (thin adapter interface), mock the port in unit tests, and test the adapter against the real thing (WireMock/Testcontainers). And **never mock value objects** (\`Money\`, \`Optional\`, collections, DTOs) — just construct them; a mocked value object with stubbed \`equals\`/getters is pure noise. Mockito 5 even refuses some (final classes) without the inline mock maker for a reason.
+
+> [!WARNING]
+> **Over-mocking smells:** a test with 6+ mocks (the class has too many collaborators); stubbing chains \`when(a.b().c().d())\` (Law-of-Demeter violation surfaced by the test); tests that break on every refactor while behaviour is unchanged (you verified implementation, not outcome); asserting \`verify\` where you could assert a return value. Tests are feedback about design — listen.
+
+### BDDMockito
+
+Same engine, vocabulary aligned with given/when/then: \`given(repo.find(id)).willReturn(order)\` in the *given* block, \`then(mailer).should().send(...)\` in the *then* block. Pure readability; teams standardise one style.`,
+            code: [
+              {
+                lang: `java`,
+                title: `mock vs spy, doReturn vs thenReturn, matcher rule`,
+                code: `import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
+import java.util.*;
+import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+@ExtendWith(MockitoExtension.class)   // composes with other extensions (vs JUnit4 runner)
+class StubbingSemanticsTest {
+
+    @Mock OrderRepository repo;                    // full fake
+    @Spy  AuditLog audit = new InMemoryAuditLog(); // real object, selectively stubbed
+    @InjectMocks OrderService service;             // constructor injection preferred
+
+    @Test
+    void mock_defaultsAreSafe() {
+        // Unstubbed mock: null / 0 / false / EMPTY collections & Optional
+        assertTrue(repo.findByCountry("DE").isEmpty());   // empty List, not null
+        assertTrue(repo.findById(42L).isEmpty());         // empty Optional
+    }
+
+    @Test
+    void spy_requiresDoReturn() {
+        // DANGER with a spy: when(audit.lastEntries(5)) CALLS the real method
+        // during stubbing — may throw / mutate real state.
+        doReturn(List.of("boot")).when(audit).lastEntries(5);   // nothing real runs
+        assertEquals(List.of("boot"), audit.lastEntries(5));    // stubbed
+        audit.record("x");                                      // real method runs
+    }
+
+    @Test
+    void voidMethods_useDoFamily() {
+        doThrow(new IllegalStateException("full"))
+            .when(repo).archive(any());            // when(repo.archive(..)) won't compile
+        assertThrows(IllegalStateException.class, () -> repo.archive(new Order()));
+    }
+
+    @Test
+    void allRawOrAllMatchers() {
+        // when(repo.find(eq("DE"), 10))  -> InvalidUseOfMatchersException!
+        when(repo.find(eq("DE"), anyInt()))        // one matcher => ALL matchers
+            .thenReturn(List.of(new Order()));
+        assertEquals(1, repo.find("DE", 10).size());
+    }
+
+    @Test
+    void consecutiveCalls_thenChaining() {
+        when(repo.nextSequence())
+            .thenReturn(1L, 2L)                     // 1st call, 2nd call
+            .thenThrow(new IllegalStateException()); // 3rd+
+        assertEquals(1L, repo.nextSequence());
+        assertEquals(2L, repo.nextSequence());
+        assertThrows(IllegalStateException.class, repo::nextSequence);
+    }
+}`,
+                runnable: false,
+                note: `Needs Mockito + JUnit 5 — reference.`
+              },
+              {
+                lang: `java`,
+                title: `verify, inOrder, ArgumentCaptor, mockStatic`,
+                code: `import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
+import java.time.*;
+import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+
+@ExtendWith(MockitoExtension.class)
+class VerificationTest {
+
+    @Mock PaymentGateway gateway;
+    @Mock Ledger ledger;
+    @Mock Mailer mailer;
+    @Captor ArgumentCaptor<Receipt> receiptCaptor;   // generics-safe creation
+    @InjectMocks CheckoutService checkout;
+
+    @Test
+    void chargesThenRecords_inThatOrder() {
+        checkout.settle(cart());
+
+        InOrder order = inOrder(gateway, ledger);    // ordering ACROSS mocks
+        order.verify(gateway).charge(any());
+        order.verify(ledger).record(any());
+        verify(mailer, never()).sendFailureNotice(any());
+    }
+
+    @Test
+    void receiptBuiltInsideSut_capturedAndStateAsserted() {
+        checkout.settle(cart());
+
+        // The Receipt is constructed INSIDE settle() — capture to inspect it.
+        verify(mailer).sendReceipt(receiptCaptor.capture());
+        Receipt sent = receiptCaptor.getValue();
+        assertThat(sent.total()).isEqualByComparingTo("59.90");  // interaction -> STATE assertion
+        assertThat(sent.lines()).hasSize(2);
+    }
+
+    @Test
+    void mockStatic_mustBeScopedAndClosed() {
+        // Better design: inject java.time.Clock. mockStatic = escape hatch for legacy.
+        try (MockedStatic<LocalDate> dates = mockStatic(LocalDate.class)) {
+            dates.when(LocalDate::now).thenReturn(LocalDate.of(2026, 1, 1));
+            assertThat(checkout.isNewYearPromo()).isTrue();
+        }   // close() deregisters — leaking it poisons every later test on this thread
+    }
+
+    Cart cart() { return Cart.with("SKU-1", "SKU-2"); }
+}
+
+// ---- BDDMockito: same engine, given/when/then vocabulary ----
+// import static org.mockito.BDDMockito.*;
+// given(repo.findById(42L)).willReturn(Optional.of(order));   // given
+// service.process(42L);                                       // when
+// then(mailer).should(times(1)).sendReceipt(any());           // then`,
+                runnable: false,
+                note: `Needs Mockito + AssertJ — reference.`
+              },
+              {
+                lang: `java`,
+                title: `Don't mock types you don't own — wrap in a port instead`,
+                code: `// SMELL: unit test mocks the AWS SDK directly.
+// The stub encodes YOUR GUESS about SDK behaviour; test stays green
+// even if the real SDK behaves differently (pagination, exceptions, nulls).
+//
+//   S3Client s3 = mock(S3Client.class);
+//   when(s3.getObject((GetObjectRequest) any())).thenReturn(...); // guessing
+
+// FIX: define a port YOU own; mock THAT in unit tests.
+public interface DocumentStore {                       // your port, your contract
+    Optional<byte[]> fetch(String key);
+    void store(String key, byte[] content);
+}
+
+// Thin adapter — the ONLY place that touches the SDK.
+// Unit tests mock DocumentStore; the adapter itself gets an
+// INTEGRATION test against the real thing (Testcontainers LocalStack).
+final class S3DocumentStore implements DocumentStore {
+    private final S3Client s3;
+    private final String bucket;
+    S3DocumentStore(S3Client s3, String bucket) { this.s3 = s3; this.bucket = bucket; }
+
+    @Override public Optional<byte[]> fetch(String key) {
+        try {
+            return Optional.of(s3.getObjectAsBytes(
+                b -> b.bucket(bucket).key(key)).asByteArray());
+        } catch (NoSuchKeyException e) {
+            return Optional.empty();                   // real contract, tested for real
+        }
+    }
+    @Override public void store(String key, byte[] content) {
+        s3.putObject(b -> b.bucket(bucket).key(key), RequestBody.fromBytes(content));
+    }
+}
+
+// And NEVER mock value objects:
+//   Money price = mock(Money.class); when(price.amount())...   // noise
+//   Money price = Money.eur("59.90");                          // just build it`,
+                runnable: false,
+                note: `Design reference — AWS SDK types elided.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `mock() vs spy() in Mockito?`,
+                a: `mock() creates a full fake — no real code runs, unstubbed methods return safe defaults. spy() wraps a REAL instance — unstubbed calls execute real code, stubbed ones are intercepted. Spies are for legacy/partial situations; spying on your own class under test signals it should be split.`
+              },
+              {
+                q: `Why must you use doReturn/when instead of when/thenReturn on a spy?`,
+                a: `when(spy.method()) literally INVOKES the real method during stubbing — it can throw, mutate state, or corrupt the stubbing. doReturn(x).when(spy).method() intercepts before invocation so no real code runs. Also, the do-family is the only way to stub void methods.`
+              },
+              {
+                q: `What defaults does an unstubbed Mockito mock return?`,
+                a: `null for objects, 0/false for primitives, and EMPTY collections/Optional (not null) — 'nice mock' semantics designed to avoid NPE cascades and keep unrelated tests from failing on missing stubs.`
+              },
+              {
+                q: `Explain the 'all raw or all matchers' rule and its cause.`,
+                a: `If any argument uses a matcher (any(), eq()), ALL arguments must be matchers. Matchers aren't values — they're pushed onto an internal ThreadLocal stack and return dummies, so Mockito can't map a mix of raw values and matchers to positions. Mixing throws InvalidUseOfMatchersException; wrap literals with eq().`
+              },
+              {
+                q: `When is ArgumentCaptor the right tool?`,
+                a: `When the object you care about is CONSTRUCTED INSIDE the SUT and passed to a collaborator — you can't reference it directly. Capture it in verify(...), then make rich state assertions on the payload. Use @Captor for generic types; never capture during stubbing.`
+              },
+              {
+                q: `What does inOrder verify that plain verify cannot?`,
+                a: `The relative ORDER of interactions, including across multiple mocks: inOrder(gateway, ledger) then order.verify(gateway).charge(); order.verify(ledger).record() fails if the sequence was reversed, which two independent verify() calls would accept.`
+              },
+              {
+                q: `Why must MockedStatic be closed, and what's the design critique of needing it?`,
+                a: `mockStatic registers a thread-wide intercept; if not closed (try-with-resources), the static stays mocked and poisons subsequent tests on that thread. Needing it regularly means missing an injectable seam — e.g. inject java.time.Clock instead of mocking LocalDate.now().`
+              },
+              {
+                q: `State the 'don't mock what you don't own' rule and its remedy.`,
+                a: `Mocking third-party types (RestTemplate, EntityManager, AWS SDK) encodes your assumptions about their contract — tests stay green while real behaviour differs/changes. Remedy: wrap the library behind your own port interface, mock the port in unit tests, and integration-test the adapter against the real dependency (WireMock/Testcontainers).`
+              },
+              {
+                q: `Why never mock value objects like Money or a DTO?`,
+                a: `Value objects are cheap to construct and their behaviour (equals, accessors) IS the contract — a mock with stubbed getters tests nothing, hides equals/hashCode semantics, and adds noise. Just instantiate them, ideally via test data builders.`
+              },
+              {
+                q: `Name four over-mocking smells.`,
+                a: `(1) Many mocks per test — SUT has too many collaborators; (2) stubbing call chains when(a.b().c()) — Law of Demeter violation; (3) tests break on refactors that preserve behaviour — verified implementation, not outcome; (4) using verify where a return-value assertion exists. Each is design feedback.`
+              },
+              {
+                q: `verify(mock, never()) vs verifyNoInteractions vs verifyNoMoreInteractions?`,
+                a: `never() asserts one specific method wasn't called; verifyNoInteractions(mock) asserts the mock was never touched at all; verifyNoMoreInteractions asserts nothing beyond what was already verified — the last is extremely brittle and should be rare.`
+              },
+              {
+                q: `What is BDDMockito and why use it?`,
+                a: `An alias API over the same engine: given(...).willReturn(...) for arrange, then(mock).should().method() for assert — vocabulary matching given/when/then test structure. Purely readability; the team should standardise one style, since when(...) reads oddly inside a 'given' block.`
+              }
+            ]
+          },
+          {
+            title: `Spring Boot Testing: Slices, Context Caching & @MockitoBean`,
+            notes: `## Slice tests vs @SpringBootTest
+
+\`@SpringBootTest\` boots (nearly) the **whole** ApplicationContext — great for wiring smoke tests and true end-to-end-in-process tests, expensive for everything else. **Slice annotations** load only one layer's beans with tailored auto-configuration:
+
+| Annotation | Loads | You typically add | Tests |
+|---|---|---|---|
+| \`@WebMvcTest(OrderController.class)\` | MVC infra: controllers, \`@ControllerAdvice\`, converters, filters, security config | \`MockMvc\`, mocked service beans | Routing, status codes, validation, JSON shape, error handling, security rules |
+| \`@DataJpaTest\` | JPA: entities, Spring Data repos, \`TestEntityManager\`; embedded DB **by default** | Testcontainers + \`Replace.NONE\` | Queries, mappings, constraints |
+| \`@JsonTest\` | Jackson/Gson config, \`JacksonTester\` | — | Custom serializers, date formats, views |
+| \`@RestClientTest(PricingClient.class)\` | Your client bean + \`MockRestServiceServer\` | canned HTTP responses | Client-side serialization, error mapping, timeouts config |
+| \`@DataJdbcTest\`, \`@DataMongoTest\`, \`@WebFluxTest\` | analogous slices | — | — |
+| \`@SpringBootTest\` | everything (\`webEnvironment\`: MOCK / RANDOM_PORT + \`TestRestTemplate\`/\`WebTestClient\`) | — | Full wiring, cross-layer flows |
+
+\`\`\`mermaid
+flowchart TD
+    A[What am I testing?] --> B{Pure domain logic?}
+    B -- yes --> U[Plain JUnit + Mockito<br/>no Spring context at all]
+    B -- no --> C{Which boundary?}
+    C -- "HTTP in (controller)" --> W["@WebMvcTest + MockMvc<br/>mock the service layer"]
+    C -- "Persistence" --> D["@DataJpaTest<br/>+ Testcontainers, Replace.NONE"]
+    C -- "JSON shape" --> J["@JsonTest"]
+    C -- "HTTP out (client)" --> R["@RestClientTest +<br/>MockRestServiceServer / WireMock"]
+    C -- "Cross-layer wiring,<br/>full flow" --> S["@SpringBootTest<br/>RANDOM_PORT + Testcontainers"]
+    U -.->|"most tests"| P[Fast suite]
+    S -.->|"few tests"| P
+\`\`\`
+
+> [!TIP]
+> Senior framing: "Spring context in a test is a cost. Domain logic gets **no context**. Each boundary gets its **slice**. \`@SpringBootTest\` is for a thin layer of wiring/journey tests." Also know that field-injection-heavy code forces Spring into tests; constructor injection lets most classes be tested with plain \`new\`.
+
+### @MockBean → @MockitoBean
+
+\`@MockBean\` (and \`@SpyBean\`) replace/add a bean in the context with a Mockito mock — essential in slices to satisfy the controller's dependencies. **Deprecated in Spring Boot 3.4**: use \`@MockitoBean\`/\`@MockitoSpyBean\` (now in Spring Framework 6.2 itself, \`org.springframework.test.context.bean.override.mockito\`). Semantics are near-identical; interviewers increasingly expect you to know the migration.
+
+### Context caching — the #1 build-time lever
+
+Spring **caches ApplicationContexts across test classes** keyed by the merged context configuration: locations/classes, active profiles, property sources, context initializers, customizers — and the set of \`@MockBean\`/\`@MockitoBean\` definitions. Test classes with an **identical key reuse** the same context (boot once, run hundreds of classes). Every variation — a different \`properties = ...\` on \`@SpringBootTest\`, a different combination of mocked beans, a different profile — creates a **new context** that stays in memory (default cache size 32, LRU).
+
+> [!DANGER]
+> \`@DirtiesContext\` marks the context as unusable, forcing a **full re-boot for the next test class**. Sprinkled randomly ("it fixed a flaky test once"), it turns a 3-minute suite into a 30-minute one. It's almost always a symptom of tests mutating shared state (static fields, DB rows, a singleton's internals) — fix the leak instead. Audit tricks: log \`ApplicationContext\` startup count in CI; standardise a small set of shared test configurations (e.g. one \`AbstractIntegrationTest\` base class) so keys collide on purpose.
+
+### @Transactional in tests — the rollback gotcha
+
+Spring's test framework wraps each \`@Transactional\` test in a transaction and **rolls it back** — convenient DB cleanup. The traps:
+
+1. **False green**: everything runs in one never-committed transaction. Constraint violations that fire at commit, \`REQUIRES_NEW\` interactions, and commit-time JPA flush ordering are never exercised. Worse: the JPA first-level cache can satisfy reads that would fail against real SQL — you may assert against un-flushed in-memory state (\`TestEntityManager.flush()\` mitigates).
+2. **Doesn't span threads/servers**: with \`RANDOM_PORT\`, the HTTP request is served on **another thread with its own transaction** — your test's rollback doesn't cover what the server committed. Same for \`@Async\` and message listeners. In those tests, clean up explicitly (SQL truncate, \`@Sql\`).
+3. Code relying on \`TransactionSynchronization.afterCommit\` (e.g. \`@TransactionalEventListener(AFTER_COMMIT)\`) **never fires** under rollback — events silently untested.
+
+### Security & outbound HTTP
+
+- \`@WebMvcTest\` pulls in security config: use \`@WithMockUser(roles = "ADMIN")\`, \`@WithAnonymousUser\`, or custom \`@WithSecurityContext\` factories; for CSRF-protected mutations add \`.with(csrf())\` from \`SecurityMockMvcRequestPostProcessors\`.
+- Outbound HTTP: \`MockRestServiceServer\` (in-process, binds to \`RestTemplate\`/\`RestClient\`, ships with \`@RestClientTest\`) vs **WireMock** (real HTTP server on a port — exercises the full stack incl. timeouts, connection pools, retries; supports fault injection and can run standalone/in a container for contract-style tests). Rule of thumb: MockRestServiceServer for request/response mapping logic; WireMock when timeout/resilience behaviour matters.`,
+            code: [
+              {
+                lang: `java`,
+                title: `@WebMvcTest + MockMvc + @MockitoBean + security`,
+                code: `import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.web.servlet.MockMvc;
+import static org.mockito.BDDMockito.given;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@WebMvcTest(OrderController.class)         // ONLY web layer: controller, advice, converters
+class OrderControllerTest {
+
+    @Autowired MockMvc mvc;                // no real server, no port — mocked servlet env
+    @MockitoBean OrderService orderService; // Boot 3.4+: replaces deprecated @MockBean
+
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void returnsOrderJson() throws Exception {
+        given(orderService.find(42L)).willReturn(new OrderDto(42L, "SHIPPED"));
+
+        mvc.perform(get("/api/orders/42"))
+           .andExpect(status().isOk())
+           .andExpect(jsonPath("$.id").value(42))
+           .andExpect(jsonPath("$.status").value("SHIPPED"));
+    }
+
+    @Test
+    void anonymousIsRejected() throws Exception {
+        mvc.perform(get("/api/orders/42"))
+           .andExpect(status().isUnauthorized());   // security config IS in the slice
+    }
+
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void validationErrorsBecome400() throws Exception {
+        mvc.perform(post("/api/orders").with(csrf())     // CSRF needed for mutations
+                .contentType("application/json")
+                .content("{\\"quantity\\": -1}"))
+           .andExpect(status().isBadRequest())
+           .andExpect(jsonPath("$.errors[0].field").value("quantity"));
+    }
+}`,
+                runnable: false,
+                note: `Needs Spring Boot + Spring Security Test — reference.`
+              },
+              {
+                lang: `java`,
+                title: `@Transactional rollback gotchas made visible`,
+                code: `import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.autoconfigure.orm.jpa.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import static org.assertj.core.api.Assertions.*;
+
+@DataJpaTest      // each test is @Transactional and ROLLED BACK by default
+class OrderRepositoryTest {
+
+    @Autowired OrderRepository repo;
+    @Autowired TestEntityManager em;
+
+    @Test
+    void uniqueConstraint_needsFlushToFire() {
+        repo.save(order("REF-1"));
+        repo.save(order("REF-1"));          // duplicate — but NO SQL has run yet!
+
+        // Without flush the INSERTs sit in the persistence context; the test
+        // would pass and the violation would only ever appear in production.
+        assertThatThrownBy(() -> em.flush())
+            .isInstanceOf(org.hibernate.exception.ConstraintViolationException.class);
+    }
+
+    @Test
+    void firstLevelCacheCanLieToYou() {
+        var saved = repo.save(order("REF-2"));
+        em.flush();
+        em.clear();                          // detach all — force a REAL SELECT
+
+        var reloaded = repo.findById(saved.getId()).orElseThrow();
+        assertThat(reloaded.getRef()).isEqualTo("REF-2");   // now proven via SQL
+    }
+}
+
+// The rollback does NOT protect you when the work happens on another thread:
+//
+// @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+// @Transactional   // <- near-useless here: the HTTP request is handled on a
+// class CheckoutE2eTest {   //   SERVER thread with its OWN committed transaction.
+//     // Clean up explicitly instead: @Sql(scripts="/cleanup.sql",
+//     //                                  executionPhase = AFTER_TEST_METHOD)
+// }
+//
+// Also: @TransactionalEventListener(phase = AFTER_COMMIT) handlers NEVER run
+// in a rolled-back test — commit-hook logic silently escapes testing.`,
+                runnable: false,
+                note: `Needs Spring Boot / JPA — reference.`
+              },
+              {
+                lang: `java`,
+                title: `@RestClientTest + MockRestServiceServer, and when WireMock instead`,
+                code: `import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.client.RestClientTest;
+import org.springframework.test.web.client.MockRestServiceServer;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
+import static org.assertj.core.api.Assertions.*;
+
+@RestClientTest(PricingClient.class)   // slice: just this client + Jackson + mock server
+class PricingClientTest {
+
+    @Autowired PricingClient client;
+    @Autowired MockRestServiceServer server;   // intercepts in-process — no socket
+
+    @Test
+    void mapsResponseAndHeaders() {
+        server.expect(requestTo("/prices/SKU-1"))
+              .andExpect(header("X-Api-Key", "test-key"))
+              .andRespond(withSuccess("{\\"amount\\": 19.90, \\"currency\\": \\"EUR\\"}",
+                          org.springframework.http.MediaType.APPLICATION_JSON));
+
+        assertThat(client.priceFor("SKU-1").amount()).isEqualByComparingTo("19.90");
+        server.verify();
+    }
+
+    @Test
+    void mapsServerErrorToDomainException() {
+        server.expect(requestTo("/prices/SKU-1")).andRespond(withServerError());
+        assertThatThrownBy(() -> client.priceFor("SKU-1"))
+            .isInstanceOf(PricingUnavailableException.class);
+    }
+}
+
+// MockRestServiceServer never opens a socket — perfect for mapping/error logic,
+// USELESS for timeout & resilience behaviour. For that, use WireMock (real HTTP):
+//
+// @SpringBootTest
+// class PricingClientTimeoutTest {
+//     static WireMockServer wm = new WireMockServer(0);
+//     // wm.stubFor(get("/prices/SKU-1").willReturn(
+//     //     aResponse().withFixedDelay(5_000)));           // fault injection
+//     // -> assert client times out per its config and circuit-breaker opens
+// }`,
+                runnable: false,
+                note: `Needs Spring Boot (+ WireMock for the sketch) — reference.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `@WebMvcTest vs @SpringBootTest — what does each load?`,
+                a: `@WebMvcTest loads only web-layer beans (specified controllers, @ControllerAdvice, converters, filters, security config) with MockMvc and no real server — services must be provided as @MockitoBean. @SpringBootTest boots the full ApplicationContext, optionally with a real server (RANDOM_PORT). Slice for the boundary, full context only for wiring/journey tests.`
+              },
+              {
+                q: `How does Spring's test context caching work and what invalidates reuse?`,
+                a: `Contexts are cached across test classes, keyed by the merged configuration: config classes/locations, profiles, properties, initializers, customizers AND the set of @MockitoBean/@MockBean definitions. Any variation creates a new context (cache is LRU, default 32). Identical keys = boot once, reuse everywhere.`
+              },
+              {
+                q: `Why is careless @DirtiesContext a build-time killer, and what's the real fix?`,
+                a: `It discards the cached context, forcing a full application re-boot for subsequent tests — multiplying suite time by context startup cost. It usually papers over shared-state leaks (statics, DB rows, singleton mutation); fix the leak and standardise shared test configs so caching works.`
+              },
+              {
+                q: `What replaced @MockBean in Spring Boot 3.4?`,
+                a: `@MockitoBean (and @MockitoSpyBean for @SpyBean), moved into Spring Framework 6.2 itself (bean-override mechanism). Semantics are near-identical: the bean definition is replaced/added as a Mockito mock, and note it still contributes to the context-cache key.`
+              },
+              {
+                q: `Name three ways @Transactional test rollback gives false confidence.`,
+                a: `(1) Commit-time behaviour never runs: deferred constraint violations and AFTER_COMMIT @TransactionalEventListener handlers are skipped; (2) the JPA first-level cache can satisfy asserts without executing real SQL (flush/clear to force it); (3) it doesn't cover other threads — RANDOM_PORT requests, @Async, listeners commit their own transactions.`
+              },
+              {
+                q: `Why does a @Transactional test with RANDOM_PORT not clean up server-side writes?`,
+                a: `The HTTP call is handled on a server thread with its own transaction, which COMMITS independently; the test's transaction (rolled back) only covers test-thread operations. Clean up explicitly — @Sql cleanup scripts or truncation — for full-stack tests.`
+              },
+              {
+                q: `What does @DataJpaTest do about the database by default, and why override it?`,
+                a: `It auto-configures an embedded in-memory DB (replacing your datasource) and makes tests transactional/rolled-back. Override with @AutoConfigureTestDatabase(replace = Replace.NONE) + Testcontainers so queries run against the real engine — H2 diverges from Postgres in dialect, functions and locking.`
+              },
+              {
+                q: `How do you test secured endpoints in @WebMvcTest?`,
+                a: `Security config is part of the slice: use @WithMockUser(username/roles), @WithAnonymousUser, or a custom @WithSecurityContext factory for rich principals; add .with(csrf()) for state-changing requests; assert 401/403 paths explicitly.`
+              },
+              {
+                q: `MockRestServiceServer vs WireMock — when each?`,
+                a: `MockRestServiceServer binds in-process to RestTemplate/RestClient (no socket) — ideal for request building, response mapping and error translation, and ships with @RestClientTest. WireMock runs a real HTTP server — required for timeout, retry, connection-pool and fault-injection testing, and usable standalone for contract-style stubs.`
+              },
+              {
+                q: `What is @RestClientTest for?`,
+                a: `A slice that loads just the specified HTTP-client bean plus Jackson and a pre-wired MockRestServiceServer — testing outbound-call serialization, headers, and error mapping without booting services, web layer or a real server.`
+              },
+              {
+                q: `Why does constructor injection matter for testability in Spring apps?`,
+                a: `Classes with constructor-injected dependencies can be unit-tested with plain 'new' and hand-made stubs/mocks — no Spring context, no reflection. Field injection forces context-based tests or ReflectionTestUtils, dragging Spring into what should be millisecond unit tests.`
+              },
+              {
+                q: `Where does TestRestTemplate/WebTestClient fit vs MockMvc?`,
+                a: `MockMvc drives the MVC stack in a mocked servlet environment (no port, no real HTTP). TestRestTemplate/WebTestClient with @SpringBootTest(RANDOM_PORT) make real HTTP calls to a real embedded server — full serialization, filters, real network semantics. Use MockMvc in slices; the real-server pair for journey tests.`
+              }
+            ]
+          },
+          {
+            title: `Testcontainers: Real Dependencies in Integration Tests`,
+            notes: `## Why not H2? The divergence tax
+
+Testing Postgres-bound code against H2 (even in "PostgreSQL compatibility mode") is testing a **different database**:
+
+- **Dialect & features**: JSONB operators, window-function edge cases, \`ON CONFLICT\`, arrays, CTE behaviours, full-text search — H2 either lacks them or fakes them. Native queries that pass on H2 can fail on Postgres, and vice versa.
+- **Locking & concurrency**: \`SELECT ... FOR UPDATE SKIP LOCKED\` (job queues!), advisory locks, MVCC snapshot behaviour, deadlock detection — completely different engines. Pessimistic-locking code "tested" on H2 is untested.
+- **Constraints & types**: case-sensitivity of identifiers, sequence semantics, timestamp/timezone handling, deferred constraints.
+- Your **Flyway/Liquibase migrations** — full of Postgres-specific DDL — often can't even run on H2, so teams maintain a parallel schema path that tests a schema production never sees.
+
+**Testcontainers** starts throwaway Docker containers (Postgres, Kafka, Redis, LocalStack...) from the test JVM, with dynamic ports, readiness **wait strategies**, and guaranteed cleanup via the **Ryuk** reaper container (kills leftovers even if the JVM crashes).
+
+### Lifecycle annotations
+
+\`@Testcontainers\` (JUnit extension) scans \`@Container\` fields: **static** field → started once per class, shared by its tests; **instance** field → restarted for every test (slow — rarely what you want).
+
+### The singleton container pattern — the real-world default
+
+Even per-class static containers restart per test **class** — a Postgres boot is 2–5s, times 40 classes. The fix: start containers **once per JVM** in a base class initializer (plain static init, not \`@Container\`) and let all integration tests share them. Combine with Spring context caching (one shared test config) and the whole suite pays the boot cost **once**.
+
+- **Reusable containers** (\`.withReuse(true)\` + \`testcontainers.reuse.enable=true\` in \`~/.testcontainers.properties\`): the container **outlives the JVM** and is reused across test runs — brilliant for local dev iteration (0s startup), deliberately off in CI. Note: Ryuk won't reap reusable containers; you own their hygiene (and unique state per run — e.g. random DB/schema names or truncation).
+- **Spring Boot 3.1+ \`@ServiceConnection\`**: annotate the container field and Boot auto-derives \`spring.datasource.*\` / Kafka / Redis connection details — replacing hand-written \`@DynamicPropertySource\` boilerplate. \`@DynamicPropertySource\` remains the general mechanism (any property, any container).
+- Boot 3.1 also added **dev-time containers**: \`spring.boot.testcontainers\` support via a \`TestApplication\` class — run the app locally against containers with zero docker-compose.
+
+> [!WARNING]
+> Common pitfalls: (1) hard-coded ports — always use \`container.getMappedPort(...)\`/\`getJdbcUrl()\`, ports are random by design; (2) missing wait strategy — "connection refused" flakes because the process is up but not ready; (3) per-test containers from an instance \`@Container\` field — accidental 10x slowdown; (4) shared singleton DB + tests that don't clean up — coupling via leftover rows; pair the singleton with per-test truncation or rollback; (5) in CI, Docker-in-Docker or a mounted docker socket is required — know your runner's setup.
+
+> [!TIP]
+> Interview one-liner: "H2 tests prove your code works on H2. I run the **same engine, same version, same migrations** as production via Testcontainers — singleton containers + Spring context caching keep the suite fast; \`@ServiceConnection\` keeps the wiring declarative."
+
+Ecosystem modules worth naming: \`PostgreSQLContainer\`, \`KafkaContainer\`, \`RabbitMQContainer\`, \`GenericContainer\` for Redis, \`LocalStackContainer\` (S3/SQS/DynamoDB — pairs with the "test your adapter for real" rule), \`MockServerContainer\`/WireMock container, \`ComposeContainer\` for docker-compose stacks.`,
+            code: [
+              {
+                lang: `java`,
+                title: `@DataJpaTest against real Postgres (@Testcontainers + @ServiceConnection)`,
+                code: `import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase.Replace;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.*;
+import static org.assertj.core.api.Assertions.assertThat;
+
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = Replace.NONE)   // do NOT swap in H2!
+@Testcontainers
+class JobQueueRepositoryIT {
+
+    @Container                       // static => one container for the whole class
+    @ServiceConnection               // Boot 3.1+: derives spring.datasource.* automatically
+    static PostgreSQLContainer<?> postgres =
+        new PostgreSQLContainer<>("postgres:16-alpine");
+        // pin the SAME major version as production
+
+    @Autowired JobQueueRepository repo;
+
+    @Test
+    void skipLocked_claimsEachJobExactlyOnce() {
+        // SELECT ... FOR UPDATE SKIP LOCKED — H2 cannot test this AT ALL.
+        repo.saveAll(Job.pending(10));
+
+        var worker1 = repo.claimBatch(5);   // native query with SKIP LOCKED
+        var worker2 = repo.claimBatch(5);
+
+        assertThat(worker1).hasSize(5);
+        assertThat(worker2).hasSize(5);
+        assertThat(worker1).doesNotContainAnyElementsOf(worker2);  // no double-claim
+    }
+}
+
+// Pre-Boot-3.1 equivalent of @ServiceConnection — still the general-purpose tool:
+//
+// @DynamicPropertySource
+// static void datasource(DynamicPropertyRegistry registry) {
+//     registry.add("spring.datasource.url",      postgres::getJdbcUrl);
+//     registry.add("spring.datasource.username", postgres::getUsername);
+//     registry.add("spring.datasource.password", postgres::getPassword);
+// }`,
+                runnable: false,
+                note: `Needs Spring Boot + Testcontainers + Docker — reference.`
+              },
+              {
+                lang: `java`,
+                title: `Singleton container pattern — start once per JVM, share everywhere`,
+                code: `import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.containers.GenericContainer;
+
+/**
+ * NOTE: no @Testcontainers / @Container here — that pairing restarts containers
+ * per test CLASS. Plain static initialization = once per JVM; Ryuk (the reaper
+ * sidecar) still guarantees cleanup when the JVM exits.
+ *
+ * All integration tests extend this ONE base class => one context-cache key
+ * => Spring boots once AND containers boot once for the entire suite.
+ */
+@SpringBootTest
+public abstract class AbstractIntegrationTest {
+
+    static final PostgreSQLContainer<?> POSTGRES =
+        new PostgreSQLContainer<>("postgres:16-alpine")
+            .withReuse(true);   // + testcontainers.reuse.enable=true in
+                                //   ~/.testcontainers.properties => container even
+                                //   SURVIVES the JVM: 0s startup on local re-runs.
+                                //   Keep reuse OFF in CI; Ryuk skips reusable containers.
+
+    static final GenericContainer<?> REDIS =
+        new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
+
+    static {
+        POSTGRES.start();       // started exactly once, on first class load
+        REDIS.start();
+    }
+
+    @DynamicPropertySource
+    static void props(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url",      POSTGRES::getJdbcUrl);
+        r.add("spring.datasource.username", POSTGRES::getUsername);
+        r.add("spring.datasource.password", POSTGRES::getPassword);
+        r.add("spring.data.redis.host",     REDIS::getHost);
+        r.add("spring.data.redis.port",     () -> REDIS.getMappedPort(6379)); // NEVER hard-code
+    }
+}
+
+// class CheckoutFlowIT extends AbstractIntegrationTest { ... }
+// class InventoryFlowIT extends AbstractIntegrationTest { ... }
+// -> same context key, same containers, suite pays startup cost ONCE.
+// Shared DB => pair with per-test cleanup (truncate / @Sql / rollback).`,
+                runnable: false,
+                note: `Needs Spring Boot + Testcontainers + Docker — reference.`
+              },
+              {
+                lang: `java`,
+                title: `Kafka + LocalStack containers wired into @SpringBootTest`,
+                code: `import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.junit.jupiter.*;
+import org.testcontainers.kafka.KafkaContainer;
+import org.testcontainers.containers.localstack.LocalStackContainer;
+import org.testcontainers.utility.DockerImageName;
+import static org.testcontainers.containers.localstack.LocalStackContainer.Service.S3;
+
+@SpringBootTest
+@Testcontainers
+class OrderEventsIT {
+
+    @Container
+    @ServiceConnection            // auto-wires spring.kafka.bootstrap-servers
+    static KafkaContainer kafka =
+        new KafkaContainer(DockerImageName.parse("apache/kafka-native:3.8.0"));
+
+    @Container
+    static LocalStackContainer localstack =
+        new LocalStackContainer(DockerImageName.parse("localstack/localstack:3"))
+            .withServices(S3);    // real S3 API — tests the ADAPTER you wrote
+                                  // around the AWS SDK (don't-mock-what-you-don't-own)
+
+    @DynamicPropertySource        // no @ServiceConnection support -> wire manually
+    static void aws(DynamicPropertyRegistry r) {
+        r.add("app.s3.endpoint",   () -> localstack.getEndpointOverride(S3).toString());
+        r.add("app.s3.region",     localstack::getRegion);
+        r.add("app.aws.accessKey", localstack::getAccessKey);
+        r.add("app.aws.secretKey", localstack::getSecretKey);
+    }
+
+    @Test
+    void orderPlaced_publishesEventAndArchivesDocument() {
+        // place order via service -> assert Kafka message consumed (see Awaitility
+        // in section 6 for async assertions) -> assert PDF landed in S3.
+    }
+}`,
+                runnable: false,
+                note: `Needs Spring Boot + Testcontainers + Docker — reference.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Give three concrete ways H2 diverges from PostgreSQL that make H2-based tests lie.`,
+                a: `(1) SQL features: JSONB, ON CONFLICT, arrays, window-function edge cases missing or faked; (2) locking/concurrency: SELECT ... FOR UPDATE SKIP LOCKED, advisory locks, MVCC semantics differ — pessimistic-locking code is untested; (3) DDL/types: your Postgres-specific Flyway migrations often can't even run, forcing a parallel non-production schema path.`
+              },
+              {
+                q: `What is Ryuk in Testcontainers?`,
+                a: `A reaper sidecar container that Testcontainers starts alongside your containers; it watches session labels and force-removes containers/networks/volumes when the test JVM exits — even on crash. Note: containers marked reusable are deliberately NOT reaped.`
+              },
+              {
+                q: `@Container on a static field vs an instance field?`,
+                a: `Static: container starts once per test class and is shared by all its tests. Instance: container restarts for EVERY test method — usually an accidental massive slowdown. For suite-wide sharing, skip @Container entirely and use the singleton pattern (manual static start).`
+              },
+              {
+                q: `Describe the singleton container pattern and why it beats @Container.`,
+                a: `Start containers in a shared base class via plain static initialization (start() in a static block) — once per JVM, not per class. All integration tests extend the base class, so containers AND the Spring context (one cache key) boot exactly once for the whole suite. @Testcontainers/@Container can't scope beyond a class.`
+              },
+              {
+                q: `How do reusable containers work and what are the caveats?`,
+                a: `withReuse(true) plus testcontainers.reuse.enable=true in ~/.testcontainers.properties makes the container survive the JVM and be reused across runs (near-zero startup locally). Caveats: Ryuk won't clean them, state persists between runs (you own hygiene/truncation), and it should stay disabled in CI.`
+              },
+              {
+                q: `What does @DynamicPropertySource do?`,
+                a: `A static method receiving DynamicPropertyRegistry that registers property values as SUPPLIERS resolved after containers start — bridging dynamic ports/URLs (postgres::getJdbcUrl) into the Spring Environment before the context is built. The general-purpose wiring mechanism for any container and any property.`
+              },
+              {
+                q: `What is @ServiceConnection and what does it replace?`,
+                a: `Spring Boot 3.1+ annotation on a container field: Boot detects the container type (Postgres, Kafka, Redis, ...) and auto-derives connection details (spring.datasource.*, spring.kafka.bootstrap-servers) — replacing hand-written @DynamicPropertySource boilerplate for supported technologies.`
+              },
+              {
+                q: `How do you run @DataJpaTest against Testcontainers Postgres instead of embedded H2?`,
+                a: `Add @AutoConfigureTestDatabase(replace = Replace.NONE) so Boot keeps your datasource, then supply the container's connection via @ServiceConnection (or @DynamicPropertySource). Without Replace.NONE, Boot silently swaps in the embedded DB and your container is ignored.`
+              },
+              {
+                q: `Why must you never hard-code container ports, and what do you use instead?`,
+                a: `Testcontainers maps container ports to RANDOM host ports to allow parallel runs and avoid clashes. Always ask the container: getMappedPort(6379), getJdbcUrl(), getBootstrapServers() — after start; hard-coded ports cause connection-refused flakes.`
+              },
+              {
+                q: `A test fails intermittently with 'connection refused' right after container start — likely cause?`,
+                a: `Missing/wrong wait strategy: the container process is up but the service isn't ready to accept connections. Fix with an appropriate WaitStrategy (port listening, log message regex, HTTP health check) — specialized containers ship sensible defaults; GenericContainer often needs an explicit one.`
+              },
+              {
+                q: `What is LocalStack and how does it complement the 'don't mock what you don't own' rule?`,
+                a: `A container emulating AWS APIs (S3, SQS, DynamoDB...). Your unit tests mock the port interface you own; the adapter wrapping the AWS SDK gets a real integration test against LocalStack — verifying actual SDK behaviour (errors, pagination) instead of your guesses.`
+              },
+              {
+                q: `How do you keep a Testcontainers suite fast? Name four levers.`,
+                a: `(1) Singleton containers — one boot per JVM; (2) one shared Spring test configuration — maximize context-cache hits; (3) reusable containers locally for 0s restarts; (4) lightweight images (alpine, kafka-native), and per-test data cleanup instead of container restarts; optionally parallel test JVMs each with their own containers.`
+              }
+            ]
+          },
+          {
+            title: `Writing GOOD Tests: Naming, Builders, Flakiness & TDD Honestly`,
+            notes: `## Tests are read 100x more than written
+
+A test suite is executable documentation. The craft is in **readability, precision of failure, and refactor-resilience**.
+
+### Naming & structure
+
+- Structure every test as **Arrange–Act–Assert** (or BDD's given/when/then — same thing). One blank line between the phases is often documentation enough.
+- Names should state **behaviour + condition**, not method names: \`shouldRejectTransfer_whenBalanceInsufficient\` or \`transfer_insufficientBalance_isRejected\` beat \`testTransfer2\`. With JUnit 5, \`@DisplayName("rejects transfer when balance is insufficient")\` + \`@Nested\` contexts read like a spec in reports.
+- A name that's hard to write ("...andAlsoUpdatesTheCacheAndSendsEmail") is telling you the test — or the SUT — does too much.
+
+### One logical assertion per test
+
+Not "one \`assert\` call" — one **behaviour**. Asserting five properties of one returned object is fine (use \`assertAll\` or AssertJ chains); asserting the return value AND the audit log AND the email in one test means three failure reasons per name. Split them: each test can then fail for exactly one reason, and the failing name *is* the diagnosis.
+
+### Test data builders & the Object Mother
+
+Inline 15-field constructors bury the signal: which of these values *matters* for this test? Two patterns:
+
+- **Object Mother**: a class of factory methods for canonical instances (\`Orders.paidOrder()\`, \`Customers.premium()\`). Simple, but explodes combinatorially (\`paidOrderWithExpressShippingAndTwoLines()\`).
+- **Test Data Builder**: fluent builder with **safe defaults**, where the test overrides *only what matters*: \`anOrder().withStatus(PAID).withLine("SKU-1", 2).build()\`. Reads as "a normal order, except...". Best practice: combine — Object Mother methods return pre-configured **builders** (\`Orders.paid().withCurrency(GBP).build()\`).
+
+> [!TIP]
+> Builders also decouple tests from constructors: add a field to \`Order\` and you fix ONE default in the builder, not 400 tests. That property alone pays for the pattern in any codebase over ~50 tests.
+
+### Brittle tests — don't assert implementation details
+
+A brittle test fails when the code is *refactored*, not when it's *broken*. Classic causes: verifying internal call sequences with mocks (interaction over state — see section 3), asserting exact log lines or full JSON strings (assert the fields you care about, not formatting), over-exact stubbing (matcher so specific the test breaks when a harmless parameter is added), asserting private state via reflection. Litmus test: **could I rewrite the method body — same observable behaviour — without touching this test?** If no, it's coupled to implementation.
+
+### Flaky tests: causes and fixes
+
+| Cause | Symptom | Fix |
+|---|---|---|
+| **Time** | fails at midnight/month-end/DST; \`LocalDate.now()\` in SUT | Inject \`java.time.Clock\`; \`Clock.fixed(...)\` in tests |
+| **Ordering** | passes alone, fails in suite (or vice versa) | Remove order dependence; JUnit's pseudo-random order + parallel runs expose it early |
+| **Shared state** | fails only in parallel / after specific tests | No mutable statics; fresh fixtures per test; per-test DB cleanup; \`@ResourceLock\` as last resort |
+| **Async** | \`Thread.sleep(500)\` then assert — sometimes too short, always too slow | **Awaitility**: poll until condition with timeout; or latches/futures for determinism |
+| **Randomness** | rare mystery failures | Seed generators; log the seed on failure for reproduction |
+| **External env** | works on my machine | Testcontainers over shared envs; no internet in unit tests |
+
+> [!DANGER]
+> \`Thread.sleep\` in tests is a double defect: too short → flaky, long enough → your suite crawls (and it's *still* not guaranteed). Awaitility's \`await().atMost(5, SECONDS).untilAsserted(...)\` polls — it's both faster on the happy path and deterministic in intent. For code you control, prefer returning \`CompletableFuture\`/using latches so tests can await *the event*, not *elapsed time*.
+
+### AssertJ
+
+The de-facto assertion library: fluent, discoverable (\`assertThat(x).\` + IDE completion), and its failure messages do the diagnosis: \`containsExactlyInAnyOrder\`, \`extracting("name","age")\`, \`usingRecursiveComparison()\` (field-by-field equality without \`equals\` — with \`ignoringFields("id","createdAt")\`), \`assertThatThrownBy(...).hasMessageContaining(...)\`, soft assertions for report-all semantics.
+
+### TDD — an honest appraisal
+
+Red → green → refactor: write a failing test, make it pass with the simplest thing, then refactor with a green bar.
+
+**Where it shines**: algorithmic/domain logic with crisp inputs-outputs (pricing, parsing, state machines); bug fixes (reproduce-first guarantees the regression test exists); API design pressure (you feel a clumsy interface immediately); untested legacy — characterization tests before refactoring (Feathers).
+
+**Where it hurts or is honestly skipped**: exploratory spikes where you don't yet know the shape (write it, learn, throw away, *then* TDD); UI/glue/config-heavy code where the test is mostly mock choreography; and **test-first is not the point — tests-with-the-commit is**. Dogmatic 100%-TDD claims are a red flag in interviews; so is "we test manually". The senior answer: "TDD by default for domain logic and bug fixes; test-after with the same commit for glue; characterization tests before touching legacy."
+
+> [!SUCCESS]
+> Checklist for a GOOD test: name states behaviour+condition · AAA visible · one reason to fail · builders hide irrelevant data · asserts observable behaviour, not internals · no sleep, no real clock, no order dependence · fails with a message that diagnoses itself.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Test Data Builder + Object Mother (runnable, no frameworks)`,
+                code: `import java.math.BigDecimal;
+import java.util.*;
+
+/**
+ * Test Data Builder pattern, framework-free.
+ * Goal: tests state ONLY the data that matters; defaults cover the rest.
+ * Adding a field to Order later = fix ONE default here, not every test.
+ */
+public class TestDataBuilderDemo {
+
+    // ---- production-ish domain type ----
+    record Order(String id, String customer, String status,
+                 BigDecimal total, List<String> lines, String currency) {}
+
+    // ---- the Builder: safe defaults + fluent overrides ----
+    static class OrderBuilder {
+        private String id = "ORD-1";
+        private String customer = "any-customer";
+        private String status = "NEW";
+        private BigDecimal total = new BigDecimal("10.00");
+        private List<String> lines = new ArrayList<>(List.of("SKU-DEFAULT"));
+        private String currency = "EUR";
+
+        static OrderBuilder anOrder() { return new OrderBuilder(); }   // reads like prose
+
+        OrderBuilder withStatus(String s)    { this.status = s; return this; }
+        OrderBuilder withTotal(String t)     { this.total = new BigDecimal(t); return this; }
+        OrderBuilder withCurrency(String c)  { this.currency = c; return this; }
+        OrderBuilder withLines(String... skus) {
+            this.lines = new ArrayList<>(List.of(skus)); return this;
+        }
+        Order build() {
+            return new Order(id, customer, status, total, List.copyOf(lines), currency);
+        }
+    }
+
+    // ---- Object Mother: canonical scenarios, RETURNING BUILDERS (best of both) ----
+    static class Orders {
+        static OrderBuilder paid()      { return OrderBuilder.anOrder().withStatus("PAID"); }
+        static OrderBuilder refundable(){ return paid().withTotal("100.00"); }
+    }
+
+    // ---- SUT ----
+    static boolean eligibleForExpressRefund(Order o) {
+        return "PAID".equals(o.status())
+            && o.total().compareTo(new BigDecimal("50.00")) >= 0
+            && "EUR".equals(o.currency());
+    }
+
+    public static void main(String[] args) {
+        // Every test states ONLY what matters for ITS behaviour:
+        check("paid 100 EUR -> eligible",
+              eligibleForExpressRefund(Orders.refundable().build()), true);
+
+        check("below threshold -> not eligible",
+              eligibleForExpressRefund(Orders.paid().withTotal("49.99").build()), false);
+
+        check("non-EUR -> not eligible",
+              eligibleForExpressRefund(Orders.refundable().withCurrency("GBP").build()), false);
+
+        check("unpaid -> not eligible",
+              eligibleForExpressRefund(OrderBuilder.anOrder().withTotal("100.00").build()), false);
+
+        System.out.println("All builder-based tests passed.");
+    }
+
+    static void check(String behaviour, boolean actual, boolean expected) {
+        if (actual != expected)
+            throw new AssertionError(behaviour + " (expected " + expected + ")");
+        System.out.println("PASS: " + behaviour);
+    }
+}`,
+                runnable: true,
+                note: `Self-contained plain Java — run it.`
+              },
+              {
+                lang: `java`,
+                title: `AssertJ fluency + Awaitility for async (no Thread.sleep)`,
+                code: `import org.junit.jupiter.api.Test;
+import java.time.Duration;
+import static org.assertj.core.api.Assertions.*;
+import static org.awaitility.Awaitility.await;
+
+class GoodAssertionsTest {
+
+    @Test
+    void assertj_failureMessagesDoTheDiagnosis() {
+        var orders = orderService.findByCustomer("C-1");
+
+        assertThat(orders)
+            .hasSize(3)
+            .extracting("status", "currency")            // tuple extraction
+            .containsExactlyInAnyOrder(
+                tuple("PAID", "EUR"), tuple("NEW", "EUR"), tuple("PAID", "GBP"));
+
+        // Field-by-field equality WITHOUT relying on equals();
+        // ignore server-generated fields instead of asserting exact JSON strings.
+        assertThat(orders.get(0))
+            .usingRecursiveComparison()
+            .ignoringFields("id", "createdAt")
+            .isEqualTo(expectedOrder());
+
+        assertThatThrownBy(() -> orderService.find("missing"))
+            .isInstanceOf(OrderNotFoundException.class)
+            .hasMessageContaining("missing");
+    }
+
+    @Test
+    void async_pollDontSleep() {
+        publisher.publish(new OrderPlaced("ORD-9"));
+
+        // BAD:  Thread.sleep(500); assertTrue(...)   -> flaky OR slow, often both
+        // GOOD: poll until the condition holds, hard timeout as failure bound
+        await().atMost(Duration.ofSeconds(5))
+               .pollInterval(Duration.ofMillis(50))
+               .untilAsserted(() ->
+                   assertThat(projectionRepo.findByOrderId("ORD-9"))
+                       .isPresent()
+                       .get()
+                       .extracting(OrderProjection::status)
+                       .isEqualTo("PLACED"));
+    }
+
+    @Test
+    void time_isInjectedNeverCalledStatically() {
+        // SUT takes java.time.Clock in its constructor; test pins time.
+        var fixed = java.time.Clock.fixed(
+            java.time.Instant.parse("2026-02-28T23:59:59Z"),
+            java.time.ZoneOffset.UTC);
+        var service = new SubscriptionService(fixed);
+
+        assertThat(service.isLastDayOfMonth()).isTrue();   // deterministic forever
+    }
+}`,
+                runnable: false,
+                note: `Needs AssertJ + Awaitility — reference.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What makes a good test name? Give a template.`,
+                a: `It states behaviour + condition so the failing name IS the diagnosis: should<ExpectedBehaviour>_when<Condition> (shouldRejectTransfer_whenBalanceInsufficient) or unitOfWork_condition_expectedResult. Combined with @DisplayName/@Nested, reports read like a specification.`
+              },
+              {
+                q: `'One assertion per test' — what does it actually mean?`,
+                a: `One LOGICAL assertion — one behaviour, one reason to fail. Checking five fields of one returned object (assertAll / AssertJ chain) is fine; asserting the result AND the audit log AND an email in one test is three behaviours that belong in three tests.`
+              },
+              {
+                q: `Object Mother vs Test Data Builder — trade-offs and the hybrid?`,
+                a: `Object Mother: named factory methods for canonical objects — simple but combinatorially explodes as variations multiply. Builder: safe defaults + fluent overrides, test states only what matters. Hybrid (best practice): Mother methods return pre-configured builders — Orders.paid().withCurrency(GBP).build().`
+              },
+              {
+                q: `How do test data builders protect you from constructor changes?`,
+                a: `Tests never call constructors directly; they go through the builder's defaults. Adding a field to the domain type means adding ONE default in the builder — instead of editing every test that instantiated the object inline.`
+              },
+              {
+                q: `Define a brittle test and give the litmus test for implementation coupling.`,
+                a: `One that fails on refactoring (behaviour unchanged), not on bugs — from verifying internal call order, exact log/JSON strings, or private state. Litmus: could I rewrite the method body with identical observable behaviour without touching this test? If not, it asserts implementation.`
+              },
+              {
+                q: `List the five classic causes of flaky tests.`,
+                a: `Time (real clock — inject Clock.fixed), test ordering / hidden inter-test dependence, shared mutable state (statics, uncleaned DB rows), async timing (sleeps instead of synchronization/Awaitility), and unseeded randomness or reliance on external environment.`
+              },
+              {
+                q: `Why is Thread.sleep in tests always wrong, and what replaces it?`,
+                a: `Any duration is simultaneously too short (flaky under CI load) and too long (dead suite time), and it encodes a guess. Awaitility polls a condition with a hard timeout — fast when the event is fast, deterministic in intent. Even better, expose CompletableFuture/latches so the test awaits the event itself.`
+              },
+              {
+                q: `How do you make time-dependent logic testable?`,
+                a: `Inject java.time.Clock (or a domain TimeProvider) instead of calling LocalDate.now()/Instant.now() statically; production wires Clock.systemUTC(), tests wire Clock.fixed(...) — midnight, month-end and DST cases become plain deterministic parameters. This removes the need for mockStatic on time classes.`
+              },
+              {
+                q: `Name four AssertJ features beyond assertEquals.`,
+                a: `extracting(...) with tuples for collection field checks; containsExactly/containsExactlyInAnyOrder; usingRecursiveComparison().ignoringFields(...) for field-wise equality without equals(); assertThatThrownBy with hasMessageContaining; plus SoftAssertions to report all failures at once.`
+              },
+              {
+                q: `When does TDD genuinely help, per an honest senior appraisal?`,
+                a: `Domain/algorithmic logic with crisp input-output (pricing, parsers, state machines), bug fixes (reproduce-first guarantees the regression test), API design pressure, and characterization tests before refactoring legacy. It earns its cost where behaviour is specifiable up front.`
+              },
+              {
+                q: `When is strict test-first honestly counterproductive?`,
+                a: `Exploratory spikes where the design is unknown (learn first, throw away, then TDD), and glue/config/UI-heavy code where tests reduce to mock choreography. The defensible position: tests land in the SAME commit as the code; whether they were written 10 minutes before or after is secondary.`
+              },
+              {
+                q: `Why assert selected JSON fields rather than the full response string?`,
+                a: `Full-string comparison couples the test to formatting, field order and unrelated fields — any harmless change breaks it. Asserting the fields under test (jsonPath, AssertJ recursive comparison ignoring generated fields) keeps the test precise about behaviour and silent about incidentals.`
+              }
+            ]
+          }
+        ]
       }
     ]
   },
@@ -36246,6 +37779,1624 @@ for i in $(seq 1 200); do curl -s -o /dev/null -w "%{http_code} " \\
               {
                 q: `Name five items from a public-API design checklist.`,
                 a: `Consistent resource naming; correct status codes with safe/idempotent semantics; one error format (RFC7807) with stable type URIs; published versioning + deprecation policy; cursor pagination; idempotency keys on unsafe POSTs; ETag/If-Match concurrency; OAuth2 least-privilege scopes; strict input validation; rate limiting; HTTP caching + compression; timeouts/circuit breakers; correlation IDs + RED metrics; OpenAPI as source of truth; CORS allow-list + HTTPS.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `5.4`,
+        title: `System Design Case Studies (Worked Interviews)`,
+        hours: 7,
+        sections: [
+          {
+            title: `Case Study 1: URL Shortener (bit.ly)`,
+            notes: `# Worked Interview: Design a URL Shortener
+
+The classic warm-up question — but at senior level the interviewer is not testing whether you can draw a box called "database". They are testing whether you **run the interview yourself**: scope it, size it, commit to an ID-generation strategy with reasons, and know exactly where it breaks at scale. Budget: ~5 min requirements, ~5 min estimation, ~5 min API + data model, ~15 min architecture + deep dives, ~10 min bottlenecks and evolution, ~5 min buffer.
+
+## 1. Requirements (say the clarifying questions out loud)
+
+**Ask before drawing anything:**
+- "What's the scale — how many new URLs per month, and what read:write ratio should I assume?" *(interviewer usually says: 100M/month, very read-heavy)*
+- "Do we need custom aliases (\`/my-launch\`)? Expiry? Analytics (click counts, referrers)?"
+- "Can short links ever be updated or deleted? Does the same long URL always map to the same short code?"
+- "Latency target for the redirect path? Availability vs consistency preference?"
+
+**Functional:** shorten a long URL → unique short code; redirect short → long; optional custom alias; optional TTL/expiry; basic click analytics.
+
+**Non-functional:** redirect p99 < 50 ms (it sits in front of *someone else's* page load); 99.99% availability on the read path; codes must be non-guessable-ish (no trivially enumerable sequence if links can be private); read:write ≈ 100:1; eventual consistency acceptable for analytics, **not** for redirects of a just-created link (read-your-write for the creator).
+
+> [!TIP]
+> Scoping sentence that scores points: *"The redirect path is the product — I'll design for read availability and latency first, and treat creation and analytics as secondary planes that can degrade independently."*
+
+## 2. Back-of-envelope estimation
+
+| Quantity | Calculation | Result |
+|---|---|---|
+| Writes | 100M/month ÷ (30 × 86,400 ≈ 2.6M s) | ~40/s avg, **~120/s peak** (×3) |
+| Reads | 100:1 ratio | ~4,000/s avg, **~12,000/s peak** |
+| Rows over 5 years | 100M × 60 months | **6B rows** |
+| Storage | 6B × ~500 B (long URL + metadata) | **~3 TB** — one big Postgres or a small shard set |
+| Bandwidth (read) | 12k/s × ~500 B response | ~6 MB/s — trivial |
+| Code space | 62⁷ = **3.5 × 10¹²** | 7 base62 chars covers 6B rows 500× over |
+| Cache | top ~20M hot URLs × 500 B | **~10 GB → one Redis node** |
+
+The punchline you should say out loud: **3 TB and 12k QPS is not "big data"** — a primary + replicas + cache handles it. The interesting problems are ID generation, cache strategy, and the 301/302 decision, not sharding heroics.
+
+## 3. API design
+
+\`\`\`
+POST /api/v1/urls            create (auth required)
+GET  /{code}                 redirect (public, the hot path)
+GET  /api/v1/urls/{code}     metadata + stats
+DELETE /api/v1/urls/{code}   soft-delete / disable
+\`\`\`
+
+Creation is idempotent per \`(user_id, long_url)\` if the interviewer wants dedup — return the existing code with \`200\` instead of \`201\`. Redirect returns \`301\` or \`302\` + \`Location\` header (see deep dive).
+
+## 4. Data model
+
+Single table, indexed by the short code (the primary key IS the lookup key — no secondary index on the hot path). Analytics goes to a separate append-only store so click writes never contend with redirect reads.
+
+## 5. High-level architecture
+
+\`\`\`mermaid
+graph LR
+    U[Client] --> CDN[CDN / Edge]
+    CDN --> LB[Load balancer]
+    LB --> RS[Redirect service - stateless]
+    LB --> WS[Write service]
+    RS --> RC[(Redis cache - 10GB hot set)]
+    RC -->|miss| DB[(Primary DB + read replicas)]
+    WS --> IDG[ID generator - ranges or snowflake]
+    WS --> DB
+    RS -.async click event.-> Q[[Kafka]]
+    Q --> AN[Analytics consumer]
+    AN --> OLAP[(ClickHouse / OLAP)]
+\`\`\`
+
+Read path: cache hit ratio ~90%+ (Zipfian access — a small fraction of links get almost all clicks). Cache-aside with TTL; negative caching for unknown codes to blunt scan/enumeration traffic.
+
+## 6. Deep dives (what the interviewer will drill into)
+
+### 6a. ID generation — the core of this question
+
+| Strategy | How | Pros | Cons |
+|---|---|---|---|
+| Auto-increment + base62 | encode DB sequence | trivial, no collisions | sequential → enumerable; single point; leaks volume |
+| Hash long URL (MD5→take 7 chars) | deterministic | same URL → same code (free dedup) | collisions need probing; can't have per-user codes for same URL |
+| Random 7-char base62 | generate + insert, retry on conflict | non-guessable | needs uniqueness check (birthday: at 6B rows in 3.5T space, collision chance per insert ≈ 0.17% — retries are rare but must be handled) |
+| **Counter ranges (chosen)** | coordinator (ZooKeeper/DB) hands each app node a range, e.g. 1M IDs; node encodes base62 locally | no per-request coordination, no collisions ever | crash loses unused range (fine — space is huge); still k-sortable → XOR/bit-shuffle with a fixed key if enumerability matters |
+| Snowflake 64-bit | timestamp + worker + sequence | decentralized, sortable, 10M+/s | 11 base62 chars, longer codes; clock-skew handling |
+
+**Commit:** counter ranges for a 7-char product; snowflake if the interviewer pushes multi-region active-active writes.
+
+### 6b. 301 vs 302
+
+- \`301 Moved Permanently\`: browsers and intermediaries cache it → after the first click **your server never sees the request again**. Lowest latency and load — but you **lose analytics** and cannot re-point or expire the link for that client.
+- \`302/307\`: every click hits you → full analytics, expiry works, links are mutable — at the cost of serving every request.
+
+> [!SUCCESS]
+> Senior move: this is a **business decision disguised as an HTTP trivia question**. bit.ly's revenue *is* analytics, so it uses 301 with \`Cache-Control\` tuning / effectively 302 semantics where tracking matters. Say: *"I'd use 302 by default because analytics and revocability are product requirements, and add \`Cache-Control: private, max-age=90\` to soften the load without losing clicks for long."*
+
+### 6c. Custom aliases, expiry, analytics
+
+- **Custom alias**: same table, \`code\` is user-supplied; enforce uniqueness via the PK; reserve a namespace (e.g. min length 8 for generated codes, customs can be shorter) to avoid collisions with the generator; profanity/reserved-word filter.
+- **Expiry**: don't \`DELETE\` on the hot path. Store \`expires_at\`, check it on read (return 410), and lazily purge with a background sweeper. Cache TTL must be ≤ min remaining expiry or you serve dead links from Redis.
+- **Analytics**: redirect service fires an async event (Kafka) *after* responding — never block the redirect on the analytics write. Aggregate in ClickHouse; approximate uniques with HyperLogLog.
+
+## 7. Bottlenecks, trade-offs & evolution
+
+- **Hot key**: one viral link → millions of QPS on one cache key. Mitigate: CDN-edge caching of the redirect itself, plus in-process caffeine cache in each redirect node (a few thousand entries, 1–5 s TTL) so Redis isn't the choke point.
+- **Cache stampede** on expiry of a hot key: per-key singleflight / probabilistic early refresh.
+- **DB growth**: at 10× scale (30 TB), shard by hash(code) — code-based lookup shards perfectly since every read carries the code. No cross-shard queries exist.
+- **Evolution story**: v1 = Postgres + Redis behind one service; v2 = split read/write services + Kafka analytics; v3 = shard DB + move redirect logic to edge workers with a replicated key→URL store.
+
+> [!WARNING]
+> Common mid-level mistake: opening with "we'll shard Cassandra across regions". You just estimated 3 TB and 12k QPS — over-engineering against your own numbers is a red flag. Design to the numbers, then narrate the 10× plan.
+
+> [!EU]
+> **What a senior answer sounds like:** "The estimation says this is a small-data, read-hot problem, so the design centers on the redirect path: cache-aside Redis over a replicated SQL store, code as primary key. For IDs I'd hand out counter ranges per node — zero coordination per request, zero collisions — and shuffle bits to prevent enumeration. I'd serve 302 with a short private cache TTL because analytics and revocability are the product. The known failure modes are hot keys and stampedes, which I handle with edge/in-process caching and singleflight; sharding by code is the clean 10× exit because every query carries the shard key."`,
+            code: [
+              {
+                lang: `java`,
+                title: `Base62 codec + counter-range ID generator (runnable, no libs)`,
+                runnable: true,
+                note: `Demonstrates the chosen strategy: a node grabs an ID range, encodes IDs to base62, and decodes them back. Also shows a bit-shuffle to break enumerability.`,
+                code: `public class Base62Demo {
+    static final char[] ALPHABET =
+        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
+    static final int[] REVERSE = new int[128];
+    static {
+        for (int i = 0; i < ALPHABET.length; i++) REVERSE[ALPHABET[i]] = i;
+    }
+
+    static String encode(long id) {
+        if (id == 0) return "0";
+        StringBuilder sb = new StringBuilder();
+        while (id > 0) {
+            sb.append(ALPHABET[(int) (id % 62)]);
+            id /= 62;
+        }
+        return sb.reverse().toString();
+    }
+
+    static long decode(String code) {
+        long id = 0;
+        for (char c : code.toCharArray()) id = id * 62 + REVERSE[c];
+        return id;
+    }
+
+    /** Cheap reversible bit-mix so sequential IDs don't produce guessable codes. */
+    static long shuffle(long id) {
+        long x = id * 0x9E3779B97F4A7C15L;   // odd constant -> bijective on 64-bit
+        return (x >>> 1) & 0x7FFFFFFFFFFFFFFFL; // keep positive for the demo
+    }
+
+    /** Simulates a node that leased the range [start, start+size) from a coordinator. */
+    static class RangeAllocator {
+        long next, end;
+        RangeAllocator(long start, long size) { this.next = start; this.end = start + size; }
+        long nextId() {
+            if (next >= end) throw new IllegalStateException("range exhausted -> lease a new one");
+            return next++;
+        }
+    }
+
+    public static void main(String[] args) {
+        RangeAllocator node = new RangeAllocator(5_000_000_000L, 1_000_000);
+        System.out.println("seq id -> plain code vs shuffled code");
+        for (int i = 0; i < 5; i++) {
+            long id = node.nextId();
+            System.out.printf("%d -> %s | shuffled: %s%n", id, encode(id), encode(shuffle(id)));
+        }
+        long id = 6_000_000_000L; // ~5yr row count still fits in 6 chars
+        String code = encode(id);
+        System.out.println("6B encodes as '" + code + "' (" + code.length() + " chars), decodes to " + decode(code));
+        System.out.println("62^7 code space = " + String.format("%,d", (long) Math.pow(62, 7)));
+    }
+}`
+              },
+              {
+                lang: `sql`,
+                title: `Core schema (lookup table + append-only clicks)`,
+                code: `-- Hot-path table: the short code IS the primary key. No other index needed for redirects.
+CREATE TABLE urls (
+    code        VARCHAR(16)  PRIMARY KEY,      -- generated (7 chars) or custom alias
+    long_url    TEXT         NOT NULL,
+    user_id     BIGINT,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMPTZ,                   -- NULL = never; checked on read, swept lazily
+    is_active   BOOLEAN      NOT NULL DEFAULT true
+);
+CREATE INDEX idx_urls_user ON urls (user_id, created_at DESC);  -- dashboard listing only
+
+-- Analytics: append-only, written async from Kafka, aggregated into OLAP.
+CREATE TABLE clicks (
+    code        VARCHAR(16)  NOT NULL,
+    clicked_at  TIMESTAMPTZ  NOT NULL,
+    referrer    TEXT,
+    country     CHAR(2),
+    ua_hash     BIGINT
+) PARTITION BY RANGE (clicked_at);              -- daily partitions, cheap drops after retention`
+              },
+              {
+                lang: `json`,
+                title: `API: create + redirect samples`,
+                code: `// POST /api/v1/urls
+{
+  "long_url": "https://example.com/very/long/path?utm_campaign=launch",
+  "custom_alias": null,
+  "expires_at": "2027-01-01T00:00:00Z"
+}
+// 201 Created
+{
+  "code": "b7Kx9Qz",
+  "short_url": "https://sho.rt/b7Kx9Qz",
+  "expires_at": "2027-01-01T00:00:00Z"
+}
+
+// GET /b7Kx9Qz  ->  302 Found
+// Location: https://example.com/very/long/path?utm_campaign=launch
+// Cache-Control: private, max-age=90
+
+// GET /expired1  ->  410 Gone
+{ "error": "link_expired" }`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Interviewer: "100M new URLs/month, read:write 100:1." What are your first three derived numbers?`,
+                a: `~40 writes/s (peak ~120/s), ~4k reads/s (peak ~12k/s), ~3 TB over 5 years (6B rows × ~500 B). Conclusion to state: this is small-data and read-hot, so the design centers on cache + replicas, not sharding.`
+              },
+              {
+                q: `Why 7 base62 characters for the short code?`,
+                a: `62^7 ≈ 3.5 trillion codes vs ~6B rows over 5 years — 500× headroom, so random/range-allocated codes stay collision-free in practice while keeping URLs short. 6 chars (57B) would work but leaves only ~10× headroom.`
+              },
+              {
+                q: `You picked auto-increment + base62 and the interviewer says "now codes are guessable — so what?" Answer?`,
+                a: `Enumeration lets attackers scrape private links and infer business volume. Fix without losing the coordination-free property: apply a fixed reversible bit-mix (multiply by odd constant / XOR-shift) to the ID before encoding, or switch to random codes with insert-retry on conflict.`
+              },
+              {
+                q: `301 vs 302 for the redirect — what is the real trade-off and which do you pick for a bit.ly clone?`,
+                a: `301 is cached by browsers/proxies: near-zero repeat load but you lose click analytics and cannot expire/re-point the link. 302 keeps every click on your servers. Since analytics IS the product, pick 302 (optionally with short private Cache-Control to soften load).`
+              },
+              {
+                q: `A celebrity tweets one short link and Redis becomes the bottleneck on that single key. What do you change?`,
+                a: `Hot-key mitigation: add a small in-process cache (per redirect node, 1–5 s TTL) so each node answers locally, and/or cache the redirect at the CDN edge. Redis then only sees one request per node per TTL instead of the full fan-in.`
+              },
+              {
+                q: `How do you implement expiry without hurting the redirect path?`,
+                a: `Store expires_at, check it at read time (return 410), and purge lazily via a background sweeper. Never synchronous DELETEs on the hot path. Cache TTL must not exceed remaining expiry, or expired links keep serving from Redis.`
+              },
+              {
+                q: `Counter-range ID allocation: what happens when an app node crashes mid-range, and why is that acceptable?`,
+                a: `The unused remainder of its leased range (up to ~1M IDs) is lost forever. Acceptable because the code space is 3.5T — losing even thousands of 1M-ranges is noise. This is the classic trade: waste ID space to eliminate per-request coordination.`
+              },
+              {
+                q: `Where does the click-analytics write happen relative to the redirect response, and why?`,
+                a: `Strictly after (or concurrent with) sending the 302 — fire an event to Kafka asynchronously. The redirect p99 target (<50 ms) must never depend on analytics infrastructure; if Kafka is down you drop/buffer events, you never fail a redirect.`
+              },
+              {
+                q: `The DB grows 10× beyond your estimate. What is your sharding key and why is this system "embarrassingly shardable"?`,
+                a: `Shard by hash(code). Every redirect carries the code, so every read maps to exactly one shard; there are no cross-shard queries or joins on the hot path. User-dashboard listing needs a user_id-keyed secondary store or scatter-gather, which is off the hot path.`
+              },
+              {
+                q: `Same long URL submitted twice — should it return the same code? What does each choice cost?`,
+                a: `Deterministic (hash-based) dedup saves storage and gives idempotency, but breaks per-user analytics and custom expiry (two users share one code). Senior answer: dedup per (user_id, long_url) via a unique constraint, not globally — return 200 with the existing code.`
+              },
+              {
+                q: `What is negative caching and why does a URL shortener specifically need it?`,
+                a: `Caching "code does not exist" results (short TTL). Shorteners are enumeration targets — bots scan random codes, and every miss would otherwise punch through the cache to the DB. Negative entries + rate limiting keep scan traffic off the primary.`
+              }
+            ]
+          },
+          {
+            title: `Case Study 2: Distributed Rate Limiter`,
+            notes: `# Worked Interview: Design a Distributed Rate Limiter
+
+Deceptively small surface, brutal depth: algorithms, atomicity under concurrency, and the CAP-flavored question of whether limits are enforced globally or locally. Seniors are expected to *choose* an algorithm with reasons and to spot the Redis race condition without prompting.
+
+## 1. Requirements
+
+**Clarifying questions to ask out loud:**
+- "Is this for our own API gateway, or a rate-limiting *service* other teams call?" *(assume: shared infrastructure used at the gateway)*
+- "What are we keying on — user ID, API key, IP, or combinations? Different limits per plan/endpoint?"
+- "Hard accuracy or is a few % overshoot acceptable? Fail-open or fail-closed if the limiter itself is down?"
+- "Single region or global? Do limits need to be enforced globally across regions?"
+
+**Functional:** limit requests per key per rule (e.g. \`user:123 → 100 req/min on /search\`); multiple rules per request; return \`429\` with \`Retry-After\`; rules configurable at runtime; per-plan tiers.
+
+**Non-functional:** added latency budget **< 2 ms p99** (it's on every request); the limiter must never be less available than the API it protects → **fail-open** on limiter outage (log loudly); memory-bounded per key; slight overshoot (~1–5%) acceptable in exchange for performance.
+
+> [!DANGER]
+> State the fail-open/fail-closed decision explicitly — it is a favorite probe. Fail-open for product APIs (a broken limiter must not become a self-inflicted outage); fail-closed only for abuse-critical endpoints like login/OTP, where unlimited traffic is worse than downtime.
+
+## 2. Back-of-envelope estimation
+
+| Quantity | Calculation | Result |
+|---|---|---|
+| Gateway traffic | given | **100k req/s peak** — the limiter check runs on every one |
+| Active keys | 10M users, ~20% active/hour | ~2M hot keys |
+| Token-bucket state | 2 numbers (tokens, last_refill) ≈ 50 B + key overhead ≈ 100 B | 2M × 150 B ≈ **300 MB → one Redis, easily** |
+| Sliding **log** state | 100 req/min limit → up to 100 ZSET entries/key × ~120 B | 2M × 12 KB ≈ **24 GB — 80× more memory** |
+| Redis ops | 1 Lua call per request | 100k ops/s — near a single node's ceiling → **shard by key** (consistent hashing), 2–4 nodes with headroom |
+
+The memory table *is* the algorithm argument: sliding log is O(limit) per key; token bucket and sliding-window counter are O(1).
+
+## 3. API design
+
+Internal check API (if built as a service; usually it's a gateway middleware calling Redis directly):
+
+\`\`\`
+POST /v1/ratelimit/check   { key, rule_id, cost }  ->  { allowed, remaining, retry_after_ms }
+PUT  /v1/rules/{rule_id}   configure limit/window/burst (admin)
+\`\`\`
+
+Client-facing behavior on rejection: \`429 Too Many Requests\`, \`Retry-After: 7\`, plus \`X-RateLimit-Limit / -Remaining / -Reset\` headers on every response so well-behaved clients self-throttle before hitting 429.
+
+## 4. Data model
+
+Rules live in a config store (DB + in-memory cache in each gateway, refreshed via pub/sub). Counters live **only in Redis** — ephemeral, TTL'd, rebuilt from nothing after a flush (accepting one free window after Redis restart, consistent with fail-open).
+
+## 5. High-level architecture
+
+\`\`\`mermaid
+graph LR
+    C[Clients] --> GW[API Gateway - limiter middleware]
+    GW -->|1 Lua call per request| R1[(Redis shard 1)]
+    GW --> R2[(Redis shard 2)]
+    GW --> RC[Rules cache - in-process]
+    CFG[(Rules DB)] -->|pub/sub invalidation| RC
+    GW -->|allowed| SVC[Backend services]
+    GW -->|429 + Retry-After| C
+    R1 -.replicate.-> R1B[(replica)]
+\`\`\`
+
+**Where to enforce:** at the **gateway/middleware** — one enforcement point, keys available after authn, backends stay clean. Defense-in-depth adds a coarse IP-level limit at the L7 LB/WAF in front (protects the gateway itself) and optional per-service limits behind (protects against internal callers).
+
+## 6. Deep dives
+
+### 6a. Algorithm choice
+
+| Algorithm | Memory/key | Accuracy | Bursts | Verdict |
+|---|---|---|---|---|
+| Fixed window counter | O(1) | up to **2× overshoot** at window edges (100 at 00:59 + 100 at 01:01) | allows edge bursts | baseline only |
+| Sliding window **log** (ZSET of timestamps) | O(limit) | exact | precise | too much memory at scale; use for small, high-value limits (login attempts) |
+| Sliding window **counter** (current + weighted previous window) | O(1) | ~99% (assumes uniform spread in previous window) | smooths edges | great default for "N per window" semantics |
+| **Token bucket** | O(1): tokens + timestamp | exact over time | **configurable burst** (bucket capacity) — the killer feature | industry default (Stripe, AWS) |
+| Leaky bucket | O(1) or queue | exact outflow | none — smooths to constant rate | for traffic *shaping*, not API quotas |
+
+**Commit:** token bucket — O(1) memory, natural burst allowance (\`capacity=200, refill=100/min\` lets a client burst after idling, which matches real client behavior), lazy refill means no background timers: compute owed tokens from elapsed time at check time.
+
+### 6b. Redis atomicity — the race condition
+
+Naive implementation: \`GET tokens\` → compute in app → \`SET tokens\`. Two gateway nodes read \`tokens=1\` concurrently, both allow, both write back \`0\` → limit breached. This read-modify-write race is the classic trap.
+
+**Fix: a Lua script** — Redis executes scripts single-threaded and atomically, so read-compute-write happens as one indivisible unit, keyed data stays on one shard (all keys in the script must hash to the same slot in Cluster — use one key or hash tags). Alternatives: \`MULTI/EXEC\` with \`WATCH\` (optimistic, retries under contention — worse at 100k QPS), or Redis functions. Never app-side locks.
+
+> [!WARNING]
+> Second trap inside the script: clock source. Use Redis \`TIME\` inside the script (or pass one gateway timestamp) — never mix gateway clocks across nodes for refill math, or skew between gateways mints or destroys tokens.
+
+### 6c. Multi-region: global sync vs local buckets
+
+| Approach | Behavior | Cost |
+|---|---|---|
+| One global Redis | exact global limit | cross-region RTT (50–150 ms) on EVERY request — blows the 2 ms budget. Dead on arrival. |
+| **Local buckets, divided quota** (chosen) | each region enforces \`limit / n_regions\` (weighted by traffic share) | zero cross-region latency; unfair if traffic is skewed |
+| Local full-quota + async reconciliation | each region allows up to full limit locally, gossips usage, tightens next window | up to N× short-term overshoot, converges; good middle ground |
+
+**Commit:** local enforcement with traffic-weighted quota split, plus async usage sync to rebalance the weights every few seconds. Say the principle: *"Rate limiting is a damping mechanism, not an accounting ledger — 5% overshoot for 2 ms latency is the right trade. If it were billing quota, I'd flip the trade."*
+
+## 7. Bottlenecks, trade-offs & evolution
+
+- **Redis is on the critical path**: mitigate with connection pooling, pipelining multiple rule checks into one script call, replicas + fast failover, and the fail-open circuit breaker (if Redis p99 > budget, skip checks and emit metrics).
+- **Hot key** (one API key doing 50k QPS — likely the abuser you exist to stop): a single Redis shard takes the hit. Mitigate with a tiny in-gateway local pre-limiter (e.g. token bucket in Caffeine at 2× fair share) that rejects the flood before Redis.
+- **Rule explosion**: evaluate the 2–3 most specific rules, not all; precompile rule lookup into a trie/route-match at config load.
+- **Evolution**: v1 in-process Guava/Bucket4j per node (inaccurate ×N nodes, fine early) → v2 Redis+Lua centralized per region → v3 multi-region weighted quotas + usage gossip.
+
+> [!EU]
+> **What a senior answer sounds like:** "Token bucket in Redis via a Lua script — O(1) memory, atomic check-and-decrement, burst capacity as a first-class knob, lazy refill from elapsed time so there are no timers. Enforced in gateway middleware after authn, keyed on api_key+route, returning 429 with Retry-After and X-RateLimit-* headers. Fail-open with loud metrics, because the limiter must never out-fail the API it protects. Multi-region I keep local with traffic-weighted quota shares and async rebalancing — exact global counting costs a cross-region RTT per request, and rate limiting is damping, not accounting."`,
+            code: [
+              {
+                lang: `java`,
+                title: `Token bucket vs fixed window vs sliding-window counter — simulator (runnable)`,
+                runnable: true,
+                note: `Replays the same bursty traffic against three algorithms with the same nominal limit (100/min) and prints accepted counts — shows the fixed-window edge-burst flaw and token-bucket burst behavior.`,
+                code: `import java.util.*;
+
+public class RateLimiterSim {
+
+    interface Limiter { boolean allow(long nowMs); String name(); }
+
+    /** Token bucket: capacity + refill rate, lazy refill from elapsed time. */
+    static class TokenBucket implements Limiter {
+        final double capacity, refillPerMs; double tokens; long last;
+        TokenBucket(double capacity, double refillPerSec) {
+            this.capacity = capacity; this.tokens = capacity;
+            this.refillPerMs = refillPerSec / 1000.0; this.last = 0;
+        }
+        public boolean allow(long now) {
+            tokens = Math.min(capacity, tokens + (now - last) * refillPerMs);
+            last = now;
+            if (tokens >= 1) { tokens -= 1; return true; }
+            return false;
+        }
+        public String name() { return "token-bucket(cap=" + (int) capacity + ")"; }
+    }
+
+    /** Fixed window: counter resets at window boundary -> edge bursts up to 2x. */
+    static class FixedWindow implements Limiter {
+        final int limit; final long windowMs; long windowStart = 0; int count = 0;
+        FixedWindow(int limit, long windowMs) { this.limit = limit; this.windowMs = windowMs; }
+        public boolean allow(long now) {
+            if (now - windowStart >= windowMs) { windowStart = (now / windowMs) * windowMs; count = 0; }
+            if (count < limit) { count++; return true; }
+            return false;
+        }
+        public String name() { return "fixed-window"; }
+    }
+
+    /** Sliding-window counter: current + weighted share of previous window. */
+    static class SlidingCounter implements Limiter {
+        final int limit; final long windowMs; long curStart = 0; int cur = 0, prev = 0;
+        SlidingCounter(int limit, long windowMs) { this.limit = limit; this.windowMs = windowMs; }
+        public boolean allow(long now) {
+            long start = (now / windowMs) * windowMs;
+            if (start != curStart) { prev = (start - curStart == windowMs) ? cur : 0; cur = 0; curStart = start; }
+            double prevWeight = 1.0 - (now - curStart) / (double) windowMs;
+            if (cur + prev * prevWeight < limit) { cur++; return true; }
+            return false;
+        }
+        public String name() { return "sliding-counter"; }
+    }
+
+    public static void main(String[] args) {
+        // Traffic: 100 requests at 00:59, 100 more at 01:01 (the window-edge attack),
+        // then a steady 2/s trickle for a minute.
+        List<Long> traffic = new ArrayList<>();
+        for (int i = 0; i < 100; i++) traffic.add(59_000L + i);
+        for (int i = 0; i < 100; i++) traffic.add(61_000L + i);
+        for (int i = 0; i < 120; i++) traffic.add(70_000L + i * 500L);
+
+        Limiter[] limiters = {
+            new TokenBucket(100, 100.0 / 60),   // 100 capacity, refill 100/min
+            new FixedWindow(100, 60_000),
+            new SlidingCounter(100, 60_000)
+        };
+        for (Limiter l : limiters) {
+            int okEdge = 0, okSteady = 0;
+            for (long t : traffic) {
+                boolean ok = l.allow(t);
+                if (ok) { if (t < 70_000) okEdge++; else okSteady++; }
+            }
+            System.out.printf("%-22s edge-burst accepted: %3d/200   steady accepted: %3d/120%n",
+                l.name(), okEdge, okSteady);
+        }
+        System.out.println("\\nNote: fixed-window accepts ~200 across the boundary (2x breach);");
+        System.out.println("token bucket caps the burst at capacity then admits at refill rate.");
+    }
+}`
+              },
+              {
+                lang: `text`,
+                title: `Redis Lua: atomic token bucket (the interview must-know)`,
+                note: `One atomic EVALSHA per request. Uses Redis TIME so all gateways share one clock. Returns {allowed, retry_after_ms}.`,
+                code: `-- KEYS[1] = bucket key, e.g. rl:{api_key_123}:search
+-- ARGV[1] = capacity, ARGV[2] = refill_per_sec, ARGV[3] = cost
+local capacity = tonumber(ARGV[1])
+local refill   = tonumber(ARGV[2])
+local cost     = tonumber(ARGV[3])
+
+local t = redis.call('TIME')                      -- server clock, not gateway clocks
+local now_ms = t[1] * 1000 + math.floor(t[2] / 1000)
+
+local b = redis.call('HMGET', KEYS[1], 'tokens', 'ts')
+local tokens = tonumber(b[1]) or capacity
+local ts     = tonumber(b[2]) or now_ms
+
+-- lazy refill: mint tokens owed for elapsed time, cap at capacity
+tokens = math.min(capacity, tokens + (now_ms - ts) * refill / 1000)
+
+local allowed = 0
+local retry_after_ms = 0
+if tokens >= cost then
+  tokens = tokens - cost
+  allowed = 1
+else
+  retry_after_ms = math.ceil((cost - tokens) * 1000 / refill)
+end
+
+redis.call('HMSET', KEYS[1], 'tokens', tokens, 'ts', now_ms)
+redis.call('PEXPIRE', KEYS[1], math.ceil(capacity / refill * 1000) * 2)  -- self-cleaning
+return { allowed, retry_after_ms }`
+              },
+              {
+                lang: `json`,
+                title: `HTTP contract: headers on success, 429 on rejection`,
+                code: `// 200 OK (every response carries budget info so clients self-throttle)
+// X-RateLimit-Limit: 100
+// X-RateLimit-Remaining: 37
+// X-RateLimit-Reset: 1767441600
+
+// 429 Too Many Requests
+// Retry-After: 7
+{
+  "error": {
+    "code": "rate_limited",
+    "message": "Rate limit exceeded for plan 'free' on /v1/search (100/min).",
+    "retry_after_seconds": 7,
+    "docs": "https://api.example.com/docs/rate-limits"
+  }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Your fixed-window limiter (100/min) lets a client through 200 requests in 2 seconds. How?`,
+                a: `Window-edge burst: 100 requests at 00:59 count in window 1, 100 at 01:01 count in window 2 — both allowed, 2× the nominal rate across the boundary. Fix: sliding-window counter (weighted previous window) or token bucket.`
+              },
+              {
+                q: `Why does the sliding window LOG lose to token bucket at scale? Quantify it.`,
+                a: `Log stores one ZSET entry per request per key: at 100/min limits and 2M active keys that is ~24 GB vs ~300 MB for token bucket (two numbers/key) — roughly 80× more memory, plus O(log n) ZSET ops vs O(1). Reserve the log for small exact limits like login attempts.`
+              },
+              {
+                q: `Two gateway pods both read tokens=1 from Redis and both allow the request. Name the bug and the fix.`,
+                a: `Read-modify-write race — GET/compute/SET is not atomic across clients. Fix: move the whole check-refill-decrement into a Lua script (Redis executes scripts atomically, single-threaded). WATCH/MULTI is the optimistic alternative but degrades under contention.`
+              },
+              {
+                q: `What clock do you use for token refill in a distributed limiter, and why not the gateway's?`,
+                a: `Redis server time (TIME inside the Lua script). If each gateway passes its own clock, skew between nodes mints phantom tokens (clock ahead) or destroys them (clock behind), and refill math becomes non-monotonic.`
+              },
+              {
+                q: `The interviewer asks for an exact GLOBAL limit across 3 regions. What do you push back with?`,
+                a: `Exact global enforcement needs a synchronous cross-region check — 50–150 ms RTT on every request vs a <2 ms budget. Counter-offer: per-region buckets with traffic-weighted quota shares plus async usage reconciliation; accept bounded short-term overshoot. Only billing-grade quotas justify synchronous global counting.`
+              },
+              {
+                q: `Redis (the limiter store) goes down at peak. What does your gateway do?`,
+                a: `Fail open for product traffic: skip the check, serve the request, fire high-severity metrics/alerts — the limiter must not out-fail the API it protects. Fail closed only for abuse-critical endpoints (login, OTP, signup) where unthrottled traffic is worse than rejection.`
+              },
+              {
+                q: `Where do you enforce rate limits: client, LB, gateway, or each microservice — and why?`,
+                a: `Primary enforcement in gateway middleware: post-authn (so you can key on user/api-key/plan), single point of policy, backends stay clean. Defense in depth: coarse IP limits at the WAF/LB in front (protects the gateway itself), optional per-service limits for internal callers.`
+              },
+              {
+                q: `What must a 429 response include for well-behaved clients, and what should every 200 include?`,
+                a: `429: Retry-After header (seconds or HTTP-date) plus a machine-readable error code. Every response: X-RateLimit-Limit/-Remaining/-Reset so clients self-throttle before hitting the wall — this actively reduces your 429 volume.`
+              },
+              {
+                q: `A single API key floods you with 50k QPS and one Redis shard saturates. Fix without scaling Redis?`,
+                a: `Local pre-limiter in each gateway process (in-memory token bucket per key at ~2× fair share): the flood is rejected in-process before touching Redis. The abuser is exactly who should not be allowed to hotspot your limiter store.`
+              },
+              {
+                q: `Token bucket with capacity 200, refill 100/min: what client behavior does this express that a plain 100/min window cannot?`,
+                a: `Burst tolerance: an idle client accumulates up to 200 tokens and may legitimately burst 200 requests at once, then continues at 100/min sustained. Capacity and rate are independent knobs — burst allowance vs long-term throughput — which matches real client traffic patterns.`
+              },
+              {
+                q: `How does per-key limiter state get cleaned up in Redis without a background job?`,
+                a: `PEXPIRE on every touch, TTL ≈ 2× the time to fully refill the bucket. An untouched key means a full bucket anyway, so expiry loses no information — the default state (missing key) is treated as a full bucket. Self-cleaning, memory-bounded.`
+              }
+            ]
+          },
+          {
+            title: `Case Study 3: News Feed (Twitter / Instagram)`,
+            notes: `# Worked Interview: Design a News Feed
+
+The canonical **fan-out** question. The whole interview hinges on one decision — precompute feeds at write time or assemble at read time — and on knowing that the correct answer is *both*, split by follower count. Your estimation should *force* that conclusion, not just decorate it.
+
+## 1. Requirements
+
+**Clarifying questions:**
+- "Scale? DAU, posts/day, average and max follower counts?" *(assume: 200M DAU, celebrities up to 100M followers)*
+- "Chronological or ranked feed? How fresh must a new post be in followers' feeds — seconds or minutes?"
+- "Media (images/video) in scope? Follow graph reads/writes in scope or given?"
+- "Is 'like/comment counts' consistency important, or can counters lag?"
+
+**Functional:** post (text + media), follow/unfollow, get feed (posts from followees, newest-ish first), infinite scroll pagination.
+
+**Non-functional:** feed load p99 < 200 ms; post visible to followers within seconds (eventual is fine — nobody can observe a 5 s delay in someone else's feed); read-dominated; availability over consistency everywhere except "I must see my own post immediately" (read-your-writes for the author).
+
+## 2. Back-of-envelope estimation
+
+| Quantity | Calculation | Result |
+|---|---|---|
+| Posts | 200M DAU × 2 posts/day | 400M/day ≈ **4.6k writes/s, peak ~15k/s** |
+| Feed reads | 200M × 10 opens/day | 2B/day ≈ **23k QPS avg, peak ~100k** |
+| Fan-out on write | 400M posts × 200 avg followers | **80B feed-list inserts/day ≈ ~1M inserts/s** ← the real write load, 200× the post rate |
+| Celebrity post | 1 post × 100M followers @ 1M inserts/s | **~100 s of the entire cluster's fan-out capacity** for ONE post → hybrid is forced |
+| Feed cache | 200M users × 800 post IDs × 20 B | ~3.2 TB → but only ~25% weekly-active need warm feeds → **~800 GB across a Redis cluster** |
+| Post text storage | 400M/day × 1 KB × 5 yr | ~730 TB → sharded store; media is separate (S3+CDN, petabytes) |
+
+> [!TIP]
+> Say the multiplication out loud: *"fan-out multiplies my write load by average followers — 4.6k posts/s becomes ~1M feed inserts/s. That number is fine for normal users and catastrophic for celebrities, which is why I'll split the strategy."* This single sentence is the spine of the interview.
+
+## 3. API design
+
+\`\`\`
+POST /v1/posts                         { text, media_ids }
+GET  /v1/feed?cursor=...&limit=20      home timeline
+POST /v1/users/{id}/follow
+GET  /v1/users/{id}/posts?cursor=...   profile timeline
+\`\`\`
+
+Pagination is **cursor-based**, never offset: the feed mutates constantly, so \`OFFSET 40\` shifts under the client (duplicates/skips), and deep offsets are O(n) in the store. Cursor = opaque token encoding \`(created_at, post_id)\` of the last item — stable, O(1) seek, and it hides the storage layout.
+
+## 4. Data model
+
+Three separate concerns, three stores:
+- **Posts** — source of truth, sharded by \`post_id\` (snowflake: time-sortable, so ID doubles as creation cursor).
+- **Social graph** — \`follows(follower_id, followee_id)\` needs *both* directions fast: "whom do I follow" (feed pull) and "who follows me" (fan-out push). Two tables/materializations, one per direction.
+- **Feed lists** — Redis, \`feed:{user_id}\` = sorted set of post IDs, trimmed to ~800 entries. A cache, not a database: rebuildable from the graph + posts on miss.
+
+## 5. High-level architecture
+
+\`\`\`mermaid
+graph TB
+    C[Client] --> GW[API Gateway]
+    GW --> PS[Post service]
+    GW --> FS[Feed service]
+    PS --> PDB[(Post store - sharded by post_id)]
+    PS --> K[[Kafka: post-created]]
+    K --> FO[Fan-out workers]
+    FO --> GDB[(Social graph store)]
+    FO --> FC[(Redis feed lists - feed:userId ZSETs)]
+    FS --> FC
+    FS -->|celebrity merge| PDB
+    FS --> GDB
+    C -->|images and video| CDN[CDN] --> S3[(Object storage)]
+\`\`\`
+
+Write path: post → post store → Kafka event → fan-out workers push \`post_id\` into each follower's Redis ZSET (async, seconds of lag is fine). Read path: read your ZSET, hydrate post bodies (multi-get from post store / post cache), merge in celebrity posts, rank, return page. Media never flows through these services — clients get presigned upload URLs and CDN download URLs.
+
+## 6. Deep dives
+
+### 6a. Fan-out on write vs read vs hybrid
+
+| | Fan-out on WRITE (push) | Fan-out on READ (pull) |
+|---|---|---|
+| Post cost | O(followers) inserts | O(1) |
+| Feed-read cost | O(1) — list is precomputed | O(followees) queries + merge on every open |
+| Read latency | excellent | poor at p99 (merge 500 followees' timelines live) |
+| Celebrity post | 100M inserts — cluster-melting | free |
+| Inactive users | wasted inserts (fan-out to users who never log in) | no waste |
+
+**Hybrid (the answer):** push for normal users; for authors above a follower threshold (~10k–1M, tuned empirically), *don't* push — instead, at read time, merge the reader's precomputed ZSET with recent posts pulled from the few celebrities they follow (typically <20, and those posts are red-hot in cache so pulls are cheap). Also skip pushing to users inactive >30 days; rebuild their feed lazily on next login.
+
+### 6b. Timeline cache in Redis
+
+\`ZADD feed:{user} score=snowflake_id member=post_id\`, \`ZREMRANGEBYRANK\` to cap at ~800, TTL ~30 days sliding. Store **IDs only** — bodies come from a separate post cache, so an edit/delete touches one place and feed lists stay tiny. Cache miss (evicted/inactive user) → fall back to pull mode: query recent posts of followees, rebuild ZSET, serve. Deletes: lazy — filter out missing posts at hydration time rather than reaching into millions of ZSETs.
+
+### 6c. Ranking (keep it one layer deep)
+
+Chronological = ZSET order, done. Ranked feed: over-fetch ~200 candidates from the ZSET (+celebrity merge), call a scoring service (features: recency decay, affinity(reader, author), predicted engagement), sort, return top 20. Key architectural point: **candidate generation (cheap, from cache) is separated from scoring (expensive, ML)** — you rank 200 candidates, never the whole corpus. If scoring times out, degrade to chronological; a slightly worse feed beats a spinner.
+
+## 7. Bottlenecks, trade-offs & evolution
+
+- **Thundering herd on a hot post**: millions hydrating the same \`post_id\` → post cache with singleflight; counters (likes/views) are approximate and batched — nobody audits 1.2M vs 1.201M likes.
+- **Fan-out lag during peaks** (Super Bowl): Kafka absorbs the burst; consumers scale horizontally; lag is observable and tolerable — freshness degrades by seconds, nothing fails. This is why fan-out is queue-decoupled rather than synchronous.
+- **Feed cache cluster failure**: fall back to pull mode for affected slots (degraded latency, not downtime); rebuild ZSETs lazily. State it: *"the feed list is a rebuildable projection, so losing it is a latency event, not a data-loss event."*
+- **Evolution**: v1 pure pull (fine to ~1M users) → v2 push + Kafka fan-out → v3 hybrid with celebrity threshold → v4 ranked feed with separate candidate/scoring tiers.
+
+> [!WARNING]
+> Don't ship likes/comments/notifications into this design uninvited — name them, park them ("notifications is its own system — happy to design it separately"), and protect your 45 minutes.
+
+> [!EU]
+> **What a senior answer sounds like:** "Estimation shows fan-out multiplies writes 200×, and a single celebrity post would monopolize the fan-out tier for minutes — so the architecture is hybrid by necessity, not preference: push via Kafka into Redis ZSET timelines for normal authors, pull-and-merge at read time for the handful of high-follower accounts each reader follows, skip inactive users. Feed lists hold IDs only and are rebuildable projections, so cache loss degrades latency, never data. Pagination is cursor-based on snowflake IDs; ranking is over-fetch-then-score with chronological as the degrade path; media is entirely on the CDN plane."`,
+            code: [
+              {
+                lang: `sql`,
+                title: `Posts + social graph (both directions) — schema`,
+                code: `-- Posts: sharded by post_id (snowflake -> time-ordered, doubles as cursor).
+CREATE TABLE posts (
+    post_id     BIGINT PRIMARY KEY,          -- snowflake: 41b time | 10b shard | 12b seq
+    author_id   BIGINT NOT NULL,
+    text        VARCHAR(500),
+    media_ids   BIGINT[],
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_posts_author ON posts (author_id, post_id DESC);  -- profile timeline + pull mode
+
+-- Social graph: physically materialize BOTH directions.
+-- "whom do I follow" -> pull path / feed rebuild
+CREATE TABLE following (
+    follower_id  BIGINT NOT NULL,
+    followee_id  BIGINT NOT NULL,
+    PRIMARY KEY (follower_id, followee_id)
+);
+-- "who follows me" -> push fan-out path (sharded/paged scan for big accounts)
+CREATE TABLE followers (
+    followee_id  BIGINT NOT NULL,
+    follower_id  BIGINT NOT NULL,
+    PRIMARY KEY (followee_id, follower_id)
+);
+
+-- Author metadata drives the hybrid decision at post time.
+-- if follower_count > CELEB_THRESHOLD -> no push; readers pull at read time.
+ALTER TABLE users ADD COLUMN follower_count BIGINT NOT NULL DEFAULT 0;`
+              },
+              {
+                lang: `text`,
+                title: `Redis timeline commands (push, trim, read)`,
+                note: `The feed list is a capped ZSET of post IDs. Score = snowflake ID keeps time order and gives a natural cursor.`,
+                code: `# Fan-out worker pushes one post to one follower's timeline:
+ZADD feed:8842 1846201033372683265 1846201033372683265   # score = member = snowflake id
+ZREMRANGEBYRANK feed:8842 0 -801                          # cap list at 800 entries
+EXPIRE feed:8842 2592000                                  # 30-day sliding TTL
+
+# Feed read (page of 20, cursor = last seen snowflake id):
+ZREVRANGEBYSCORE feed:8842 (1846201033372683265 -inf LIMIT 0 20
+# -> returns post IDs; hydrate bodies via MGET post:{id} against the post cache,
+#    then merge recent posts pulled for followed celebrities, rank, respond.`
+              },
+              {
+                lang: `json`,
+                title: `Feed API: cursor pagination response`,
+                code: `// GET /v1/feed?limit=20&cursor=eyJsYXN0X2lkIjoxODQ2MjAxMDMzMzcyNjgzMjY1fQ
+{
+  "items": [
+    {
+      "post_id": "1846199888401121280",
+      "author": { "id": "501", "handle": "grace", "avatar_url": "https://cdn.ex.com/a/501.jpg" },
+      "text": "Shipped the new feed ranker!",
+      "media": [ { "type": "image", "url": "https://cdn.ex.com/m/9f2k.jpg" } ],
+      "like_count": 1240,
+      "created_at": "2026-07-03T09:41:00Z"
+    }
+  ],
+  "next_cursor": "eyJsYXN0X2lkIjoxODQ2MTk5ODg4NDAxMTIxMjgwfQ",
+  "has_more": true
+}
+// Cursor is OPAQUE (base64 of {last_id}): clients can't construct it,
+// so the server is free to change the underlying sort/storage later.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Your feed service melts every time a celebrity with 80M followers posts. What exactly do you change?`,
+                a: `Switch that author class to fan-out-on-read: authors above a follower threshold are not pushed into follower timelines at all. At read time, merge the reader's precomputed feed with recent posts pulled from the few celebrities they follow (hot in cache, so pulls are cheap). Normal authors stay on push. This is the hybrid model.`
+              },
+              {
+                q: `Fan-out on write: 400M posts/day, 200 avg followers. What write load does the feed tier actually see?`,
+                a: `80B timeline inserts/day ≈ ~1M inserts/s — 200× the raw post rate. The estimation exists to surface this multiplication; it is the number that forces queue-decoupled async fan-out and the celebrity exception.`
+              },
+              {
+                q: `Why must feed pagination be cursor-based instead of page/offset?`,
+                a: `The feed mutates between requests: with OFFSET, new posts shift items so page 2 shows duplicates or skips; and deep offsets are O(n) scans. A cursor pinned to (created_at, post_id) of the last item gives a stable O(1) seek and hides storage layout behind an opaque token.`
+              },
+              {
+                q: `What exactly is stored in the Redis timeline, and why not full post JSON?`,
+                a: `Only post IDs (ZSET, score = snowflake ID), capped ~800, 30-day TTL. IDs keep entries at ~20 B (3.2 TB → manageable), edits/deletes touch one post cache entry instead of millions of feed lists, and hydration hits a shared post cache with high locality.`
+              },
+              {
+                q: `The whole Redis feed cluster is lost. What happens to users, and what sentence do you say to the interviewer?`,
+                a: `Reads fall back to pull mode (query followees' recent posts, merge, rebuild the ZSET lazily) — degraded latency, no data loss. Say: "the feed list is a rebuildable projection of the graph + posts, so losing it is a latency event, not a data-loss event."`
+              },
+              {
+                q: `Why is fan-out done via Kafka instead of synchronously in the POST /posts request?`,
+                a: `Fan-out is O(followers) — unbounded work that must not sit in the author's request latency. The queue absorbs bursts (peak events), workers scale horizontally, retries are isolated, and a lag spike degrades freshness by seconds instead of failing posts. Author needs only read-your-writes on their own profile.`
+              },
+              {
+                q: `How does ranked feed fit in without wrecking your latency budget?`,
+                a: `Two tiers: cheap candidate generation (over-fetch ~200 IDs from the timeline ZSET + celebrity merge) then expensive ML scoring on just those candidates. Never rank the corpus. If the scorer breaches its deadline, degrade to chronological — worse ranking beats a spinner.`
+              },
+              {
+                q: `Why do you materialize the social graph in BOTH directions?`,
+                a: `Two hot access patterns with opposite keys: fan-out needs "who follows X" (followee-keyed) to push; feed rebuild/pull needs "whom does X follow" (follower-keyed). One table + secondary index doesn't scale-shard for both, so store two copies, each partitioned by its own leading key.`
+              },
+              {
+                q: `A post goes viral and millions of feed reads hydrate the same post_id. What breaks and what is the fix?`,
+                a: `Hot key on the post cache and stampedes on expiry. Fix: singleflight per key (one loader, others wait), in-process L1 cache in feed nodes with short TTL, and approximate batched counters for likes/views instead of per-read increments.`
+              },
+              {
+                q: `Why skip fan-out to users inactive for 30+ days, and what happens when one returns?`,
+                a: `At 200 avg followers, a large share of the 80B daily inserts land in timelines nobody reads — pure waste. On return, their feed is rebuilt once in pull mode (slower first load), then they rejoin the push cohort. Classic cost-vs-first-load-latency trade.`
+              },
+              {
+                q: `Where do images and video live in the feed architecture?`,
+                a: `Entirely off the feed plane: clients upload via presigned URLs to object storage, posts carry media IDs/URLs only, delivery is CDN with multi-resolution renditions. Feed/post services never proxy bytes — media bandwidth (petabytes) would dwarf and destabilize the metadata tier.`
+              }
+            ]
+          },
+          {
+            title: `Case Study 4: Chat System (WhatsApp / Slack)`,
+            notes: `# Worked Interview: Design a Chat System
+
+The stateful one. Everything else in this module is stateless request/response; chat forces you to reason about **long-lived connections, ordering, and delivery guarantees** — the distributed-systems fundamentals interviewers use to separate seniors from feature-builders.
+
+## 1. Requirements
+
+**Clarifying questions:**
+- "1:1 only, or groups? Max group size?" *(assume both; groups to 1,000)*
+- "Scale — total users, concurrent connections, messages/day?" *(assume 1B users, 100M concurrent)*
+- "Delivery/read receipts? Online presence? Message history sync across devices?"
+- "End-to-end encryption required, or TLS-in-transit enough?" *(mention E2EE, scope it out — see below)*
+
+**Functional:** 1:1 and group messaging; delivery states (sent → delivered → read); presence (online/last-seen); offline delivery + push notification; multi-device history sync; media via separate upload path.
+
+**Non-functional:** delivery latency < 100 ms when both online; **no message loss, ever** (at-least-once + dedup — users forgive lateness, never loss); per-conversation ordering (global ordering is neither needed nor cheap); 100M concurrent connections; graceful offline→online catch-up.
+
+## 2. Back-of-envelope estimation
+
+| Quantity | Calculation | Result |
+|---|---|---|
+| Messages | 50B/day ÷ 86,400 | **~580k msg/s avg, peak ~1.5M/s** |
+| Concurrent connections | given | **100M** |
+| Chat servers | ~1M idle WebSocket conns/box (epoll + tuned kernel; mostly-idle conns are cheap: ~10 KB each ≈ 10 GB RAM) | **~100 servers, run 150 for headroom/draining** |
+| Storage | 50B × ~200 B (text + metadata) | **10 TB/day, ~3.7 PB/yr** → wide-column store, TTL/cold-tiering |
+| Presence writes | 100M × heartbeat/30 s | ~3.3M updates/s → **must not hit a DB**; in-memory, and fan out lazily (on viewer demand), not on every flap |
+
+Two conclusions to state: connection handling and message flow are **separate scaling problems** (servers sized by conns, storage by messages), and presence at 3.3M writes/s must be handled in memory with demand-driven fan-out.
+
+## 3. API / protocol design
+
+HTTP for the control plane, WebSocket for the data plane:
+
+\`\`\`
+POST /v1/conversations                create 1:1 or group
+GET  /v1/conversations/{id}/messages?before=...&limit=50    history / backfill
+WS   /v1/connect                      one socket per device; frames below
+\`\`\`
+
+WebSocket frames: \`send\`, \`ack\` (server→sender: persisted, here's the canonical ID), \`deliver\` (server→recipient), \`receipt\` (delivered/read), \`presence\`, \`ping/pong\`. Every client \`send\` carries a **client_msg_id** (UUID) so retries after reconnect are deduplicated server-side → at-least-once transport, exactly-once *appearance*.
+
+## 4. Data model
+
+Messages in a Cassandra-style wide-row store, partitioned by conversation: \`PRIMARY KEY ((conversation_id, bucket), message_id)\` with \`message_id\` clustering DESC. One partition = one conversation's recent messages, so "load last 50" is a single-partition sequential read. \`bucket\` (e.g. month) caps partition growth for very chatty rooms. Inbox/receipts and membership are separate tables keyed by user.
+
+## 5. High-level architecture
+
+\`\`\`mermaid
+graph TB
+    A[Device A] -->|WebSocket| CS1[Chat server 1..150]
+    B[Device B] -->|WebSocket| CS2[Chat server 2]
+    CS1 --> SR[(Session registry - Redis: user to server)]
+    CS1 --> MS[Message service]
+    MS --> IDG[Message ID gen - per-conv sequence]
+    MS --> CDB[(Cassandra - messages by conversation)]
+    MS --> K[[Kafka: msg events]]
+    K --> CS2
+    K --> PNS[Push notification service] --> APNS[APNs / FCM]
+    CS1 --> PR[Presence service - in-memory + heartbeats]
+    A -.media upload.-> S3[(Object storage + CDN)]
+\`\`\`
+
+Send path: A → its chat server → message service **persists first**, assigns \`(conversation_id, seq)\`, acks A → routes to B: look up B's server in the session registry, deliver over B's socket (or via Kafka topic per server); if B offline → enqueue push notification. Persist-then-deliver is the no-loss invariant.
+
+## 6. Deep dives
+
+### 6a. Connection service & routing
+
+Chat servers are *almost* stateless — the state is the socket itself. Session registry maps \`user_id → {server_id, device_ids}\` with TTL refreshed by heartbeat. LB uses least-connections; on deploy, servers drain (stop accepting, let clients reconnect elsewhere — clients always have reconnect-with-backoff + resume logic anyway). Cross-server delivery: direct RPC to the target server, or a Kafka/Redis-pubsub channel per server — pick RPC for latency, pubsub for simplicity; say you'd measure.
+
+### 6b. Ordering & message IDs
+
+Global ordering across all conversations: unnecessary and expensive. **Per-conversation ordering** is the contract. Options: per-conversation sequence number (Redis \`INCR conv:{id}:seq\` or a light sequencer service) — dense, gap-detectable (client sees seq 41 then 43 → requests 42, catches missed messages for free); or snowflake time-ordered IDs — coordination-free but gaps are meaningless so clients can't detect holes. Choose **per-conversation seq**: gap detection doubles as the sync/repair protocol. Sender timestamps are display-only — never ordering (client clocks lie).
+
+### 6c. Delivery states & offline flow
+
+- **sent**: server persisted the message (ack to sender). Not before — an ack before persistence is a lie you'll pay for in lost messages.
+- **delivered**: recipient's device acked the \`deliver\` frame → receipt frame back to sender.
+- **read**: recipient's client marked the conversation viewed (batched: "read up to seq N", not per-message).
+
+Offline: message is already durable in Cassandra; bump the recipient's per-conversation unread cursor; send push (via the Notification-service pattern from case study 5). On reconnect, client sends \`last_seq\` per conversation, server streams the delta. **The store is the queue** — no separate offline-message queue to keep consistent.
+
+### 6d. Groups & presence
+
+Group send = one persisted message, fan-out delivery to N online members' servers (small-group fan-out-on-write; a 1,000-member room is 1 write + up to 1,000 routed frames, fine). For 100k-member channels (Slack-scale), flip to read-time pull: don't push frames, notify-and-fetch. Presence: heartbeat every ~30 s into in-memory presence shards; \`last_seen\` flushed lazily. Fan out presence changes **only to interested viewers** (subscriptions from open chat lists) with debounce — never broadcast every flap to all contacts.
+
+> [!DANGER]
+> **E2EE — mention it, scope it.** One paragraph: "With end-to-end encryption (Signal protocol: per-device key pairs, double ratchet), the server routes ciphertext only — so server-side search, moderation, and multi-device sync get materially harder (per-device encryption fan-out), while metadata (who talks to whom, when) remains visible and must still be protected. I'll design the transport assuming E2EE-compatible payloads and leave key management out of scope." That is a senior-level treatment; deriving the double ratchet is not expected.
+
+## 7. Bottlenecks, trade-offs & evolution
+
+- **Hot partition**: a mega-group hammers one Cassandra partition → time-bucketed partition keys, and read-time pull for huge rooms.
+- **Reconnect storm** after a network blip or deploy: 100M clients reconnecting → jittered exponential backoff client-side, connection-rate limiting at LB, and resume (delta since \`last_seq\`) instead of full history sync.
+- **Thundering push**: a viral group generates N pushes per message → collapse keys / notification coalescing ("12 new messages"), rate-limit per device.
+- **Evolution**: v1 single region, Redis registry + RPC routing → v2 multi-region with users homed to nearest region, cross-region delivery via inter-region Kafka → v3 E2EE + multi-device key distribution.
+
+> [!EU]
+> **What a senior answer sounds like:** "Two separable problems: a connection tier (100M sockets ≈ 100–150 servers, session registry in Redis) and a message plane (persist-first to a conversation-partitioned wide-row store, then route). Ordering is per-conversation via a dense sequence — which gives gap-detection and therefore offline catch-up for free; the store is the offline queue. Delivery is at-least-once with client-generated IDs deduped server-side, so users see exactly-once. Presence is in-memory heartbeats fanned out on demand with debounce, never broadcast. Groups push under ~1k members and flip to notify-and-fetch above. E2EE: I design for ciphertext payloads and explicitly scope key management out."`,
+            code: [
+              {
+                lang: `sql`,
+                title: `Cassandra-style wide-row message schema (CQL)`,
+                code: `-- One partition per (conversation, month-bucket): "last 50 messages" is a
+-- single-partition sequential read; bucket caps unbounded partition growth.
+CREATE TABLE messages (
+    conversation_id  BIGINT,
+    bucket           INT,          -- e.g. 202607 (yyyymm)
+    seq              BIGINT,       -- dense per-conversation sequence -> ordering + gap detection
+    message_id       UUID,         -- client-generated, for idempotent retries
+    sender_id        BIGINT,
+    body             TEXT,         -- ciphertext if E2EE
+    media_ref        TEXT,
+    sent_at          TIMESTAMP,
+    PRIMARY KEY ((conversation_id, bucket), seq)
+) WITH CLUSTERING ORDER BY (seq DESC);
+
+-- Per-user conversation index (inbox): one partition per user.
+CREATE TABLE user_conversations (
+    user_id          BIGINT,
+    last_msg_at      TIMESTAMP,
+    conversation_id  BIGINT,
+    last_read_seq    BIGINT,      -- read cursor -> unread count = latest_seq - last_read_seq
+    PRIMARY KEY (user_id, last_msg_at, conversation_id)
+) WITH CLUSTERING ORDER BY (last_msg_at DESC);
+
+CREATE TABLE group_members (
+    conversation_id  BIGINT,
+    user_id          BIGINT,
+    role             TEXT,
+    PRIMARY KEY (conversation_id, user_id)
+);`
+              },
+              {
+                lang: `json`,
+                title: `WebSocket frames: send, ack, deliver, receipt`,
+                code: `// client -> server (client_msg_id makes retries idempotent)
+{ "type": "send", "client_msg_id": "9f8b1c2e-77aa-4f10-b3d1-0a1e2f3c4d5e",
+  "conversation_id": "88231", "body": "shipping it now", "sent_at": "2026-07-03T10:15:04Z" }
+
+// server -> sender: durable + canonical identity assigned (state: SENT)
+{ "type": "ack", "client_msg_id": "9f8b1c2e-77aa-4f10-b3d1-0a1e2f3c4d5e",
+  "conversation_id": "88231", "seq": 5117 }
+
+// server -> recipient device
+{ "type": "deliver", "conversation_id": "88231", "seq": 5117,
+  "sender_id": "501", "body": "shipping it now" }
+
+// recipient -> server -> sender (read receipts batched by cursor, not per message)
+{ "type": "receipt", "conversation_id": "88231", "kind": "delivered", "up_to_seq": 5117 }
+{ "type": "receipt", "conversation_id": "88231", "kind": "read",      "up_to_seq": 5117 }
+
+// reconnect catch-up: client states what it has; server streams the delta
+{ "type": "sync", "cursors": [ { "conversation_id": "88231", "last_seq": 5109 } ] }`
+              },
+              {
+                lang: `java`,
+                title: `Per-conversation sequencer + gap-detecting client buffer (runnable)`,
+                runnable: true,
+                note: `Models the ordering contract: dense server-side sequences per conversation, and a client that detects gaps and holds out-of-order messages until the hole is filled.`,
+                code: `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+public class ChatOrderingDemo {
+
+    /** Server side: dense per-conversation sequence (Redis INCR in production). */
+    static class Sequencer {
+        final Map<Long, AtomicLong> seqs = new ConcurrentHashMap<>();
+        long next(long conversationId) {
+            return seqs.computeIfAbsent(conversationId, k -> new AtomicLong()).incrementAndGet();
+        }
+    }
+
+    /** Client side: deliver in order, buffer gaps, request missing on hole. */
+    static class ClientBuffer {
+        long expected = 1;
+        final TreeMap<Long, String> pending = new TreeMap<>();
+        void onDeliver(long seq, String body) {
+            if (seq < expected) { System.out.println("  dup seq " + seq + " -> ignore (idempotent)"); return; }
+            pending.put(seq, body);
+            if (seq > expected)
+                System.out.println("  gap! have " + seq + ", expected " + expected + " -> request backfill " + expected + ".." + (seq - 1));
+            while (pending.containsKey(expected))
+                System.out.println("  display #" + expected + ": " + pending.remove(expected++));
+        }
+    }
+
+    public static void main(String[] args) {
+        Sequencer server = new Sequencer();
+        long conv = 88231;
+        String[] msgs = { "hey", "you there?", "shipping it now", "done" };
+        long[] assigned = new long[msgs.length];
+        for (int i = 0; i < msgs.length; i++) assigned[i] = server.next(conv);
+
+        ClientBuffer client = new ClientBuffer();
+        System.out.println("Delivery arrives out of order (network races):");
+        client.onDeliver(assigned[0], msgs[0]);   // 1 ok
+        client.onDeliver(assigned[2], msgs[2]);   // 3 -> gap, buffered
+        client.onDeliver(assigned[3], msgs[3]);   // 4 -> still gapped
+        client.onDeliver(assigned[1], msgs[1]);   // 2 arrives -> 2,3,4 flush in order
+        client.onDeliver(assigned[1], msgs[1]);   // retry of 2 -> deduped
+        System.out.println("Dense sequences give ordering AND gap-detection (sync protocol) for free.");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why WebSocket for chat instead of HTTP polling or long-polling, and what does that cost operationally?`,
+                a: `Server must push (delivery, receipts, presence) with <100 ms latency; polling wastes battery/requests and long-polling reconnects constantly. Cost: 100M long-lived stateful connections — connection-aware LB, session registry, drain-on-deploy, reconnect storms — a different ops model from stateless HTTP.`
+              },
+              {
+                q: `When exactly does the sender see "sent" (one tick), and why is the ordering of persist vs ack sacred?`,
+                a: `"Sent" = server acked AFTER durably persisting the message. Ack-before-persist means a server crash silently loses a message the user believes was sent — violating the one unbreakable chat invariant (no loss). Persist-first, ack-second, deliver-third.`
+              },
+              {
+                q: `Messages in a conversation sometimes render out of order after reconnects. Sender timestamps look fine. What is the correct ordering mechanism?`,
+                a: `Never order by sender clocks (skewed, spoofable). Use a dense per-conversation sequence assigned at persist time (Redis INCR or sequencer). Dense means clients detect gaps (41 → 43 implies 42 missing) and request backfill — ordering and sync-repair from one mechanism.`
+              },
+              {
+                q: `How do you deliver to a user connected to a different chat server than the sender?`,
+                a: `Session registry (Redis): user_id → {server_id, devices}, TTL-refreshed by heartbeat. Message service persists, looks up the recipient's server, routes via direct RPC (or per-server pubsub topic), that server writes to the socket. Offline (no registry entry) → unread cursor + push notification.`
+              },
+              {
+                q: `Why is there no separate "offline message queue", and what replaces it?`,
+                a: `The message store IS the queue: messages are durable in Cassandra keyed by (conversation, seq); each user keeps a per-conversation read/delivery cursor. On reconnect the client sends last_seq per conversation and the server streams the delta. A second queue would just be state to keep consistent with the store.`
+              },
+              {
+                q: `Design the Cassandra partition key for messages and defend it against the mega-group problem.`,
+                a: `PRIMARY KEY ((conversation_id, bucket), seq DESC). Conversation-keyed partitions make "last 50 messages" one sequential single-partition read. The time bucket (e.g. month) caps partition size for very chatty rooms; a 100k-member channel additionally flips from push to notify-and-fetch.`
+              },
+              {
+                q: `Presence: 100M users heartbeating every 30 s. Why can't this touch a database, and what is the design?`,
+                a: `~3.3M updates/s of ephemeral, loss-tolerant data. Keep liveness in sharded in-memory stores (TTL = missed heartbeats → offline); flush last_seen lazily. Fan out changes only to subscribed viewers (open chat lists) with debouncing — never broadcast every online/offline flap to all contacts.`
+              },
+              {
+                q: `A client retries a send after a reconnect and the recipient sees the message twice. What was missing?`,
+                a: `Idempotency key: every send carries a client-generated client_msg_id (UUID). Server dedupes on (conversation_id, client_msg_id) and re-acks with the already-assigned seq. Transport stays at-least-once; users observe exactly-once.`
+              },
+              {
+                q: `Group of 1,000 vs channel of 100,000 — how does message fan-out differ and why?`,
+                a: `1,000: one persisted write + route frames to online members' servers (push) — bounded, fine. 100,000: pushing 100k frames per message per server melts the connection tier; flip to notify-and-fetch (lightweight "new activity" signal, clients pull on view), i.e. the same push/pull hybrid logic as news feeds.`
+              },
+              {
+                q: `The interviewer asks "would end-to-end encryption change your design?" Give the senior-scoped answer.`,
+                a: `Yes materially: server routes ciphertext only, so server-side search, content moderation, and server-mediated multi-device sync are off the table; encryption is per-device (Signal-style double ratchet) so fan-out multiplies by device count; metadata remains visible and needs its own protection. Design payload-agnostic transport, scope key management out.`
+              },
+              {
+                q: `A deploy causes 20M clients to reconnect within a minute. What three mechanisms keep this from being an outage?`,
+                a: `Client jittered exponential backoff (spreads the storm), connection-rate limiting/queueing at the LB (protects servers), and cheap resume — clients sync deltas via per-conversation cursors instead of re-fetching history, so reconnect cost is O(missed messages), not O(history).`
+              }
+            ]
+          },
+          {
+            title: `Case Study 5: Notification Service (Push / Email / SMS)`,
+            notes: `# Worked Interview: Design a Notification Service
+
+The "boring" system every company actually builds — which is why it's asked. It tests the async-processing toolbox end to end: queues, retries, DLQs, idempotency, provider failover, and the unglamorous truth that **the hard part is not sending, it's not sending twice and knowing what happened**.
+
+## 1. Requirements
+
+**Clarifying questions:**
+- "Is this a platform other teams call, or one product's notifier?" *(assume: internal platform, many producer teams)*
+- "Channels? Push, email, SMS, in-app? Who decides the channel — caller or the service (user preferences)?"
+- "Delivery guarantee: is a duplicate SMS acceptable? A lost 2FA code?" *(→ per-class guarantees)*
+- "Scale, and burstiness — do marketing campaigns blast millions at once?"
+
+**Functional:** accept notification requests via API/events; resolve user preferences + opt-outs + quiet hours; render templates (localized); deliver via pluggable providers (FCM/APNs, SES/SendGrid, Twilio); track delivery status; schedule/campaign sends.
+
+**Non-functional:** transactional (OTP, alerts) delivered < 5 s; bulk/marketing can lag minutes; **at-least-once with dedup** (a rare duplicate beats a lost OTP); channel isolation (SMS provider outage must not delay push); producers must never block on delivery; full auditability ("was user X notified? when? via what?").
+
+> [!TIP]
+> Immediately split traffic into **transactional vs bulk** classes with separate queues and SLOs. One sentence, huge signal: it prevents the marketing blast from queueing behind — or in front of — a password-reset OTP.
+
+## 2. Back-of-envelope estimation
+
+| Quantity | Calculation | Result |
+|---|---|---|
+| Steady volume | 100M notifications/day | **~1.2k/s average** |
+| Campaign burst | 10M-recipient blast enqueued in minutes | **50k+/s into the queue** — 40× average; queue absorbs, workers drain at provider-allowed rate |
+| Provider ceilings | e.g. SMS provider 500/s, email 10k/s | **egress is provider-limited** → per-provider outbound rate limiters, backpressure via queue depth |
+| Delivery records | 100M/day × ~500 B × 90-day retention | **~4.5 TB** — partitioned table / wide-column, TTL'd |
+| Preference reads | 1 per notification, ~1.2k/s avg | cache in Redis (~10M active users × 1 KB = 10 GB), invalidate on update |
+
+Estimation punchline: ingress is bursty and unbounded, egress is contractually bounded → **a queue between them is not optional**, it's the load-matching device.
+
+## 3. API design
+
+\`\`\`
+POST /v1/notifications          send one (transactional)
+POST /v1/campaigns              bulk send (audience ref, template, schedule)
+GET  /v1/notifications/{id}     status: queued|rendered|sent|delivered|failed|suppressed
+PUT  /v1/users/{id}/preferences channels, opt-outs, quiet hours
+\`\`\`
+
+Producers pass \`template_id + data\`, **never rendered content** — the platform owns rendering, localization, and compliance footers. Every request carries an **\`idempotency_key\`** (e.g. \`order-9981-shipped\`); replays return the original notification ID instead of re-sending.
+
+## 4. Data model
+
+\`notifications\` (request + state machine), \`deliveries\` (one row per channel attempt: provider, attempts, provider_message_id, status timeline), \`preferences\`, \`templates\` (versioned), \`suppressions\` (bounces, spam complaints, STOP replies — a *legal* requirement for email/SMS, checked before every send).
+
+## 5. High-level architecture
+
+\`\`\`mermaid
+graph LR
+    P1[Producer services] -->|API or Kafka event| ING[Ingestion API - validate, dedup, persist]
+    ING --> KT[[Kafka: transactional]]
+    ING --> KB[[Kafka: bulk]]
+    KT --> PROC[Processor: preferences, suppression, quiet hours, template render]
+    KB --> PROC
+    PROC --> QP[[queue: push]] --> WP[Push workers] --> FCM[FCM / APNs]
+    PROC --> QE[[queue: email]] --> WE[Email workers] --> SES[SES primary / SendGrid failover]
+    PROC --> QS[[queue: sms]] --> WS[SMS workers] --> TW[Twilio]
+    WP --> DLQ[[DLQ per channel]]
+    FCM -.webhooks/receipts.-> TRK[Delivery tracker] --> DDB[(delivery store)]
+    SES -.bounce/complaint.-> SUP[(suppression list)]
+\`\`\`
+
+Pipeline: ingest (validate, **dedup on idempotency key**, persist intent, ack producer in <10 ms) → process (resolve preferences/opt-outs/quiet hours, pick channels, render template) → per-channel queues → workers with per-provider rate limiters and circuit breakers → provider → async receipts (webhooks) update delivery state.
+
+## 6. Deep dives
+
+### 6a. Idempotency & dedup — the interviewer's favorite
+
+Three layers, because duplicates enter at three places:
+1. **Producer retries** → \`idempotency_key\` unique-constraint at ingestion (insert-or-return-existing; Redis \`SET NX\` + DB constraint as belt-and-braces).
+2. **Consumer redelivery** (Kafka at-least-once: worker crashes after send, before commit) → before calling the provider, atomically transition state \`rendered → sending\` (conditional update); a redelivered message finds state ≠ rendered and skips. Window remains between provider-call and state-write — crash there = possible duplicate send. That residual risk is **why the guarantee is "at-least-once with dedup", not "exactly-once"**; some providers accept a client dedup ID to close even that.
+3. **Cross-trigger dupes** (two producers notify the same event) → optional content-hash dedup per (user, event-type) within a time window.
+
+### 6b. Retries, backoff, DLQ
+
+Classify errors first: **retryable** (timeouts, 5xx, 429 → exponential backoff + jitter, honor \`Retry-After\`) vs **permanent** (invalid token, unsubscribed, malformed → no retry: suppress or fail fast). Retry budget per class — OTP: 3 fast attempts then failover channel; marketing: lazy retries, then drop. After budget exhaustion → **DLQ per channel** with full context (payload, attempts, last error). DLQ is *operated*, not just configured: alert on depth, dashboard, and a replay tool that re-injects after the outage/bug is fixed. Failed pushes with \`UNREGISTERED\` tokens feed back into token cleanup.
+
+> [!WARNING]
+> Retries without jitter synchronize into waves that re-hammer a recovering provider — and retrying *through* an open circuit breaker just burns your rate limit. Backoff + jitter + breaker per provider, and failover to the secondary provider while the breaker is open.
+
+### 6c. Rate limiting & user-level protection
+
+Two distinct limiters: **egress per provider** (contractual: Twilio 500/s — token bucket in front of each worker pool, from case study 2) and **per-user courtesy caps** (max N marketing/day, collapse "12 likes" into one digest, quiet-hours deferral into a delayed queue). Transactional class bypasses courtesy caps — an OTP at 3 a.m. is wanted.
+
+### 6d. Templates & preferences
+
+Versioned templates (\`order_shipped\` v7, per-locale, per-channel variants); render at process time with strict variable validation — a missing variable is a **permanent** failure to DLQ, retrying won't invent the data. Preference resolution order: hard suppressions (legal) → user opt-outs → quiet hours → channel selection by notification class + user choice. Cache preferences; invalidate on write.
+
+## 7. Bottlenecks, trade-offs & evolution
+
+- **Campaign starves transactional**: separate topics/worker pools per class (already in the design); optionally weighted fair scheduling inside processors.
+- **Provider outage**: circuit breaker trips → failover provider (pre-integrated, warmed); if both down, queue holds (that's its job) and transactional overflows to alternate channel where sensible (push→SMS for OTP).
+- **Hot user** (celebrity gets 1M likes/hour): collapse/digest at the processing tier — notification *generation* is where you aggregate, not delivery.
+- **Delivery-state writes** (100M/day × several transitions) → batch/async status writes; the state machine tolerates out-of-order webhook receipts (\`delivered\` arriving after \`sent\` write lag) via monotonic state precedence.
+- **Evolution**: v1 single service + one queue + one provider each → v2 class-separated queues, failover providers, DLQ tooling → v3 campaign scheduler, digesting, per-tenant quotas + analytics.
+
+> [!EU]
+> **What a senior answer sounds like:** "It's a load-matching problem: unbounded bursty ingress, contractually bounded egress — so Kafka sits in the middle, split by traffic class so campaigns never queue ahead of OTPs. Guarantee is at-least-once with layered dedup: idempotency keys at ingestion, conditional state transitions at the worker, provider dedup IDs where supported — and I'll say plainly that a crash between provider-call and state-write is why exactly-once is a myth here. Per-provider token buckets and circuit breakers with a failover provider handle egress; DLQs are operated with alerts and replay tooling; suppressions are checked before every send because they're a legal boundary, not a feature."`,
+            code: [
+              {
+                lang: `java`,
+                title: `Retry with exponential backoff + jitter, budget, and DLQ (runnable simulation)`,
+                runnable: true,
+                note: `Simulates a flaky provider. Shows error classification (retryable vs permanent), capped backoff with jitter, retry budget, and dead-lettering with context.`,
+                code: `import java.util.*;
+
+public class RetryDlqDemo {
+
+    enum Kind { OK, RETRYABLE, PERMANENT }
+
+    /** Flaky provider: fails twice retryably for msg-1; permanent failure for msg-3. */
+    static Kind callProvider(String msgId, int attempt) {
+        if (msgId.equals("msg-3")) return Kind.PERMANENT;            // invalid device token
+        if (msgId.equals("msg-1") && attempt < 3) return Kind.RETRYABLE; // 503 from provider
+        return Kind.OK;
+    }
+
+    static long backoffMs(int attempt, long baseMs, long capMs, Random rnd) {
+        long exp = Math.min(capMs, baseMs * (1L << (attempt - 1)));   // 200,400,800...capped
+        return (long) (rnd.nextDouble() * exp);                      // FULL jitter (AWS style)
+    }
+
+    record DeadLetter(String msgId, int attempts, String lastError) {}
+
+    public static void main(String[] args) {
+        final int MAX_ATTEMPTS = 4;
+        Random rnd = new Random(42);
+        List<DeadLetter> dlq = new ArrayList<>();
+
+        for (String msgId : List.of("msg-1", "msg-2", "msg-3")) {
+            boolean done = false;
+            for (int attempt = 1; attempt <= MAX_ATTEMPTS && !done; attempt++) {
+                Kind r = callProvider(msgId, attempt);
+                switch (r) {
+                    case OK -> { System.out.println(msgId + " sent on attempt " + attempt); done = true; }
+                    case PERMANENT -> {
+                        System.out.println(msgId + " PERMANENT failure -> no retry, straight to DLQ + suppress token");
+                        dlq.add(new DeadLetter(msgId, attempt, "UNREGISTERED_TOKEN"));
+                        done = true;
+                    }
+                    case RETRYABLE -> {
+                        if (attempt == MAX_ATTEMPTS) {
+                            System.out.println(msgId + " retry budget exhausted -> DLQ");
+                            dlq.add(new DeadLetter(msgId, attempt, "PROVIDER_503"));
+                        } else {
+                            long sleep = backoffMs(attempt, 200, 5_000, rnd);
+                            System.out.printf("%s attempt %d failed (503) -> backoff %d ms (exp + jitter)%n",
+                                msgId, attempt, sleep);
+                            // Thread.sleep(sleep) in real life; skipped so the demo runs instantly
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println("\\nDLQ contents (alert on depth, replay after fix):");
+        dlq.forEach(d -> System.out.println("  " + d));
+    }
+}`
+              },
+              {
+                lang: `sql`,
+                title: `Notification + delivery-attempt schema (state machine on disk)`,
+                code: `CREATE TABLE notifications (
+    id               UUID PRIMARY KEY,
+    idempotency_key  VARCHAR(128) NOT NULL,
+    producer         VARCHAR(64)  NOT NULL,          -- which team/service sent it
+    user_id          BIGINT       NOT NULL,
+    class            VARCHAR(16)  NOT NULL,          -- transactional | bulk
+    template_id      VARCHAR(64)  NOT NULL,
+    template_data    JSONB        NOT NULL,
+    status           VARCHAR(16)  NOT NULL,          -- received|processed|suppressed|done|failed
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_producer_idem UNIQUE (producer, idempotency_key)  -- dedup layer 1
+);
+
+-- One row per channel attempt; conditional transition = dedup layer 2.
+CREATE TABLE deliveries (
+    id                   UUID PRIMARY KEY,
+    notification_id      UUID NOT NULL REFERENCES notifications(id),
+    channel              VARCHAR(8)  NOT NULL,       -- push|email|sms
+    provider             VARCHAR(32),
+    provider_message_id  VARCHAR(128),               -- join key for webhook receipts
+    status               VARCHAR(16) NOT NULL,       -- rendered|sending|sent|delivered|bounced|failed
+    attempts             INT NOT NULL DEFAULT 0,
+    last_error           TEXT,
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+) PARTITION BY RANGE (updated_at);                   -- 90-day retention, drop old partitions
+
+-- Worker claims work with a conditional transition (redelivered msg finds 0 rows -> skip):
+-- UPDATE deliveries SET status='sending', attempts=attempts+1, updated_at=now()
+--  WHERE id = $1 AND status = 'rendered';
+
+CREATE TABLE suppressions (                          -- legal boundary: checked before EVERY send
+    channel     VARCHAR(8)  NOT NULL,
+    address     VARCHAR(256) NOT NULL,               -- email / phone / device token
+    reason      VARCHAR(32) NOT NULL,                -- bounce|complaint|stop_reply|unsubscribed
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (channel, address)
+);`
+              },
+              {
+                lang: `json`,
+                title: `API: idempotent send request + status timeline`,
+                code: `// POST /v1/notifications      (replay with same key -> 200 + same id, no resend)
+{
+  "idempotency_key": "order-9981-shipped",
+  "user_id": "501",
+  "class": "transactional",
+  "template_id": "order_shipped",
+  "data": { "order_id": "9981", "eta": "2026-07-05" },
+  "channel_hint": ["push", "email"]
+}
+// 202 Accepted
+{ "notification_id": "0e7c9a4e-1f2b-4c3d-8e9f-aa11bb22cc33", "status": "received" }
+
+// GET /v1/notifications/0e7c9a4e-...
+{
+  "notification_id": "0e7c9a4e-1f2b-4c3d-8e9f-aa11bb22cc33",
+  "status": "done",
+  "deliveries": [
+    { "channel": "push",  "provider": "fcm", "status": "delivered",
+      "timeline": { "rendered": "10:15:04.1Z", "sent": "10:15:04.3Z", "delivered": "10:15:05.0Z" } },
+    { "channel": "email", "provider": "ses", "status": "suppressed",
+      "reason": "user_opt_out_marketing_emails" }
+  ]
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Marketing enqueues a 10M-recipient campaign and password-reset OTPs start arriving minutes late. What was the design flaw?`,
+                a: `One shared queue/worker pool for all traffic classes. Fix: separate topics and worker pools for transactional vs bulk with independent SLOs (OTP < 5 s, bulk best-effort), so classes cannot starve each other. Optionally weighted fair scheduling within processors.`
+              },
+              {
+                q: `Why is a queue between producers and providers structurally mandatory here, not just nice-to-have?`,
+                a: `Ingress is bursty and unbounded (50k+/s campaign spikes); egress is contractually bounded (provider rate limits like 500 SMS/s). A queue is the load-matching device: absorb bursts, drain at the provider-allowed rate, give producers a fast ack, and isolate provider outages from producers.`
+              },
+              {
+                q: `A user gets the same "order shipped" push twice. Enumerate the three places the duplicate could have entered and the guard at each.`,
+                a: `(1) Producer retried the API call → idempotency_key unique constraint at ingestion returns the original. (2) Kafka redelivered after a worker crash → conditional state transition rendered→sending skips already-claimed work. (3) Two services fired on the same event → content-hash dedup per (user, event, window). Residual: crash between provider-call and state-write — hence "at-least-once with dedup".`
+              },
+              {
+                q: `Interviewer: "just make delivery exactly-once." Your answer?`,
+                a: `Impossible end-to-end: the provider call and my state write cannot be one atomic transaction, so a crash between them yields either a duplicate (send-then-crash) or a loss (mark-then-crash). Choose at-least-once + dedup layers, use provider-side dedup IDs where offered, and pick duplicate-over-loss for transactional traffic.`
+              },
+              {
+                q: `Which failures do you NOT retry, and where do they go?`,
+                a: `Permanent errors: invalid/expired device token, hard email bounce, unsubscribed number, template variable missing. Retrying cannot fix them. They go straight to DLQ/suppression: bad tokens trigger token cleanup, bounces/complaints/STOP enter the suppression list (legal requirement), template bugs alert the owning team.`
+              },
+              {
+                q: `What makes a DLQ "operated" rather than decorative?`,
+                a: `Alerting on depth/age, a dashboard slicing by error class, messages carrying full replay context (payload, attempts, last error), and a replay tool to re-inject after the fix — plus a policy for what is replayable (OTP from 3 hours ago is not). A DLQ nobody drains is just a slow data-loss mechanism.`
+              },
+              {
+                q: `Name the two different rate limiters in a notification platform and their different masters.`,
+                a: `Egress per provider — contractual (Twilio 500/s): token bucket in front of each worker pool, honoring 429/Retry-After. Per-user courtesy caps — product/UX: max marketing per day, digests/collapse, quiet-hour deferral. Transactional bypasses courtesy caps but never provider caps.`
+              },
+              {
+                q: `FCM starts timing out on 80% of calls. Walk the failure handling chain.`,
+                a: `Retries with exp backoff + jitter → error rate trips the per-provider circuit breaker → workers stop burning attempts, traffic fails over to the secondary push path or alternate channel for critical sends → queue depth absorbs the rest → breaker half-opens to probe recovery → DLQ replay for anything that exhausted its budget mid-outage.`
+              },
+              {
+                q: `Why do producers send template_id + data instead of rendered content?`,
+                a: `Platform-side rendering centralizes localization, per-channel variants (push body vs email HTML), versioning, and legal compliance (unsubscribe footers, sender identity). It also makes a missing variable a typed permanent failure, and lets content change without redeploying producers.`
+              },
+              {
+                q: `How do delivery receipts get back, and why must the state machine tolerate disorder?`,
+                a: `Asynchronously via provider webhooks (bounce, delivered, complaint) joined on provider_message_id. Webhooks arrive late, duplicated, and out of order relative to your own writes — so transitions use monotonic precedence (delivered can't regress to sent) and are idempotent.`
+              },
+              {
+                q: `A celebrity user receives 1M "X liked your post" events per hour. Where do you fix this — delivery or generation?`,
+                a: `Generation: aggregate/collapse at the processing tier into digests ("1.2k new likes"), per-user notification caps, collapse keys so the newest push replaces the old on-device. Rate-limiting delivery alone would just delay 1M pushes, not reduce them.`
+              }
+            ]
+          },
+          {
+            title: `Case Study 6: Distributed Job Scheduler (Cron-as-a-Service)`,
+            notes: `# Worked Interview: Design a Distributed Job Scheduler
+
+Cron, but nothing may be missed when a box dies, and nothing may run twice when two boxes live. This question is a delivery-semantics exam wearing an infrastructure costume — the winning move is saying **"at-least-once triggering + idempotent handlers"** early and building everything around it.
+
+## 1. Requirements
+
+**Clarifying questions:**
+- "Recurring cron jobs, one-shot delayed jobs, or both?" *(assume both — \`0 3 * * *\` and "run at T")*
+- "Scale: how many job definitions, what peak firing rate? Trigger precision — seconds or minutes?"
+- "Does the scheduler *execute* jobs or just *trigger* them (call a webhook / drop a queue message)?" *(assume trigger + managed worker pools — separating triggering from execution is itself a design point)*
+- "Missed-schedule (misfire) policy: run late, skip, or run-all-missed — per job?"
+
+**Functional:** CRUD jobs (cron expr / one-shot, payload, target); fire at schedule; retries with backoff; priorities; misfire policy per job; pause/resume; execution history + observability.
+
+**Non-functional:** **no lost triggers** (crash ≠ skipped job); no concurrent duplicate execution of the same job instance (best-effort — see fencing); trigger precision ~1 s; horizontally scalable to 10M jobs; multi-tenant fairness (one tenant's 100k jobs must not starve others).
+
+## 2. Back-of-envelope estimation
+
+| Quantity | Calculation | Result |
+|---|---|---|
+| Job definitions | given | **10M rows × ~1 KB = 10 GB** — one Postgres, comfortably |
+| Firing rate | 1M firings/hour peak | **~280/s avg-peak; design for 3k/s bursts** (top-of-minute clustering: everyone schedules \`* * * * *\` and \`0 * * * *\`) |
+| Due-scan | poll every 1 s for \`next_run_at <= now\` | index-range scan returning ≤ few thousand rows — trivial *if indexed* |
+| History | 24M executions/day × 300 B × 30 d | **~215 GB** — partitioned by day, dropped on schedule |
+| Executor throughput | jobs avg 30 s runtime × 280/s | ~8,400 concurrent executions → worker fleet sized separately from scheduler (**they scale independently — that's why we split them**) |
+
+> [!TIP]
+> Mention **top-of-minute clustering** unprompted: real schedulers see 10–50× spikes at :00 seconds. It justifies the queue between trigger and execution and (optionally) schedule jitter for tenant jobs.
+
+## 3. API design
+
+\`\`\`
+POST /v1/jobs        { name, schedule: {cron|run_at}, payload, target, retry_policy,
+                       misfire_policy, priority, idempotency_key }
+GET  /v1/jobs/{id}/runs?limit=50       execution history
+PATCH /v1/jobs/{id}                    pause / resume / reschedule
+POST /v1/jobs/{id}/trigger             manual fire (ops)
+\`\`\`
+
+## 4. Data model
+
+Two tables: \`jobs\` (definition + \`next_run_at\` + misfire/retry policy) and \`job_runs\` (one row per firing: scheduled vs actual time, attempt count, state, worker, output ref). The critical index: \`(next_run_at) WHERE enabled\` — the entire trigger path is a range scan on it.
+
+## 5. High-level architecture
+
+\`\`\`mermaid
+graph TB
+    API[Job API] --> JDB[(Jobs DB - partitioned by job_id hash)]
+    S1[Scheduler pod 1 - owns partitions 0-31] -->|poll due jobs SKIP LOCKED| JDB
+    S2[Scheduler pod 2 - owns partitions 32-63] --> JDB
+    ZK[(Coordination - ZooKeeper/etcd: partition leases)] --> S1
+    ZK --> S2
+    S1 -->|enqueue firing| Q[[Queue: priority topics]]
+    Q --> W1[Worker pool]
+    W1 -->|idempotent handlers + fencing token| T[Job targets: webhook / internal task]
+    W1 --> RDB[(job_runs history)]
+    W1 -->|failure| RQ[[retry queue - delayed]] --> Q
+    RQ -.exhausted.-> DLQ[[DLQ]]
+    MON[Watchdog: overdue next_run_at, stuck runs, DLQ depth] --> JDB
+\`\`\`
+
+Trigger flow: scheduler polls its partitions for due jobs → atomically claims each (\`SKIP LOCKED\`) → writes a \`job_run\` row → enqueues → advances \`next_run_at\` (computed from the cron expr) → commits. Enqueue-then-commit vs commit-then-enqueue is exactly the dual-write problem → use the **transactional outbox**: the \`job_run\` row *is* the outbox entry; a relay publishes it. Crash anywhere → the run row or due \`next_run_at\` survives → retriggered. **At-least-once, never zero.**
+
+## 6. Deep dives
+
+### 6a. Triggering: DB polling + SKIP LOCKED vs timing wheel
+
+| | DB polling + \`FOR UPDATE SKIP LOCKED\` | In-memory timing wheel |
+|---|---|---|
+| Precision | poll interval (~1 s) | ms |
+| Durability | free — DB is the truth | must rebuild from store on restart |
+| Multi-node | trivial: competing pollers skip locked rows | needs partition ownership |
+| Throughput | thousands/s (index scan + row locks) | millions/s |
+| Complexity | ~20 lines of SQL | hierarchical wheels, overflow lists |
+
+**Commit:** DB polling with \`SKIP LOCKED\` — it makes competing schedulers safe *by construction* (each due row claimed by exactly one poller, no coordination beyond the DB). Timing wheel (Kafka's/Netty's approach) is the answer if the interviewer pushes past ~50k firings/s: load the next N minutes of jobs into a per-partition in-memory wheel, backed by the durable store. Hybrid = what Quartz/Temporal-class systems actually do.
+
+### 6b. Leader election vs partitioned schedulers
+
+Single leader (all jobs on one active scheduler, elected via ZooKeeper/etcd lease): simple, but a throughput ceiling and a failover gap. **Partitioned (chosen):** jobs hashed into 64 partitions; scheduler pods lease partitions via etcd (or rely purely on \`SKIP LOCKED\` competition at smaller scale); a dead pod's leases expire and survivors absorb its partitions. Say the subtlety: with \`SKIP LOCKED\` you technically need *no* election at all — competing pollers are safe, just less cache-efficient; partition leases are a throughput optimization, not a correctness requirement.
+
+### 6c. Execution semantics: at-least-once + idempotency + fencing
+
+Crash matrix: worker dies mid-job → lease on the run expires → watchdog re-queues → **job runs twice** (first attempt may have half-completed side effects). Therefore: **handlers must be idempotent** — the platform documents it as a contract and helps: per-run \`execution_id\` passed to the target so it can dedup, and a **fencing token** (monotonic attempt number): a zombie worker that wakes after GC-pause/partition and tries to report/act with attempt=1 is rejected because attempt=2 already ran. This is the classic zombie/split-brain guard — name-drop it; it's the difference between "I've read about this" and "I've been paged for this."
+
+> [!DANGER]
+> "I'll take a distributed lock so the job can't run twice" is the trap answer. Locks with TTLs expire during long GC pauses/network partitions while the old holder still runs — you get two executions *and* a false sense of safety. Locks reduce duplicate probability; only **idempotency + fencing** gives correctness.
+
+### 6d. Misfires, retries, priorities
+
+- **Misfire** (scheduler down 20 min; \`next_run_at\` in the past): per-job policy — \`fire_once_now\` (default: coalesce all missed into one), \`skip_to_next\` (metrics emitters — stale data is worthless), \`run_all_missed\` (billing/ledger jobs where every period must exist). Never silently pick one globally.
+- **Retries:** per-job policy (max attempts, exp backoff + jitter) via delayed re-enqueue; exhausted → DLQ + alert to the owning team.
+- **Priorities:** separate queue topics per priority class with dedicated worker capacity for the top class (avoids priority inversion where a flood of P3s occupies every worker ahead of a P0 — reserved capacity, not just ordering).
+
+## 7. Bottlenecks, trade-offs & evolution
+
+- **\`next_run_at\` index contention** at top-of-minute: partitioned pollers + batch claiming (\`LIMIT 500\` per poll) + optional per-tenant schedule jitter.
+- **Long-running jobs blocking workers**: heartbeat-based run leases (worker extends lease while alive) rather than fixed timeouts; stuck-run watchdog.
+- **Observability is a feature, not ops garnish**: lag metric (\`now − scheduled_time\` at execution start) is THE health signal; plus per-tenant firing dashboards, DLQ depth, misfire counts.
+- **Evolution**: v1 single Postgres + \`SKIP LOCKED\` + one worker pool (this is genuinely enough for most companies) → v2 partition leases + priority queues + DLQ tooling → v3 timing-wheel front-end for >50k/s, workflow/DAG support (job B after job A) — at which point you're building Temporal and should say so.
+
+> [!EU]
+> **What a senior answer sounds like:** "The store is the source of truth: jobs with next_run_at, claimed by competing pollers with FOR UPDATE SKIP LOCKED — correct with zero coordination; partition leases come later for cache efficiency. The run row doubles as a transactional outbox, so triggering is at-least-once by construction, and execution is therefore at-least-once with idempotent handlers plus fencing tokens for zombies — I'd explicitly reject 'a distributed lock makes it exactly-once'. Misfire policy is per job because coalescing is right for cache-warming and wrong for billing. The number I page on is trigger lag, and the 10× exit is an in-memory timing wheel in front of the same durable store."
+
+---
+
+## Recap: which case-study patterns to reuse where
+
+The six studies are a pattern library. Map the *problem shape* you're given to the *pattern* you've already worked:
+
+| Problem shape | Reach for | Seen in |
+|---|---|---|
+| Read-heavy, small working set | cache-aside + read replicas + CDN; negative caching | URL shortener, feed hydration |
+| Write bursts / ingress ≫ egress | queue as load-matcher + async workers + backpressure | notifications, feed fan-out, scheduler firings |
+| Fan-out to many consumers | hybrid push/pull with a hot-entity threshold | news feed, chat groups, notification digests |
+| "Exactly-once" demanded | transactional outbox + at-least-once + idempotency keys + fencing | scheduler, notifications, chat sends |
+| Hot key / celebrity entity | shard + in-process L1 cache + singleflight + collapse/digest | shortener, feed, rate limiter, notifications |
+| Ordering required | per-entity dense sequences (never global, never wall clocks) | chat, feed cursors |
+| Counting/limiting under concurrency | atomic single-writer op (Redis Lua), O(1) state | rate limiter, unread counts |
+| Long-lived state per client | connection tier + session registry + drain/reconnect protocol | chat, presence |
+
+> [!SUCCESS]
+> Interviews rarely ask these six verbatim — they ask "design Ticketmaster / Uber / a metrics pipeline". Decompose the new problem into these shapes, name the pattern, cite the trade-off you already know, and you're giving a senior answer to a question you've never seen.`,
+            code: [
+              {
+                lang: `sql`,
+                title: `Jobs schema + the SKIP LOCKED claim query (the heart of the design)`,
+                code: `CREATE TABLE jobs (
+    job_id          BIGINT PRIMARY KEY,
+    tenant_id       BIGINT NOT NULL,
+    name            VARCHAR(128) NOT NULL,
+    cron_expr       VARCHAR(64),                 -- NULL for one-shot
+    run_at          TIMESTAMPTZ,                 -- one-shot fire time
+    next_run_at     TIMESTAMPTZ NOT NULL,        -- THE scheduling column
+    payload         JSONB NOT NULL,
+    target          VARCHAR(256) NOT NULL,       -- webhook URL / internal task name
+    priority        SMALLINT NOT NULL DEFAULT 2, -- 0 = highest
+    misfire_policy  VARCHAR(16) NOT NULL DEFAULT 'fire_once_now',  -- |skip_to_next|run_all_missed
+    max_attempts    SMALLINT NOT NULL DEFAULT 3,
+    enabled         BOOLEAN NOT NULL DEFAULT true
+);
+-- The one index the whole system stands on:
+CREATE INDEX idx_jobs_due ON jobs (next_run_at) WHERE enabled;
+
+CREATE TABLE job_runs (
+    run_id        BIGINT PRIMARY KEY,
+    job_id        BIGINT NOT NULL,
+    scheduled_at  TIMESTAMPTZ NOT NULL,          -- what time it SHOULD have fired
+    started_at    TIMESTAMPTZ,                   -- lag = started_at - scheduled_at (page on this)
+    attempt       SMALLINT NOT NULL DEFAULT 1,   -- doubles as the FENCING TOKEN
+    state         VARCHAR(16) NOT NULL,          -- enqueued|running|succeeded|failed|dead
+    worker_id     VARCHAR(64),
+    lease_until   TIMESTAMPTZ,                   -- heartbeat-extended; watchdog reclaims expired
+    last_error    TEXT
+) PARTITION BY RANGE (scheduled_at);
+
+-- Trigger loop, runs every second on each scheduler pod. Competing pollers are
+-- safe: SKIP LOCKED means each due row is claimed by exactly one transaction.
+BEGIN;
+SELECT job_id, cron_expr, payload, priority, misfire_policy
+  FROM jobs
+ WHERE enabled AND next_run_at <= now()
+ ORDER BY next_run_at
+ LIMIT 500
+   FOR UPDATE SKIP LOCKED;
+
+-- for each claimed job, same transaction (run row = transactional outbox):
+INSERT INTO job_runs (run_id, job_id, scheduled_at, state, attempt)
+     VALUES ($1, $2, $3, 'enqueued', 1);
+UPDATE jobs SET next_run_at = $next_from_cron WHERE job_id = $2;
+COMMIT;   -- relay publishes 'enqueued' runs to the queue; crash anywhere -> nothing lost`
+              },
+              {
+                lang: `java`,
+                title: `Hashed timing wheel — the >50k firings/s answer (runnable)`,
+                runnable: true,
+                note: `Minimal single-level hashed wheel like Netty/Kafka use internally: O(1) schedule, one tick thread. Demo compresses time so it finishes in ~2 seconds.`,
+                code: `import java.util.*;
+
+public class TimingWheelDemo {
+
+    static class TimingWheel {
+        final long tickMs; final int size; final List<List<Timer>> buckets;
+        long currentTick = 0;
+        TimingWheel(long tickMs, int size) {
+            this.tickMs = tickMs; this.size = size;
+            buckets = new ArrayList<>();
+            for (int i = 0; i < size; i++) buckets.add(new LinkedList<>());
+        }
+        static class Timer {
+            final String jobId; final long expireTick; long rounds;
+            Timer(String jobId, long expireTick, long rounds) {
+                this.jobId = jobId; this.expireTick = expireTick; this.rounds = rounds;
+            }
+        }
+
+        /** O(1): drop into bucket (delay/tick) slots ahead; rounds handles wrap-around. */
+        void schedule(String jobId, long delayMs) {
+            long ticks = Math.max(1, delayMs / tickMs);
+            long expireTick = currentTick + ticks;
+            int bucket = (int) (expireTick % size);
+            long rounds = ticks / size;
+            buckets.get(bucket).add(new Timer(jobId, expireTick, rounds));
+            System.out.printf("scheduled %-8s +%4dms -> bucket %2d, rounds %d%n", jobId, delayMs, bucket, rounds);
+        }
+
+        /** Called every tickMs by a single thread; fires due timers in current bucket. */
+        void tick() {
+            currentTick++;
+            List<Timer> bucket = buckets.get((int) (currentTick % size));
+            Iterator<Timer> it = bucket.iterator();
+            while (it.hasNext()) {
+                Timer t = it.next();
+                if (t.rounds > 0) { t.rounds--; continue; } // not this lap -> fire next time around
+                System.out.printf("  t=%4dms FIRE %s%n", currentTick * tickMs, t.jobId);
+                it.remove();                                 // in prod: enqueue to worker queue here
+            }
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        TimingWheel wheel = new TimingWheel(100, 8);         // 100ms ticks, 8 buckets
+        wheel.schedule("job-A", 300);
+        wheel.schedule("job-B", 300);                         // same bucket as A -> both fire together
+        wheel.schedule("job-C", 700);
+        wheel.schedule("job-D", 1500);                        // > wheel span -> rounds=1, fires second lap
+        for (int i = 0; i < 20; i++) { Thread.sleep(100); wheel.tick(); }
+        System.out.println("O(1) schedule/fire vs O(log n) for a heap - why Kafka/Netty use wheels.");
+        System.out.println("In cron-as-a-service: wheel = in-memory front-end, DB stays the durable truth.");
+    }
+}`
+              },
+              {
+                lang: `json`,
+                title: `API: create job + run history with lag`,
+                code: `// POST /v1/jobs
+{
+  "name": "nightly-invoice-rollup",
+  "schedule": { "cron": "0 3 * * *", "timezone": "Europe/Amsterdam" },
+  "target": { "type": "webhook", "url": "https://billing.internal/rollup" },
+  "payload": { "mode": "incremental" },
+  "priority": 0,
+  "retry_policy": { "max_attempts": 5, "backoff": "exponential", "base_seconds": 60 },
+  "misfire_policy": "run_all_missed",
+  "idempotency_key": "billing-rollup-v2"
+}
+// 201 -> { "job_id": "7734", "next_run_at": "2026-07-04T01:00:00Z" }
+
+// GET /v1/jobs/7734/runs?limit=2
+{
+  "runs": [
+    { "run_id": "991204", "scheduled_at": "2026-07-03T01:00:00Z",
+      "started_at": "2026-07-03T01:00:01.2Z", "lag_ms": 1200,
+      "attempt": 2, "state": "succeeded", "worker": "w-17" },
+    { "run_id": "991203", "scheduled_at": "2026-07-02T01:00:00Z",
+      "started_at": "2026-07-02T01:00:00.8Z", "lag_ms": 800,
+      "attempt": 1, "state": "failed", "error": "target 503" }
+  ]
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Two scheduler pods poll the same jobs table. What single SQL construct makes this safe with zero extra coordination?`,
+                a: `SELECT ... FOR UPDATE SKIP LOCKED in the claim transaction: each due row is locked by exactly one poller; competitors skip it instead of blocking or double-claiming. Leader election/partition leases become a throughput optimization, not a correctness requirement.`
+              },
+              {
+                q: `Scheduler claims a job, enqueues to Kafka, then crashes before committing next_run_at. What fires twice, and what pattern prevents the inverse (commit-then-crash-before-enqueue = lost trigger)?`,
+                a: `This is the dual-write problem. Fix: transactional outbox — write the job_run row in the same transaction that advances next_run_at; a relay publishes committed runs to the queue. Crash on either side leaves durable state that gets retried: at-least-once triggering, never zero.`
+              },
+              {
+                q: `"I'll grab a Redis lock with a TTL so the job can't run concurrently." Attack this answer.`,
+                a: `TTL locks expire during GC pauses/partitions while the old holder still executes — two runs anyway, plus false confidence. Locks only shrink the duplicate window. Correctness comes from idempotent handlers + fencing tokens (monotonic attempt number): stale attempt-1 actions are rejected because attempt 2 was issued.`
+              },
+              {
+                q: `The scheduler was down 30 minutes. A cache-refresh job, a metrics job, and a billing job all missed runs. Same recovery for all three?`,
+                a: `No — misfire policy is per job: cache refresh → fire_once_now (coalesce misses into one run); metrics emitter → skip_to_next (late data is worthless); billing rollup → run_all_missed (every period must exist in the ledger). A global policy is wrong for at least one of them.`
+              },
+              {
+                q: `DB polling vs timing wheel: when do you switch, and what does the hybrid look like?`,
+                a: `SKIP LOCKED polling is durable, multi-node-safe, ~1 s precision, good to thousands of firings/s. Past ~50k/s or for ms precision, load the next few minutes of due jobs into per-partition in-memory hashed timing wheels (O(1) schedule/fire); the DB remains the durable truth and the wheel is rebuilt on restart.`
+              },
+              {
+                q: `Why do real schedulers see 10–50× load spikes at :00 seconds, and what three mitigations do you name?`,
+                a: `Humans schedule on round times ("every minute/hour at :00"), clustering firings at top-of-minute. Mitigate: queue between trigger and execution absorbs the spike; batch claiming (LIMIT N per poll) across partitioned pollers; optional per-tenant jitter (fire within [0,30s) of the slot) where contracts allow.`
+              },
+              {
+                q: `A worker takes a 4-minute job but your run timeout is 60 s, causing spurious re-runs. Better mechanism?`,
+                a: `Heartbeat leases instead of fixed timeouts: the worker extends lease_until while alive; the watchdog reclaims only expired leases. Fixed timeouts must be set for the slowest job (delaying real crash recovery) or the p99 job (spurious duplicates); leases track actual liveness.`
+              },
+              {
+                q: `How do priorities avoid the inversion where a flood of P3 jobs delays a P0?`,
+                a: `Not by ordering one queue — by capacity partitioning: separate queue/topic per priority class with reserved worker capacity for the top class (e.g. P0 pool never shared). Ordering within a shared pool still lets in-flight P3s occupy every worker when the P0 arrives.`
+              },
+              {
+                q: `Name THE health metric for a scheduler and why queue depth alone lies.`,
+                a: `Trigger lag = started_at − scheduled_at per run (p99, per priority class). Queue depth can be zero while the scheduler itself is stalled (nothing enqueued), and high depth is fine if drain rate matches. Lag measures the promise the system actually makes: things run when scheduled.`
+              },
+              {
+                q: `Your job scheduler design is drifting into "job B runs after job A succeeds, fan-in on C". What do you say?`,
+                a: `Name the boundary: DAG/workflow orchestration (dependencies, per-step retries, saga-style compensation, workflow state machines) is a different system — Temporal/Airflow territory. Offer the seam: scheduler stays the time-trigger, emitting "workflow start" events into an orchestrator, rather than growing edges inside the scheduler.`
+              },
+              {
+                q: `Given a brand-new design question ("design Ticketmaster"), how do you reuse these six case studies?`,
+                a: `Decompose into problem shapes and map to worked patterns: read-heavy browse → cache+replicas+CDN (shortener); purchase burst → queue as load-matcher (notifications); hot event → sharding + local cache + singleflight (feed); "don't sell a seat twice" → atomic single-writer op (rate limiter Lua) + outbox/idempotency (scheduler); notify buyers → notification pipeline. Name the pattern and its known trade-off out loud.`
               }
             ]
           }

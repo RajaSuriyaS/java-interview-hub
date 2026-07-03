@@ -2,7 +2,7 @@
    Java Interview Hub — curated interview questions
    Keyed by module id. Rendered click-to-reveal at the bottom of
    each module Study Guide ("Likely interview questions").
-   55 modules · 346 questions. Edit freely.
+   57 modules · 360 questions. Edit freely.
    ============================================================ */
 const INTERVIEW_QUESTIONS = {
   "0.1": [
@@ -525,6 +525,36 @@ const INTERVIEW_QUESTIONS = {
       "a": "A guarded pattern adds a boolean condition with when to a type or record pattern, so the case matches only when both the shape and the predicate hold, letting you split one type into multiple behaviors without nested ifs. For example case Integer i when i > 0 versus a fallthrough case Integer i handles positive and other integers distinctly. The subtlety is ordering and exhaustiveness: because a guard can fail at runtime, the compiler still requires an unguarded or default case to cover the same type, or it won't consider the switch exhaustive."
     }
   ],
+  "2.6": [
+    {
+      "q": "How do you decide what to cover with unit tests vs integration tests vs end-to-end tests?",
+      "a": "I follow the pyramid by cost and feedback speed: business logic and edge cases live in fast unit tests; the seams I can't prove with mocks — SQL correctness, wiring, serialization, security config — get integration tests with real dependencies via Testcontainers; and only a handful of critical user journeys get end-to-end coverage because those tests are slow and flaky-prone. The guiding question is 'what failure would this test catch that a cheaper test could not?' — if a unit test can catch it, it doesn't belong higher up the pyramid."
+    },
+    {
+      "q": "When would you use a mock versus a spy versus a fake, and what's the danger of over-mocking?",
+      "a": "A mock verifies interactions (was the email sent once?), a spy wraps a real object when I need mostly-real behaviour with one method overridden, and a fake is a lightweight working implementation (in-memory repository) better suited to state-based tests. Over-mocking couples tests to implementation details — every refactor breaks green tests that assert internal call sequences rather than outcomes — so I mock at architectural boundaries I own (ports, gateways) and never mock value objects or types I don't own."
+    },
+    {
+      "q": "Why does doReturn/when sometimes work where when/thenReturn fails in Mockito?",
+      "a": "when(spy.method()).thenReturn(x) actually invokes the real method on a spy during stubbing — which can throw or have side effects — because the real call happens before Mockito intercepts it. doReturn(x).when(spy).method() sets the stub without calling through, so it's required for spies and for stubbing methods that would fail when invoked. On plain mocks both work, but the doReturn family is also the only option for void methods."
+    },
+    {
+      "q": "Your Spring Boot build got slow because tests keep restarting the application context. What's happening and how do you fix it?",
+      "a": "Spring caches the ApplicationContext across test classes keyed by its configuration; anything that changes the key — @MockBean of different types, different @ActiveProfiles or properties, @DirtiesContext — forces a fresh context boot. The fix is standardising: a small set of shared test configurations (ideally one base class per slice), moving mocks into common test config, and treating @DirtiesContext as a last resort. Going from twenty context variants to two can cut minutes off a build."
+    },
+    {
+      "q": "Why use Testcontainers instead of H2 for repository tests?",
+      "a": "H2 is a different database pretending to be yours: dialect differences (window functions, JSON, locking semantics, ON CONFLICT), different transaction/isolation behaviour, and different query plans mean tests can pass on H2 and fail on Postgres — or worse, the reverse. Testcontainers runs the real engine in Docker so the SQL, migrations, and constraints are tested for real; with the singleton-container pattern and reuse, the startup cost is paid once per JVM rather than per class."
+    },
+    {
+      "q": "A test passes locally but fails intermittently in CI. Walk me through your flaky-test debugging checklist.",
+      "a": "The usual suspects in order: time (hardcoded sleeps or clock assumptions — replace with Awaitility or an injectable Clock), asynchrony (asserting before a queue/async task completes), test order and shared state (a static or DB row leaking between tests — run with random order to expose it), concurrency in the code under test, and environment differences (ports, locales, container resources). I make the failure reproducible first — rerun with the same seed/order — because 'retry until green' just hides a real race."
+    },
+    {
+      "q": "What does @Transactional on a test actually do, and when is the automatic rollback misleading?",
+      "a": "Spring wraps each test in a transaction and rolls it back afterwards, which keeps the DB clean without truncation. It's misleading in two ways: code that runs in a separate transaction (REQUIRES_NEW, async workers, or another service instance) won't see the test's uncommitted data, and the rollback can hide problems that only appear at commit time — deferred constraints, flush-order issues, triggers. For those, I commit for real and clean up explicitly, or test through the API against a Testcontainer."
+    }
+  ],
   "3.1": [
     {
       "q": "Walk me through constructor vs setter vs field injection and which you'd use in production.",
@@ -875,6 +905,36 @@ const INTERVIEW_QUESTIONS = {
     {
       "q": "How do you evolve an API without breaking clients, and what counts as a breaking change?",
       "a": "Breaking changes are removing or renaming fields, tightening types, making optional fields required, changing URL structure, or altering the error envelope; safe changes are additive — new optional request fields, new response fields, new endpoints. Favor backward-compatible evolution under one version (tolerant readers, sensible defaults) and reserve a new major version (URL /v2 or media-type versioning) for unavoidable breaks. Run versions in parallel with a deprecation window (6-12 months) signaled via Deprecation/Sunset headers, and never silently change semantics within a version."
+    }
+  ],
+  "5.4": [
+    {
+      "q": "Design a URL shortener. What's your ID-generation strategy and why?",
+      "a": "The core choice is base62-encoding a unique ID. Hashing the URL risks collisions and leaks that two users shortened the same link; a single auto-increment counter is a bottleneck and enumerable. My default: pre-allocated ID ranges handed to each app instance from a coordination store (or a snowflake-style generator), base62-encoded, giving 7 characters for ~3.5 trillion URLs with no per-request coordination. I'd mention 301-vs-302 explicitly: 302 keeps redirects hitting our servers so we can count clicks; 301 is cached by browsers and loses analytics."
+    },
+    {
+      "q": "Token bucket vs sliding window for a distributed rate limiter — how do you choose, and how do you make it atomic across instances?",
+      "a": "Token bucket allows controlled bursts (bucket capacity) with a steady refill rate — right for API quotas; a sliding-window counter smooths the boundary-burst problem of fixed windows at minimal memory — right for strict rates. Distributed enforcement lands in Redis, and the read-modify-write must be atomic, so the whole check-and-decrement runs as a Lua script (or Redis functions); otherwise two gateways racing on the same key both admit the request. I'd also say what happens when Redis is down: fail open with local fallback buckets for availability, fail closed for cost-sensitive endpoints."
+    },
+    {
+      "q": "In a news feed, explain fan-out-on-write vs fan-out-on-read and how you handle the celebrity problem.",
+      "a": "Fan-out-on-write pushes a new post into every follower's cached timeline at post time — reads are cheap, writes explode with follower count. Fan-out-on-read composes the timeline at request time — writes are cheap, reads expensive. A celebrity with 100M followers makes pure write-fan-out unaffordable, so the standard answer is hybrid: fan out normally for regular users, but for accounts above a follower threshold, skip fan-out and merge their recent posts in at read time. That sentence — 'hybrid, threshold on follower count' — is what interviewers are listening for."
+    },
+    {
+      "q": "How do you guarantee message ordering and delivery states in a chat system?",
+      "a": "Global ordering is unnecessary — per-conversation ordering is the requirement. I'd assign each message a server-side monotonically-increasing sequence per conversation (not client timestamps, which skew), have clients render by sequence and detect gaps to trigger backfill. Delivery states are event transitions: sent (server persisted), delivered (recipient device acked), read (recipient viewed) — each an ack message flowing back through the connection service. Offline users get messages queued and a push notification; on reconnect the client syncs from its last known sequence."
+    },
+    {
+      "q": "Your notification service must not send duplicate pushes even when providers time out. How?",
+      "a": "Timeouts are ambiguous — the provider may have sent it — so exactly-once delivery to a phone is impossible; the goal is exactly-once-effect. Each logical notification gets a stable idempotency key (say, userId + eventId + channel); before dispatch the worker records the attempt, and the provider call includes the key where supported (APNs collapse-id, email provider idempotency keys). Retries with backoff go to the same key, and a dedup store suppresses re-sends after confirmed success. Failures past the retry budget land in a DLQ for inspection rather than being dropped."
+    },
+    {
+      "q": "Design a distributed job scheduler — how do you ensure a job fires exactly once when you run multiple scheduler nodes?",
+      "a": "You can't get exactly-once firing plus perfect availability, so I aim for at-least-once triggering with idempotent execution. Two workable shapes: DB-backed polling where nodes claim due jobs with SELECT ... FOR UPDATE SKIP LOCKED (the claim is the mutual exclusion), or partitioning the job space so each scheduler owns a shard, with leader election only for rebalancing. Every execution writes a run record keyed by jobId+scheduledTime, so a duplicate trigger becomes a no-op. I'd close with misfire policy: on recovery, decide per-job whether to fire-immediately, skip, or coalesce missed runs."
+    },
+    {
+      "q": "An interviewer says 'your design melts at 10x traffic' — what's your general framework for answering?",
+      "a": "First find the actual bottleneck rather than guessing: which component saturates first at 10x — DB writes, a hot cache key, fan-out amplification, connection counts? Then apply the matching pattern: read-heavy → cache + replicas; write bursts → queue and absorb; hot key/user → shard or special-case it; fan-out explosion → move from write-time to read-time work (or hybrid); state on app servers → make them stateless and scale horizontally. Naming the bottleneck out loud before proposing a fix is precisely the senior behaviour the question is testing."
     }
   ],
   "6.1": [
