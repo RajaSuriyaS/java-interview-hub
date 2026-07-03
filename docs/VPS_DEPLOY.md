@@ -94,7 +94,28 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --force
 
 ---
 
-## 4. One-time: GitHub auto-deploy secrets
+## 3b. One-time: turn ON automatic deploy (the SafeStrike pattern)
+
+Without this step, **nothing deploys automatically** — the systemd units exist
+in the repo but must be installed once:
+
+```bash
+cd /root/java-interview-hub
+sudo ./deploy/install-autodeploy.sh
+```
+
+That installs and enables `jih-autodeploy.timer`, which polls GitHub `main`
+every minute and runs `redeploy.sh` whenever there's a new commit — push to
+GitHub → live on the VPS within ~60 seconds, no server access needed. The
+script also runs one deploy immediately and prints the timer status + /health.
+
+Check it later with:
+```bash
+systemctl list-timers jih-autodeploy.timer      # is it scheduled?
+tail -20 /root/java-interview-hub/deploy/auto-pull.log
+```
+
+## 4. (Alternative) GitHub Actions auto-deploy secrets
 
 In the repo: **Settings → Secrets and variables → Actions → New repository secret**
 
