@@ -201,11 +201,29 @@ export function mountAuth(app, { onLogin } = {}) {
   // "Authorised redirect URI" on your Google OAuth client.
   app.get('/auth/debug', (req, res) => {
     const cookies = parseCookies(req);
+    // A human-readable verdict so anyone opening this URL knows the next move.
+    let nextStep;
+    if (!CLIENT_ID && !CLIENT_SECRET) {
+      nextStep = 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are NOT reaching the app. ' +
+        'On the VPS run: cd /root/java-interview-hub && git pull && sudo ./deploy/google-auth-doctor.sh ' +
+        '— it writes the creds into deploy/.env, force-recreates the container, and prints what the container sees.';
+    } else if (!CLIENT_ID || !CLIENT_SECRET) {
+      nextStep = 'Only ONE of GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET is set — the other is empty in deploy/.env. Re-run ./deploy/google-auth-doctor.sh and enter both.';
+    } else if (!loginWallEnabled() && String(process.env.REQUIRE_AUTH || '').toLowerCase() === 'true') {
+      nextStep = 'Credentials are set and REQUIRE_AUTH=true — this state should not occur; restart the container (docker restart jih-app).';
+    } else if (!loginWallEnabled()) {
+      nextStep = 'Google sign-in is ENABLED (optional mode). To force login for everyone, set REQUIRE_AUTH=true in deploy/.env and redeploy.';
+    } else {
+      nextStep = 'Fully configured: sign-in enabled and the login wall is ON. If sign-in still fails, register the derivedCallbackUrl below as an Authorised redirect URI on the Google OAuth client.';
+    }
     res.json({
       configured: authConfigured(),
       clientIdSet: !!CLIENT_ID,
       clientSecretSet: !!CLIENT_SECRET,
       sessionSecretFromEnv: !!process.env.SESSION_SECRET,
+      requireAuthEnv: process.env.REQUIRE_AUTH || null,
+      loginWallActive: loginWallEnabled(),
+      nextStep,
       derivedCallbackUrl: callbackUrl(req),
       callbackOverride: CALLBACK_URL || null,
       proxySees: {
