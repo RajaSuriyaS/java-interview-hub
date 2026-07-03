@@ -26,8 +26,16 @@ upsert(){ k="$1"; v="$2"; grep -v "^${k}=" "$ENV_FILE" > "${ENV_FILE}.tmp" 2>/de
 has(){ grep -q "^$1=." "$ENV_FILE"; }
 
 say "2) Credentials in $ENV_FILE"
+# --set <client_id> <client_secret> : non-interactive (e.g. via ssh one-liner).
+if [ "${1:-}" = "--set" ]; then
+  GID=$(printf '%s' "${2:-}" | tr -d '[:space:]')
+  GSEC=$(printf '%s' "${3:-}" | tr -d '[:space:]')
+  if [ -z "$GID" ] || [ -z "$GSEC" ]; then echo "   Usage: $0 --set <client_id> <client_secret>"; exit 1; fi
+  echo "   --set: writing provided credentials (id: ${GID%%-*}-…, secret: ${GSEC:0:7}…, ${#GSEC} chars)."
+  upsert GOOGLE_CLIENT_ID     "$GID"
+  upsert GOOGLE_CLIENT_SECRET "$GSEC"
 # --reset forces re-entering both values (use when Google says the secret is invalid).
-if [ "${1:-}" = "--reset" ]; then
+elif [ "${1:-}" = "--reset" ]; then
   echo "   --reset: re-entering credentials (old values will be overwritten)."
   read -rp  "   GOOGLE_CLIENT_ID (…apps.googleusercontent.com): " GID
   read -rsp "   GOOGLE_CLIENT_SECRET (hidden — paste once, press Enter): " GSEC; echo
