@@ -109,9 +109,22 @@
     const q = filter.trim().toLowerCase();
 
     CURRICULUM.forEach((phase, idx) => {
+      // Deep search: match section titles, and (for queries of 3+ chars) the notes
+      // body when a term appears repeatedly — so topics buried inside modules
+      // (Predicate, producer-consumer, wait/notify…) are findable.
+      const secMatch = (m) => q ? (m.sections || []).findIndex(s => (s.title || '').toLowerCase().includes(q)) : -1;
+      const notesMatch = (m) => {
+        if (!q || q.length < 3) return -1;
+        return (m.sections || []).findIndex(s => {
+          const n = (s.notes || '').toLowerCase();
+          let c = 0, i = -1;
+          while ((i = n.indexOf(q, i + 1)) !== -1 && c < 3) c++;
+          return c >= 3; // repeated mentions = the section actually teaches it
+        });
+      };
       const matches = (m) => !q ||
         m.title.toLowerCase().includes(q) || m.id.includes(q) ||
-        phase.title.toLowerCase().includes(q);
+        phase.title.toLowerCase().includes(q) || secMatch(m) >= 0 || notesMatch(m) >= 0;
       const visibleMods = phase.modules.filter(matches);
       if (q && visibleMods.length === 0) return;
 
@@ -144,16 +157,22 @@
       visibleMods.forEach(m => {
         const st = statusOf(m.id);
         const active = state.lastModule === m.id;
+        // If only a SECTION matched the search, show it and open it directly.
+        let mi = secMatch(m);
+        if (mi < 0) mi = notesMatch(m);
+        const moduleHit = q && (m.title.toLowerCase().includes(q) || m.id.includes(q));
+        const secHint = (mi >= 0 && !moduleHit) ? m.sections[mi].title : null;
         const item = el('button', {
-          class: 'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition ' +
+          class: 'w-full flex flex-wrap items-center gap-x-2.5 gap-y-0.5 px-3 py-2 rounded-lg text-left transition ' +
                  (active ? 'bg-brand/20 ring-1 ring-brand/40' : 'hover:bg-slate-800/60')
         });
         item.innerHTML = `
           <span class="status-dot status-${st}"></span>
           <span class="text-[11px] font-mono text-slate-500 shrink-0">${esc(m.id)}</span>
           <span class="flex-1 text-[13px] ${st === 'completed' ? 'text-slate-400 line-through decoration-slate-600' : 'text-slate-300'} truncate">${esc(m.title)}</span>
-          <span class="text-[10px] text-slate-600 shrink-0">${m.hours}h</span>`;
-        item.addEventListener('click', () => openModule(m.id));
+          <span class="text-[10px] text-slate-600 shrink-0">${m.hours}h</span>
+          ${secHint ? `<span class="basis-full pl-6 text-[11px] text-brand truncate">↳ ${esc(secHint)}</span>` : ''}`;
+        item.addEventListener('click', () => openModule(m.id, mi >= 0 ? mi : undefined));
         list.appendChild(item);
       });
 
@@ -492,7 +511,7 @@
   /* ===================== MODULE NOTEBOOK ===================== */
   let editors = []; // active monaco editors on the page
 
-  function openModule(id) {
+  function openModule(id, startSec) {
     const found = findModule(id);
     if (!found) return;
     const { phase, module } = found;
@@ -666,8 +685,9 @@
       pills.forEach(pill => {
         pill.addEventListener('click', () => goSec(parseInt(pill.getAttribute('data-sec'))));
       });
-      fillContent(module.sections[0]);
-      renderBottomNav(0);
+      // Land on a specific section when arriving from deep search.
+      const s0 = (Number.isInteger(startSec) && startSec >= 0 && startSec < module.sections.length) ? startSec : 0;
+      goSec(s0);
     } else {
       fillContent(module);
       renderBottomNav(0);
