@@ -51,6 +51,30 @@ fi
 has SESSION_SECRET || upsert SESSION_SECRET "$(openssl rand -hex 32)"
 has REQUIRE_AUTH   || upsert REQUIRE_AUTH true
 chmod 600 "$ENV_FILE"
+
+say "2b) Validate the id+secret pair against Google (before deploying anything)"
+# Trick: POST a bogus auth code to the token endpoint. If Google answers
+# invalid_grant, the CLIENT ID + SECRET are CORRECT (only the code was bad).
+# If it answers invalid_client, the secret does not match the client id.
+GID_VAL=$(grep '^GOOGLE_CLIENT_ID='     "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '[:space:]')
+GSEC_VAL=$(grep '^GOOGLE_CLIENT_SECRET=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '[:space:]')
+RESP=$(curl -s --max-time 15 -X POST https://oauth2.googleapis.com/token \
+  -d code=bogus-validation-probe -d grant_type=authorization_code \
+  -d redirect_uri=https://localhost/validate \
+  -d client_id="$GID_VAL" -d client_secret="$GSEC_VAL" || echo curl-failed)
+if echo "$RESP" | grep -q 'invalid_client\|client secret is invalid\|Unauthorized'; then
+  echo "   ❌ Google REJECTS this id+secret pair (invalid_client)."
+  echo "      The secret in deploy/.env does not belong to this client id."
+  echo "      In Google console: open the client, click 'Reset secret', copy the NEW value"
+  echo "      (the old masked one cannot be copied), then re-run: $0 --reset"
+  exit 1
+elif echo "$RESP" | grep -q 'invalid_grant'; then
+  echo "   ✅ Google ACCEPTS the client id + secret (test code rejected as expected)."
+elif echo "$RESP" | grep -q 'curl-failed'; then
+  echo "   ⚠ Could not reach Google to validate (network) — continuing anyway."
+else
+  echo "   ⚠ Unexpected validation response (continuing): $(echo "$RESP" | head -c 160)"
+fi
 echo "   deploy/.env now contains:"
 grep -E '^(GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|SESSION_SECRET|REQUIRE_AUTH)=' "$ENV_FILE" \
   | sed 's/=.*/=<set>/' | sed 's/^/      /'
