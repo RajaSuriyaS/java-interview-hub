@@ -182,6 +182,11 @@
       nav.appendChild(phaseEl);
     });
     icons();
+    // keep the active module visible in a 57-module sidebar (skip while searching)
+    if (!q) {
+      const activeEl = nav.querySelector('.ring-brand\\/40');
+      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   /* ===================== SIDEBAR GLOBAL PROGRESS ===================== */
@@ -354,6 +359,10 @@
 
   /* ===================== MARKDOWN + CALLOUTS ===================== */
   function renderMarkdown(md) {
+    // Degrade gracefully if the marked CDN failed to load: show readable plain text.
+    if (typeof marked === 'undefined') {
+      return '<pre class="whitespace-pre-wrap text-[13.5px] leading-relaxed font-sans">' + esc(md) + '</pre>';
+    }
     const calloutMap = {
       TIP:     { cls: 'callout-tip',     icon: 'lightbulb',     title: 'Tip' },
       WARNING: { cls: 'callout-warning', icon: 'alert-triangle', title: 'Watch out' },
@@ -570,15 +579,17 @@
 
         <!-- content tabs -->
         <div class="flex items-center gap-0.5 border-b border-slate-800 mb-6 text-sm overflow-x-auto custom-scroll pb-px">
-          <button data-tab="notes"   class="tab-btn active shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">📘 <span class="hidden xs:inline">Study </span>Guide</button>
-          <button data-tab="sandbox" class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">⚡ Code</button>
-          <button data-tab="cards"   class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">🃏 Flashcards</button>
-          <button data-tab="mynotes" class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">✎ My Notes</button>
+          <button data-tab="notes"     class="tab-btn active shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">📘 <span class="hidden xs:inline">Study </span>Guide</button>
+          <button data-tab="sandbox"   class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">⚡ Code</button>
+          <button data-tab="cards"     class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">🃏 Flashcards</button>
+          <button data-tab="interview" class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">🎯 Interview</button>
+          <button data-tab="mynotes"   class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">✎ My Notes</button>
         </div>
 
         <div id="tab-notes" class="tab-pane prose-notes"></div>
         <div id="tab-sandbox" class="tab-pane hidden"></div>
         <div id="tab-cards" class="tab-pane hidden"></div>
+        <div id="tab-interview" class="tab-pane hidden"></div>
         <div id="tab-mynotes" class="tab-pane hidden"></div>
 
         <!-- bottom nav — filled dynamically by renderBottomNav() -->
@@ -601,10 +612,10 @@
       addCopyButtons(notesEl);
       renderMermaidIn(notesEl);
       initJourneyWidgets(notesEl);
-      appendInterviewQuestions(notesEl, module, src);
       icons(); // re-run lucide for icons inside callouts / journey
       renderSandbox(src);
       renderFlashcards(src);
+      renderInterviewTab(module, src);
     }
 
     // ---- section navigation helpers ----
@@ -758,13 +769,23 @@
     return [];
   }
 
-  // Render a click-to-reveal "Likely interview questions" panel under the notes,
-  // sitting right next to the [!EU] interview-tip callouts.
-  function appendInterviewQuestions(notesEl, module, src) {
+  // Render the click-to-reveal "Likely interview questions" panel into its own tab.
+  function renderInterviewTab(module, src) {
+    const pane = document.getElementById('tab-interview');
+    if (!pane) return;
     const qs = interviewQsFor(module, src);
-    if (!qs.length) return;
 
-    const block = el('div', { class: 'iq-block mt-10 pt-6 border-t border-slate-800' });
+    // live count in the tab label
+    const tabBtn = document.querySelector('[data-tab="interview"]');
+    if (tabBtn) tabBtn.textContent = `🎯 Interview${qs.length ? ' (' + qs.length + ')' : ''}`;
+
+    pane.innerHTML = '';
+    if (!qs.length) {
+      pane.innerHTML = '<p class="text-slate-400">No curated interview questions for this module yet — drill the Flashcards tab instead.</p>';
+      return;
+    }
+
+    const block = el('div', { class: 'iq-block' });
     const items = qs.map((qa, i) => `
       <li class="iq-item rounded-lg border border-slate-800 bg-slate-900/40 overflow-hidden">
         <button class="iq-q w-full text-left flex items-start gap-3 px-4 py-3 hover:bg-slate-800/50 transition" data-i="${i}">
@@ -789,7 +810,8 @@
         </div>
       </div>`;
 
-    notesEl.appendChild(block);
+    pane.appendChild(block);
+    icons();
 
     const aEls = () => block.querySelectorAll('.iq-a');
     block.querySelectorAll('.iq-q').forEach(btn => {
@@ -943,6 +965,10 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
     const rec = { ed: null, sample };
     editors.push(rec);
 
+    if (typeof require === 'undefined') {
+      // Monaco CDN unavailable — read-only code fallback (copy/run still work off sample.code)
+      editorHost.innerHTML = '<pre class="p-4 text-[13px] font-mono whitespace-pre-wrap overflow-auto h-full">' + esc(sample.code) + '</pre>';
+    }
     ensureMonaco(() => {
       rec.ed = monaco.editor.create(editorHost, {
         value: sample.code,
@@ -1010,6 +1036,7 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
 
   let monacoReady = false, monacoQueue = [];
   function ensureMonaco(cb) {
+    if (typeof require === 'undefined') return; // Monaco CDN unavailable — plain fallback is rendered by caller
     if (monacoReady) return cb();
     monacoQueue.push(cb);
     if (monacoQueue.length > 1) return;
@@ -1305,14 +1332,31 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
     $('#search').addEventListener('input', (e) => renderNav(e.target.value));
     $('#dashboard-btn').addEventListener('click', renderDashboard);
 
-    // reading progress bar — fills as the content pane scrolls
+    // reading progress bar + back-to-top — driven by the content pane's scroll
     const contentEl = $('#content'), readBar = document.getElementById('read-progress');
+    const backTop = document.getElementById('back-top');
     if (contentEl && readBar) {
       contentEl.addEventListener('scroll', () => {
         const max = contentEl.scrollHeight - contentEl.clientHeight;
         readBar.style.width = max > 200 ? (contentEl.scrollTop / max * 100).toFixed(1) + '%' : '0%';
+        if (backTop) backTop.classList.toggle('hidden', contentEl.scrollTop < 600);
       }, { passive: true });
     }
+    if (backTop && contentEl) {
+      backTop.addEventListener('click', () => contentEl.scrollTo({ top: 0, behavior: 'smooth' }));
+    }
+
+    // "/" focuses search from anywhere; Escape clears it
+    document.addEventListener('keydown', (e) => {
+      const tag = document.activeElement && document.activeElement.tagName;
+      if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA' && !document.activeElement.closest('.monaco-wrap')) {
+        e.preventDefault();
+        $('#search').focus();
+      }
+    });
+    $('#search').addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.target.value = ''; renderNav(''); e.target.blur(); }
+    });
     $('#reset-btn').addEventListener('click', () => {
       if (confirm('Reset ALL progress, notes, and statuses? This cannot be undone.')) {
         state = defaultState();
