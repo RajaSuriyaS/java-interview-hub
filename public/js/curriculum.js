@@ -455,7 +455,7 @@ int overflow = max + 1;      // wraps to -2147483648 (no error!)
 
         Integer nullInt = null;
         try {
-            int x = nullInt; // null unboxing → NullPointerException
+            int x = nullInt; // null unboxing -> NullPointerException
         } catch (NullPointerException e) {
             System.out.println("CAUGHT: Null unboxing caused " + e.getClass().getSimpleName());
         }
@@ -474,17 +474,17 @@ int overflow = max + 1;      // wraps to -2147483648 (no error!)
     public static void main(String[] args) {
         // --- Widening casts (safe, implicit) ---
         byte b = 10;
-        short s = b;       // byte → short (implicit)
-        int i = s;         // short → int (implicit)
-        long l = i;        // int → long (implicit)
-        double d = l;      // long → double (implicit)
-        System.out.println("Widening chain: " + b + " → " + s + " → " + i + " → " + l + " → " + d);
+        short s = b;       // byte -> short (implicit)
+        int i = s;         // short -> int (implicit)
+        long l = i;        // int -> long (implicit)
+        double d = l;      // long -> double (implicit)
+        System.out.println("Widening chain: " + b + " -> " + s + " -> " + i + " -> " + l + " -> " + d);
 
         // --- Narrowing casts (unsafe, explicit) ---
         double precise = 123.456;
-        float approx = (float) precise;   // double → float (narrowing)
-        int rounded = (int) approx;       // float → int (truncates)
-        System.out.println("Narrowing: 123.456 (double) → " + approx + " (float) → " + rounded + " (int)");
+        float approx = (float) precise;   // double -> float (narrowing)
+        int rounded = (int) approx;       // float -> int (truncates)
+        System.out.println("Narrowing: 123.456 (double) -> " + approx + " (float) -> " + rounded + " (int)");
 
         // --- Safe integer conversion: check bounds first ---
         long bigLong = 5_000_000_000L; // larger than Integer.MAX_VALUE
@@ -496,7 +496,7 @@ int overflow = max + 1;      // wraps to -2147483648 (no error!)
         long safeLong = 42L;
         try {
             int safe = Math.toIntExact(safeLong);
-            System.out.println("Safe conversion: " + safeLong + " → " + safe);
+            System.out.println("Safe conversion: " + safeLong + " -> " + safe);
         } catch (ArithmeticException e) {
             System.out.println("Overflow detected: " + e.getMessage());
         }
@@ -526,11 +526,11 @@ int overflow = max + 1;      // wraps to -2147483648 (no error!)
               },
               {
                 q: `Why should you never use float or double for money?`,
-                a: `Floating-point numbers are binary approximations and cannot represent decimal fractions exactly. 0.1 + 0.2 ≠ 0.3 in binary. Use BigDecimal for exact decimal arithmetic.`
+                a: `Floating-point numbers are binary approximations and cannot represent decimal fractions exactly. 0.1 + 0.2 != 0.3 in binary. Use BigDecimal for exact decimal arithmetic.`
               },
               {
                 q: `What is auto-boxing and auto-unboxing?`,
-                a: `Auto-boxing automatically converts a primitive to its wrapper class (int → Integer). Auto-unboxing converts the wrapper back to the primitive (Integer → int). Unboxing a null value causes NullPointerException.`
+                a: `Auto-boxing automatically converts a primitive to its wrapper class (int -> Integer). Auto-unboxing converts the wrapper back to the primitive (Integer -> int). Unboxing a null value causes NullPointerException.`
               },
               {
                 q: `What happens when you add 1 to Integer.MAX_VALUE?`,
@@ -538,7 +538,7 @@ int overflow = max + 1;      // wraps to -2147483648 (no error!)
               },
               {
                 q: `What is the difference between widening and narrowing casts?`,
-                a: `Widening (e.g., int → long) is always safe and can be implicit. Narrowing (e.g., double → int) can lose data and requires an explicit cast operator. Narrowing may overflow or truncate.`
+                a: `Widening (e.g., int -> long) is always safe and can be implicit. Narrowing (e.g., double -> int) can lose data and requires an explicit cast operator. Narrowing may overflow or truncate.`
               }
             ]
           },
@@ -845,8 +845,8 @@ System.out.println(a == b); // TRUE — they point to the same object!
 \`\`\`mermaid
 graph LR
     subgraph STACK["Stack"]
-        VA["a: ref→0x101"]
-        VB["b: ref→0x101"]
+        VA["a: ref->0x101"]
+        VB["b: ref->0x101"]
     end
     subgraph POOL["String Pool (Heap)"]
         OBJ["String 'hello'
@@ -872,8 +872,8 @@ System.out.println(a.equals(b)); // TRUE — same content
 \`\`\`mermaid
 graph LR
     subgraph STACK["Stack"]
-        VA["a: ref→0x101"]
-        VB["b: ref→0x200"]
+        VA["a: ref->0x101"]
+        VB["b: ref->0x200"]
     end
     subgraph POOL["String Pool"]
         OBJ1["'hello'
@@ -1057,7 +1057,7 @@ Common methods:
               },
               {
                 q: `What is the difference between .equals() and .equalsIgnoreCase()?`,
-                a: `.equals() performs case-sensitive comparison ("Hello" ≠ "hello"). .equalsIgnoreCase() performs case-insensitive comparison ("Hello" = "hello"). Use equalsIgnoreCase() for user input or case-insensitive matching.`
+                a: `.equals() performs case-sensitive comparison ("Hello" != "hello"). .equalsIgnoreCase() performs case-insensitive comparison ("Hello" = "hello"). Use equalsIgnoreCase() for user input or case-insensitive matching.`
               }
             ]
           }
@@ -1099,7 +1099,7 @@ int score = 82;
 if (score >= 90) {
     System.out.println("A");
 } else if (score >= 80) {
-    System.out.println("B");   // ← this runs
+    System.out.println("B");   // <- this runs
 } else if (score >= 70) {
     System.out.println("C");
 } else {
@@ -1383,7 +1383,7 @@ switch (day) {
     case "THURSDAY":
     case "FRIDAY":
         System.out.println("Weekday");
-        break;   // ← IMPORTANT: without break, falls through to next case
+        break;   // <- IMPORTANT: without break, falls through to next case
     case "SATURDAY":
     case "SUNDAY":
         System.out.println("Weekend");
@@ -1435,12 +1435,12 @@ System.out.println(type); // "Weekend"
 \`\`\`mermaid
 flowchart LR
     subgraph OLD["Old switch (statement)"]
-        O1["case → code
+        O1["case -> code
 + break to exit
 fall-through if no break"]
     end
     subgraph NEW["New switch (expression, Java 14+)"]
-        N1["case → value
+        N1["case -> value
 no fall-through
 no break needed
 returns a value"]
@@ -1720,7 +1720,7 @@ for (int i = 0; i < 5; i++) {
 
 **How it works:**
 1. \`int i = 0\` — initializer runs once before the loop
-2. \`i < 5\` — checked before each iteration (false → stop)
+2. \`i < 5\` — checked before each iteration (false -> stop)
 3. Loop body runs
 4. \`i++\` — update runs after each iteration
 5. Go to step 2
@@ -2443,13 +2443,13 @@ Override \`toString()\` and \`equals()\`/\`hashCode()\` in your own classes for 
         void deposit(double amount) {
             if (amount <= 0) throw new IllegalArgumentException("Amount must be positive");
             balance += amount;
-            System.out.println(owner + " deposited £" + amount + " → balance: £" + balance);
+            System.out.println(owner + " deposited £" + amount + " -> balance: £" + balance);
         }
 
         void withdraw(double amount) {
             if (amount > balance) throw new IllegalStateException("Insufficient funds");
             balance -= amount;
-            System.out.println(owner + " withdrew £" + amount + " → balance: £" + balance);
+            System.out.println(owner + " withdrew £" + amount + " -> balance: £" + balance);
         }
 
         @Override
@@ -2865,7 +2865,7 @@ Best practice: make fields \`private\` and expose them via public methods (gette
         Formatter fmt = new Formatter();
         System.out.println(fmt.format(42));           // calls format(int)
         System.out.println(fmt.format(3.14159));      // calls format(double)
-        System.out.println(fmt.format("  hello  "));  // calls format(String) → "HELLO"
+        System.out.println(fmt.format("  hello  "));  // calls format(String) -> "HELLO"
         System.out.println(fmt.format(50000, "£"));   // calls format(int, String)
 
         // --- Pass-by-value: primitives ---
@@ -2948,7 +2948,7 @@ If you define **no constructor**, Java automatically provides a **no-args defaul
 public class Point {
     int x;
     int y;
-    // No constructor defined → Java provides: public Point() {}
+    // No constructor defined -> Java provides: public Point() {}
 }
 
 Point p = new Point(); // x=0, y=0
@@ -3768,7 +3768,7 @@ A subclass does **NOT** inherit:
 Java traces up the chain when looking for a method:
 
 \`\`\`
-GuideDog → Dog → Animal → Object
+GuideDog -> Dog -> Animal -> Object
 \`\`\`
 
 If \`GuideDog\` doesn't override \`sound()\`, Java looks in \`Dog\`. If \`Dog\` does override it, that version is used. This chain always ends at \`Object\`.
@@ -4593,7 +4593,7 @@ public class InterfaceDemo {
     // === Functional interface with lambda ===
     @FunctionalInterface
     interface ReportFilter {
-        boolean test(Report r); // single abstract method → lambda-compatible
+        boolean test(Report r); // single abstract method -> lambda-compatible
     }
 
     public static void main(String[] args) {
@@ -4890,7 +4890,7 @@ public class PolymorphismDemo {
 
         // Shared concrete method
         public String summary() {
-            return getClass().getSimpleName() + " → " + recipient;
+            return getClass().getSimpleName() + " -> " + recipient;
         }
     }
 
@@ -6179,7 +6179,7 @@ Objects.equals(null, null) // true
         sb.append(", ").append("World");      // Hello, World
         sb.insert(7, "Beautiful ");           // Hello, Beautiful World
         sb.replace(7, 16, "Java");            // Hello, Java World
-        sb.delete(5, 6);                      // Hello Java World  (removes comma+space → oops)
+        sb.delete(5, 6);                      // Hello Java World  (removes comma+space -> oops)
         sb.insert(5, ",");                    // Hello, Java World
         System.out.println(sb);
 
@@ -6260,7 +6260,7 @@ public class StringMethodsDemo {
             title: `Text Blocks, Regex & String Internals`,
             notes: `## Text Blocks, Regex & String Internals
 
-### Text Blocks (Java 13 preview → Java 15 standard)
+### Text Blocks (Java 13 preview -> Java 15 standard)
 
 Text blocks eliminate the backslash hell of multi-line strings:
 
@@ -6551,7 +6551,7 @@ s.chars()                         // IntStream
  .mapToObj(c -> String.valueOf((char)c))
  .forEach(System.out::println);
 
-// Convert String → char[] → sort → back
+// Convert String -> char[] -> sort -> back
 char[] arr = s.toCharArray();
 Arrays.sort(arr);
 String sorted = new String(arr);  // "ehllo"
@@ -7958,15 +7958,15 @@ public class Utils {
 
 At compile time, generics are fully type-checked. At runtime, the type parameter is **erased** — \`List<String>\` and \`List<Integer>\` are both just \`List\` in the bytecode. This has important consequences:
 
-- You cannot use \`instanceof\` with a generic type: ~~\`obj instanceof List<String>\`~~ → compile error
-- You cannot create generic arrays: ~~\`new T[10]\`~~ → compile error
+- You cannot use \`instanceof\` with a generic type: ~~\`obj instanceof List<String>\`~~ -> compile error
+- You cannot create generic arrays: ~~\`new T[10]\`~~ -> compile error
 - You cannot catch a generic exception type
 - You CAN use \`instanceof\` to check the raw type: \`obj instanceof List\`
 
 \`\`\`java
 // What the compiler sees at runtime (after erasure)
 public class Box {          // was Box<T>
-    private Object value;   // T → Object
+    private Object value;   // T -> Object
     public Object get()  { return value; }
     public void set(Object value) { this.value = value; }
 }
@@ -7998,11 +7998,11 @@ public class Box<T> {
     public static void main(String[] args) {
         Box<String> strBox = new Box<>("hello world");
 
-        // Transform String → Integer
+        // Transform String -> Integer
         Box<Integer> lenBox = strBox.map(String::length);
         System.out.println(lenBox);   // Box[11]
 
-        // Transform → uppercase
+        // Transform -> uppercase
         Box<String> upper = strBox.map(String::toUpperCase);
         System.out.println(upper);    // Box[HELLO WORLD]
 
@@ -8028,7 +8028,7 @@ public class GenericUtils {
         list.set(j, tmp);
     }
 
-    // Invert a map K→V to V→K
+    // Invert a map K->V to V->K
     public static <K, V> Map<V, K> invert(Map<K, V> map) {
         Map<V, K> result = new HashMap<>();
         map.forEach((k, v) -> result.put(v, k));
@@ -8287,9 +8287,9 @@ PECS is the golden rule for choosing between \`? extends T\` and \`? super T\`. 
 
 > **P**roducer **E**xtends, **C**onsumer **S**uper
 
-- If a collection **produces** values for you to **read** → use \`? extends T\`
-- If a collection **consumes** values you **write** → use \`? super T\`
-- If you do both (read AND write) → use the exact type (no wildcard)
+- If a collection **produces** values for you to **read** -> use \`? extends T\`
+- If a collection **consumes** values you **write** -> use \`? super T\`
+- If you do both (read AND write) -> use the exact type (no wildcard)
 
 ### Walking Through the Rule
 
@@ -8363,14 +8363,14 @@ System.out.println(words);           // [apple, banana, cherry]
 ### Quick Memory Aid
 
 \`\`\`
-? extends T  →  GET (you get/read values of type T)
-? super T    →  PUT (you put/write values of type T)
-No wildcard  →  GET and PUT (exact type for read-write)
+? extends T  ->  GET (you get/read values of type T)
+? super T    ->  PUT (you put/write values of type T)
+No wildcard  ->  GET and PUT (exact type for read-write)
 \`\`\`
 
 Or think of it from the collection's perspective:
-- A \`List<? extends Fruit>\` produces Fruits for me → I can read Fruits from it
-- A \`List<? super Apple>\` consumes my Apples → I can add Apples to it
+- A \`List<? extends Fruit>\` produces Fruits for me -> I can read Fruits from it
+- A \`List<? super Apple>\` consumes my Apples -> I can add Apples to it
 
 ### When Wildcards Don't Help
 
@@ -8473,7 +8473,7 @@ public class StackPecsDemo {
               },
               {
                 q: `Why does Collections.copy use (List<? super T> dest, List<? extends T> src)?`,
-                a: `src produces T values for you to read → extends. dest consumes T values you write into → super. This lets you copy List<Integer> into List<Number> (or List<Object>) — the asymmetry in the wildcards captures the actual direction of data flow.`
+                a: `src produces T values for you to read -> extends. dest consumes T values you write into -> super. This lets you copy List<Integer> into List<Number> (or List<Object>) — the asymmetry in the wildcards captures the actual direction of data flow.`
               },
               {
                 q: `What happens when you try to read from a List<? super Integer>?`,
@@ -8481,7 +8481,7 @@ public class StackPecsDemo {
               },
               {
                 q: `Why is Comparator<? super T> used in sort(List<T>, Comparator<? super T>)?`,
-                a: `A Comparator consumes T values (it receives two T objects to compare), making it a consumer → super. This means a Comparator<Object> can sort a List<String> — the comparator accepts any Object, which certainly includes String. Without ? super, only an exact Comparator<String> would work.`
+                a: `A Comparator consumes T values (it receives two T objects to compare), making it a consumer -> super. This means a Comparator<Object> can sort a List<String> — the comparator accepts any Object, which certainly includes String. Without ? super, only an exact Comparator<String> would work.`
               },
               {
                 q: `Can you use a wildcard as a method return type?`,
@@ -8534,7 +8534,7 @@ class StringBox extends Box<String> {
     @Override public String get() { return "typed"; }
 }
 // Compiler generates a synthetic bridge:
-// public Object get() { return (Object) get(); }  // bridges Box.get() → StringBox.get()
+// public Object get() { return (Object) get(); }  // bridges Box.get() -> StringBox.get()
 \`\`\`
 
 ### Reifiable vs Non-Reifiable Types
@@ -8633,7 +8633,7 @@ public class TypedMap {
         map.put(Objects.requireNonNull(type), value);
     }
 
-    @SuppressWarnings("unchecked") // safe: put() ensures key→value type match
+    @SuppressWarnings("unchecked") // safe: put() ensures key->value type match
     public <T> T get(Class<T> type) {
         return type.cast(map.get(type));   // Class.cast() is runtime-safe
     }
@@ -8780,7 +8780,7 @@ Iterator<String> it = list.iterator();
 while (it.hasNext()) {
     if (it.next().equals("z")) it.remove();  // safe removal during iteration
 }
-// list.remove() inside a for-each loop → ConcurrentModificationException!
+// list.remove() inside a for-each loop -> ConcurrentModificationException!
 \`\`\`
 
 ### LinkedList — When Is It Actually Better?
@@ -9017,8 +9017,8 @@ System.out.println(ts);             // [1, 2, 5, 8, 9] — always sorted
 
 System.out.println(ts.first());    // 1
 System.out.println(ts.last());     // 9
-System.out.println(ts.floor(6));   // 5 — largest element ≤ 6
-System.out.println(ts.ceiling(6)); // 8 — smallest element ≥ 6
+System.out.println(ts.floor(6));   // 5 — largest element <= 6
+System.out.println(ts.ceiling(6)); // 8 — smallest element >= 6
 System.out.println(ts.lower(5));   // 2 — strictly less than 5
 System.out.println(ts.higher(5));  // 8 — strictly greater than 5
 
@@ -9045,7 +9045,7 @@ System.out.println(ts);             // [1, 2, 3, 5, 8, 9]
 class Point {
     int x, y;
     @Override public boolean equals(Object o) { ... }
-    // No hashCode — two equal Points get different hash → both added to Set!
+    // No hashCode — two equal Points get different hash -> both added to Set!
 }
 
 // Correct
@@ -9160,7 +9160,7 @@ public class SetEqualsHashCode {
             flashcards: [
               {
                 q: `What is every Set implementation backed by?`,
-                a: `A Map — elements are stored as map keys with a dummy value (Boolean.TRUE or a shared PRESENT object). HashSet → HashMap, LinkedHashSet → LinkedHashMap, TreeSet → TreeMap. This is why Set operations have the same complexity as the corresponding Map operations.`
+                a: `A Map — elements are stored as map keys with a dummy value (Boolean.TRUE or a shared PRESENT object). HashSet -> HashMap, LinkedHashSet -> LinkedHashMap, TreeSet -> TreeMap. This is why Set operations have the same complexity as the corresponding Map operations.`
               },
               {
                 q: `What happens if you add an object to a HashSet but forget to override hashCode?`,
@@ -9176,7 +9176,7 @@ public class SetEqualsHashCode {
               },
               {
                 q: `What does TreeSet.floor(e) return?`,
-                a: `The greatest element in the set that is less than or equal to e. Returns null if no such element exists. Counterpart: ceiling(e) returns the smallest element ≥ e. lower(e) is strictly less than e; higher(e) is strictly greater. All O(log n).`
+                a: `The greatest element in the set that is less than or equal to e. Returns null if no such element exists. Counterpart: ceiling(e) returns the smallest element >= e. lower(e) is strictly less than e; higher(e) is strictly greater. All O(log n).`
               }
             ]
           },
@@ -9189,16 +9189,16 @@ A \`Map\` stores **key-value pairs** with unique keys. It is the most-used non-l
 ### HashMap Internals (Java 8+)
 
 HashMap uses an **array of buckets**. The key's \`hashCode()\` determines which bucket. Within a bucket:
-- **< 8 entries** → linked list (O(n) worst case)
-- **≥ 8 entries** → Red-Black tree (O(log n) worst case) — "treeification"
+- **< 8 entries** -> linked list (O(n) worst case)
+- **>= 8 entries** -> Red-Black tree (O(log n) worst case) — "treeification"
 - Tree reverts to list when entries drop below 6
 
 \`\`\`mermaid
 graph LR
     K[Key] --> HC["hashCode()"]
     HC --> IDX["index = (n-1) & hash"]
-    IDX --> B0["Bucket 0: [Entry→Entry]"]
-    IDX --> B3["Bucket 3: [Entry→Entry→Entry...8 → RB-Tree]"]
+    IDX --> B0["Bucket 0: [Entry->Entry]"]
+    IDX --> B3["Bucket 3: [Entry->Entry->Entry...8 -> RB-Tree]"]
     IDX --> BN["Bucket n-1: []"]
     style B3 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
 \`\`\`
@@ -9241,11 +9241,11 @@ for (String word : "the quick brown fox the quick".split(" ")) {
 \`\`\`java
 // Most efficient — iterate entrySet()
 for (Map.Entry<String, Integer> e : scores.entrySet()) {
-    System.out.println(e.getKey() + " → " + e.getValue());
+    System.out.println(e.getKey() + " -> " + e.getValue());
 }
 
 // Java 8+
-scores.forEach((k, v) -> System.out.println(k + " → " + v));
+scores.forEach((k, v) -> System.out.println(k + " -> " + v));
 
 // Keys only, values only
 for (String key : scores.keySet()) { ... }
@@ -9289,8 +9289,8 @@ tm.put("banana", 2); tm.put("apple", 5); tm.put("cherry", 1);
 System.out.println(tm);             // {apple=5, banana=2, cherry=1} — sorted by key
 
 tm.firstKey(); tm.lastKey();        // apple, cherry
-tm.floorKey("b");                   // apple  (greatest key ≤ "b")
-tm.ceilingKey("b");                 // banana (smallest key ≥ "b")
+tm.floorKey("b");                   // apple  (greatest key <= "b")
+tm.ceilingKey("b");                 // banana (smallest key >= "b")
 
 // Range views
 SortedMap<String, Integer> sub = tm.subMap("apple", "cherry"); // [apple, cherry)
@@ -9398,7 +9398,7 @@ public class MapAdvanced {
               },
               {
                 q: `What is the default load factor of HashMap and what does it mean?`,
-                a: `0.75 (75%). When the map is 75% full (size > capacity * 0.75), it rehashes — creates a new array of double the capacity and redistributes all entries. Lower load factor → fewer collisions, more memory. Higher → more collisions, less memory. 0.75 is the empirically optimal balance.`
+                a: `0.75 (75%). When the map is 75% full (size > capacity * 0.75), it rehashes — creates a new array of double the capacity and redistributes all entries. Lower load factor -> fewer collisions, more memory. Higher -> more collisions, less memory. 0.75 is the empirically optimal balance.`
               },
               {
                 q: `What is the difference between HashMap.get(k) and getOrDefault(k, def)?`,
@@ -9682,13 +9682,13 @@ Picking the right collection is mostly about understanding how its operations
 > Big-O answers: *if I make the collection 10x bigger, how much slower does this
 > operation get?* It ignores constant factors and describes the growth trend.
 
-| Class | Name | If n grows 1k → 1,000,000 (×1000), work grows... | Example |
+| Class | Name | If n grows 1k -> 1,000,000 (x1000), work grows... | Example |
 |---|---|---|---|
 | **O(1)** | constant | not at all (~same) | \`HashMap.get\`, \`ArrayList.get(i)\` |
-| **O(log n)** | logarithmic | ~×2 (10 → 20 steps) | \`TreeMap.get\`, binary search |
-| **O(n)** | linear | ×1000 | \`ArrayList.contains\`, \`LinkedList.get(i)\` |
-| **O(n log n)** | linearithmic | ~×2000 | good sorting (\`Collections.sort\`) |
-| **O(n^2)** | quadratic | ×1,000,000 | nested loops over the same list |
+| **O(log n)** | logarithmic | ~x2 (10 -> 20 steps) | \`TreeMap.get\`, binary search |
+| **O(n)** | linear | x1000 | \`ArrayList.contains\`, \`LinkedList.get(i)\` |
+| **O(n log n)** | linearithmic | ~x2000 | good sorting (\`Collections.sort\`) |
+| **O(n^2)** | quadratic | x1,000,000 | nested loops over the same list |
 
 Concretely, for n = 1,000,000: an O(1) op is ~1 step, O(log n) is ~20 steps,
 O(n) is a million steps, and O(n^2) is a *trillion* steps. That's why an
@@ -9763,7 +9763,7 @@ fast feature into a timeout.
 |---|---|---|
 | Indexed access + iterate | \`ArrayList\` | O(1) get, O(1) append, cache-friendly |
 | Fast membership / dedup | \`HashSet\` | O(1) contains |
-| Key → value lookups | \`HashMap\` | O(1) get/put |
+| Key -> value lookups | \`HashMap\` | O(1) get/put |
 | Sorted keys or range queries | \`TreeMap\`/\`TreeSet\` | O(log n) + ordering |
 | Keep insertion order / LRU cache | \`LinkedHashMap\`/\`Set\` | O(1) ops + ordered iterate |
 | FIFO queue or LIFO stack | \`ArrayDeque\` | O(1) both ends, no node overhead |
@@ -9892,7 +9892,7 @@ HashSet.contains stays flat     -> O(1) average`
 These are warm-up to intermediate drills. The goal is simple: **pick the right collection, then use its core methods naturally.** Do them until the choice is automatic.
 
 > [!TIP]
-> A tiny decision tree: *Do I need uniqueness?* → \`Set\`. *Do I need key→value lookup?* → \`Map\`. *Process in arrival order?* → \`Queue\` (\`ArrayDeque\`). *Last-in-first-out?* → stack (\`ArrayDeque\`). *Always-sorted / nearest-key?* → \`TreeSet\` / \`TreeMap\`. *Smallest/largest k?* → \`PriorityQueue\`.
+> A tiny decision tree: *Do I need uniqueness?* -> \`Set\`. *Do I need key->value lookup?* -> \`Map\`. *Process in arrival order?* -> \`Queue\` (\`ArrayDeque\`). *Last-in-first-out?* -> stack (\`ArrayDeque\`). *Always-sorted / nearest-key?* -> \`TreeSet\` / \`TreeMap\`. *Smallest/largest k?* -> \`PriorityQueue\`.
 
 ### Quick reference
 
@@ -10239,7 +10239,7 @@ Java 8's lambda expressions let you treat behaviour as data — pass a block of 
 
 ### What Is a Lambda?
 
-A lambda is an anonymous function: no name, no class, just parameters → body.
+A lambda is an anonymous function: no name, no class, just parameters -> body.
 
 \`\`\`java
 // Before Java 8 — anonymous class
@@ -10278,24 +10278,24 @@ System.out.println(len.transform("hello")); // 5
 \`\`\`mermaid
 graph LR
     F[Function
-T → R
+T -> R
 apply] --> BI[BiFunction
-T,U → R
+T,U -> R
 apply]
     P[Predicate
-T → boolean
+T -> boolean
 test] --> BP[BiPredicate
-T,U → boolean
+T,U -> boolean
 test]
     S[Supplier
-() → T
+() -> T
 get] --> US[UnaryOperator
-T → T
+T -> T
 apply]
     C[Consumer
-T → void
+T -> void
 accept] --> BC[BiConsumer
-T,U → void
+T,U -> void
 accept]
     style F fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style P fill:#0f1e12,stroke:#10b981,color:#e2e8f0
@@ -10305,12 +10305,12 @@ accept]
 
 | Interface | Signature | Method | Use case |
 |---|---|---|---|
-| \`Function<T,R>\` | \`T → R\` | \`apply\` | Transform one type to another |
-| \`Predicate<T>\` | \`T → boolean\` | \`test\` | Filter / condition check |
-| \`Supplier<T>\` | \`() → T\` | \`get\` | Lazy value provider |
-| \`Consumer<T>\` | \`T → void\` | \`accept\` | Side-effect action |
-| \`UnaryOperator<T>\` | \`T → T\` | \`apply\` | Transform same type (extends Function) |
-| \`BinaryOperator<T>\` | \`(T,T) → T\` | \`apply\` | Reduce two values to one |
+| \`Function<T,R>\` | \`T -> R\` | \`apply\` | Transform one type to another |
+| \`Predicate<T>\` | \`T -> boolean\` | \`test\` | Filter / condition check |
+| \`Supplier<T>\` | \`() -> T\` | \`get\` | Lazy value provider |
+| \`Consumer<T>\` | \`T -> void\` | \`accept\` | Side-effect action |
+| \`UnaryOperator<T>\` | \`T -> T\` | \`apply\` | Transform same type (extends Function) |
+| \`BinaryOperator<T>\` | \`(T,T) -> T\` | \`apply\` | Reduce two values to one |
 
 ### Composing Functions
 
@@ -10349,7 +10349,7 @@ greet.accept("Alice"); // Hello, Alice
 greet.accept("Bob");   // Hello, Bob
 
 // This would NOT compile:
-// prefix = "Hi, ";  ← reassignment makes it non-effectively-final
+// prefix = "Hi, ";  <- reassignment makes it non-effectively-final
 \`\`\`
 
 **Why?** Lambdas may outlive the method that created them (stored in a list, passed to a thread). Allowing mutable captures would create race conditions. The captured value is copied at creation time.`,
@@ -10457,7 +10457,7 @@ Memoised calls:");
               },
               {
                 q: `Name the four core functional interfaces and their signatures.`,
-                a: `Function<T,R>: T→R (apply). Predicate<T>: T→boolean (test). Supplier<T>: ()→T (get). Consumer<T>: T→void (accept). Plus specialisations: UnaryOperator<T>=Function<T,T>, BinaryOperator<T>=(T,T)→T, BiFunction, BiPredicate, BiConsumer.`
+                a: `Function<T,R>: T->R (apply). Predicate<T>: T->boolean (test). Supplier<T>: ()->T (get). Consumer<T>: T->void (accept). Plus specialisations: UnaryOperator<T>=Function<T,T>, BinaryOperator<T>=(T,T)->T, BiFunction, BiPredicate, BiConsumer.`
               },
               {
                 q: `Can a lambda throw a checked exception? What is the workaround?`,
@@ -10540,7 +10540,7 @@ Predicate<String>         isEmpty = String::isEmpty;
 List<String> words = List.of("java", "streams", "method", "refs");
 words.stream().map(String::toUpperCase).forEach(System.out::println);
 
-// BiFunction: (instance, param) → result
+// BiFunction: (instance, param) -> result
 // String::startsWith — first arg is the String instance, second is the prefix
 BiFunction<String, String, Boolean> starts = String::startsWith;
 System.out.println(starts.apply("hello", "he")); // true
@@ -10688,9 +10688,9 @@ public class MethodRefCompose {
 Parsing prices (with error wrapping):");
         priceStrings.forEach(s -> {
             try {
-                System.out.printf("  %s → %.2f%n", s, safeParse.apply(s));
+                System.out.printf("  %s -> %.2f%n", s, safeParse.apply(s));
             } catch (RuntimeException e) {
-                System.out.printf("  %s → INVALID%n", s);
+                System.out.printf("  %s -> INVALID%n", s);
             }
         });
     }
@@ -10707,7 +10707,7 @@ Parsing prices (with error wrapping):");
               },
               {
                 q: `How does BiFunction relate to an unbound method reference that takes a parameter?`,
-                a: `String::startsWith has signature (String instance, String prefix) → boolean, so it fits BiFunction<String,String,Boolean>. The first argument is the target object (the String), the second is the method parameter. Any unbound ref to a one-argument method matches a BiFunction where the first type is the class.`
+                a: `String::startsWith has signature (String instance, String prefix) -> boolean, so it fits BiFunction<String,String,Boolean>. The first argument is the target object (the String), the second is the method parameter. Any unbound ref to a one-argument method matches a BiFunction where the first type is the class.`
               },
               {
                 q: `When should you prefer a lambda over a method reference?`,
@@ -10730,7 +10730,7 @@ Parsing prices (with error wrapping):");
 \`\`\`java
 Optional<String> full    = Optional.of("hello");          // non-null value
 Optional<String> empty   = Optional.empty();               // no value
-Optional<String> maybe   = Optional.ofNullable(getValue()); // null → empty, non-null → present
+Optional<String> maybe   = Optional.ofNullable(getValue()); // null -> empty, non-null -> present
 \`\`\`
 
 > \`Optional.of(null)\` throws \`NullPointerException\` immediately — use \`ofNullable\` when the source might be null.
@@ -10863,16 +10863,16 @@ public class OptionalDemo {
     public static void main(String[] args) {
         System.out.println("Cities:");
         for (int id : new int[]{1, 2, 3}) {
-            System.out.printf("  User %d → %s%n", id, getCity(id));
+            System.out.printf("  User %d -> %s%n", id, getCity(id));
         }
 
         System.out.println("
 Email domains:");
         for (int id : new int[]{1, 2}) {
             try {
-                System.out.printf("  User %d → %s%n", id, getEmailDomain(id));
+                System.out.printf("  User %d -> %s%n", id, getEmailDomain(id));
             } catch (RuntimeException e) {
-                System.out.printf("  User %d → ERROR: %s%n", id, e.getMessage());
+                System.out.printf("  User %d -> ERROR: %s%n", id, e.getMessage());
             }
         }
 
@@ -11239,11 +11239,11 @@ Legacy UTC: " + legacyTs);
               },
               {
                 q: `What is the difference between Duration and Period?`,
-                a: `Duration measures time-based amounts — hours, minutes, seconds, nanoseconds. Accurate across DST changes. Period measures date-based amounts — years, months, days. Important: Period.of(0,1,0) added to March 30 gives April 30, but Duration.ofDays(31) added to the same date is always exactly 31×86400 seconds — they diverge around DST and month-length changes.`
+                a: `Duration measures time-based amounts — hours, minutes, seconds, nanoseconds. Accurate across DST changes. Period measures date-based amounts — years, months, days. Important: Period.of(0,1,0) added to March 30 gives April 30, but Duration.ofDays(31) added to the same date is always exactly 31x86400 seconds — they diverge around DST and month-length changes.`
               },
               {
                 q: `How do you convert between time zones in java.time?`,
-                a: `Use withZoneSameInstant(newZone) — converts ZonedDateTime to a different zone representing the SAME instant. Use withZoneSameLocal(newZone) — keeps the local date/time but changes the zone label (different instant). Example: 10:00 India → withZoneSameInstant(UTC) → 04:30 UTC (same moment); → withZoneSameLocal(UTC) → 10:00 UTC (different moment).`
+                a: `Use withZoneSameInstant(newZone) — converts ZonedDateTime to a different zone representing the SAME instant. Use withZoneSameLocal(newZone) — keeps the local date/time but changes the zone label (different instant). Example: 10:00 India -> withZoneSameInstant(UTC) -> 04:30 UTC (same moment); -> withZoneSameLocal(UTC) -> 10:00 UTC (different moment).`
               },
               {
                 q: `What was wrong with java.util.Date and Calendar?`,
@@ -11331,7 +11331,7 @@ try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream("point.bi
 
 \`\`\`java
 // java.io uses the Decorator pattern — wrap streams to add capabilities
-// FileInputStream → BufferedInputStream → GZIPInputStream → ObjectInputStream
+// FileInputStream -> BufferedInputStream -> GZIPInputStream -> ObjectInputStream
 try (ObjectInputStream ois = new ObjectInputStream(
         new BufferedInputStream(
         new java.util.zip.GZIPInputStream(
@@ -11680,7 +11680,7 @@ public class FileTreeDemo {
               },
               {
                 q: `What are the Files methods for small vs large files?`,
-                a: `Small files (fit in memory): Files.readString(path) → String, Files.readAllBytes(path) → byte[], Files.readAllLines(path) → List<String>, Files.writeString(path, content). Large files (streaming): Files.lines(path) returns Stream<String> — process line-by-line without loading all into memory; always close the stream (try-with-resources). Files.walk(dir) streams directory entries lazily. For binary large files, use FileChannel with ByteBuffer for maximum throughput.`
+                a: `Small files (fit in memory): Files.readString(path) -> String, Files.readAllBytes(path) -> byte[], Files.readAllLines(path) -> List<String>, Files.writeString(path, content). Large files (streaming): Files.lines(path) returns Stream<String> — process line-by-line without loading all into memory; always close the stream (try-with-resources). Files.walk(dir) streams directory entries lazily. For binary large files, use FileChannel with ByteBuffer for maximum throughput.`
               },
               {
                 q: `How do you walk a directory tree and what is the difference between Files.walk, Files.list, and Files.find?`,
@@ -11767,9 +11767,9 @@ Every JVM implementation has three major subsystems:
 graph LR
     subgraph JVM["⚙️ JVM Process"]
         direction TB
-        CL["🔍 Class Loading<br/>Bootstrap→Platform<br/>→App→Custom<br/>Load→Link→Init"]
+        CL["🔍 Class Loading<br/>Bootstrap->Platform<br/>->App->Custom<br/>Load->Link->Init"]
         RDA["🗄️ Runtime Data Areas<br/>Heap · Metaspace<br/>Stack · PC Register<br/>Native Stack"]
-        EE["⚡ Execution Engine<br/>Interpreter→Profiler<br/>JIT C1+C2 → GC"]
+        EE["⚡ Execution Engine<br/>Interpreter->Profiler<br/>JIT C1+C2 -> GC"]
         CL -->|"loads classes into"| RDA
         RDA -->|"memory for"| EE
     end
@@ -11804,7 +11804,7 @@ This is the most common senior interview question on JVM internals. Walk through
 
 Java has a reputation for slow startup. This is real, but misleading for server workloads. Here's why:
 
-- **Cold** (first seconds): everything is interpreted — 10–100× slower than optimised native code
+- **Cold** (first seconds): everything is interpreted — 10–100x slower than optimised native code
 - **Warming** (seconds 10–60): JIT compiles hot methods progressively
 - **Warm** (steady state): compiled native code, often matching or beating C++ for specific patterns
 
@@ -11829,9 +11829,9 @@ This is why **Java benchmarks must warm up before measuring**. A "benchmark" tha
 > ## 6. Loading Phase
 > The binary bytecode of \`HelloWorld.class\` is read. A \`java.lang.Class\` object representing \`HelloWorld\` is created on the heap. This is the first heap allocation.
 > ## 7. Verification (Linking Phase 1)
-> The JVM verifies the bytecode: correct magic bytes? Well-formed instructions? No type violations? No illegal access to private members? If verification fails → \`VerifyError\`. This is a security checkpoint.
+> The JVM verifies the bytecode: correct magic bytes? Well-formed instructions? No type violations? No illegal access to private members? If verification fails -> \`VerifyError\`. This is a security checkpoint.
 > ## 8. Preparation (Linking Phase 2)
-> Static fields of \`HelloWorld\` are allocated and set to **type defaults** (0, null, false). NOT your declared values yet. \`static int count = 42\` → count is 0 after Prepare.
+> Static fields of \`HelloWorld\` are allocated and set to **type defaults** (0, null, false). NOT your declared values yet. \`static int count = 42\` -> count is 0 after Prepare.
 > ## 9. Resolution (Linking Phase 3)
 > Symbolic references in the constant pool (strings like \`"java/io/PrintStream"\`) are replaced with direct memory pointers to the actual loaded classes/methods. Future calls are now pointer-fast.
 > ## 10. Initialisation
@@ -11942,9 +11942,9 @@ Every class goes through exactly three phases before you can use it:
 \`\`\`mermaid
 flowchart LR
     L["📥 LOADING<br/>Find .class bytes<br/>Create Class object<br/>on heap"]
-    V["✅ VERIFY<br/>Bytecode safe?<br/>Types correct?<br/>→ VerifyError if not"]
+    V["✅ VERIFY<br/>Bytecode safe?<br/>Types correct?<br/>-> VerifyError if not"]
     P["🔧 PREPARE<br/>Allocate statics<br/>Set type defaults<br/>0 / null / false"]
-    R["🔗 RESOLVE<br/>Symbolic refs<br/>→ direct memory<br/>pointers"]
+    R["🔗 RESOLVE<br/>Symbolic refs<br/>-> direct memory<br/>pointers"]
     I["🚀 INIT<br/>Run static { }<br/>Assign field values<br/>Thread-safe, once"]
     L --> V --> P --> R --> I
     subgraph LK["LINKING"]
@@ -11963,7 +11963,7 @@ Sources can be: local filesystem classpath, JAR files, network (URLClassLoader),
 
 ### Phase 2: Linking (Three Sub-steps)
 
-**a) Verification** — The JVM checks the bytecode is structurally correct and safe. Does it reference methods that exist? Does it mix incompatible types? Does it try to access private fields from outside the class? If verification fails → \`VerifyError\`. This is a critical security step — it prevents malicious or corrupt bytecode from crashing the VM.
+**a) Verification** — The JVM checks the bytecode is structurally correct and safe. Does it reference methods that exist? Does it mix incompatible types? Does it try to access private fields from outside the class? If verification fails -> \`VerifyError\`. This is a critical security step — it prevents malicious or corrupt bytecode from crashing the VM.
 
 **b) Preparation** — Static fields are allocated in memory and set to their **type default values** (0 for int, null for references, false for boolean). NOT your declared values yet — just safe zero-defaults.
 
@@ -12001,8 +12001,8 @@ graph TB
     A["Application ClassLoader<br/><i>your classpath / module-path</i>"]
     A -->|"delegate up"| PL["Platform ClassLoader<br/><i>java.se modules</i>"]
     PL -->|"delegate up"| BS["Bootstrap ClassLoader<br/><i>java.* core classes — native C++</i>"]
-    BS -->|"not in rt.jar → fail back"| PL
-    PL -->|"not in platform → fail back"| A
+    BS -->|"not in rt.jar -> fail back"| PL
+    PL -->|"not in platform -> fail back"| A
     A -->|"load from classpath"| CL["✅ Class defined<br/>Class object on heap"]
     BS -->|"found! java.lang.String etc."| CL
     style BS fill:#312e81,stroke:#818cf8,color:#c4b5fd
@@ -12205,14 +12205,14 @@ graph LR
         S1["Survivor S1<br/>bounce here<br/>~10%"]
     end
     subgraph OG["Old Generation ~75%"]
-        T["📦 Tenured<br/>long-lived objects<br/>age ≥ 15"]
+        T["📦 Tenured<br/>long-lived objects<br/>age >= 15"]
     end
     subgraph NM["Native Memory"]
         MS["🗂️ Metaspace<br/>class structures<br/>constant pool<br/>method tables"]
     end
     E -->|"Minor GC: survived"| S0
     S0 -->|"survived again"| S1
-    S1 -->|"age≥MaxTenuring"| T
+    S1 -->|"age>=MaxTenuring"| T
     style E fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
     style S0 fill:#1e293b,stroke:#6366f1,color:#e2e8f0
     style S1 fill:#1e293b,stroke:#6366f1,color:#e2e8f0
@@ -12222,12 +12222,12 @@ graph LR
 
 **How objects move through Young Gen:**
 
-1. New object created → goes to **Eden**
-2. Eden fills → **Minor GC** (Young GC) triggers — typically 1–50ms, stop-the-world
+1. New object created -> goes to **Eden**
+2. Eden fills -> **Minor GC** (Young GC) triggers — typically 1–50ms, stop-the-world
 3. Minor GC traces from roots into Eden + one Survivor space
 4. Live objects copied to the OTHER Survivor space; each survivor's age increments by 1
 5. Eden + from-Survivor space cleared (just a pointer reset — O(1))
-6. Objects whose age reaches the tenuring threshold (default: 15) → **promoted to Old Gen**
+6. Objects whose age reaches the tenuring threshold (default: 15) -> **promoted to Old Gen**
 
 Minor GC is fast because: (a) most objects in Eden are already dead — nothing to copy; (b) copying only survivors is proportional to what's alive, not heap size; (c) clearing Eden is a single pointer-reset operation.
 
@@ -12237,14 +12237,14 @@ Minor GC is fast because: (a) most objects in Eden are already dead — nothing 
 OLD GENERATION / TENURED  (~75% of heap, default)
 ┌────────────────────────────────────────────────────┐
 │  Objects that survived enough Minor GCs            │
-│  (aged ≥ MaxTenuringThreshold, default 15)         │
+│  (aged >= MaxTenuringThreshold, default 15)         │
 │                                                    │
 │  Also: large objects may be allocated directly     │
 │  here (bypassing Young Gen) to avoid copying       │
 └────────────────────────────────────────────────────┘
 \`\`\`
 
-When Old Gen fills → **Major GC** or **Full GC**. This is expensive: Old Gen is large, compacting it takes proportionally longer, and it pauses all application threads (in simple collectors). Full GC pauses of 10+ seconds are a sign of a seriously misconfigured or memory-leaking JVM.
+When Old Gen fills -> **Major GC** or **Full GC**. This is expensive: Old Gen is large, compacting it takes proportionally longer, and it pauses all application threads (in simple collectors). Full GC pauses of 10+ seconds are a sign of a seriously misconfigured or memory-leaking JVM.
 
 **Important flags:**
 \`\`\`
@@ -12310,7 +12310,7 @@ actual data, aligned to 4/8 byte boundaries"]
     style IF fill:#1e293b,stroke:#10b981,color:#a7f3d0
 \`\`\`
 
-The header is 12–16 bytes. This means an \`Integer\` object (holding one 4-byte int) uses ~16 bytes — 4× the raw value. A \`boolean\` field in an object takes 1 byte but is padded to 4 or 8 bytes for alignment. For high-throughput systems with millions of objects, this overhead matters: prefer primitives, use \`IntStream\` over \`Stream<Integer>\`, consider Valhalla value types (future Java).
+The header is 12–16 bytes. This means an \`Integer\` object (holding one 4-byte int) uses ~16 bytes — 4x the raw value. A \`boolean\` field in an object takes 1 byte but is padded to 4 or 8 bytes for alignment. For high-throughput systems with millions of objects, this overhead matters: prefer primitives, use \`IntStream\` over \`Stream<Integer>\`, consider Valhalla value types (future Java).
 
 ## OOM Error Types and What They Mean
 
@@ -12346,7 +12346,7 @@ public class HeapDemo {
                 usage.getMax() / 1024);
         }
 
-        // --- Demonstrate Eden → Survivor → Old Gen promotion ---
+        // --- Demonstrate Eden -> Survivor -> Old Gen promotion ---
         System.out.println("\\n=== Allocation Pressure Demo ===");
         List<byte[]> survivors = new ArrayList<>();
 
@@ -12417,7 +12417,7 @@ jmap -histo <pid> | head -30
               },
               {
                 q: `Walk through the path of a short-lived object vs a long-lived object in the heap.`,
-                a: `Short-lived: created in Eden → Minor GC hits → not reachable → reclaimed (Eden reset). Long-lived: Eden → Minor GC → copied to Survivor S0 (age=1) → next Minor GC → copied to S1 (age=2) → ... → age reaches MaxTenuringThreshold (default 15) → promoted to Old Generation.`
+                a: `Short-lived: created in Eden -> Minor GC hits -> not reachable -> reclaimed (Eden reset). Long-lived: Eden -> Minor GC -> copied to Survivor S0 (age=1) -> next Minor GC -> copied to S1 (age=2) -> ... -> age reaches MaxTenuringThreshold (default 15) -> promoted to Old Generation.`
               },
               {
                 q: `What replaced PermGen in Java 8 and what problem did it solve?`,
@@ -12484,7 +12484,7 @@ scratch pad for bytecode
 grows and shrinks per instruction"]
         FD["🔗 Frame Data
 runtime constant pool ref
-return address → caller
+return address -> caller
 exception table reference"]
     end
     style LV fill:#1e293b,stroke:#6366f1,color:#e2e8f0
@@ -12496,9 +12496,9 @@ The **local variable array** holds: \`this\` reference (slot 0 for instance meth
 
 The **operand stack** is the JVM's scratch pad. Bytecode instructions push and pop values here. For example, adding two integers:
 \`\`\`
-iload_1   // push local[1] (a=10) → operand stack: [10]
-iload_2   // push local[2] (b=20) → operand stack: [10, 20]
-iadd      // pop two, add, push result → operand stack: [30]
+iload_1   // push local[1] (a=10) -> operand stack: [10]
+iload_2   // push local[2] (b=20) -> operand stack: [10, 20]
+iadd      // pop two, add, push result -> operand stack: [30]
 istore_3  // pop 30, store in local[3] (result)
 \`\`\`
 
@@ -12506,7 +12506,7 @@ This stack-based model is simpler to generate code for than register-based (x86)
 
 ## StackOverflowError: Causes and Fixes
 
-Each thread has a fixed-size JVM stack (default 512KB–1MB depending on JVM/OS). Every frame consumes space. When you add more frames than fit → \`StackOverflowError\`.
+Each thread has a fixed-size JVM stack (default 512KB–1MB depending on JVM/OS). Every frame consumes space. When you add more frames than fit -> \`StackOverflowError\`.
 
 **Common causes:**
 - **Infinite recursion** (missing base case)
@@ -12528,11 +12528,11 @@ static long recurse(int n, long acc) {
 
 **Tuning:**
 \`\`\`
--Xss512k     # smaller stack → more threads, less memory per thread
--Xss4m       # larger stack → fewer threads, handles deeper recursion
+-Xss512k     # smaller stack -> more threads, less memory per thread
+-Xss4m       # larger stack -> fewer threads, handles deeper recursion
 \`\`\`
 
-Trade-off: threads × stack size = native memory committed for stacks. 1000 threads × 1MB = 1GB of native memory just for stacks.
+Trade-off: threads x stack size = native memory committed for stacks. 1000 threads x 1MB = 1GB of native memory just for stacks.
 
 ## PC Register: The Thread Bookmark
 
@@ -12663,7 +12663,7 @@ public class StackDemo {
               },
               {
                 q: `Why does the JVM throw StackOverflowError (not OutOfMemoryError) for deep recursion?`,
-                a: `The JVM stack is a fixed-size per-thread structure (tuned by -Xss, default 512KB–1MB). When recursion creates more frames than fit, the stack overflows → StackOverflowError. The heap is fine; it's the stack that's exhausted. OutOfMemoryError is specifically for heap exhaustion.`
+                a: `The JVM stack is a fixed-size per-thread structure (tuned by -Xss, default 512KB–1MB). When recursion creates more frames than fit, the stack overflows -> StackOverflowError. The heap is fine; it's the stack that's exhausted. OutOfMemoryError is specifically for heap exhaustion.`
               },
               {
                 q: `Why doesn't the JVM optimize tail-recursive methods like Scala/Haskell does?`,
@@ -12679,7 +12679,7 @@ public class StackDemo {
               },
               {
                 q: `How do you calculate the native memory consumed by thread stacks?`,
-                a: `thread_count × stack_size_per_thread. With default -Xss1m: 1,000 threads × 1MB = 1GB native memory just for stacks. This is why platform-thread-based servers max out at ~thousands of concurrent requests. Virtual threads (JDK 21) avoid this by heap-backing their stacks.`
+                a: `thread_count x stack_size_per_thread. With default -Xss1m: 1,000 threads x 1MB = 1GB native memory just for stacks. This is why platform-thread-based servers max out at ~thousands of concurrent requests. Virtual threads (JDK 21) avoid this by heap-backing their stacks.`
               }
             ]
           },
@@ -12702,15 +12702,15 @@ interpreted         compiling hot           (aggressively optimized)
 Seconds 0-5         Seconds 5-30            After warmup
 \`\`\`
 
-This model is the reason Java servers must warm up before receiving full production traffic. Without warmup, a freshly deployed pod handles requests 10–100× slower than it will after a few minutes.
+This model is the reason Java servers must warm up before receiving full production traffic. Without warmup, a freshly deployed pod handles requests 10–100x slower than it will after a few minutes.
 
 ## How Profiling Works
 
 While interpreting, the JVM maintains **invocation counters** for each method and **back-edge counters** for loop iterations. When these counters cross a threshold (roughly 10,000 invocations for a method, 10,000 loop back-edges for OSR), the method is marked for compilation.
 
 \`\`\`
-Method counter:  [||||||||..] 10,000 threshold → enqueued for C1 compilation
-Loop counter:    [||||||||..] 10,000 back-edges → OSR (on-stack replacement) kicks in
+Method counter:  [||||||||..] 10,000 threshold -> enqueued for C1 compilation
+Loop counter:    [||||||||..] 10,000 back-edges -> OSR (on-stack replacement) kicks in
 \`\`\`
 
 **On-Stack Replacement (OSR)** is remarkable: the JVM can swap a method's interpreted execution for JIT-compiled execution while the method is still running. If you have a loop that runs for seconds, OSR replaces the interpreter with compiled code mid-loop.
@@ -12727,7 +12727,7 @@ flowchart LR
     L4["Level 4<br/>🚀 C2 Server<br/>maximum optimization"]
     L0 -->|"~1000 calls"| L1
     L1 -->|"warming up"| L3
-    L3 -->|"~10000 calls<br/>→ hot method"| L4
+    L3 -->|"~10000 calls<br/>-> hot method"| L4
     L4 -->|"deoptimize if<br/>assumption fails"| L0
     style L0 fill:#1e293b,stroke:#ef4444,color:#fca5a5
     style L1 fill:#1e293b,stroke:#f59e0b,color:#fde68a
@@ -12845,7 +12845,7 @@ public class JitWarmupDemo {
 
         System.out.println("=== JIT Warmup Demo ===");
         System.out.println("Each round: " + ITERATIONS + " iterations");
-        System.out.println("Phase 1-5: warmup (interpreted → C1 → C2)");
+        System.out.println("Phase 1-5: warmup (interpreted -> C1 -> C2)");
         System.out.println("Phase 6-10: measuring (should be faster and stable)");
         System.out.println();
 
@@ -12971,7 +12971,7 @@ public class JitOptimizationsDemo {
 
 ## What Is Garbage Collection? (Start Here)
 
-In C/C++, you manually \`malloc\` memory and \`free\` it when done. Forget to free it → **memory leak**. Free it too early → **dangling pointer** crash. This is a huge source of bugs.
+In C/C++, you manually \`malloc\` memory and \`free\` it when done. Forget to free it -> **memory leak**. Free it too early -> **dangling pointer** crash. This is a huge source of bugs.
 
 Java's **Garbage Collector (GC)** does this automatically. You create objects with \`new\`; the GC figures out when you're done with them and reclaims the memory. You never call \`free()\`.
 
@@ -12986,8 +12986,8 @@ GC Roots (always alive):
   - Active Java threads themselves
   - JNI references
 
-If object A is reachable from a root → A is ALIVE
-If object B is NOT reachable from any root → B is GARBAGE → GC can free it
+If object A is reachable from a root -> A is ALIVE
+If object B is NOT reachable from any root -> B is GARBAGE -> GC can free it
 \`\`\`
 
 > [!TIP]
@@ -12998,8 +12998,8 @@ If object B is NOT reachable from any root → B is GARBAGE → GC can free it
 ## Why Generations? The Weak Generational Hypothesis
 
 Researchers observed: **most objects die young**. In a typical web server:
-- A request comes in → dozens of temporary objects are created (Strings, DTOs, etc.)
-- Request completes in 50ms → all those objects are immediately garbage
+- A request comes in -> dozens of temporary objects are created (Strings, DTOs, etc.)
+- Request completes in 50ms -> all those objects are immediately garbage
 - A few objects (caches, connection pools, user sessions) live for hours
 
 This observation — "most objects die young" — is called the **Weak Generational Hypothesis**. It leads to a key design: split the heap into **generations** and collect them separately.
@@ -13019,11 +13019,11 @@ bounce here"]
         subgraph OG["Old Generation ~75%"]
             TEN["📦 Tenured
 long-lived objects
-age ≥ MaxTenuringThreshold"]
+age >= MaxTenuringThreshold"]
         end
         E -->|"Minor GC survived"| S0
         S0 -->|"survived again"| S1
-        S1 -->|"age≥15 or too big"| TEN
+        S1 -->|"age>=15 or too big"| TEN
     end
     NEW["new MyObj()"] -->|"allocated in"| E
     style E fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
@@ -13034,13 +13034,13 @@ age ≥ MaxTenuringThreshold"]
 
 ### How Object Lifecycle Works
 
-1. New object created → goes to **Eden** space
-2. Eden fills up → triggers a **Minor GC** (also called Young GC)
+1. New object created -> goes to **Eden** space
+2. Eden fills up -> triggers a **Minor GC** (also called Young GC)
 3. Minor GC scans Eden + one Survivor space
 4. Live objects copied to the other Survivor space, age incremented by 1
-5. Objects with age ≥ 15 (default, tune with \`-XX:MaxTenuringThreshold\`) → **promoted to Old Gen**
+5. Objects with age >= 15 (default, tune with \`-XX:MaxTenuringThreshold\`) -> **promoted to Old Gen**
 6. Eden and the from-Survivor space are cleared (just a pointer reset — instant!)
-7. When Old Gen fills up → **Major GC** or **Full GC** (much more expensive)
+7. When Old Gen fills up -> **Major GC** or **Full GC** (much more expensive)
 
 **Why is Minor GC cheap?** Because most objects in Eden are dead. You only copy the few survivors. Clearing Eden is just resetting a pointer to the start of the region — O(1).
 
@@ -13078,7 +13078,7 @@ After compact: [LIVE][LIVE][LIVE][LIVE][          free          ]
 - Never use in production web services
 
 ### 2. Parallel GC (\`-XX:+UseParallelGC\`) — "Throughput Collector"
-- Multiple GC threads working in parallel → faster collection
+- Multiple GC threads working in parallel -> faster collection
 - Still stop-the-world, but shorter pauses than Serial
 - Optimised for **maximum throughput** — minimise total GC time, not individual pauses
 - Good for: batch jobs, data pipelines, scientific computing
@@ -13132,7 +13132,7 @@ Similar goals to ZGC but different implementation. Also concurrent, also sub-mil
 
 | | G1 | ZGC | Shenandoah |
 |---|---|---|---|
-| Pause goal | ≤200ms | <1ms | <10ms |
+| Pause goal | <=200ms | <1ms | <10ms |
 | Concurrent marking | ✅ | ✅ | ✅ |
 | Concurrent compaction | ❌ (STW) | ✅ | ✅ |
 | Heap size sweet spot | 4GB–16GB | Any (TB scale) | Any |
@@ -13218,19 +13218,19 @@ Connection conn = dataSource.getConnection();
 \`\`\`
 
 **Step 2: Identify the problem**
-- Frequent Minor GCs → allocation rate too high, or survivors too large
-- Long Full GCs → old gen too small, or memory leak filling old gen
-- Long pauses despite G1 → consider ZGC
+- Frequent Minor GCs -> allocation rate too high, or survivors too large
+- Long Full GCs -> old gen too small, or memory leak filling old gen
+- Long pauses despite G1 -> consider ZGC
 
 **Step 3: Sizing rules of thumb**
-- Heap: 2–4× your live data set size (leave room for garbage accumulation)
+- Heap: 2–4x your live data set size (leave room for garbage accumulation)
 - \`-Xms = -Xmx\` in production (prevent heap resize overhead)
 - Leave OS 1–2GB for Metaspace, thread stacks, native buffers
 
 **Step 4: Collector selection by use case**
-- Batch/throughput job → Parallel GC
-- Web service, ≤16GB heap → G1 with \`-XX:MaxGCPauseMillis=100\`
-- Low-latency service, large heap → ZGC
+- Batch/throughput job -> Parallel GC
+- Web service, <=16GB heap -> G1 with \`-XX:MaxGCPauseMillis=100\`
+- Low-latency service, large heap -> ZGC
 - Never tune what you don't measure
 
 **Step 5: Tools**
@@ -13240,7 +13240,7 @@ Connection conn = dataSource.getConnection();
 - **async-profiler** — CPU + allocation profiling with low overhead
 
 > [!EU]
-> The classic European interview question: *"Your service has periodic 2-second latency spikes. Walk me through how you'd diagnose it."* Strong answer: (1) Check GC logs first — correlate spike timestamps with GC events; (2) If Full GC → take heap dump, find leak with MAT dominator tree; (3) If pause inherent to collector → switch to ZGC; (4) If allocation rate too high → profile with async-profiler to find hot allocation sites and reduce object creation. Showing measurement-first thinking beats reciting flags.
+> The classic European interview question: *"Your service has periodic 2-second latency spikes. Walk me through how you'd diagnose it."* Strong answer: (1) Check GC logs first — correlate spike timestamps with GC events; (2) If Full GC -> take heap dump, find leak with MAT dominator tree; (3) If pause inherent to collector -> switch to ZGC; (4) If allocation rate too high -> profile with async-profiler to find hot allocation sites and reduce object creation. Showing measurement-first thinking beats reciting flags.
 `,
         code: [
           {
@@ -13401,7 +13401,7 @@ public class GcTuningDemo {
         flashcards: [
           {
             q: `Why does the JVM use tracing GC instead of reference counting?`,
-            a: `Tracing from GC roots correctly reclaims cyclic references (A→B→A) that reference counting would leak, and it avoids per-assignment counter bookkeeping overhead.`
+            a: `Tracing from GC roots correctly reclaims cyclic references (A->B->A) that reference counting would leak, and it avoids per-assignment counter bookkeeping overhead.`
           },
           {
             q: `State the weak generational hypothesis and its consequence.`,
@@ -14543,7 +14543,7 @@ graph LR
     W -->|"happens-before via volatile/synchronized"| R
     W2["Thread C writes y=99"]
     R2["Thread D reads y"]
-    W2 -.->|"NO happens-before → D may see 0"| R2
+    W2 -.->|"NO happens-before -> D may see 0"| R2
     style W fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
     style R fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
     style W2 fill:#2d1515,stroke:#ef4444,color:#fca5a5
@@ -14856,11 +14856,11 @@ hits.sum();        // merge all cells (slightly stale under concurrent updates)
 
 **Atomic vs synchronized under contention:**
 - Under **low contention**: CAS is faster (no blocking, no context switch)
-- Under **very high contention**: CAS spins → \`LongAdder\` (striped cells) wins
+- Under **very high contention**: CAS spins -> \`LongAdder\` (striped cells) wins
 - For **complex multi-variable invariants**: use \`synchronized\` or \`ReentrantLock\`
 
 > [!TIP]
-> **Decision guide:** Simple counter one writer → \`volatile\`. Counter multiple writers → \`AtomicInteger\` (low/medium) or \`LongAdder\` (high contention). Complex invariant → \`synchronized\` block. Read-heavy cache → \`ReentrantReadWriteLock\`. Lock with timeout/interruption → \`ReentrantLock.tryLock()\`.
+> **Decision guide:** Simple counter one writer -> \`volatile\`. Counter multiple writers -> \`AtomicInteger\` (low/medium) or \`LongAdder\` (high contention). Complex invariant -> \`synchronized\` block. Read-heavy cache -> \`ReentrantReadWriteLock\`. Lock with timeout/interruption -> \`ReentrantLock.tryLock()\`.
 `,
             code: [
               {
@@ -15074,7 +15074,7 @@ private final Object lock = new Object();
 
 public void setConfig(Config c) { synchronized(lock) { config = c; } }
 public Config getConfig() { synchronized(lock) { return config; } }
-// unlock HB next lock → safe publication
+// unlock HB next lock -> safe publication
 \`\`\`
 
 **4. Concurrent collections (built-in safe publication)**
@@ -15358,7 +15358,7 @@ Level 4: C2 (Server compiler) — heavily optimised
 \`\`\`
 
 The default compilation thresholds (can tune with \`-XX:CompileThreshold\`):
-- Level 3 → Level 4: ~10,000 invocations OR ~10,000 back-edges (loop iterations)
+- Level 3 -> Level 4: ~10,000 invocations OR ~10,000 back-edges (loop iterations)
 
 ---
 
@@ -15421,9 +15421,9 @@ sum += arr[4]; sum += arr[5]; sum += arr[6]; sum += arr[7];
 
 Virtual method calls (\`interface.method()\`) are slower than direct calls because the JVM must look up which implementation to call. JIT tracks:
 
-- **Monomorphic**: always the same class → compile as direct call (fast as non-virtual)
-- **Bimorphic**: two classes → compile as if/else of two direct calls
-- **Megamorphic**: many classes → use a dispatch table (inline cache)
+- **Monomorphic**: always the same class -> compile as direct call (fast as non-virtual)
+- **Bimorphic**: two classes -> compile as if/else of two direct calls
+- **Megamorphic**: many classes -> use a dispatch table (inline cache)
 
 This is why interfaces at hot call sites with too many implementations can be a performance concern. The JIT **deoptimises** back to interpreter if its assumptions turn out wrong (e.g. it assumed monomorphic but a new subclass shows up).
 
@@ -15463,7 +15463,7 @@ System.out.println(time / 1_000_000 + " ns/op");  // WRONG
 
 Problems:
 1. **No warmup** — first iterations are interpreted (much slower), skewing results
-2. **Dead code elimination** — JIT sees \`result\` is never used → eliminates \`myMethod()\` entirely → you're measuring nothing
+2. **Dead code elimination** — JIT sees \`result\` is never used -> eliminates \`myMethod()\` entirely -> you're measuring nothing
 3. **Single JVM fork** — JIT state from other code affects results
 4. **No statistical analysis** — one measurement is meaningless
 
@@ -15954,7 +15954,7 @@ flowchart TD
     HOT -->|No| T0["Level 0: Interpret
 collect invocation count"]
     T0 -->|"counter > threshold"| HOT
-    HOT -->|"Yes → C1 candidate"| C1["Level 1-3: C1 Native
+    HOT -->|"Yes -> C1 candidate"| C1["Level 1-3: C1 Native
 + profiling counters"]
     C1 --> VERY{Very hot or
 hot loop OSR?}
@@ -16147,7 +16147,7 @@ flowchart TD
     EA -->|"NO escape"| LE["Lock Elision<br/>synchronized removed<br/>thread-local object"]
     IL -->|"constants exposed"| CF["Constant Folding<br/>precompute constant exprs<br/>at compile time"]
     IL -->|"dead paths visible"| DCE["Dead Code Elimination<br/>remove unreachable branches<br/>reduce work"]
-    IL -->|"type info exposed"| DV["Devirtualisation<br/>virtual call → direct<br/>monomorphic profile"]
+    IL -->|"type info exposed"| DV["Devirtualisation<br/>virtual call -> direct<br/>monomorphic profile"]
     style IL fill:#312e81,stroke:#818cf8,color:#c4b5fd
     style EA fill:#1e293b,stroke:#6366f1,color:#e2e8f0
     style SR fill:#0d2b1e,stroke:#10b981,color:#a7f3d0
@@ -16324,7 +16324,7 @@ Peak throughput: lower ⚠️"]
         N1 --> N2 --> N3
     end
     subgraph JIT["HotSpot / Graal JIT (JVM)"]
-        J1["Runtime: interpret → C1 → C2
+        J1["Runtime: interpret -> C1 -> C2
 no build-time constraint"]
         J2["Startup: 1-2s ⚠️
 Memory: 300MB+ ⚠️"]
@@ -16466,7 +16466,7 @@ public class WarmupEffectBenchmark {
   },
   {
     id: `p2`,
-    title: `Core & Modern Java (8 → 21)`,
+    title: `Core & Modern Java (8 -> 21)`,
     icon: `code-2`,
     blurb: `Collections, concurrency, and the language leaps: lambdas, records, sealed types, pattern matching, virtual threads.`,
     modules: [
@@ -16547,7 +16547,7 @@ System.out.println(ordered); // [c, a, b] — insertion order
 // TreeSet — O(log n) operations; elements sorted by Comparable or Comparator
 Set<Integer> sorted = new TreeSet<>(List.of(5, 2, 8, 1));
 System.out.println(sorted); // [1, 2, 5, 8]
-System.out.println(((TreeSet<Integer>)sorted).floor(6)); // 5 — largest element ≤ 6
+System.out.println(((TreeSet<Integer>)sorted).floor(6)); // 5 — largest element <= 6
 \`\`\`
 
 ### Queue and Deque
@@ -16741,7 +16741,7 @@ From \`java.lang.Object\`:
 4. **Consistent:** repeated calls return the same result (if no state changes)
 5. **Non-null:** \`x.equals(null)\` must return \`false\`
 
-**Critical rule:** if \`x.equals(y)\` is \`true\` → \`x.hashCode() == y.hashCode()\` **must** also be true. The reverse is NOT required (hash collisions are allowed).
+**Critical rule:** if \`x.equals(y)\` is \`true\` -> \`x.hashCode() == y.hashCode()\` **must** also be true. The reverse is NOT required (hash collisions are allowed).
 
 ### What Happens When You Break the Contract
 
@@ -16754,13 +16754,13 @@ class BrokenPoint {
         BrokenPoint p = (BrokenPoint) o;
         return x == p.x && y == p.y;
     }
-    // ← hashCode() NOT overridden → uses Object's identity hash
+    // <- hashCode() NOT overridden -> uses Object's identity hash
 }
 
 Set<BrokenPoint> set = new HashSet<>();
 set.add(new BrokenPoint(1, 2));
 System.out.println(set.contains(new BrokenPoint(1, 2))); // FALSE — broken!
-// HashMap bucket lookup uses hashCode first. Different hashCodes → different buckets → never found.
+// HashMap bucket lookup uses hashCode first. Different hashCodes -> different buckets -> never found.
 \`\`\`
 
 ### Correct Implementation
@@ -16958,11 +16958,11 @@ Record lookup: " + points.contains(new Point(1, 2))); // true
             flashcards: [
               {
                 q: `What happens if you override equals() but NOT hashCode()?`,
-                a: `Two "equal" objects will hash to different buckets in HashMap/HashSet (because Object.hashCode() returns identity-based values). HashSet.contains(b) returns false even when a.equals(b) is true — b lands in a different bucket from a. The contract requires: a.equals(b) → a.hashCode() == b.hashCode(). Breaking this silently corrupts all hash-based collections.`
+                a: `Two "equal" objects will hash to different buckets in HashMap/HashSet (because Object.hashCode() returns identity-based values). HashSet.contains(b) returns false even when a.equals(b) is true — b lands in a different bucket from a. The contract requires: a.equals(b) -> a.hashCode() == b.hashCode(). Breaking this silently corrupts all hash-based collections.`
               },
               {
                 q: `What are the five properties of the equals() contract?`,
-                a: `Reflexive: x.equals(x) = true. Symmetric: x.equals(y) ↔ y.equals(x). Transitive: x.equals(y) ∧ y.equals(z) → x.equals(z). Consistent: repeated calls return same result (no state change). Non-null: x.equals(null) = false (never throws NullPointerException).`
+                a: `Reflexive: x.equals(x) = true. Symmetric: x.equals(y) ↔ y.equals(x). Transitive: x.equals(y) ∧ y.equals(z) -> x.equals(z). Consistent: repeated calls return same result (no state change). Non-null: x.equals(null) = false (never throws NullPointerException).`
               },
               {
                 q: `Why must you never use a mutable object as a HashMap key?`,
@@ -17216,7 +17216,7 @@ graph TD
     B0 --> N1[Node
 key=Alice
 val=30
-next→]
+next->]
     N1 --> N2[Node
 key=Eve
 val=25
@@ -17227,15 +17227,15 @@ val=40
 next=null]
     B7 --> N4[TreeNode
 red-black tree
-when chain ≥ 8]
+when chain >= 8]
     style B0 fill:#1e1b4b,stroke:#6366f1,color:#e2e8f0
     style B7 fill:#1e0a0a,stroke:#ef4444,color:#fecaca
 \`\`\`
 
 **Key implementation facts:**
 - Default initial capacity: **16** buckets, load factor **0.75**
-- Resize (doubles capacity) when: \`size > capacity × 0.75\`
-- Collision handling: linked list → **red-black tree** when chain length ≥ 8 (Java 8+)
+- Resize (doubles capacity) when: \`size > capacity x 0.75\`
+- Collision handling: linked list -> **red-black tree** when chain length >= 8 (Java 8+)
 - \`put()\`, \`get()\`, \`remove()\`: O(1) amortised; O(log n) worst-case (treeified bucket)
 - **Not thread-safe** — use \`ConcurrentHashMap\` or \`Collections.synchronizedMap()\`
 
@@ -17301,8 +17301,8 @@ TreeMap<String, Integer> tree = new TreeMap<>();
 tree.put("banana", 2); tree.put("apple", 1); tree.put("cherry", 3);
 System.out.println(tree.firstKey());      // apple
 System.out.println(tree.lastKey());       // cherry
-System.out.println(tree.floorKey("b"));   // banana (largest key ≤ "b")
-System.out.println(tree.ceilingKey("b")); // banana (smallest key ≥ "b")
+System.out.println(tree.floorKey("b"));   // banana (largest key <= "b")
+System.out.println(tree.ceilingKey("b")); // banana (smallest key >= "b")
 
 // Range views — live, backed by the TreeMap
 SortedMap<String, Integer> subMap = tree.subMap("apple", "cherry"); // [apple, banana]
@@ -17435,7 +17435,7 @@ Dept breakdown:");
             flashcards: [
               {
                 q: `What is HashMap's default initial capacity and load factor, and when does it resize?`,
-                a: `Default capacity: 16 buckets. Default load factor: 0.75. Resize trigger: when size > capacity × loadFactor (size > 12 for default settings). Resize doubles the capacity and rehashes all entries. Pre-sizing with new HashMap<>(expectedSize / 0.75 + 1) avoids costly rehashing if the approximate size is known upfront.`
+                a: `Default capacity: 16 buckets. Default load factor: 0.75. Resize trigger: when size > capacity x loadFactor (size > 12 for default settings). Resize doubles the capacity and rehashes all entries. Pre-sizing with new HashMap<>(expectedSize / 0.75 + 1) avoids costly rehashing if the approximate size is known upfront.`
               },
               {
                 q: `What changed in HashMap in Java 8 for collision handling?`,
@@ -17491,9 +17491,9 @@ collection choice in a design review.
 
 > [!SUCCESS]
 > **Array-backed (\`ArrayList\`, \`ArrayDeque\`, \`PriorityQueue\` heap).** A single
-> contiguous \`Object[]\`. Index math is one multiply+add → \`get(i)\` is true O(1)
+> contiguous \`Object[]\`. Index math is one multiply+add -> \`get(i)\` is true O(1)
 > and iteration is **cache-friendly** (sequential prefetch). The cost is *structural
-> change in the middle*: inserting/removing shifts up to \`n\` elements → O(n).
+> change in the middle*: inserting/removing shifts up to \`n\` elements -> O(n).
 
 **Amortized O(1) — \`ArrayList.add\`.** When the backing array fills, \`ArrayList\`
 grows by ~1.5x (\`oldCap + (oldCap >> 1)\`) and copies everything: that single add
@@ -17512,13 +17512,13 @@ amortized-growth trick.
 > when you *already hold the node* (e.g. an \`Iterator\`), which application code
 > almost never does.
 
-**Hash-backed (\`HashMap\`/\`HashSet\` and concurrent variants).** Key hash →
-bucket index → short scan within the bucket. With a good hash and load factor
+**Hash-backed (\`HashMap\`/\`HashSet\` and concurrent variants).** Key hash ->
+bucket index -> short scan within the bucket. With a good hash and load factor
 \`0.75\`, buckets hold ~1 entry, so \`get\`/\`put\`/\`containsKey\` are **O(1) average**.
 
 > [!DANGER]
 > **HashMap worst case and Java 8 treeification.** Many keys colliding into one
-> bucket degrade lookups. Pre-Java 8 a bucket was a linked list → **O(n)** worst
+> bucket degrade lookups. Pre-Java 8 a bucket was a linked list -> **O(n)** worst
 > case (a real DoS vector: \`HashDoS\` with crafted colliding keys). **Java 8**: when
 > a bucket exceeds \`TREEIFY_THRESHOLD = 8\` *and* table capacity \`>= 64\`, that bucket
 > converts to a **red-black tree**, bounding worst-case lookup at **O(log n)**
@@ -17560,7 +17560,7 @@ flowchart LR
 | Indexed list, append, scan | \`ArrayList\` | O(1) get/append, cache-friendly iterate |
 | FIFO queue / stack / deque | \`ArrayDeque\` | O(1) both ends, beats \`LinkedList\` & \`Stack\` |
 | Membership / dedup, no order | \`HashSet\` | O(1) contains/add |
-| Key→value lookup, no order | \`HashMap\` | O(1) get/put |
+| Key->value lookup, no order | \`HashMap\` | O(1) get/put |
 | Sorted keys, ranges, nearest | \`TreeMap\`/\`TreeSet\` | O(log n) + ordered navigation |
 | Predictable iteration order / LRU | \`LinkedHashMap\`/\`Set\` | O(1) ops + O(n) ordered iterate |
 | Always pull the min/max next | \`PriorityQueue\` | O(log n) offer/poll, O(1) peek |
@@ -17680,7 +17680,7 @@ public class HashVsTreeDemo {
               },
               {
                 q: `HashMap get: average vs worst case, and how Java 8 changed the worst case?`,
-                a: `Average O(1). Pre-Java 8 a colliding bucket was a linked list → O(n) worst. Java 8 treeifies a bucket to a red-black tree when it exceeds 8 entries and table capacity >= 64, bounding the worst case at O(log n).`
+                a: `Average O(1). Pre-Java 8 a colliding bucket was a linked list -> O(n) worst. Java 8 treeifies a bucket to a red-black tree when it exceeds 8 entries and table capacity >= 64, bounding the worst case at O(log n).`
               },
               {
                 q: `Exact treeify/untreeify thresholds in HashMap?`,
@@ -17731,7 +17731,7 @@ public class HashVsTreeDemo {
 Collections are the **#1 source** of coding-round questions. The interviewer rarely cares about exotic algorithms; they want to see that you **reach for the right data structure** and can state the **Big-O** without thinking. This drill set is the muscle memory.
 
 > [!TIP]
-> Before you write a line of code, say out loud: *"I need O(1) membership → \`HashSet\`; I need order preserved → \`LinkedHashMap\`; I need the smallest k → \`PriorityQueue\`; I need sorted navigation → \`TreeMap\`."* Naming the structure first is half the interview score.
+> Before you write a line of code, say out loud: *"I need O(1) membership -> \`HashSet\`; I need order preserved -> \`LinkedHashMap\`; I need the smallest k -> \`PriorityQueue\`; I need sorted navigation -> \`TreeMap\`."* Naming the structure first is half the interview score.
 
 ### Choosing the collection by operation
 
@@ -17755,10 +17755,10 @@ Collections are the **#1 source** of coding-round questions. The interviewer rar
 
 ### Big-O cheat you must recite
 
-- \`HashMap.get/put\` → O(1) average, O(n) worst (pre-Java 8) / O(log n) worst (treeified bins, Java 8+).
-- \`PriorityQueue.offer/poll\` → O(log n); \`peek\` → O(1).
-- \`TreeMap.floorKey/ceilingKey/subMap\` → O(log n).
-- \`ArrayList.get\` → O(1); \`ArrayList.add(0,x)\` → O(n); \`LinkedList.add(0,x)\` → O(1) but cache-unfriendly.
+- \`HashMap.get/put\` -> O(1) average, O(n) worst (pre-Java 8) / O(log n) worst (treeified bins, Java 8+).
+- \`PriorityQueue.offer/poll\` -> O(log n); \`peek\` -> O(1).
+- \`TreeMap.floorKey/ceilingKey/subMap\` -> O(log n).
+- \`ArrayList.get\` -> O(1); \`ArrayList.add(0,x)\` -> O(n); \`LinkedList.add(0,x)\` -> O(1) but cache-unfriendly.
 
 > [!SUCCESS]
 > A clean answer = correct structure + correct Big-O + a one-line reason. The code is almost an afterthought once those three are right.
@@ -18198,7 +18198,7 @@ public class MinMaxScan {
               },
               {
                 q: `How does the monotonic-deque sliding-window-max run in O(n)?`,
-                a: `Keep an ArrayDeque of indices whose values are strictly decreasing. For each i: expire the front if it's out of window, pop the back while its value <= a[i], then offer i. The front is always the window max. Each index is pushed and popped at most once → amortised O(1) per element.`
+                a: `Keep an ArrayDeque of indices whose values are strictly decreasing. For each i: expire the front if it's out of window, pop the back while its value <= a[i], then offer i. The front is always the window max. Each index is pushed and popped at most once -> amortised O(1) per element.`
               },
               {
                 q: `Which Set operations give intersection, union, and difference?`,
@@ -18233,7 +18233,7 @@ Every senior Java interview drills **multithreading**, and every multithreading 
 |---|---|---|---|
 | Returns a value | no | no (\`void run()\`) | yes (\`V call()\`) |
 | Throws checked exceptions | no | no | yes (\`throws Exception\`) |
-| Works with | direct \`start()\` | \`Thread\`, executors | executors (\`submit\` → \`Future<V>\`), \`FutureTask\` |
+| Works with | direct \`start()\` | \`Thread\`, executors | executors (\`submit\` -> \`Future<V>\`), \`FutureTask\` |
 | Verdict | avoid — burns your only superclass slot, conflates *task* with *worker* | default for fire-and-forget | default when you need a result or error |
 
 > [!TIP]
@@ -18266,14 +18266,14 @@ stateDiagram-v2
     TERMINATED --> [*]
 \`\`\`
 
-Two distinctions interviewers probe: **BLOCKED vs WAITING** (BLOCKED wants a *lock*; WAITING wants a *signal* — a thread in \`wait()\` moves to BLOCKED after being notified, because it must re-acquire the monitor before returning), and **RUNNABLE ≠ running** (the OS scheduler decides; Java lumps "ready" and "running" together).
+Two distinctions interviewers probe: **BLOCKED vs WAITING** (BLOCKED wants a *lock*; WAITING wants a *signal* — a thread in \`wait()\` moves to BLOCKED after being notified, because it must re-acquire the monitor before returning), and **RUNNABLE != running** (the OS scheduler decides; Java lumps "ready" and "running" together).
 
 > [!WARNING]
 > Calling \`start()\` twice throws \`IllegalThreadStateException\` — a thread object is single-use. And calling \`run()\` directly executes the task **on the calling thread** — no concurrency at all. Classic trick question.
 
 ### Daemon threads & priorities
 
-- A **daemon** thread does not keep the JVM alive: the JVM exits when the last *non-daemon* thread terminates, killing daemons mid-flight with **no finally blocks, no cleanup**. Set via \`setDaemon(true)\` **before** \`start()\` (after → \`IllegalThreadStateException\`). Use for housekeeping (cache eviction, metrics flush), never for work whose loss corrupts data.
+- A **daemon** thread does not keep the JVM alive: the JVM exits when the last *non-daemon* thread terminates, killing daemons mid-flight with **no finally blocks, no cleanup**. Set via \`setDaemon(true)\` **before** \`start()\` (after -> \`IllegalThreadStateException\`). Use for housekeeping (cache eviction, metrics flush), never for work whose loss corrupts data.
 - **Priorities** (\`1..10\`, default 5) are *hints* to the OS scheduler. On Linux, a normal JVM run maps all priorities to the same niceness — they usually do **nothing**. Correctness must never depend on priority; at best it's a mild throughput bias, at worst a source of starvation on OSes that do honor it. Say this in interviews and move on.
 
 ### Interruption — the cooperative cancellation model
@@ -18509,7 +18509,7 @@ public class CreationDemo {
               },
               {
                 q: `What happens if you call thread.run() instead of thread.start()?`,
-                a: `run() is a plain method call — the task executes synchronously on the calling thread; no new thread is created. start() allocates the OS thread, transitions NEW→RUNNABLE, and invokes run() on the new thread. Also: start() may only be called once; a second call throws IllegalThreadStateException.`
+                a: `run() is a plain method call — the task executes synchronously on the calling thread; no new thread is created. start() allocates the OS thread, transitions NEW->RUNNABLE, and invokes run() on the new thread. Also: start() may only be called once; a second call throws IllegalThreadStateException.`
               },
               {
                 q: `Why must you restore the interrupt flag after catching InterruptedException?`,
@@ -18553,7 +18553,7 @@ public class CreationDemo {
             title: `Shared Mutable State: Races, synchronized, volatile, Atomics`,
             notes: `## Shared Mutable State: Races, synchronized, volatile, Atomics
 
-All the pain in multithreading comes from one place: **two threads touching the same mutable data, at least one of them writing**. No shared mutable state → no data races, no locks, no visibility puzzles. Everything in this section is a strategy for when you can't avoid sharing.
+All the pain in multithreading comes from one place: **two threads touching the same mutable data, at least one of them writing**. No shared mutable state -> no data races, no locks, no visibility puzzles. Everything in this section is a strategy for when you can't avoid sharing.
 
 ### The anatomy of a race condition
 
@@ -18562,7 +18562,7 @@ All the pain in multithreading comes from one place: **two threads touching the 
 - **Read-modify-write**: \`count++\`, \`balance -= amount\`.
 - **Check-then-act**: \`if (map.get(k) == null) map.put(k, v)\` — the state can change between the check and the act. (This is why compound actions on a thread-safe map are still racy — see \`ConcurrentHashMap.compute\` in section 6.)
 
-There are actually **two distinct problems**, and naming both is a senior signal: **atomicity** (interleaving corrupts a multi-step operation) and **visibility** (a write by thread A may never be seen by thread B — cached in a register/store buffer, or reordered by the JIT). The Java Memory Model only guarantees cross-thread visibility through *happens-before* edges: lock release→acquire, volatile write→read, \`Thread.start()\`/\`join()\`, and final-field publication.
+There are actually **two distinct problems**, and naming both is a senior signal: **atomicity** (interleaving corrupts a multi-step operation) and **visibility** (a write by thread A may never be seen by thread B — cached in a register/store buffer, or reordered by the JIT). The Java Memory Model only guarantees cross-thread visibility through *happens-before* edges: lock release->acquire, volatile write->read, \`Thread.start()\`/\`join()\`, and final-field publication.
 
 ### synchronized — intrinsic locks
 
@@ -18572,8 +18572,8 @@ Key facts:
 
 - **Reentrant**: a thread that holds a monitor can re-enter \`synchronized\` blocks on the same object (the monitor keeps a hold count). Without reentrancy, a synchronized method calling another synchronized method on \`this\` would self-deadlock.
 - **What you lock matters** — synchronization only works if all parties lock the **same object**:
-  - \`synchronized\` instance method ⇒ locks \`this\`.
-  - \`static synchronized\` method ⇒ locks the \`Class\` object (\`MyClass.class\`).
+  - \`synchronized\` instance method => locks \`this\`.
+  - \`static synchronized\` method => locks the \`Class\` object (\`MyClass.class\`).
   - These are **different locks**! A static and an instance synchronized method can run simultaneously.
 - **Best practice**: lock a \`private final Object lock = new Object();\` rather than \`this\` — clients can synchronize on your public object and interfere or deadlock you.
 
@@ -18611,7 +18611,7 @@ do {
 Optimistic: no blocking, no priority inversion; under heavy contention it burns CPU on retries instead. That's why **\`LongAdder\`** exists — it stripes the counter across cells so contending threads hit different cache lines, and \`sum()\` folds them. For hot write-mostly counters (metrics), LongAdder beats AtomicLong decisively; for read-often exact values or CAS-on-latest semantics, stick with AtomicLong.
 
 > [!TIP]
-> Know one CAS caveat for staff-level rounds: the **ABA problem** — value went A→B→A, CAS can't tell. Java's answer is \`AtomicStampedReference\` (value + version stamp). Rarely bites with immutable values or GC'd references, but naming it scores.
+> Know one CAS caveat for staff-level rounds: the **ABA problem** — value went A->B->A, CAS can't tell. Java's answer is \`AtomicStampedReference\` (value + version stamp). Rarely bites with immutable values or GC'd references, but naming it scores.
 
 ### Immutability — the best fix
 
@@ -18811,7 +18811,7 @@ public class CasRetryDemo {
               },
               {
                 q: `Concurrency bugs split into atomicity problems and visibility problems — explain the difference.`,
-                a: `Atomicity: interleaving corrupts a multi-step operation (lost update in count++). Visibility: a write by thread A is never observed by thread B — cached, register-hoisted, or reordered by the JIT; B can loop forever on a stale flag. The Java Memory Model only guarantees cross-thread visibility along happens-before edges: monitor unlock→lock, volatile write→read, Thread.start()/join(), final-field publication. synchronized fixes both; volatile fixes only visibility.`
+                a: `Atomicity: interleaving corrupts a multi-step operation (lost update in count++). Visibility: a write by thread A is never observed by thread B — cached, register-hoisted, or reordered by the JIT; B can loop forever on a stale flag. The Java Memory Model only guarantees cross-thread visibility along happens-before edges: monitor unlock->lock, volatile write->read, Thread.start()/join(), final-field publication. synchronized fixes both; volatile fixes only visibility.`
               },
               {
                 q: `What exactly does volatile guarantee, and what does it famously NOT guarantee?`,
@@ -18835,11 +18835,11 @@ public class CasRetryDemo {
               },
               {
                 q: `AtomicLong vs LongAdder — when does each win?`,
-                a: `AtomicLong: one memory location, every increment CASes the same cache line — under heavy multi-thread contention throughput collapses to retry storms. LongAdder stripes the value across padded cells (threads hit different cache lines) and sum() folds them — vastly faster for hot write-mostly counters like metrics. Trade-offs: sum() is not an atomic snapshot, and there's no compareAndSet on the total. Rule: contended counter → LongAdder; need CAS semantics or exact point-in-time reads → AtomicLong.`
+                a: `AtomicLong: one memory location, every increment CASes the same cache line — under heavy multi-thread contention throughput collapses to retry storms. LongAdder stripes the value across padded cells (threads hit different cache lines) and sum() folds them — vastly faster for hot write-mostly counters like metrics. Trade-offs: sum() is not an atomic snapshot, and there's no compareAndSet on the total. Rule: contended counter -> LongAdder; need CAS semantics or exact point-in-time reads -> AtomicLong.`
               },
               {
                 q: `What is the ABA problem, and what is Java's remedy?`,
-                a: `A CAS checks the value, not the history: if a slot went A→B→A between your read and your CAS, the CAS succeeds even though the state changed — dangerous in lock-free structures reusing nodes. Remedy: AtomicStampedReference (value + integer version stamp, compared together) or AtomicMarkableReference. In practice, GC plus immutable snapshot objects makes ABA rare in Java — fresh objects are never == to old ones.`
+                a: `A CAS checks the value, not the history: if a slot went A->B->A between your read and your CAS, the CAS succeeds even though the state changed — dangerous in lock-free structures reusing nodes. Remedy: AtomicStampedReference (value + integer version stamp, compared together) or AtomicMarkableReference. In practice, GC plus immutable snapshot objects makes ABA rare in Java — fresh objects are never == to old ones.`
               },
               {
                 q: `Why is an immutable object automatically thread-safe, and what are the conditions for immutability?`,
@@ -18912,7 +18912,7 @@ Distinctions interviewers fish for:
 > European senior loops (esp. Netherlands/Germany) love the *practical* variant: "design a rate limiter / connection throttle". The expected first answer is \`Semaphore\` with \`tryAcquire(timeout)\` — bonus points for noting fairness mode to prevent starvation of bursty callers, and that permits-as-tokens generalizes to a token-bucket rate limiter.
 
 > [!SUCCESS]
-> Rule of thumb to close an answer: **count events → latch; sync iterations → barrier/phaser; limit concurrency → semaphore; swap payloads → exchanger; producer/consumer → BlockingQueue (section 6), not raw wait/notify.**`,
+> Rule of thumb to close an answer: **count events -> latch; sync iterations -> barrier/phaser; limit concurrency -> semaphore; swap payloads -> exchanger; producer/consumer -> BlockingQueue (section 6), not raw wait/notify.**`,
             code: [
               {
                 lang: `java`,
@@ -19154,7 +19154,7 @@ public class PhaserExchangerDemo {
               },
               {
                 q: `CountDownLatch vs CyclicBarrier — the classic comparison?`,
-                a: `Latch: one-shot (count never resets), asymmetric — some threads countDown() (events), others await(); counters and waiters can be different threads. 'Wait for events.' Barrier: reusable (auto-resets each generation), symmetric — the N waiting parties themselves trip it, with an optional barrier action running when the last arrives. 'Wait for each other.' Iterative phase-synced algorithms → barrier; start-gates and wait-for-N-boots → latch.`
+                a: `Latch: one-shot (count never resets), asymmetric — some threads countDown() (events), others await(); counters and waiters can be different threads. 'Wait for events.' Barrier: reusable (auto-resets each generation), symmetric — the N waiting parties themselves trip it, with an optional barrier action running when the last arrives. 'Wait for each other.' Iterative phase-synced algorithms -> barrier; start-gates and wait-for-N-boots -> latch.`
               },
               {
                 q: `When does Phaser beat CyclicBarrier?`,
@@ -19202,14 +19202,14 @@ public class PhaserExchangerDemo {
 | Timed acquisition | no | \`tryLock(t, unit)\` |
 | Interruptible while waiting for the lock | no (BLOCKED ignores interrupt) | \`lockInterruptibly()\` |
 | Fairness (FIFO) option | no | \`new ReentrantLock(true)\` |
-| Multiple conditions per lock | no (one wait set) | \`newCondition()\` × N |
+| Multiple conditions per lock | no (one wait set) | \`newCondition()\` x N |
 | Introspection (queue length, holders) | limited | yes |
-| Syntax risk | none | forget \`finally { unlock(); }\` → permanent lock-out |
+| Syntax risk | none | forget \`finally { unlock(); }\` -> permanent lock-out |
 
 > [!DANGER]
 > The non-negotiable idiom: \`lock.lock(); try { ... } finally { lock.unlock(); }\` — acquire **before** \`try\`, release in \`finally\`. Any return/exception path that skips \`unlock()\` bricks the lock for the rest of the process's life. This is the #1 reason to prefer \`synchronized\` when you don't need the extra powers.
 
-**Fairness** costs real throughput: a fair lock hands the lock to the longest-waiting thread, defeating the fast-path "barging" that lets a running thread re-acquire a just-released lock without a context switch. Unfair (default) can starve an unlucky thread under pathological contention; fair can be ~10-100× slower on hot locks. Default to unfair; buy fairness only when starvation is an observed problem.
+**Fairness** costs real throughput: a fair lock hands the lock to the longest-waiting thread, defeating the fast-path "barging" that lets a running thread re-acquire a just-released lock without a context switch. Unfair (default) can starve an unlucky thread under pathological contention; fair can be ~10-100x slower on hot locks. Default to unfair; buy fairness only when starvation is an observed problem.
 
 ### Condition — wait/notify with multiple wait sets
 
@@ -19217,7 +19217,7 @@ public class PhaserExchangerDemo {
 
 ### ReadWriteLock & StampedLock
 
-- **\`ReentrantReadWriteLock\`**: many concurrent readers *or* one writer. Wins only when reads are long/frequent and writes rare; the bookkeeping is heavier than a plain lock, and writers can be starved by a reader stream (fair mode mitigates). Watch for: upgrade (read→write) is **impossible** — self-deadlock; downgrade (write→read) is allowed.
+- **\`ReentrantReadWriteLock\`**: many concurrent readers *or* one writer. Wins only when reads are long/frequent and writes rare; the bookkeeping is heavier than a plain lock, and writers can be starved by a reader stream (fair mode mitigates). Watch for: upgrade (read->write) is **impossible** — self-deadlock; downgrade (write->read) is allowed.
 - **\`StampedLock\`** (Java 8): three modes — write, read, and **optimistic read**: \`tryOptimisticRead()\` returns a stamp *without locking at all*; you read your fields, then \`validate(stamp)\` — if no writer intervened, you paid almost nothing; if it fails, fall back to a real read lock and re-read. Brutally fast for read-dominated data (coordinates, config snapshots). Caveats that interviewers love: **not reentrant**, no conditions, and the optimistic section must tolerate reading torn/garbage state (copy fields to locals, validate, only then use them).
 
 ### Deadlock
@@ -19225,14 +19225,14 @@ public class PhaserExchangerDemo {
 Four Coffman conditions — all must hold: **mutual exclusion**, **hold-and-wait**, **no preemption**, **circular wait**. Classic Java case: thread 1 holds A wants B; thread 2 holds B wants A. Once formed, intrinsic-lock deadlocks are permanent (BLOCKED ignores interrupts).
 
 - **Detection**: \`jstack <pid>\` (or \`jcmd <pid> Thread.print\`) prints "Found one Java-level deadlock" with the cycle; programmatically, \`ThreadMXBean.findDeadlockedThreads()\` — the demo below does exactly this. In production, thread dumps on a hung service are your first move.
-- **Prevention** (break circular wait): impose a **global lock ordering** — e.g., always lock the account with the smaller id first (tie-break via \`System.identityHashCode\`). Every thread acquiring in the same order ⇒ no cycle, guaranteed.
+- **Prevention** (break circular wait): impose a **global lock ordering** — e.g., always lock the account with the smaller id first (tie-break via \`System.identityHashCode\`). Every thread acquiring in the same order => no cycle, guaranteed.
 - **Avoidance** (break hold-and-wait): \`tryLock(timeout)\` on the second lock; on failure **release everything**, back off (randomized delay!), retry. Converts deadlock into livelock-risk-with-retry — hence the random jitter.
 - Also: shrink lock scope, never call *alien methods* (listeners/callbacks) while holding a lock, prefer single-lock or lock-free designs.
 
 **Livelock**: threads aren't blocked but perpetually retry and mutually yield — two people side-stepping in a corridor. Fix: randomized backoff (as in the demo). **Starvation**: a thread perpetually loses the race (unfair locks under heavy contention, writer behind endless readers, that mythical low-priority thread). Fix: fairness, queueing, bounded work.
 
 > [!TIP]
-> Interview script for "how do you debug a hung service": take 2–3 thread dumps a few seconds apart (\`jstack\`/\`jcmd Thread.print\`) → look for the "Found one Java-level deadlock" section, or for many threads BLOCKED on the same monitor / parked in the same pool → if dumps are identical across samples it's a deadlock/stall, if the stacks churn it's contention or livelock. Mentioning *multiple* dumps is the senior detail.`,
+> Interview script for "how do you debug a hung service": take 2–3 thread dumps a few seconds apart (\`jstack\`/\`jcmd Thread.print\`) -> look for the "Found one Java-level deadlock" section, or for many threads BLOCKED on the same monitor / parked in the same pool -> if dumps are identical across samples it's a deadlock/stall, if the stacks churn it's contention or livelock. Mentioning *multiple* dumps is the senior detail.`,
             code: [
               {
                 lang: `java`,
@@ -19553,7 +19553,7 @@ public class DeadlockDemo {
               },
               {
                 q: `What is the mandatory idiom around ReentrantLock, and what goes wrong without it?`,
-                a: `lock.lock(); try { ... } finally { lock.unlock(); } — acquire BEFORE the try, release in finally. If any exception or early return skips unlock(), the lock is held forever (no scope-based release like synchronized), permanently blocking every future acquirer. Subtlety: locking inside the try means a failed/interrupted acquisition still reaches finally and unlocks a lock you don't own → IllegalMonitorStateException.`
+                a: `lock.lock(); try { ... } finally { lock.unlock(); } — acquire BEFORE the try, release in finally. If any exception or early return skips unlock(), the lock is held forever (no scope-based release like synchronized), permanently blocking every future acquirer. Subtlety: locking inside the try means a failed/interrupted acquisition still reaches finally and unlocks a lock you don't own -> IllegalMonitorStateException.`
               },
               {
                 q: `What does a fair lock cost, and when would you actually enable fairness?`,
@@ -19565,7 +19565,7 @@ public class DeadlockDemo {
               },
               {
                 q: `ReentrantReadWriteLock: when does it help, and what are its two classic traps?`,
-                a: `Helps when reads are frequent/lengthy and writes rare — readers proceed concurrently, one writer excludes all. Traps: (1) lock upgrade (holding read, requesting write) deadlocks yourself — upgrade is unsupported; downgrade (write→acquire read→release write) is legal. (2) writer starvation under a continuous reader stream in unfair mode. Also its bookkeeping is costlier than a plain lock, so short/rare reads often perform worse than plain synchronized.`
+                a: `Helps when reads are frequent/lengthy and writes rare — readers proceed concurrently, one writer excludes all. Traps: (1) lock upgrade (holding read, requesting write) deadlocks yourself — upgrade is unsupported; downgrade (write->acquire read->release write) is legal. (2) writer starvation under a continuous reader stream in unfair mode. Also its bookkeeping is costlier than a plain lock, so short/rare reads often perform worse than plain synchronized.`
               },
               {
                 q: `How does StampedLock's optimistic read work, and what are its sharp edges?`,
@@ -19607,8 +19607,8 @@ Raw \`new Thread()\` per task does not scale: each platform thread costs ~1 MB o
 
 | Factory | Pool shape | Queue | Watch out |
 |---|---|---|---|
-| \`newFixedThreadPool(n)\` | n core = max threads | **unbounded** \`LinkedBlockingQueue\` | queue grows without limit → OOM / unbounded latency under overload |
-| \`newCachedThreadPool()\` | 0 core, max = \`Integer.MAX_VALUE\`, 60s keep-alive | \`SynchronousQueue\` (no storage) | every burst task gets a thread → **thread explosion** under load |
+| \`newFixedThreadPool(n)\` | n core = max threads | **unbounded** \`LinkedBlockingQueue\` | queue grows without limit -> OOM / unbounded latency under overload |
+| \`newCachedThreadPool()\` | 0 core, max = \`Integer.MAX_VALUE\`, 60s keep-alive | \`SynchronousQueue\` (no storage) | every burst task gets a thread -> **thread explosion** under load |
 | \`newSingleThreadExecutor()\` | 1 thread | unbounded | serializes tasks (ordering guarantee!); same unbounded-queue risk |
 | \`newScheduledThreadPool(n)\` | n core, delayed/periodic | \`DelayedWorkQueue\` | an uncaught exception **silently cancels** a periodic task — always try/catch inside |
 | \`newWorkStealingPool()\` | ForkJoinPool, parallelism = cores | per-thread deques, stealing | no execution-order guarantees; daemon threads; best for many small independent tasks |
@@ -19635,19 +19635,19 @@ flowchart TD
     G -.->|idle > keepAlive| I[extra thread retires]
 \`\`\`
 
-**Queue before max**: the pool prefers to *queue* rather than grow past core. Extra threads (core→max) are created **only when the queue is full**. Corollary: with an unbounded queue, \`maximumPoolSize\` is *dead configuration* — the queue is never full, so the pool never grows past core. This single fact explains most "why isn't my pool using its max threads?" production mysteries and is a beloved interview trap.
+**Queue before max**: the pool prefers to *queue* rather than grow past core. Extra threads (core->max) are created **only when the queue is full**. Corollary: with an unbounded queue, \`maximumPoolSize\` is *dead configuration* — the queue is never full, so the pool never grows past core. This single fact explains most "why isn't my pool using its max threads?" production mysteries and is a beloved interview trap.
 
 Rejection policies (when queue full AND max threads reached): \`AbortPolicy\` (default — throws \`RejectedExecutionException\`), \`CallerRunsPolicy\` (the *submitting* thread runs the task — elegant backpressure: the web thread slows down, upstream naturally throttles), \`DiscardPolicy\` (drop silently — almost never right), \`DiscardOldestPolicy\` (drop head of queue, retry).
 
 ### Pool sizing
 
-- **CPU-bound**: threads ≈ **number of cores** (\`Runtime.getRuntime().availableProcessors()\`), maybe +1; more threads just add context-switch and cache-thrash overhead.
-- **IO-bound**: threads ≈ **cores × (1 + wait/compute)**. A task that waits 90 ms on IO per 10 ms of CPU (ratio 9) on 8 cores → 8 × 10 = 80 threads to keep all cores busy while others block.
+- **CPU-bound**: threads ~ **number of cores** (\`Runtime.getRuntime().availableProcessors()\`), maybe +1; more threads just add context-switch and cache-thrash overhead.
+- **IO-bound**: threads ~ **cores x (1 + wait/compute)**. A task that waits 90 ms on IO per 10 ms of CPU (ratio 9) on 8 cores -> 8 x 10 = 80 threads to keep all cores busy while others block.
 - Mixed workloads: **separate pools per workload class** (fast CPU work vs slow IO calls) — one shared pool lets slow IO tasks starve latency-critical work; this is bulkheading.
 - Beware \`availableProcessors()\` in containers: modern JVMs respect cgroup CPU quotas, but a 0.5-CPU limit means your "cores" figure is 1 — size accordingly.
 
 > [!TIP]
-> The IO-bound formula is a first estimate, not gospel — the honest senior answer is "derive the starting point from cores × (1 + W/C), then load-test and watch queue depth, latency and CPU". Also mention that very high W/C ratios are the signal to stop tuning pools and use virtual threads (module 2.4).
+> The IO-bound formula is a first estimate, not gospel — the honest senior answer is "derive the starting point from cores x (1 + W/C), then load-test and watch queue depth, latency and CPU". Also mention that very high W/C ratios are the signal to stop tuning pools and use virtual threads (module 2.4).
 
 ### Graceful shutdown — the canonical two-phase pattern
 
@@ -19670,11 +19670,11 @@ try {
 Since Java 19, \`ExecutorService\` extends \`AutoCloseable\` — \`try (var pool = ...)\` calls \`close()\`, which is shutdown-and-wait-indefinitely (fine for scripts/tests; production wants the bounded two-phase version).
 
 > [!DANGER]
-> Misconfiguration hall of shame: (1) fixed pool + unbounded queue → OOM and unbounded latency instead of backpressure; (2) cached pool on a bursty workload → tens of thousands of threads, native-thread OOM; (3) \`submit()\` without ever calling \`get()\` on the \`Future\` → task exceptions vanish (they're stored in the Future, never thrown into any log); (4) periodic \`ScheduledExecutorService\` task throws once → silently never runs again; (5) tasks in pool A submitting-and-waiting on pool A → **thread-starvation deadlock** when the pool is saturated.
+> Misconfiguration hall of shame: (1) fixed pool + unbounded queue -> OOM and unbounded latency instead of backpressure; (2) cached pool on a bursty workload -> tens of thousands of threads, native-thread OOM; (3) \`submit()\` without ever calling \`get()\` on the \`Future\` -> task exceptions vanish (they're stored in the Future, never thrown into any log); (4) periodic \`ScheduledExecutorService\` task throws once -> silently never runs again; (5) tasks in pool A submitting-and-waiting on pool A -> **thread-starvation deadlock** when the pool is saturated.
 
 ### Callable, Future & friends
 
-\`submit(Callable<V>)\` → \`Future<V>\`: \`get()\` blocks (always prefer \`get(timeout, unit)\`), \`cancel(true)\` interrupts the running task, and an exception thrown by the task surfaces as \`ExecutionException\` (with your exception as \`getCause()\`) *only when someone calls get*. \`invokeAll(tasks, timeout, unit)\` runs a batch and cancels stragglers at the deadline; \`invokeAny\` returns the first success and cancels the rest.`,
+\`submit(Callable<V>)\` -> \`Future<V>\`: \`get()\` blocks (always prefer \`get(timeout, unit)\`), \`cancel(true)\` interrupts the running task, and an exception thrown by the task surfaces as \`ExecutionException\` (with your exception as \`getCause()\`) *only when someone calls get*. \`invokeAll(tasks, timeout, unit)\` runs a batch and cancels stragglers at the deadline; \`invokeAny\` returns the first success and cancels the rest.`,
             code: [
               {
                 lang: `java`,
@@ -19929,7 +19929,7 @@ public class FutureDemo {
               },
               {
                 q: `Walk through ThreadPoolExecutor's task-submission algorithm — the part everyone gets wrong.`,
-                a: `On execute(): (1) if running threads < corePoolSize → create a new core thread, even if others are idle. (2) else if the queue can accept → ENQUEUE (the pool prefers queueing to growing!). (3) else if threads < maximumPoolSize → create an extra thread. (4) else → RejectedExecutionHandler. The trap: growth beyond core happens ONLY when the queue is full — so with an unbounded queue, maximumPoolSize is dead configuration and the pool never exceeds core size.`
+                a: `On execute(): (1) if running threads < corePoolSize -> create a new core thread, even if others are idle. (2) else if the queue can accept -> ENQUEUE (the pool prefers queueing to growing!). (3) else if threads < maximumPoolSize -> create an extra thread. (4) else -> RejectedExecutionHandler. The trap: growth beyond core happens ONLY when the queue is full — so with an unbounded queue, maximumPoolSize is dead configuration and the pool never exceeds core size.`
               },
               {
                 q: `What's dangerous about Executors.newFixedThreadPool and newCachedThreadPool in production?`,
@@ -19941,7 +19941,7 @@ public class FutureDemo {
               },
               {
                 q: `Give the pool-sizing formulas for CPU-bound and IO-bound workloads, with a worked example.`,
-                a: `CPU-bound: threads ≈ cores (availableProcessors()), maybe +1 — extra threads only add context switches. IO-bound: threads ≈ cores × (1 + wait/compute). Example: 8 cores, tasks wait 90 ms on IO per 10 ms CPU → 8 × (1 + 9) = 80 threads keeps cores busy while most threads block. Caveats: it's a starting estimate — load-test and observe; in containers, cgroup CPU quotas shrink availableProcessors(); very high wait/compute ratios are the cue for virtual threads instead.`
+                a: `CPU-bound: threads ~ cores (availableProcessors()), maybe +1 — extra threads only add context switches. IO-bound: threads ~ cores x (1 + wait/compute). Example: 8 cores, tasks wait 90 ms on IO per 10 ms CPU -> 8 x (1 + 9) = 80 threads keeps cores busy while most threads block. Caveats: it's a starting estimate — load-test and observe; in containers, cgroup CPU quotas shrink availableProcessors(); very high wait/compute ratios are the cue for virtual threads instead.`
               },
               {
                 q: `shutdown() vs shutdownNow() — and the canonical graceful-shutdown pattern?`,
@@ -19949,7 +19949,7 @@ public class FutureDemo {
               },
               {
                 q: `A pool.submit() task threw a RuntimeException but nothing appeared in the logs. Why?`,
-                a: `submit() wraps the task in a FutureTask; any throwable is caught and stored in the Future, surfaced as ExecutionException only when someone calls get(). Nobody calls get() → the exception silently vanishes (no uncaughtExceptionHandler fires, because the worker thread didn't die). Fixes: always consume Futures; use execute() for fire-and-forget (uncaught handler then fires); or override ThreadPoolExecutor.afterExecute to log Future failures.`
+                a: `submit() wraps the task in a FutureTask; any throwable is caught and stored in the Future, surfaced as ExecutionException only when someone calls get(). Nobody calls get() -> the exception silently vanishes (no uncaughtExceptionHandler fires, because the worker thread didn't die). Fixes: always consume Futures; use execute() for fire-and-forget (uncaught handler then fires); or override ThreadPoolExecutor.afterExecute to log Future failures.`
               },
               {
                 q: `Your scheduleAtFixedRate job 'stopped running' after a while with no errors. Diagnosis?`,
@@ -19981,13 +19981,13 @@ Producer–consumer is *the* multithreading design pattern: decouple work genera
 
 ### BlockingQueue essentials
 
-The interface encodes four policies for the two failure cases (full on insert, empty on remove) — knowing this 4×2 grid cold is a quick senior win:
+The interface encodes four policies for the two failure cases (full on insert, empty on remove) — knowing this 4x2 grid cold is a quick senior win:
 
 | | Throws | Returns special value | Blocks | Times out |
 |---|---|---|---|---|
-| Insert | \`add(e)\` | \`offer(e)\` → false | \`put(e)\` | \`offer(e, t, u)\` |
-| Remove | \`remove()\` | \`poll()\` → null | \`take()\` | \`poll(t, u)\` |
-| Examine | \`element()\` | \`peek()\` → null | — | — |
+| Insert | \`add(e)\` | \`offer(e)\` -> false | \`put(e)\` | \`offer(e, t, u)\` |
+| Remove | \`remove()\` | \`poll()\` -> null | \`take()\` | \`poll(t, u)\` |
+| Examine | \`element()\` | \`peek()\` -> null | — | — |
 
 **\`put\`/\`take\` are the producer–consumer verbs** — they block, which is exactly the backpressure you want.
 
@@ -19996,7 +19996,7 @@ The interface encodes four policies for the two failure cases (full on insert, e
 | Implementation | Bounded? | Ordering | Distinctive trait / when to use |
 |---|---|---|---|
 | \`ArrayBlockingQueue\` | yes (fixed array) | FIFO | single lock, pre-allocated, optional fairness; the default choice for bounded hand-off |
-| \`LinkedBlockingQueue\` | optionally (default \`Integer.MAX_VALUE\`!) | FIFO | separate put/take locks → higher throughput; **always pass a capacity** |
+| \`LinkedBlockingQueue\` | optionally (default \`Integer.MAX_VALUE\`!) | FIFO | separate put/take locks -> higher throughput; **always pass a capacity** |
 | \`SynchronousQueue\` | zero capacity | — | pure hand-off: put blocks until a take arrives; backs \`newCachedThreadPool\` |
 | \`PriorityBlockingQueue\` | unbounded | by \`Comparator\`/natural | highest-priority job next; put never blocks (unbounded — mind the memory) |
 | \`DelayQueue\` | unbounded | by delay expiry | elements visible only after their delay elapses — schedulers, TTL caches, retry-with-backoff |
@@ -20032,7 +20032,7 @@ How do consumers know to stop? \`interrupt()\` works but couples you to thread r
 \`ConcurrentModificationException\` itself is about **fail-fast iterators**, not threads per se: \`ArrayList\`/\`HashMap\` iterators check a \`modCount\` and throw on structural modification by *anyone* — including your own thread calling \`list.remove(x)\` inside a for-each. It's best-effort detection, not a guarantee. Fixes: \`iterator.remove()\` / \`removeIf\` for single-threaded cases; concurrent collections for multithreaded ones.
 
 > [!SUCCESS]
-> Decision cheat-sheet: bounded hand-off → \`ArrayBlockingQueue\`; high-throughput queue → \`LinkedBlockingQueue\` (with capacity!); direct hand-off/no buffering → \`SynchronousQueue\`; shared map → \`ConcurrentHashMap\` (use \`merge\`/\`compute\`, not get-then-put); read-mostly listener list → \`CopyOnWriteArrayList\`; sorted concurrent map → \`ConcurrentSkipListMap\` (the concurrent \`TreeMap\`).`,
+> Decision cheat-sheet: bounded hand-off -> \`ArrayBlockingQueue\`; high-throughput queue -> \`LinkedBlockingQueue\` (with capacity!); direct hand-off/no buffering -> \`SynchronousQueue\`; shared map -> \`ConcurrentHashMap\` (use \`merge\`/\`compute\`, not get-then-put); read-mostly listener list -> \`CopyOnWriteArrayList\`; sorted concurrent map -> \`ConcurrentSkipListMap\` (the concurrent \`TreeMap\`).`,
             code: [
               {
                 lang: `java`,
@@ -20266,7 +20266,7 @@ public class CmeAndCowDemo {
               },
               {
                 q: `You need scheduled retries with exponential backoff processed by worker threads. Which BlockingQueue fits and how?`,
-                a: `DelayQueue: elements implement Delayed (getDelay/compareTo); take() only returns an element once its delay expires. Enqueue a RetryTask with delay = base × 2^attempt; workers loop on take() — items become visible exactly when due, no polling. Same mechanism suits TTL cache eviction and token refresh. Caveats: unbounded, and elements must be immutable w.r.t. their deadline once enqueued.`
+                a: `DelayQueue: elements implement Delayed (getDelay/compareTo); take() only returns an element once its delay expires. Enqueue a RetryTask with delay = base x 2^attempt; workers loop on take() — items become visible exactly when due, no polling. Same mechanism suits TTL cache eviction and token refresh. Caveats: unbounded, and elements must be immutable w.r.t. their deadline once enqueued.`
               }
             ]
           },
@@ -20311,7 +20311,7 @@ An exception in any stage **skips all subsequent value-stages** and propagates d
 
 ### WHICH thread runs what — the question that separates seniors
 
-- \`supplyAsync(s)\` with no executor → **\`ForkJoinPool.commonPool()\`** (parallelism = cores − 1).
+- \`supplyAsync(s)\` with no executor -> **\`ForkJoinPool.commonPool()\`** (parallelism = cores - 1).
 - Non-\`Async\` dependents (\`thenApply\`) run on **whichever thread completes the previous stage** — or, if it was *already complete* when you attached the callback, on **the calling thread** (your request thread!). You do not control this — never put slow/blocking work in a non-Async stage.
 - \`*Async(f)\` variants re-dispatch to the common pool; \`*Async(f, executor)\` to **your** executor — the production pattern, because:
 
@@ -20596,7 +20596,7 @@ public class FanOutFanInDemo {
             flashcards: [
               {
                 q: `thenApply vs thenCompose — THE CompletableFuture interview question.`,
-                a: `thenApply is map: takes T -> U, transforms the value synchronously in the pipeline. thenCompose is flatMap: takes T -> CompletionStage<U> and FLATTENS — for when the next step is itself async. Using thenApply with an async function yields nested CompletableFuture<CompletableFuture<U>> — the tell-tale bug. Rule: sync transform → thenApply; dependent async call → thenCompose; two independent futures merged → thenCombine (zip).`
+                a: `thenApply is map: takes T -> U, transforms the value synchronously in the pipeline. thenCompose is flatMap: takes T -> CompletionStage<U> and FLATTENS — for when the next step is itself async. Using thenApply with an async function yields nested CompletableFuture<CompletableFuture<U>> — the tell-tale bug. Rule: sync transform -> thenApply; dependent async call -> thenCompose; two independent futures merged -> thenCombine (zip).`
               },
               {
                 q: `Which thread executes a non-Async callback like thenApply, and what is the already-completed trap?`,
@@ -20604,7 +20604,7 @@ public class FanOutFanInDemo {
               },
               {
                 q: `supplyAsync with no executor runs where, and why is that a production hazard?`,
-                a: `ForkJoinPool.commonPool() — one JVM-wide pool with parallelism ≈ cores − 1, shared with parallel streams and every other default-CF user. Blocking IO in it starves the whole JVM's async machinery (classic outage). In CPU-quota'd containers it can shrink to parallelism 1. Rule: every blocking/IO stage gets an explicit, IO-sized executor via supplyAsync(s, executor) / thenApplyAsync(f, executor).`
+                a: `ForkJoinPool.commonPool() — one JVM-wide pool with parallelism ~ cores - 1, shared with parallel streams and every other default-CF user. Blocking IO in it starves the whole JVM's async machinery (classic outage). In CPU-quota'd containers it can shrink to parallelism 1. Rule: every blocking/IO stage gets an explicit, IO-sized executor via supplyAsync(s, executor) / thenApplyAsync(f, executor).`
               },
               {
                 q: `What exactly does the -Async suffix change on a combinator?`,
@@ -20632,7 +20632,7 @@ public class FanOutFanInDemo {
               },
               {
                 q: `Sketch the fan-out/fan-in pattern for aggregating three microservice calls with resilience.`,
-                a: `Fan-out: cf1/cf2/cf3 = supplyAsync(call, ioPool) — explicit IO-sized executor. Per-call resilience: each gets .orTimeout(budget) and .exceptionally(ex -> fallbackValue) so one slow/dead service can't sink the aggregate. Fan-in: allOf(cf1, cf2, cf3).thenApply(v -> merge(cf1.join(), cf2.join(), cf3.join())). Total latency ≈ max(individual), not the sum. Independent calls use thenCombine/allOf; dependent chains use thenCompose.`
+                a: `Fan-out: cf1/cf2/cf3 = supplyAsync(call, ioPool) — explicit IO-sized executor. Per-call resilience: each gets .orTimeout(budget) and .exceptionally(ex -> fallbackValue) so one slow/dead service can't sink the aggregate. Fan-in: allOf(cf1, cf2, cf3).thenApply(v -> merge(cf1.join(), cf2.join(), cf3.join())). Total latency ~ max(individual), not the sum. Independent calls use thenCombine/allOf; dependent chains use thenCompose.`
               },
               {
                 q: `When do virtual threads make CompletableFuture chains unnecessary — and when does CF still win?`,
@@ -22318,7 +22318,7 @@ boolean isVirtual = Thread.currentThread().isVirtual(); // true
 
 \`\`\`java
 // Virtual thread state machine
-// NEW → STARTED → RUNNING (mounted on carrier) → PARKING (I/O blocks) → RUNNABLE (I/O done) → TERMINATED
+// NEW -> STARTED -> RUNNING (mounted on carrier) -> PARKING (I/O blocks) -> RUNNABLE (I/O done) -> TERMINATED
 
 // When a virtual thread calls blocking I/O:
 // 1. JVM detects the blocking call
@@ -22353,7 +22353,7 @@ try (var pool = Executors.newFixedThreadPool(200)) {  // limited by OS
         .toList();
     futures.forEach(f -> f.get());
 }
-// Takes ~500ms (1000 tasks / 200 threads × 100ms)
+// Takes ~500ms (1000 tasks / 200 threads x 100ms)
 
 // Virtual thread — minimal OS thread waste
 try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -22596,7 +22596,7 @@ try (var outer = new StructuredTaskScope.ShutdownOnFailure()) {
     outer.join().throwIfFailed();
     return new Dashboard(userTask.get(), ordersTask.get());
 }
-// If any inner task fails: inner scope shuts down → outer task fails → outer scope shuts down
+// If any inner task fails: inner scope shuts down -> outer task fails -> outer scope shuts down
 \`\`\`
 
 ### Timeout with StructuredTaskScope
@@ -23085,7 +23085,7 @@ public ExecutorService taskExecutor() {
 
 // Step 4: Audit ThreadLocal usage
 grep -r "ThreadLocal" src/   // find all usages
-// For each: does it cache expensive resources? → move to request scope or ScopedValue
+// For each: does it cache expensive resources? -> move to request scope or ScopedValue
 \`\`\`
 
 ### HTTP Client with Virtual Threads
@@ -23121,7 +23121,7 @@ String result = processSync(body);
 // HikariCP: maximumPoolSize should match max DB connections, not thread count
 
 // application.yml
-// spring.datasource.hikari.maximum-pool-size: 20  ← DB connection limit
+// spring.datasource.hikari.maximum-pool-size: 20  <- DB connection limit
 // (Was previously set to match thread pool size, now independent)
 
 // Virtual threads will WAIT for a connection if pool is exhausted
@@ -23155,7 +23155,7 @@ void testConcurrentRequests() throws Exception {
             });
         }
         assertTrue(latch.await(10, TimeUnit.SECONDS),
-            "Should complete within 10s, not " + concurrency + " × latency");
+            "Should complete within 10s, not " + concurrency + " x latency");
     }
     assertEquals(concurrency, success.get());
 }
@@ -23278,7 +23278,7 @@ public class MigrationAudit {
               },
               {
                 q: `How do you test that code works correctly with high virtual thread concurrency?`,
-                a: `Use CountDownLatch + newVirtualThreadPerTaskExecutor: spawn N concurrent tasks (e.g. 1000), each decrementing the latch on completion. Assert latch.await(timeout) returns true (all tasks finished in time, not N × latency). Also check correctness via an AtomicInteger success counter. Use -Djdk.tracePinnedThreads=full during tests to detect pinning. In Spring: @SpringBootTest with WebTestClient can be used for concurrency testing.`
+                a: `Use CountDownLatch + newVirtualThreadPerTaskExecutor: spawn N concurrent tasks (e.g. 1000), each decrementing the latch on completion. Assert latch.await(timeout) returns true (all tasks finished in time, not N x latency). Also check correctness via an AtomicInteger success counter. Use -Djdk.tracePinnedThreads=full during tests to detect pinning. In Spring: @SpringBootTest with WebTestClient can be used for concurrency testing.`
               },
               {
                 q: `Can virtual threads replace reactive programming (WebFlux)?`,
@@ -23584,7 +23584,7 @@ public non-sealed class FreeformShape implements Shape {}
 ### Exhaustive Switch on Sealed Types
 
 \`\`\`java
-// Compiler KNOWS all permitted subtypes → can enforce exhaustiveness
+// Compiler KNOWS all permitted subtypes -> can enforce exhaustiveness
 double area(Shape shape) {
     return switch (shape) {
         case Circle c       -> Math.PI * c.radius() * c.radius();
@@ -24070,7 +24070,7 @@ public class ModernJavaFeatures {
               },
               {
                 q: `What is a guarded pattern in a switch and when do you use it?`,
-                a: `A guarded pattern adds a when clause to a type pattern: case Integer i when i > 0 -> "positive". The when predicate is evaluated after the type match succeeds. Multiple guards for the same type must be ordered from most specific to least (narrower first): case Integer i when i < 0 → "negative", case Integer i when i == 0 → "zero", case Integer i → "positive". The compiler checks that all patterns together are exhaustive but does NOT check for logical overlaps between guards — that's your responsibility.`
+                a: `A guarded pattern adds a when clause to a type pattern: case Integer i when i > 0 -> "positive". The when predicate is evaluated after the type match succeeds. Multiple guards for the same type must be ordered from most specific to least (narrower first): case Integer i when i < 0 -> "negative", case Integer i when i == 0 -> "zero", case Integer i -> "positive". The compiler checks that all patterns together are exhaustive but does NOT check for logical overlaps between guards — that's your responsibility.`
               }
             ]
           }
@@ -24897,7 +24897,7 @@ flowchart TD
 > [!TIP]
 > Senior framing: "Spring context in a test is a cost. Domain logic gets **no context**. Each boundary gets its **slice**. \`@SpringBootTest\` is for a thin layer of wiring/journey tests." Also know that field-injection-heavy code forces Spring into tests; constructor injection lets most classes be tested with plain \`new\`.
 
-### @MockBean → @MockitoBean
+### @MockBean -> @MockitoBean
 
 \`@MockBean\` (and \`@SpyBean\`) replace/add a bean in the context with a Mockito mock — essential in slices to satisfy the controller's dependencies. **Deprecated in Spring Boot 3.4**: use \`@MockitoBean\`/\`@MockitoSpyBean\` (now in Spring Framework 6.2 itself, \`org.springframework.test.context.bean.override.mockito\`). Semantics are near-identical; interviewers increasingly expect you to know the migration.
 
@@ -25137,7 +25137,7 @@ Testing Postgres-bound code against H2 (even in "PostgreSQL compatibility mode")
 
 ### Lifecycle annotations
 
-\`@Testcontainers\` (JUnit extension) scans \`@Container\` fields: **static** field → started once per class, shared by its tests; **instance** field → restarted for every test (slow — rarely what you want).
+\`@Testcontainers\` (JUnit extension) scans \`@Container\` fields: **static** field -> started once per class, shared by its tests; **instance** field -> restarted for every test (slow — rarely what you want).
 
 ### The singleton container pattern — the real-world default
 
@@ -25398,7 +25398,7 @@ A brittle test fails when the code is *refactored*, not when it's *broken*. Clas
 | **External env** | works on my machine | Testcontainers over shared envs; no internet in unit tests |
 
 > [!DANGER]
-> \`Thread.sleep\` in tests is a double defect: too short → flaky, long enough → your suite crawls (and it's *still* not guaranteed). Awaitility's \`await().atMost(5, SECONDS).untilAsserted(...)\` polls — it's both faster on the happy path and deterministic in intent. For code you control, prefer returning \`CompletableFuture\`/using latches so tests can await *the event*, not *elapsed time*.
+> \`Thread.sleep\` in tests is a double defect: too short -> flaky, long enough -> your suite crawls (and it's *still* not guaranteed). Awaitility's \`await().atMost(5, SECONDS).untilAsserted(...)\` polls — it's both faster on the happy path and deterministic in intent. For code you control, prefer returning \`CompletableFuture\`/using latches so tests can await *the event*, not *elapsed time*.
 
 ### AssertJ
 
@@ -25406,7 +25406,7 @@ The de-facto assertion library: fluent, discoverable (\`assertThat(x).\` + IDE c
 
 ### TDD — an honest appraisal
 
-Red → green → refactor: write a failing test, make it pass with the simplest thing, then refactor with a green bar.
+Red -> green -> refactor: write a failing test, make it pass with the simplest thing, then refactor with a green bar.
 
 **Where it shines**: algorithmic/domain logic with crisp inputs-outputs (pricing, parsing, state machines); bug fixes (reproduce-first guarantees the regression test exists); API design pressure (you feel a clumsy interface immediately); untested legacy — characterization tests before refactoring (Feathers).
 
@@ -25728,7 +25728,7 @@ IoC Container]
     AC --> WI[Wires dependencies
 by type + @Qualifier]
     AC --> LM[Manages lifecycle
-init → use → destroy]
+init -> use -> destroy]
     SC --> B1[UserService bean]
     SC --> B2[UserRepository bean]
     CF --> B3[DataSource bean]
@@ -25885,7 +25885,7 @@ public class SpringDiConceptual {
               },
               {
                 q: `What is the difference between @Component, @Service, @Repository, and @Controller?`,
-                a: `All four are @Component specialisations — they all register a bean. The difference is semantic/functional: @Repository adds exception translation (SQLException → DataAccessException). @Controller marks MVC controllers (Spring MVC dispatch). @Service has no extra functionality but documents intent. Use the specific annotation for documentation, IDE support, and so framework features (AOP pointcuts, exception translation) can target them precisely.`
+                a: `All four are @Component specialisations — they all register a bean. The difference is semantic/functional: @Repository adds exception translation (SQLException -> DataAccessException). @Controller marks MVC controllers (Spring MVC dispatch). @Service has no extra functionality but documents intent. Use the specific annotation for documentation, IDE support, and so framework features (AOP pointcuts, exception translation) can target them precisely.`
               },
               {
                 q: `When is @Autowired required on a constructor in Spring?`,
@@ -26025,7 +26025,7 @@ public class LoggingBeanPostProcessor implements BeanPostProcessor {
 
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName) {
-        System.out.println("After init: " + beanName + " → " + bean.getClass().getSimpleName());
+        System.out.println("After init: " + beanName + " -> " + bean.getClass().getSimpleName());
         return bean; // Spring AOP proxies are created HERE
     }
 }
@@ -26375,11 +26375,11 @@ public class ConfigAndProfilesDemo {
     interface DataSource { String query(String sql); }
 
     static class H2DataSource implements DataSource {
-        public String query(String sql) { return "[H2] " + sql + " → in-memory result"; }
+        public String query(String sql) { return "[H2] " + sql + " -> in-memory result"; }
     }
 
     static class PostgresDataSource implements DataSource {
-        public String query(String sql) { return "[Postgres] " + sql + " → real result"; }
+        public String query(String sql) { return "[Postgres] " + sql + " -> real result"; }
     }
 
     // Config class — factory for beans
@@ -26417,7 +26417,7 @@ public class ConfigAndProfilesDemo {
         System.out.println("
 Beans registered:");
         config.allBeans().forEach((name, bean) ->
-            System.out.println("  " + name + " → " + bean.getClass().getSimpleName()));
+            System.out.println("  " + name + " -> " + bean.getClass().getSimpleName()));
     }
 }`,
               `import java.util.*;
@@ -26497,7 +26497,7 @@ public class QualifierAndConditionalDemo {
               },
               {
                 q: `What is @ConfigurationProperties and why prefer it over @Value?`,
-                a: `@ConfigurationProperties binds a whole group of properties to a typed POJO (prefix = "payment" → payment.apiKey, payment.timeout). Benefits over @Value: IDE autocompletion, compile-time type safety, JSR-303 validation with @Validated, no SpEL strings scattered in code, properties are grouped logically. @Value is fine for one-off simple values.`
+                a: `@ConfigurationProperties binds a whole group of properties to a typed POJO (prefix = "payment" -> payment.apiKey, payment.timeout). Benefits over @Value: IDE autocompletion, compile-time type safety, JSR-303 validation with @Validated, no SpEL strings scattered in code, properties are grouped logically. @Value is fine for one-off simple values.`
               },
               {
                 q: `What is @ConditionalOnMissingBean and how does Spring Boot use it?`,
@@ -27197,8 +27197,8 @@ class OrderMetrics {
     }
 }
 
-// GET /actuator/metrics/orders.created → {"name":"orders.created","measurements":[{"statistic":"COUNT","value":42}]}
-// GET /actuator/metrics/order.processing?tag=... → percentile breakdowns`,
+// GET /actuator/metrics/orders.created -> {"name":"orders.created","measurements":[{"statistic":"COUNT","value":42}]}
+// GET /actuator/metrics/order.processing?tag=... -> percentile breakdowns`,
               `import org.springframework.boot.*;
 import org.springframework.boot.actuate.endpoint.annotation.*;
 import org.springframework.boot.actuate.endpoint.web.annotation.*;
@@ -27287,7 +27287,7 @@ public class PaymentProperties {
     // getters + setters (or use Lombok @Data / @ConfigurationProperties with records in Boot 3.x)
 }
 
-// app.payment.api-url=https://payments.example.com  ← relaxed binding: camelCase ↔ kebab-case
+// app.payment.api-url=https://payments.example.com  <- relaxed binding: camelCase ↔ kebab-case
 // app.payment.timeout-ms=3000
 // app.payment.retry.max-attempts=5
 // app.payment.retry.backoff=2s
@@ -27303,7 +27303,7 @@ public class App {}
 
 \`\`\`
 1. Command-line args:     java -jar app.jar --server.port=9090
-2. Environment variables: SERVER_PORT=9090  (override: . → _, capitals)
+2. Environment variables: SERVER_PORT=9090  (override: . -> _, capitals)
 3. Application properties in JAR's /config subdir
 4. application.yml in JAR's classpath
 5. @PropertySource annotations
@@ -27786,7 +27786,7 @@ class AutoConfigTest {
             notes: `## @Transactional Internals — Proxy Mechanics & Pitfalls
 
 > [!TIP]
-> **Big picture — read this first.** \`@Transactional\` doesn't change your method's code. Instead, Spring wraps your bean in an invisible stand-in (a *proxy*) that says "open a database transaction → call your real method → commit (or roll back if it threw)". Every caller actually talks to the proxy, not to you directly. This single fact explains the two most-asked Spring gotchas in interviews: (1) calling \`this.otherTransactionalMethod()\` from inside the same class **skips the proxy**, so no new transaction starts; and (2) by default Spring only rolls back on *unchecked* exceptions. Keep the proxy picture in your head and the pitfalls below stop being surprising. The runnable proxy demo in the **Code** tab lets you watch this happen on a bare JVM.
+> **Big picture — read this first.** \`@Transactional\` doesn't change your method's code. Instead, Spring wraps your bean in an invisible stand-in (a *proxy*) that says "open a database transaction -> call your real method -> commit (or roll back if it threw)". Every caller actually talks to the proxy, not to you directly. This single fact explains the two most-asked Spring gotchas in interviews: (1) calling \`this.otherTransactionalMethod()\` from inside the same class **skips the proxy**, so no new transaction starts; and (2) by default Spring only rolls back on *unchecked* exceptions. Keep the proxy picture in your head and the pitfalls below stop being surprising. The runnable proxy demo in the **Code** tab lets you watch this happen on a bare JVM.
 
 ### How @Transactional Works
 
@@ -27855,7 +27855,7 @@ public class OrderService {
 // DEFAULT: rollback on RuntimeException and Error, commit on checked exceptions
 @Transactional
 public void createUser(String email) throws EmailAlreadyExists {
-    // Throws EmailAlreadyExists (checked) → COMMITS (no data changes)
+    // Throws EmailAlreadyExists (checked) -> COMMITS (no data changes)
     if (repo.existsByEmail(email)) throw new EmailAlreadyExists(email);
     repo.save(new User(email));
 }
@@ -27948,7 +27948,7 @@ public class TxProxyDemo {
                     return r;
                 } catch (InvocationTargetException e) {
                     if (e.getCause() instanceof RuntimeException) rollback(method.getName());
-                    else commit(method.getName());     // checked exception → Spring COMMITS by default
+                    else commit(method.getName());     // checked exception -> Spring COMMITS by default
                     throw e.getCause();
                 }
             });
@@ -27999,7 +27999,7 @@ public class AccountService {
         accountRepo.save(from.debit(amount));
         accountRepo.save(to.credit(amount));
         auditRepo.save(new TransferAudit(fromId, toId, amount));
-        // If auditRepo.save() throws → ENTIRE transaction rolls back
+        // If auditRepo.save() throws -> ENTIRE transaction rolls back
         // Both account updates are reverted — atomic by definition
     }
 
@@ -28037,7 +28037,7 @@ public class OrderService {
         Order order = orderRepo.save(new Order(req));                 // 1. persist order
         inventoryService.reserve(req.productId(), req.quantity());    // 2. reserve stock
         // If inventoryService.reserve throws OutOfStockException (RuntimeException)
-        // → order.save() is ROLLED BACK automatically
+        // -> order.save() is ROLLED BACK automatically
 
         // emailService.send is NOT critical — we don't want email failure to rollback order
         // Pattern: do non-critical side-effects in a try-catch or separate async call
@@ -28102,7 +28102,7 @@ Propagation defines what happens when one @Transactional method calls another.
 // REQUIRED (default): join existing tx if one exists, else create new
 @Transactional(propagation = Propagation.REQUIRED)
 public void orderSave(Order o) { repo.save(o); }
-// Called from within a tx → joins it. Called standalone → new tx.
+// Called from within a tx -> joins it. Called standalone -> new tx.
 
 // REQUIRES_NEW: always suspend current tx and create a brand new one
 @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -28510,7 +28510,7 @@ class PerformanceAspect {
 
     @Before("execution(* com.example.controller..*(..))")
     public void logControllerCalls(JoinPoint jp) {
-        System.out.println("[AOP] → " + jp.getSignature().toShortString());
+        System.out.println("[AOP] -> " + jp.getSignature().toShortString());
     }
 
     @AfterThrowing(pointcut = "within(com.example.service..*)", throwing = "ex")
@@ -28679,10 +28679,10 @@ When you call \`userRepo.findByEmail(x)\`:
 1. The call hits a **JDK dynamic proxy** (your interface has no concrete class).
 2. \`QueryExecutorMethodInterceptor\` inspects the method.
 3. A **\`QueryLookupStrategy\`** resolves what to run, in priority order:
-   - Is it implemented by a **custom fragment**? → delegate there.
-   - Is it a \`default\` method? → invoke directly.
-   - Has an \`@Query\`? → use \`DeclaredQuery\`.
-   - Otherwise → **derive** the query from the method name (\`PartTree\` parser).
+   - Is it implemented by a **custom fragment**? -> delegate there.
+   - Is it a \`default\` method? -> invoke directly.
+   - Has an \`@Query\`? -> use \`DeclaredQuery\`.
+   - Otherwise -> **derive** the query from the method name (\`PartTree\` parser).
    - Falls back to \`SimpleJpaRepository\` for \`save\`/\`findById\`/etc.
 
 > [!DANGER]
@@ -29059,7 +29059,7 @@ graph LR
 > Spring Data 3.1+ adds **Scroll API**: \`WindowIterator\` / \`Window<T> scroll(ScrollPosition)\` with \`KeysetScrollPosition\`. It generates the \`WHERE (sortkey) > (lastValues)\` predicate for you and exposes \`window.positionAt(...)\` to continue. Use it instead of hand-rolling keyset SQL.
 
 > [!SUCCESS]
-> Pragmatic rule: **admin grids** that need page numbers → \`Page\` (accept the COUNT, ensure the WHERE is indexed). **Public/infinite-scroll feeds** → \`Slice\` or **keyset/Scroll**. Never deep-paginate a feed with offset.
+> Pragmatic rule: **admin grids** that need page numbers -> \`Page\` (accept the COUNT, ensure the WHERE is indexed). **Public/infinite-scroll feeds** -> \`Slice\` or **keyset/Scroll**. Never deep-paginate a feed with offset.
 
 ### Sort safety
 
@@ -29371,7 +29371,7 @@ Wiring: \`@EnableJpaAuditing\` on a config class, \`@EntityListeners(AuditingEnt
 
 ## Optimistic locking — @Version
 
-\`@Version\` adds a version column. On UPDATE Hibernate appends \`WHERE id=? AND version=?\` and bumps the version. If 0 rows update, the row changed underneath you → \`OptimisticLockException\` (translated to \`OptimisticLockingFailureException\`). **No DB locks held** — concurrency is detected at commit, not prevented.
+\`@Version\` adds a version column. On UPDATE Hibernate appends \`WHERE id=? AND version=?\` and bumps the version. If 0 rows update, the row changed underneath you -> \`OptimisticLockException\` (translated to \`OptimisticLockingFailureException\`). **No DB locks held** — concurrency is detected at commit, not prevented.
 
 \`\`\`mermaid
 sequenceDiagram
@@ -29702,7 +29702,7 @@ ORDER BY avg_sal DESC;            -- ORDER BY sees the SELECT alias`
             flashcards: [
               {
                 q: `State the SQL logical query processing order.`,
-                a: `FROM/JOIN → ON → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT/OFFSET. It governs name resolution and semantics, not physical execution.`
+                a: `FROM/JOIN -> ON -> WHERE -> GROUP BY -> HAVING -> SELECT -> DISTINCT -> ORDER BY -> LIMIT/OFFSET. It governs name resolution and semantics, not physical execution.`
               },
               {
                 q: `Why can WHERE not reference a SELECT-list alias?`,
@@ -29762,7 +29762,7 @@ flowchart LR
   R --> LEFT
   L --> FULL["FULL<br/>all L + all R"]
   R --> FULL
-  L --> CROSS["CROSS<br/>L × R (cartesian)"]
+  L --> CROSS["CROSS<br/>L x R (cartesian)"]
   R --> CROSS
 \`\`\`
 
@@ -29772,7 +29772,7 @@ flowchart LR
 | LEFT OUTER | all left rows | NULL-extended |
 | RIGHT OUTER | all right rows | left NULL-extended |
 | FULL OUTER | all rows from both | NULL-extended either side |
-| CROSS | every L × R pair | n/a (no predicate) |
+| CROSS | every L x R pair | n/a (no predicate) |
 
 ### ON vs WHERE on Outer Joins — The Classic Trap
 
@@ -29782,7 +29782,7 @@ flowchart LR
 SELECT c.name, o.amount
 FROM customers c
 LEFT JOIN orders o ON c.id = o.customer_id
-WHERE o.status = 'COMPLETED';   -- NULL status rows fail predicate → dropped
+WHERE o.status = 'COMPLETED';   -- NULL status rows fail predicate -> dropped
 
 -- ✅ Predicate belongs in the ON clause to preserve the outer side
 SELECT c.name, o.amount
@@ -29797,7 +29797,7 @@ LEFT JOIN orders o
 ### Self-Joins
 
 \`\`\`sql
--- Employee → manager pairing (same table twice, two aliases)
+-- Employee -> manager pairing (same table twice, two aliases)
 SELECT e.name AS employee, m.name AS manager
 FROM employees e
 LEFT JOIN employees m ON e.manager_id = m.emp_id;
@@ -29818,7 +29818,7 @@ WHERE NOT EXISTS (
 SELECT c.* FROM customers c
 WHERE c.id NOT IN (SELECT customer_id FROM orders);
 -- If any customer_id is NULL, 'x NOT IN (.., NULL)' is UNKNOWN for EVERY x
--- → the whole query returns ZERO rows. A real production-incident classic.
+-- -> the whole query returns ZERO rows. A real production-incident classic.
 \`\`\`
 
 > [!WARNING]
@@ -29850,7 +29850,7 @@ flowchart TD
 
 | Algorithm | Best when | Equality only? | Cost intuition |
 |-----------|-----------|----------------|----------------|
-| Nested loop | One side small, index on other side's key | No | rows(L) × cost(probe R) |
+| Nested loop | One side small, index on other side's key | No | rows(L) x cost(probe R) |
 | Hash join | Large unsorted equi-join, fits in memory | Yes (equi) | build + probe, ~O(N+M) |
 | Merge join | Inputs sorted on join key (index/ORDER) | Yes (range with care) | sort + linear merge |
 
@@ -29907,14 +29907,14 @@ public class HashJoinDemo {
     Map<Integer, Customer> build = new HashMap<>();
     for (Customer c : customers) build.put(c.id(), c);
 
-    // PROBE phase: scan the larger input once, O(1) lookup per row → O(N+M).
+    // PROBE phase: scan the larger input once, O(1) lookup per row -> O(N+M).
     System.out.println("customer | amount  (INNER JOIN result)");
     for (Order o : orders) {
       Customer c = build.get(o.customerId());  // probe
-      if (c != null) {                         // matched → emit
+      if (c != null) {                         // matched -> emit
         System.out.printf("%-8s | %.2f%n", c.name(), o.amount());
       }
-      // order 104 (cust 99) finds no match → dropped, exactly like INNER JOIN
+      // order 104 (cust 99) finds no match -> dropped, exactly like INNER JOIN
     }
 
     // Contrast: a nested loop would be customers.size() * orders.size() comparisons.
@@ -29933,7 +29933,7 @@ public class HashJoinDemo {
               },
               {
                 q: `Explain the NOT IN + NULL trap.`,
-                a: `x NOT IN (a,b,NULL) becomes x<>a AND x<>b AND x<>NULL. The last conjunct is UNKNOWN, making the whole AND never TRUE, so EVERY row is dropped → zero results. Use NOT EXISTS instead.`
+                a: `x NOT IN (a,b,NULL) becomes x<>a AND x<>b AND x<>NULL. The last conjunct is UNKNOWN, making the whole AND never TRUE, so EVERY row is dropped -> zero results. Use NOT EXISTS instead.`
               },
               {
                 q: `Difference between a semi-join and an inner join?`,
@@ -29957,7 +29957,7 @@ public class HashJoinDemo {
               },
               {
                 q: `How do you write a self-join and a common use case?`,
-                a: `Reference the same table with two aliases. Common uses: employee→manager pairing, comparing a row to another row in the same table (e.g., consecutive events), and hierarchy traversal one level at a time.`
+                a: `Reference the same table with two aliases. Common uses: employee->manager pairing, comparing a row to another row in the same table (e.g., consecutive events), and hierarchy traversal one level at a time.`
               },
               {
                 q: `How do you emulate FULL OUTER JOIN in MySQL?`,
@@ -29973,7 +29973,7 @@ public class HashJoinDemo {
               },
               {
                 q: `CROSS JOIN — when is it legitimate?`,
-                a: `Generating combinations deliberately: calendars/date spines × entities, parameter grids, or producing a row per (region, product) pair to LEFT JOIN sparse facts against for gap-free reporting.`
+                a: `Generating combinations deliberately: calendars/date spines x entities, parameter grids, or producing a row per (region, product) pair to LEFT JOIN sparse facts against for gap-free reporting.`
               }
             ]
           },
@@ -30021,13 +30021,13 @@ FROM employees;
 ### COUNT After Join — The Fan-Out Trap
 
 \`\`\`sql
--- ❌ Joining orders AND items multiplies rows → SUM(amount) is inflated
+-- ❌ Joining orders AND items multiplies rows -> SUM(amount) is inflated
 SELECT c.id, SUM(o.amount), SUM(i.qty)
 FROM customers c
 JOIN orders o      ON o.customer_id = c.id
 JOIN order_items i ON i.order_id   = o.order_id   -- fan-out!
 GROUP BY c.id;
--- Each order's amount is repeated once per item → SUM(o.amount) too high.
+-- Each order's amount is repeated once per item -> SUM(o.amount) too high.
 
 -- ✅ Aggregate each branch independently first, then join
 SELECT c.id, ord.total_amount, itm.total_qty
@@ -30209,7 +30209,7 @@ SELECT * FROM (
          ROW_NUMBER() OVER (PARTITION BY dept_id ORDER BY salary DESC) AS rn
   FROM employees
 ) t
-WHERE rn <= 2;   -- can't filter the window fn directly → wrap in subquery
+WHERE rn <= 2;   -- can't filter the window fn directly -> wrap in subquery
 \`\`\`
 
 > [!DANGER]
@@ -30346,7 +30346,7 @@ FROM employees;`,
 SELECT * FROM employees
 WHERE salary > (SELECT AVG(salary) FROM employees);
 
--- CORRELATED: inner query references the outer row → conceptually re-evaluated per row
+-- CORRELATED: inner query references the outer row -> conceptually re-evaluated per row
 SELECT e.* FROM employees e
 WHERE salary > (SELECT AVG(salary) FROM employees x WHERE x.dept_id = e.dept_id);
 \`\`\`
@@ -30400,7 +30400,7 @@ flowchart TD
   U --> R["Recursive query<br/>joins CTE to base"]
   R --> W["Working table<br/>(rows from last iteration)"]
   W -->|non-empty| R
-  W -->|empty| DONE["Stop → union of all iterations"]
+  W -->|empty| DONE["Stop -> union of all iterations"]
 \`\`\`
 
 > [!DANGER]
@@ -30664,7 +30664,7 @@ LIMIT 100;`,
             flashcards: [
               {
                 q: `Why is OFFSET pagination slow on deep pages?`,
-                a: `The engine must still produce and discard all OFFSET rows before returning the page, so cost grows linearly with the offset. Page N reads ~N×pagesize rows.`
+                a: `The engine must still produce and discard all OFFSET rows before returning the page, so cost grows linearly with the offset. Page N reads ~Nxpagesize rows.`
               },
               {
                 q: `How does keyset (seek) pagination work and what does it require?`,
@@ -30729,7 +30729,7 @@ When you type \`CREATE INDEX\` with no type, you get a **B+Tree**. It is the wor
 
 Interviewers love this. A classic **B-Tree** stores keys *and* row pointers in **every** node (internal and leaf). A **B+Tree** stores keys-and-pointers **only in the leaves**; internal nodes hold **only separator keys** to route the search. Two consequences:
 
-1. **Higher fan-out.** Internal nodes carry no payload, so each page packs more keys → the tree is *shorter* → fewer disk reads.
+1. **Higher fan-out.** Internal nodes carry no payload, so each page packs more keys -> the tree is *shorter* -> fewer disk reads.
 2. **Leaves are linked.** Leaf pages form a **doubly-linked list**, so a range scan walks leaf-to-leaf sequentially without re-descending the tree. This is why \`WHERE created_at BETWEEN ...\` is cheap on a B+Tree.
 
 > [!TIP]
@@ -30744,7 +30744,7 @@ height h = ceil( log_f(N) )      where N = number of rows
 reads to find a row = h          (root + internals + 1 leaf), minus cached pages
 \`\`\`
 
-With an 8 KB page and, say, a 16-byte key + 6-byte pointer (~22 bytes), a node holds roughly \`8192 / 22 ≈ 370\` entries, so fan-out is in the hundreds. That makes the tree astonishingly shallow:
+With an 8 KB page and, say, a 16-byte key + 6-byte pointer (~22 bytes), a node holds roughly \`8192 / 22 ~ 370\` entries, so fan-out is in the hundreds. That makes the tree astonishingly shallow:
 
 | Rows (N) | Fan-out 100 | Fan-out 370 |
 |----------|-------------|-------------|
@@ -30785,7 +30785,7 @@ graph TD
   class L1,L2,L3,L4,L5,L6 leaf;
 \`\`\`
 
-To find key **62**: at ROOT, 62 is between 40 and 80 → go to the middle child (I2); at I2, 62 is between 55 and 70 → go to that leaf; scan the leaf for 62 and follow its row pointer. Three page reads. To range-scan **55–95**, find leaf for 55 then walk the linked leaves rightward.
+To find key **62**: at ROOT, 62 is between 40 and 80 -> go to the middle child (I2); at I2, 62 is between 55 and 70 -> go to that leaf; scan the leaf for 62 and follow its row pointer. Three page reads. To range-scan **55–95**, find leaf for 55 then walk the linked leaves rightward.
 
 ### Clustered vs non-clustered (secondary)
 
@@ -30798,7 +30798,7 @@ The pointer differs by engine, and this is load-bearing:
 
 | Engine | Table storage | Secondary-index leaf points to | Cost of secondary lookup |
 |--------|---------------|-------------------------------|--------------------------|
-| **InnoDB (MySQL)** | Clustered (index-organized) | the **PK value** | secondary B+Tree → then **PK B+Tree** = two tree descents |
+| **InnoDB (MySQL)** | Clustered (index-organized) | the **PK value** | secondary B+Tree -> then **PK B+Tree** = two tree descents |
 | **SQL Server (clustered table)** | Clustered | the **clustering key** | same double lookup |
 | **SQL Server (heap)** | Heap | a physical **RID** (file:page:slot) | direct heap fetch |
 | **PostgreSQL** | **Heap** (always) | a **TID/ctid** (page:item) | direct heap fetch |
@@ -30814,7 +30814,7 @@ The pointer differs by engine, and this is load-bearing:
 ### Page splits, fill factor, and B+Tree maintenance
 
 Inserting into a full leaf forces a **page split**: the leaf is divided in two and a separator propagates upward (possibly up to the root, growing tree height). Splits cause:
-- **fragmentation** (logically adjacent leaves become physically scattered → range scans do more random I/O),
+- **fragmentation** (logically adjacent leaves become physically scattered -> range scans do more random I/O),
 - write amplification, and
 - temporary index bloat.
 
@@ -31003,9 +31003,9 @@ CREATE INDEX idx_cover ON orders (user_id, status) INCLUDE (amount, created_at);
 
 ### Selectivity & cardinality
 
-- **Cardinality** = number of distinct values in a column. **Selectivity** = cardinality / row count (fraction of rows a typical value matches; high selectivity ≈ few matches).
+- **Cardinality** = number of distinct values in a column. **Selectivity** = cardinality / row count (fraction of rows a typical value matches; high selectivity ~ few matches).
 - A useful B+Tree index needs **high selectivity** on the seek columns. \`gender\` (cardinality 2) is ~50% selective — an index seek that returns half the table is *worse* than a seq scan because of random heap I/O, so the planner ignores it. \`email\` (unique) is maximally selective.
-- The planner estimates how many rows a predicate returns from **statistics** (histograms, n_distinct, most-common-values). Stale stats → wrong selectivity estimate → wrong plan.
+- The planner estimates how many rows a predicate returns from **statistics** (histograms, n_distinct, most-common-values). Stale stats -> wrong selectivity estimate -> wrong plan.
 
 ### When an index is NOT used (interview gold — memorise these)
 
@@ -31146,7 +31146,7 @@ EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT TEXT)
 SELECT ...;
 \`\`\`
 - **ANALYZE** — run it, show actual time & rows.
-- **BUFFERS** — shared/local/temp block hits & reads (cache efficiency; \`read=\` means cache miss → disk).
+- **BUFFERS** — shared/local/temp block hits & reads (cache efficiency; \`read=\` means cache miss -> disk).
 - **VERBOSE** — output columns, schema-qualified names.
 
 ### How to read a plan tree
@@ -31158,11 +31158,11 @@ Node Type  (cost=START..TOTAL rows=EST width=BYTES) (actual time=START..TOTAL ro
 \`\`\`
 - **cost** — abstract units (not ms). \`startup..total\`; \`startup\` is cost before the first row (e.g. building a hash table or sorting). Tunables: \`seq_page_cost=1\`, \`random_page_cost=4\` (lower to ~1.1 on SSD), \`cpu_tuple_cost\`.
 - **rows** — planner's **estimate**. The headline diagnostic.
-- **actual ... rows=X loops=N** — measured. **Multiply rows × loops** for the true total emitted by that node (a common misread on the inner side of a nested loop).
+- **actual ... rows=X loops=N** — measured. **Multiply rows x loops** for the true total emitted by that node (a common misread on the inner side of a nested loop).
 - **width** — average bytes per row.
 
 > [!TIP]
-> **The #1 read-EXPLAIN skill:** find the node where \`rows=ESTIMATE\` is wildly off from \`actual rows\`. A 1000× under-estimate is why the planner picked a nested loop (thinking the inner side runs a few times) when it actually loops millions of times. The fix is usually \`ANALYZE\` (stale stats), extended statistics for correlated columns, or rewriting so the planner can estimate correctly.
+> **The #1 read-EXPLAIN skill:** find the node where \`rows=ESTIMATE\` is wildly off from \`actual rows\`. A 1000x under-estimate is why the planner picked a nested loop (thinking the inner side runs a few times) when it actually loops millions of times. The fix is usually \`ANALYZE\` (stale stats), extended statistics for correlated columns, or rewriting so the planner can estimate correctly.
 
 ### Scan types
 
@@ -31180,7 +31180,7 @@ Node Type  (cost=START..TOTAL rows=EST width=BYTES) (actual time=START..TOTAL ro
 
 | Join | How it works | Best when | Watch for |
 |------|--------------|-----------|-----------|
-| **Nested Loop** | for each outer row, probe inner (ideally via index) | outer side is **small**; inner has an index | inner side without an index, or outer far bigger than estimated → O(n·m) blow-up |
+| **Nested Loop** | for each outer row, probe inner (ideally via index) | outer side is **small**; inner has an index | inner side without an index, or outer far bigger than estimated -> O(n·m) blow-up |
 | **Hash Join** | build a hash table on the smaller side, probe with the larger | large, **unsorted** inputs, equality join | \`Batches > 1\` = hash spilled to disk (\`work_mem\` too small) |
 | **Merge Join** | sort both inputs (or use index order), merge like a zipper | both inputs already **sorted** on the join key (indexes / ORDER BY) | an explicit Sort node feeding it can be the real cost |
 
@@ -31201,9 +31201,9 @@ flowchart TD
 
 ### The most common "why is my query slow" causes
 
-1. **Missing or unusable index** → Seq Scan on a large table when the predicate is selective (often a non-SARGable predicate, see §2).
-2. **Stale statistics** → catastrophic row mis-estimate → wrong join/scan choice. Run \`ANALYZE\`.
-3. **Correlated columns** the planner assumes are independent → multiplies selectivities and under-estimates → extended statistics (\`CREATE STATISTICS\`).
+1. **Missing or unusable index** -> Seq Scan on a large table when the predicate is selective (often a non-SARGable predicate, see §2).
+2. **Stale statistics** -> catastrophic row mis-estimate -> wrong join/scan choice. Run \`ANALYZE\`.
+3. **Correlated columns** the planner assumes are independent -> multiplies selectivities and under-estimates -> extended statistics (\`CREATE STATISTICS\`).
 4. **Nested loop blow-up** from an under-estimated outer side.
 5. **Sort/hash spilling to disk** (\`work_mem\` too small; \`Batches > 1\`, "external merge Disk").
 6. **N+1** — not one slow query but thousands of fast ones (see §5).
@@ -31329,14 +31329,14 @@ B+Tree is the default, but the right index type can turn an impossible query int
 |------|----------|-----------|-----------|-------|
 | **B-Tree** (default) | \`=\`, \`<\`, \`>\`, \`BETWEEN\`, \`LIKE 'x%'\`, sort, \`MIN\`/\`MAX\` | almost everything | substring / containment | the workhorse |
 | **Hash** | \`=\` only | pure equality on large keys | ranges, sorting | Postgres 10+ WAL-logged & crash-safe; rarely beats B-Tree, so seldom worth it |
-| **GIN** (inverted) | containment: \`@>\`, \`?\`, \`@@\`, array/JSONB ops | full-text, JSONB, arrays, \`pg_trgm\` LIKE/regex | range/sort on the base value | many keys → one row; **slow to update**, fast to read; \`fastupdate\` pending list |
+| **GIN** (inverted) | containment: \`@>\`, \`?\`, \`@@\`, array/JSONB ops | full-text, JSONB, arrays, \`pg_trgm\` LIKE/regex | range/sort on the base value | many keys -> one row; **slow to update**, fast to read; \`fastupdate\` pending list |
 | **GiST** (balanced, extensible) | overlap/nearest: geometry, ranges, KNN \`<->\` | geospatial (PostGIS), range types, nearest-neighbour | exact text equality | lossy; great for "what's near / overlaps" |
 | **SP-GiST** | non-balanced partitioning | quadtrees, tries, IP/prefix | — | niche |
 | **BRIN** (block-range) | \`>\`, \`<\`, range on **naturally-ordered** data | huge append-only tables (time-series, logs) by timestamp | random/unsorted data | tiny (stores min/max per block range); near-zero maintenance |
 
 ### Hash indexes — usually a trap
 
-A hash index gives O(1) equality lookup, but B+Tree equality is already ~O(log_fanout n) ≈ 3 reads, the hash index can't do ranges/sorts/prefix, and historically wasn't crash-safe. **Default to B-Tree.** Consider hash only for very large, long, equality-only keys where the B-Tree's larger size hurts cache — a rare case.
+A hash index gives O(1) equality lookup, but B+Tree equality is already ~O(log_fanout n) ~ 3 reads, the hash index can't do ranges/sorts/prefix, and historically wasn't crash-safe. **Default to B-Tree.** Consider hash only for very large, long, equality-only keys where the B-Tree's larger size hurts cache — a rare case.
 
 ### GIN — full-text, JSONB, arrays, trigram LIKE
 
@@ -31388,7 +31388,7 @@ The query's expression must match the index expression exactly to be used.
 ### Write amplification — the cost of too many indexes
 
 > [!DANGER]
-> **Every index is a copy of (some of) your data that must be maintained on every write.** An \`INSERT\` updates the heap **and every index**. An \`UPDATE\` of an indexed column updates the heap and those indexes (in Postgres, a non-HOT update touches *all* indexes). So N indexes ≈ N× the write work, N× the WAL, more lock contention, more cache pressure, longer \`VACUUM\`, slower bulk loads, and bigger backups. A table with 12 indexes can have its insert throughput cut by 5–10×.
+> **Every index is a copy of (some of) your data that must be maintained on every write.** An \`INSERT\` updates the heap **and every index**. An \`UPDATE\` of an indexed column updates the heap and those indexes (in Postgres, a non-HOT update touches *all* indexes). So N indexes ~ Nx the write work, Nx the WAL, more lock contention, more cache pressure, longer \`VACUUM\`, slower bulk loads, and bigger backups. A table with 12 indexes can have its insert throughput cut by 5–10x.
 
 **Rules of thumb:** index for the queries you actually run (check \`pg_stat_user_indexes\` for unused ones and drop them), prefer fewer composite/covering indexes over many single-column ones, and remember **read speed and write speed trade off through the index count**.
 
@@ -31496,7 +31496,7 @@ CREATE INDEX CONCURRENTLY idx_orders_status ON orders (status);  -- no ACCESS EX
             title: `Query Tuning Workflow: Slow Queries, N+1, Pagination, Statistics`,
             notes: `## Query Tuning Workflow — find it, measure it, fix it
 
-Tuning is not "stare at SQL and guess." It's a loop: **find the worst offenders → reproduce with \`EXPLAIN ANALYZE\` → form a hypothesis → change one thing → re-measure.**
+Tuning is not "stare at SQL and guess." It's a loop: **find the worst offenders -> reproduce with \`EXPLAIN ANALYZE\` -> form a hypothesis -> change one thing -> re-measure.**
 
 ### Step 1 — find the slow queries (don't guess)
 
@@ -31538,14 +31538,14 @@ Trade-off: keyset can't jump to "page 500" directly (no random access) and needs
 ### Step 4 — keep predicates SARGable
 
 Already covered in §2, but it's the most common app-side cause of a missed index. Re-state in tuning terms:
-- \`WHERE date_trunc('day', ts) = $1\` → \`WHERE ts >= $1 AND ts < $1 + interval '1 day'\`
-- \`WHERE col + 0 = $1\` / \`WHERE col * 100 > $1\` → move math to the literal side
-- \`WHERE col::text = $1\` → fix the parameter type instead
+- \`WHERE date_trunc('day', ts) = $1\` -> \`WHERE ts >= $1 AND ts < $1 + interval '1 day'\`
+- \`WHERE col + 0 = $1\` / \`WHERE col * 100 > $1\` -> move math to the literal side
+- \`WHERE col::text = $1\` -> fix the parameter type instead
 
 ### Step 5 — statistics & ANALYZE
 
 The planner is only as good as its stats. **\`ANALYZE\`** samples the table and refreshes histograms, \`n_distinct\`, and most-common-values. Run it after bulk loads, big deletes, or schema changes; **autovacuum** runs it automatically but can lag on huge tables.
-- Raise \`default_statistics_target\` (default 100 → 1000) on columns with skewed distributions to get finer histograms.
+- Raise \`default_statistics_target\` (default 100 -> 1000) on columns with skewed distributions to get finer histograms.
 - For **correlated columns** (the planner assumes independence and multiplies selectivities, badly under-estimating), create **extended statistics**: \`CREATE STATISTICS (dependencies, ndistinct) ON a, b FROM t;\`
 
 ### Step 6 — parameter sniffing / plan stability
@@ -31713,8 +31713,8 @@ The last mile: the recurring SQL anti-patterns that defeat indexes, and the arch
 
 | Anti-pattern | Why it hurts | Better |
 |--------------|--------------|--------|
-| **\`SELECT *\`** | drags every column over the wire, **breaks index-only scans** (index doesn't cover unneeded columns → heap fetch), bloats cache, breaks on schema change | select only the columns you use |
-| **Implicit conversion** | \`WHERE phone = 123\` on a \`VARCHAR\` casts the column → non-SARGable seq scan (silent in MySQL) | match literal types to column types |
+| **\`SELECT *\`** | drags every column over the wire, **breaks index-only scans** (index doesn't cover unneeded columns -> heap fetch), bloats cache, breaks on schema change | select only the columns you use |
+| **Implicit conversion** | \`WHERE phone = 123\` on a \`VARCHAR\` casts the column -> non-SARGable seq scan (silent in MySQL) | match literal types to column types |
 | **\`OR\` across columns** | \`WHERE a=? OR b=?\` often can't use one composite index; may seq-scan | \`UNION\`/\`UNION ALL\` of two SARGable queries, or rely on BitmapOr of two indexes |
 | **Functions on columns** | \`WHERE year(d)=2026\` non-SARGable | range predicate or expression index |
 | **Leading wildcard** | \`LIKE '%x'\` can't seek | trigram/full-text index |
@@ -31784,7 +31784,7 @@ CREATE INDEX idx_orders_dash
 ### Scaling reads beyond one box
 
 When a single primary can't keep up with read load even with perfect indexes:
-- **Read replicas** — route read-only traffic to async followers; accept **replication lag** (read-your-writes anomalies → route the user's own reads to the primary or use synchronous/quorum reads for critical paths).
+- **Read replicas** — route read-only traffic to async followers; accept **replication lag** (read-your-writes anomalies -> route the user's own reads to the primary or use synchronous/quorum reads for critical paths).
 - **Caching** (Redis) in front of hot read paths — now own invalidation.
 - **Partitioning / sharding** — split a giant table by range/hash so each shard's indexes are smaller and hotter in cache.
 - **Materialized views / CQRS read models** — maintain a denormalized read-optimised projection.
@@ -31907,7 +31907,7 @@ Every candidate can expand ACID. A senior is expected to explain **how the stora
 | Property | What it guarantees | Who enforces it | Core mechanism |
 |---|---|---|---|
 | **Atomicity** | All-or-nothing; partial effects never survive | Engine | Write-Ahead Log (WAL) + undo |
-| **Consistency** | DB moves valid-state → valid-state | **You** + constraints | App invariants, FK/CHECK/unique |
+| **Consistency** | DB moves valid-state -> valid-state | **You** + constraints | App invariants, FK/CHECK/unique |
 | **Isolation** | Concurrent txns appear to run alone | Engine | MVCC and/or locking |
 | **Durability** | Committed data survives crash/power loss | Engine | fsync of WAL, group commit |
 
@@ -31923,7 +31923,7 @@ The unit of atomicity is the transaction. The engine must be able to **roll back
 - **Redo log (WAL)** — *before* a data page is flushed to disk, the change is appended to the write-ahead log. On recovery, the engine replays committed-but-unflushed changes (REDO).
 - **Undo information** — to roll back an *aborted* (or crashed-mid-flight) transaction, the engine needs the *old* values. Postgres keeps old row versions inline in the heap (MVCC tuples); InnoDB keeps a separate **undo log** (also used to reconstruct MVCC read views).
 
-The canonical algorithm is **ARIES** (Algorithm for Recovery and Isolation Exploiting Semantics): WAL + the rule *"log record reaches disk before the corresponding data page"* + a three-phase recovery: **Analysis → Redo → Undo**.
+The canonical algorithm is **ARIES** (Algorithm for Recovery and Isolation Exploiting Semantics): WAL + the rule *"log record reaches disk before the corresponding data page"* + a three-phase recovery: **Analysis -> Redo -> Undo**.
 
 \`\`\`mermaid
 flowchart LR
@@ -31981,8 +31981,8 @@ sequenceDiagram
 
 > [!WARNING]
 > Durability has knobs that silently weaken it:
-> - Postgres \`synchronous_commit = off\` → commit returns *before* the WAL is fsynced. You can lose the last few hundred ms of committed transactions on power loss. Huge throughput win, real data-loss risk.
-> - MySQL \`innodb_flush_log_at_trx_commit = 2\` → writes to OS cache but fsyncs only once/sec.
+> - Postgres \`synchronous_commit = off\` -> commit returns *before* the WAL is fsynced. You can lose the last few hundred ms of committed transactions on power loss. Huge throughput win, real data-loss risk.
+> - MySQL \`innodb_flush_log_at_trx_commit = 2\` -> writes to OS cache but fsyncs only once/sec.
 > - Consumer SSDs/HDDs with **write caches** that lie about fsync completion can lose data even when the engine did everything right. Enterprise drives have power-loss protection (capacitors).
 
 > [!EU]
@@ -32088,7 +32088,7 @@ SET GLOBAL innodb_flush_log_at_trx_commit = 1;`,
               },
               {
                 q: `What ARIES buffer-management policy do most engines use, and what does it imply?`,
-                a: `'Steal, no-force': dirty pages of uncommitted txns MAY be written to disk early (steal → need undo), and committed pages need NOT be forced to disk at commit (no-force → need redo). It maximizes performance but requires both undo and redo logging.`
+                a: `'Steal, no-force': dirty pages of uncommitted txns MAY be written to disk early (steal -> need undo), and committed pages need NOT be forced to disk at commit (no-force -> need redo). It maximizes performance but requires both undo and redo logging.`
               },
               {
                 q: `What is the strongest synchronous-replication durability mode in Postgres and what does it guarantee?`,
@@ -32104,7 +32104,7 @@ The SQL standard defines four isolation levels by the **anomalies they forbid**.
 
 ## The standard map (and reality)
 
-| Anomaly ↓ / Level → | READ UNCOMMITTED | READ COMMITTED | REPEATABLE READ | SERIALIZABLE |
+| Anomaly ↓ / Level -> | READ UNCOMMITTED | READ COMMITTED | REPEATABLE READ | SERIALIZABLE |
 |---|---|---|---|---|
 | **Dirty read** | possible | prevented | prevented | prevented |
 | **Non-repeatable read** | possible | possible | prevented | prevented |
@@ -32188,7 +32188,7 @@ Two txns read an overlapping set, each checks an invariant that currently holds,
 \`\`\`mermaid
 sequenceDiagram
   participant T1 as T1 (doctor A)
-  participant DB as DB (≥1 on-call rule)
+  participant DB as DB (>=1 on-call rule)
   participant T2 as T2 (doctor B)
   Note over DB: on_call = {A, B} (2 on call)
   T1->>DB: SELECT count(on_call)=2  -> ok to go off
@@ -32370,7 +32370,7 @@ Old/dead tuple versions accumulate. **VACUUM** reclaims space from versions no l
 - **XID wraparound** — XIDs are 32-bit and cyclic. If autovacuum can't "freeze" old rows in time, Postgres force-stops writes to avoid data corruption. A pathological long-open transaction is the usual culprit.
 
 > [!DANGER]
-> A single idle-in-transaction connection that stays open for hours pins the vacuum horizon: dead tuples from *every* table can't be reclaimed → bloat and, in the extreme, wraparound shutdown. "Why is the DB suddenly bloated?" → look for the oldest open transaction (\`pg_stat_activity\`, \`backend_xmin\`).
+> A single idle-in-transaction connection that stays open for hours pins the vacuum horizon: dead tuples from *every* table can't be reclaimed -> bloat and, in the extreme, wraparound shutdown. "Why is the DB suddenly bloated?" -> look for the oldest open transaction (\`pg_stat_activity\`, \`backend_xmin\`).
 
 ---
 
@@ -32407,7 +32407,7 @@ sequenceDiagram
   participant T2
   T1->>SSI: read set R1, write set W1
   T2->>SSI: read set R2, write set W2
-  Note over SSI: detects rw-antidependency cycle (T1→T2→T1)
+  Note over SSI: detects rw-antidependency cycle (T1->T2->T1)
   T2->>SSI: COMMIT
   SSI-->>T2: ❌ could not serialize access (40001)
   Note over T2: application retries T2
@@ -32514,7 +32514,7 @@ Even MVCC engines lock for **writes** and for explicit \`FOR UPDATE\` reads. Und
 
 | Granularity | Pro | Con |
 |---|---|---|
-| Row lock | high concurrency | many locks → memory/bookkeeping |
+| Row lock | high concurrency | many locks -> memory/bookkeeping |
 | Table lock | cheap, few locks | kills concurrency |
 | **Gap / next-key** (InnoDB) | blocks phantoms | surprising deadlocks |
 
@@ -32539,7 +32539,7 @@ sequenceDiagram
   T2->>B: lock B (X)
   T1->>B: wait for B  (held by T2)
   T2->>A: wait for A  (held by T1)
-  Note over T1,T2: cycle → deadlock; engine aborts one victim
+  Note over T1,T2: cycle -> deadlock; engine aborts one victim
 \`\`\`
 
 Engines **detect** deadlocks (build the waits-for graph, find a cycle) and **abort a victim** (Postgres: error 40P01; MySQL: 1213) — the chosen victim's transaction rolls back and must retry.
@@ -32570,7 +32570,7 @@ Some engines (SQL Server, DB2) **escalate** many row locks into a single table l
 | Deadlock risk | yes | no (no held locks) |
 | Best for | hot rows, high contention, long critical sections | low-contention, read-mostly, stateless web tier |
 
-**Optimistic** mechanism: add a \`version\` (or timestamp) column. On UPDATE, the WHERE clause includes the version you read; you bump it. If another txn already bumped it, your UPDATE matches **zero rows** → you detect the lost update and retry/abort.
+**Optimistic** mechanism: add a \`version\` (or timestamp) column. On UPDATE, the WHERE clause includes the version you read; you bump it. If another txn already bumped it, your UPDATE matches **zero rows** -> you detect the lost update and retry/abort.
 
 \`\`\`sql
 UPDATE account SET balance = ?, version = version + 1
@@ -32804,8 +32804,8 @@ If you retry, you must not double-apply. Techniques:
 
 > [!DANGER]
 > A long-running transaction is a system-wide tax, not a local cost:
-> - **Postgres**: pins the vacuum horizon → bloat, eventually XID-wraparound risk; holds locks longer → more contention/deadlocks.
-> - **InnoDB**: grows the undo history list → slower reads, bigger storage.
+> - **Postgres**: pins the vacuum horizon -> bloat, eventually XID-wraparound risk; holds locks longer -> more contention/deadlocks.
+> - **InnoDB**: grows the undo history list -> slower reads, bigger storage.
 > - Connection held = one fewer in the pool. "idle in transaction" is a code smell.
 >
 > Never do network calls, user think-time, or large batch work inside an open DB transaction. Keep transactions to the minimal write critical section.
@@ -32866,7 +32866,7 @@ public void transfer(long from, long to, long cents) { ... }
 
 > [!WARNING]
 > Classic Spring traps interviewers probe:
-> - **Self-invocation**: calling another @Transactional method on \`this\` bypasses the proxy → no new transaction. The annotation is honored only through the Spring-managed bean.
+> - **Self-invocation**: calling another @Transactional method on \`this\` bypasses the proxy -> no new transaction. The annotation is honored only through the Spring-managed bean.
 > - **Checked exceptions don't roll back by default** — only RuntimeException/Error do. Use \`rollbackFor = Exception.class\` for checked ones.
 > - **readOnly=true** is a hint: it can let the driver/Hibernate skip dirty-checking and route to replicas, but it does NOT make the DB reject writes by itself.
 > - **REQUIRES_NEW holds two connections** at once (outer suspended, inner active) — pool-exhaustion risk in loops.
@@ -32966,7 +32966,7 @@ class TransferFacade {
               },
               {
                 q: `List three concrete costs of a long-running transaction in Postgres.`,
-                a: `(1) Pins the vacuum/snapshot horizon → table bloat and XID-wraparound risk; (2) holds locks longer → more contention and deadlocks; (3) ties up a pooled connection ('idle in transaction'), reducing available connections. Hence: no network calls, think-time, or big batches inside an open transaction.`
+                a: `(1) Pins the vacuum/snapshot horizon -> table bloat and XID-wraparound risk; (2) holds locks longer -> more contention and deadlocks; (3) ties up a pooled connection ('idle in transaction'), reducing available connections. Hence: no network calls, think-time, or big batches inside an open transaction.`
               },
               {
                 q: `How does SELECT ... FOR UPDATE SKIP LOCKED implement a work queue?`,
@@ -33019,7 +33019,7 @@ A TCP connection to Postgres is **expensive**: TCP handshake, TLS negotiation, b
 | Without a pool | With a pool |
 |---|---|
 | New connection per request (1–5ms setup) | Reuse warm connections (~µs to borrow) |
-| Unbounded connections → DB process explosion | Hard cap on concurrent DB work |
+| Unbounded connections -> DB process explosion | Hard cap on concurrent DB work |
 | Connection storms on traffic spikes | Backpressure: requests queue, then time out cleanly |
 | No leak detection | Leak detection + lifecycle management |
 
@@ -33050,7 +33050,7 @@ Per-instance math: if you run **N app instances**, the DB sees \`N * maximumPool
 |---|---|---|
 | \`maximumPoolSize\` | Hard cap on connections | 10–20 (per instance) |
 | \`minimumIdle\` | Min idle kept warm; **set == max** for steady pools | == maximumPoolSize |
-| \`connectionTimeout\` | Max wait to borrow before SQLException | 30s default → tune to 2–10s |
+| \`connectionTimeout\` | Max wait to borrow before SQLException | 30s default -> tune to 2–10s |
 | \`idleTimeout\` | Retire idle conns (only if minIdle < max) | 600000 (10m) |
 | \`maxLifetime\` | Retire & recreate conns proactively | 1800000 (30m), < DB/LB timeout |
 | \`leakDetectionThreshold\` | Log stack trace if conn held this long | 60000 (60s) in non-prod |
@@ -33069,7 +33069,7 @@ Per-instance math: if you run **N app instances**, the DB sees \`N * maximumPool
 **Leak detection**: \`leakDetectionThreshold\` logs the borrowing stack trace when a connection is held longer than the threshold — invaluable for finding the offending code path. It does **not** reclaim the connection; it only diagnoses.
 
 > [!WARNING]
-> Never hold a DB connection across a slow external call (HTTP, message broker). Borrow → query → return, *then* do the slow work. Holding a connection during a 2s API call with pool=20 caps you at 10 req/s.
+> Never hold a DB connection across a slow external call (HTTP, message broker). Borrow -> query -> return, *then* do the slow work. Holding a connection during a 2s API call with pool=20 caps you at 10 req/s.
 
 ## maxLifetime vs infrastructure timeouts
 
@@ -33081,11 +33081,11 @@ When you have **many app instances** (microservices, serverless/Lambda where eac
 
 Pooling modes:
 - **session** — server conn pinned to a client for its whole session (safe, least multiplexing).
-- **transaction** — server conn returned to pool at transaction end. Massive fan-in (10000 clients → 50 server conns) but **breaks session-level features**: prepared statements (pre-PG-14 protocol), \`SET\`/session GUCs, advisory locks, \`LISTEN/NOTIFY\`. Most common in production.
+- **transaction** — server conn returned to pool at transaction end. Massive fan-in (10000 clients -> 50 server conns) but **breaks session-level features**: prepared statements (pre-PG-14 protocol), \`SET\`/session GUCs, advisory locks, \`LISTEN/NOTIFY\`. Most common in production.
 - **statement** — returned per statement; no multi-statement transactions.
 
 > [!TIP]
-> Two-tier topology: HikariCP in each app (small pool, hot path latency) → PgBouncer (transaction mode) → Postgres. App pools handle borrow latency; PgBouncer handles the global \`max_connections\` budget. Serverless almost always needs a transaction-mode pooler (PgBouncer / RDS Proxy / Supavisor).
+> Two-tier topology: HikariCP in each app (small pool, hot path latency) -> PgBouncer (transaction mode) -> Postgres. App pools handle borrow latency; PgBouncer handles the global \`max_connections\` budget. Serverless almost always needs a transaction-mode pooler (PgBouncer / RDS Proxy / Supavisor).
 
 > [!EU]
 > If you store EU personal data, the pooler and DB still sit inside your data-protection boundary — connection logs can contain identifiers (usernames, query params). Keep PgBouncer/Postgres logs in-region and within retention policy; "it's just infra" is not an exemption.`,
@@ -33172,7 +33172,7 @@ server_idle_timeout = 600
               },
               {
                 q: `Why must you never hold a DB connection across a slow external call?`,
-                a: `It occupies a scarce pool slot for the call's duration, slashing effective concurrency. With pool=20 and a 2s HTTP call, you cap at ~10 req/s. Borrow → query → return, then do the slow work.`
+                a: `It occupies a scarce pool slot for the call's duration, slashing effective concurrency. With pool=20 and a 2s HTTP call, you cap at ~10 req/s. Borrow -> query -> return, then do the slow work.`
               },
               {
                 q: `Why must maxLifetime be lower than infra idle timeouts?`,
@@ -33192,7 +33192,7 @@ server_idle_timeout = 600
               },
               {
                 q: `Sketch the two-tier pooling topology and why each tier exists.`,
-                a: `HikariCP (small fixed pool, in each app) → PgBouncer (transaction mode) → Postgres. App pools optimize hot-path borrow latency; PgBouncer enforces the global max_connections budget across all app processes.`
+                a: `HikariCP (small fixed pool, in each app) -> PgBouncer (transaction mode) -> Postgres. App pools optimize hot-path borrow latency; PgBouncer enforces the global max_connections budget across all app processes.`
               }
             ]
           },
@@ -33213,7 +33213,7 @@ Default Postgres config is deliberately conservative (assumes a tiny box). On re
 | \`max_connections\` | Hard connection cap | Keep low; pool instead |
 
 > [!DANGER]
-> \`work_mem\` is allocated **per sort/hash node per connection**, not globally. A query with 3 sorts at \`work_mem=64MB\` can use 192MB; multiply by hundreds of connections and you OOM the box. Real worst case ≈ \`max_connections * avg_nodes * work_mem\`. This is the #1 reason to keep connection counts low.
+> \`work_mem\` is allocated **per sort/hash node per connection**, not globally. A query with 3 sorts at \`work_mem=64MB\` can use 192MB; multiply by hundreds of connections and you OOM the box. Real worst case ~ \`max_connections * avg_nodes * work_mem\`. This is the #1 reason to keep connection counts low.
 
 > [!TIP]
 > Set \`work_mem\` modestly globally and raise it **per-session** for known heavy analytical queries: \`SET LOCAL work_mem = '256MB';\` inside a transaction. Surgical, not global.
@@ -33261,7 +33261,7 @@ ALTER TABLE orders SET (
 
 ## Statistics & the planner
 
-The planner picks plans using **table statistics** (\`pg_statistic\`) gathered by \`ANALYZE\`. Stale stats → bad row estimates → wrong join order / seq scan instead of index → 100x slow queries.
+The planner picks plans using **table statistics** (\`pg_statistic\`) gathered by \`ANALYZE\`. Stale stats -> bad row estimates -> wrong join order / seq scan instead of index -> 100x slow queries.
 
 - \`default_statistics_target\` (default 100) controls histogram granularity. Raise to 500–1000 for columns with skewed distributions.
 - After bulk loads or big data shifts, run \`ANALYZE\` immediately (autovacuum's ANALYZE may lag).
@@ -33352,7 +33352,7 @@ EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM orders WHERE customer_id = 42 AND statu
               },
               {
                 q: `Why is work_mem dangerous to set high globally?`,
-                a: `It's allocated per sort/hash node per connection, not globally. A multi-sort query at 64MB can use hundreds of MB, and with many connections the box can OOM. Worst case ≈ max_connections * avg_nodes * work_mem.`
+                a: `It's allocated per sort/hash node per connection, not globally. A multi-sort query at 64MB can use hundreds of MB, and with many connections the box can OOM. Worst case ~ max_connections * avg_nodes * work_mem.`
               },
               {
                 q: `How do you give one heavy analytical query more sort memory without risking OOM?`,
@@ -33419,7 +33419,7 @@ flowchart TB
 
 | | Asynchronous | Synchronous (\`synchronous_commit=on\` + \`synchronous_standby_names\`) |
 |---|---|---|
-| COMMIT returns | After primary fsyncs WAL locally | After ≥1 standby confirms receipt/flush |
+| COMMIT returns | After primary fsyncs WAL locally | After >=1 standby confirms receipt/flush |
 | Data loss on primary failure | Possible (un-shipped WAL lost) | Zero acknowledged-commit loss |
 | Write latency | Low | Higher (network RTT to standby per commit) |
 | Throughput | High | Lower |
@@ -33435,7 +33435,7 @@ Async replicas are **eventually consistent**. Lag (ms to seconds, more under loa
 
 Mitigations:
 1. **Route the writing user's subsequent reads to the primary** for a short window (sticky to primary after write).
-2. **Causal / LSN tracking**: capture the WAL **LSN** at write time; on read, pick a replica whose \`replay_lsn ≥ that LSN\`, or wait. Postgres exposes \`pg_current_wal_lsn()\` / \`pg_last_wal_replay_lsn()\`.
+2. **Causal / LSN tracking**: capture the WAL **LSN** at write time; on read, pick a replica whose \`replay_lsn >= that LSN\`, or wait. Postgres exposes \`pg_current_wal_lsn()\` / \`pg_last_wal_replay_lsn()\`.
 3. **Read from primary for read-after-write critical paths** (e.g. "confirm order" page); send only stale-tolerant traffic (search, listings, analytics) to replicas.
 4. Cap/monitor lag; **evict replicas exceeding a lag threshold** from the read pool.
 
@@ -33480,7 +33480,7 @@ A **materialized view** stores the *result* of an expensive query physically. Gr
 - Not a substitute for an index — they don't auto-update.
 
 > [!SUCCESS]
-> The layered read-scaling strategy: index well → replicas for read fan-out → Redis for the hottest keys → materialized views for expensive aggregations. Each layer trades a little freshness for a lot of throughput; choose per access pattern.`,
+> The layered read-scaling strategy: index well -> replicas for read fan-out -> Redis for the hottest keys -> materialized views for expensive aggregations. Each layer trades a little freshness for a lot of throughput; choose per access pattern.`,
             code: [
               {
                 lang: `sql`,
@@ -33567,7 +33567,7 @@ public void updateProduct(Product p) {
               },
               {
                 q: `How should you decide which reads go to replicas?`,
-                a: `Classify each read by staleness tolerance. Stale-tolerant (search, feeds, reports) → replicas. Read-after-write-critical (balances, post-write confirmation, uniqueness checks) → primary. Misrouting is a correctness bug, not a perf issue.`
+                a: `Classify each read by staleness tolerance. Stale-tolerant (search, feeds, reports) -> replicas. Read-after-write-critical (balances, post-write confirmation, uniqueness checks) -> primary. Misrouting is a correctness bug, not a perf issue.`
               },
               {
                 q: `Why dedicate a separate replica to analytics?`,
@@ -33591,7 +33591,7 @@ public void updateProduct(Product p) {
               },
               {
                 q: `Summarize the layered read-scaling strategy and what each layer trades.`,
-                a: `Good indexes → read replicas for fan-out → Redis for the hottest keys → materialized views for expensive aggregations. Each layer trades some freshness for throughput; choose per access pattern based on staleness tolerance.`
+                a: `Good indexes -> read replicas for fan-out -> Redis for the hottest keys -> materialized views for expensive aggregations. Each layer trades some freshness for throughput; choose per access pattern based on staleness tolerance.`
               }
             ]
           },
@@ -33810,13 +33810,13 @@ A good shard key:
 | Strategy | How | Pros | Cons |
 |---|---|---|---|
 | **Hash / modulo** | \`shard = hash(key) % N\` | Even distribution, simple | **Rebalancing reshuffles almost everything** when N changes |
-| **Range** | key ranges → shards | Range queries local, easy to reason about | Hotspots (latest range = newest data gets all writes) |
-| **Directory / lookup** | central map key→shard | Flexible, easy rebalancing per key | Lookup is a dependency & potential bottleneck |
+| **Range** | key ranges -> shards | Range queries local, easy to reason about | Hotspots (latest range = newest data gets all writes) |
+| **Directory / lookup** | central map key->shard | Flexible, easy rebalancing per key | Lookup is a dependency & potential bottleneck |
 | **Consistent hashing** | ring of virtual nodes | Adding a shard moves only ~1/N of keys | More complex; needs vnodes for balance |
 
 ## Consistent hashing — why modulo is bad for elasticity
 
-With \`hash(key) % N\`, increasing N from 4→5 changes the modulus for **nearly every key**, forcing a massive data migration. **Consistent hashing** places shards and keys on a hash **ring**; each key belongs to the next shard clockwise. Adding/removing a shard remaps only the keys between two adjacent points — about **1/N of the data** — not all of it. **Virtual nodes** (many ring points per physical shard) smooth out distribution and let you weight by capacity. (See the runnable demo.)
+With \`hash(key) % N\`, increasing N from 4->5 changes the modulus for **nearly every key**, forcing a massive data migration. **Consistent hashing** places shards and keys on a hash **ring**; each key belongs to the next shard clockwise. Adding/removing a shard remaps only the keys between two adjacent points — about **1/N of the data** — not all of it. **Virtual nodes** (many ring points per physical shard) smooth out distribution and let you weight by capacity. (See the runnable demo.)
 
 ## Cross-shard queries, joins & transactions
 
@@ -34257,7 +34257,7 @@ You do **not** call \`update()\` in JPA. Hibernate snapshots each entity's loade
 > [!DANGER]
 > The classic "I didn't save anything but an UPDATE fired" bug: you loaded an entity in a transaction, mutated it (even accidentally, e.g. a JPA lifecycle callback or a normalization setter), and at flush Hibernate detected the dirt and wrote it back. Dirty checking is *implicit*.
 
-Costs: dirty checking is **O(entities × properties)** on every flush. A PC holding 50k entities will re-scan all of them on each auto-flush before each query — a major reason to keep PCs small (or use \`StatelessSession\`, §5).
+Costs: dirty checking is **O(entities x properties)** on every flush. A PC holding 50k entities will re-scan all of them on each auto-flush before each query — a major reason to keep PCs small (or use \`StatelessSession\`, §5).
 
 ### Flush modes
 
@@ -34457,7 +34457,7 @@ private Long id;   // allocationSize 50 => one sequence call per 50 inserts (poo
 
 ### equals() / hashCode() — the natural-id rule
 
-This is a senior-favorite trap. The id is often **null until persist/flush**, so naïve id-based \`equals\`/\`hashCode\` breaks \`Set\` semantics across the transient→managed transition.
+This is a senior-favorite trap. The id is often **null until persist/flush**, so naïve id-based \`equals\`/\`hashCode\` breaks \`Set\` semantics across the transient->managed transition.
 
 > [!WARNING]
 > **Rules of thumb:**
@@ -34658,7 +34658,7 @@ public class Course {
 
 ### LazyInitializationException
 
-The proxy/collection can only be initialized while its persistence context is **open**. Access it after the transaction/session closes → \`LazyInitializationException: could not initialize proxy - no Session\`.
+The proxy/collection can only be initialized while its persistence context is **open**. Access it after the transaction/session closes -> \`LazyInitializationException: could not initialize proxy - no Session\`.
 
 \`\`\`java
 Order o = orderService.findById(1L);   // @Transactional ends here, session closed
@@ -34672,7 +34672,7 @@ o.getItems().size();                   // BOOM: LazyInitializationException
 
 ### The N+1 problem
 
-You run 1 query to load N parents, then Hibernate runs 1 query **per parent** to load a lazy association → 1 + N queries.
+You run 1 query to load N parents, then Hibernate runs 1 query **per parent** to load a lazy association -> 1 + N queries.
 
 \`\`\`java
 List<Order> orders = em.createQuery("select o from Order o", Order.class).getResultList(); // 1
@@ -34899,16 +34899,16 @@ The query cache stores the **list of entity ids** the query returned, plus an up
 > - Multi-node only with a **distributed/invalidating** provider (Infinispan/Redis) — otherwise nodes go stale.
 
 > [!DANGER] Hurts
-> - Write-heavy entities → constant invalidation, lock overhead, low hit rate.
-> - Large entities / huge tables → memory pressure, GC, eviction churn.
-> - Multi-node with a **local** cache (EHCache local) and no invalidation → **stale reads** across instances.
+> - Write-heavy entities -> constant invalidation, lock overhead, low hit rate.
+> - Large entities / huge tables -> memory pressure, GC, eviction churn.
+> - Multi-node with a **local** cache (EHCache local) and no invalidation -> **stale reads** across instances.
 > - Bulk JPQL/HQL \`UPDATE\`/\`DELETE\` **bypass L2** and leave it stale (see §5/§6).
 
 ### Cache invalidation
 
 - Entity changes through the session auto-update L2.
 - **Bulk** \`update Order o set ...\` HQL does **not** touch L2 — you must evict: \`em.getEntityManagerFactory().getCache().evict(Order.class)\` or use \`@org.hibernate.annotations.NaturalIdCache\`/region eviction.
-- Native SQL updates Hibernate doesn't know about → manual eviction or query-space declaration.`,
+- Native SQL updates Hibernate doesn't know about -> manual eviction or query-space declaration.`,
             code: [
               {
                 lang: `java`,
@@ -35047,7 +35047,7 @@ spring.jpa.properties.hibernate.batch_versioned_data=true
 
 ### The flush-and-clear loop for large inserts
 
-A naïve loop of 100k \`persist()\` calls grows the persistence context to 100k managed entities → dirty-checking each flush becomes O(100k), and you OOM. Flush+clear in chunks:
+A naïve loop of 100k \`persist()\` calls grows the persistence context to 100k managed entities -> dirty-checking each flush becomes O(100k), and you OOM. Flush+clear in chunks:
 
 \`\`\`java
 for (int i = 0; i < records.size(); i++) {
@@ -35106,7 +35106,7 @@ tx.commit();
 ss.close();
 \`\`\`
 
-- **No persistence context** → no 1st-level cache, no dirty checking, no automatic flush.
+- **No persistence context** -> no 1st-level cache, no dirty checking, no automatic flush.
 - **No cascades, no lifecycle events, no L2 interaction.**
 - You call \`insert/update/delete\` explicitly. Ideal for ETL / bulk batch processing where the convenience of managed entities is pure overhead.
 
@@ -35240,7 +35240,7 @@ insert into orders (status, version, id) values (?, ?, ?);
 
 ### 1. LazyInitializationException in the wild
 
-Returning entities from a \`@Transactional\` service and touching a lazy field in the controller/view (OSIV off) → \`LazyInitializationException\`. **Fix:** fetch with JOIN FETCH/@EntityGraph inside the tx, or return DTOs. Don't "fix" it by turning everything EAGER or enabling OSIV.
+Returning entities from a \`@Transactional\` service and touching a lazy field in the controller/view (OSIV off) -> \`LazyInitializationException\`. **Fix:** fetch with JOIN FETCH/@EntityGraph inside the tx, or return DTOs. Don't "fix" it by turning everything EAGER or enabling OSIV.
 
 ### 2. @OneToMany cascade & orphanRemoval traps
 
@@ -35263,7 +35263,7 @@ org.hibernate.loader.MultipleBagFetchException:
   cannot simultaneously fetch multiple bags: [Order.items, Order.payments]
 \`\`\`
 
-You JOIN FETCH **two \`List\` (bag) collections at once** → cartesian product Hibernate refuses to materialize.
+You JOIN FETCH **two \`List\` (bag) collections at once** -> cartesian product Hibernate refuses to materialize.
 
 > [!TIP] Fixes
 > 1. Change the collections from \`List\` to \`Set\` (sets are not bags) — fetching two Sets is allowed.
@@ -35273,7 +35273,7 @@ You JOIN FETCH **two \`List\` (bag) collections at once** → cartesian product 
 ### 4. JOIN FETCH + pagination = in-memory pagination
 
 > [!DANGER]
-> \`SELECT o FROM Order o JOIN FETCH o.items\` with \`setMaxResults\` → Hibernate logs \`HHH000104: firstResult/maxResults specified with collection fetch; applying in memory\`. It loads **all** rows then paginates in memory — a silent OOM risk. Paginate the parent ids first, then fetch children for that page.
+> \`SELECT o FROM Order o JOIN FETCH o.items\` with \`setMaxResults\` -> Hibernate logs \`HHH000104: firstResult/maxResults specified with collection fetch; applying in memory\`. It loads **all** rows then paginates in memory — a silent OOM risk. Paginate the parent ids first, then fetch children for that page.
 
 ### 5. Detached-entity merge surprises
 
@@ -35308,9 +35308,9 @@ private Map<String, Object> attributes;
 \`\`\`java
 @Version private long version;
 \`\`\`
-- UPDATE becomes \`... WHERE id=? AND version=?\`; 0 rows → \`OptimisticLockException\`.
+- UPDATE becomes \`... WHERE id=? AND version=?\`; 0 rows -> \`OptimisticLockException\`.
 - Handle by retrying the unit of work (reload, re-apply, save).
-- Pessimistic alternative: \`em.find(E.class, id, LockModeType.PESSIMISTIC_WRITE)\` → \`SELECT ... FOR UPDATE\` when you can't tolerate retries.
+- Pessimistic alternative: \`em.find(E.class, id, LockModeType.PESSIMISTIC_WRITE)\` -> \`SELECT ... FOR UPDATE\` when you can't tolerate retries.
 
 ### 8. When to drop to native SQL
 
@@ -35331,7 +35331,7 @@ private Map<String, Object> attributes;
 > - \`SEQUENCE\` + pooled ids for write throughput; \`batch_size\` + flush/clear for bulk.
 > - DTO projections for read APIs; entities for write/aggregate operations.
 > - Verify with SQL logging + statistics, not assumptions.
-> - Keep the aggregate boundary tight; cascade only root→children.`,
+> - Keep the aggregate boundary tight; cascade only root->children.`,
             code: [
               {
                 lang: `java`,
@@ -35487,10 +35487,10 @@ enum Plan { FREE, PRO, ENTERPRISE }`,
             title: `Scaling Axes & Principles: Vertical/Horizontal, AKF Cube, Capacity Estimation`,
             notes: `## Scalability Is About Slope, Not Size
 
-A senior answer never starts with "add more servers." Scalability is the **relationship between cost and capacity**: how does the system's throughput change as you add resources, and what does that cost? A system "scales" when **N× resources buy you roughly N× capacity** without a rewrite. The whole discipline is keeping that line linear for as long as possible.
+A senior answer never starts with "add more servers." Scalability is the **relationship between cost and capacity**: how does the system's throughput change as you add resources, and what does that cost? A system "scales" when **Nx resources buy you roughly Nx capacity** without a rewrite. The whole discipline is keeping that line linear for as long as possible.
 
 > [!TIP]
-> Interviewers separate juniors from seniors by one reflex: a junior optimizes a single machine; a senior asks *"what breaks when traffic is 100× and the data is 1000×?"* and reasons about the **shape of the cost curve**, not a point on it.
+> Interviewers separate juniors from seniors by one reflex: a junior optimizes a single machine; a senior asks *"what breaks when traffic is 100x and the data is 1000x?"* and reasons about the **shape of the cost curve**, not a point on it.
 
 ### Vertical vs Horizontal Scaling
 
@@ -35498,8 +35498,8 @@ A senior answer never starts with "add more servers." Scalability is the **relat
 
 | Dimension | Vertical (scale up) | Horizontal (scale out) |
 |---|---|---|
-| Mechanism | Bigger instance (e.g. 4→64 vCPU) | More instances (e.g. 3→300) |
-| Ceiling | Hard — biggest cloud VM ≈ 192–448 vCPU, a few TB RAM | Effectively unbounded |
+| Mechanism | Bigger instance (e.g. 4->64 vCPU) | More instances (e.g. 3->300) |
+| Ceiling | Hard — biggest cloud VM ~ 192–448 vCPU, a few TB RAM | Effectively unbounded |
 | Cost curve | Super-linear (top SKUs cost a premium) | ~Linear per node |
 | Failure blast radius | One big SPOF | One node = small fraction |
 | Code changes | None — transparent | Requires statelessness + coordination |
@@ -35516,8 +35516,8 @@ A senior answer never starts with "add more servers." Scalability is the **relat
 
 A **stateless** service keeps no client-affinity request state in local memory between requests. Every request carries (or can re-fetch) everything it needs; session/state lives in an external store (Redis, DB, signed JWT). This is the enabler for everything else:
 
-- Any node can serve any request ⇒ trivial load balancing, no sticky sessions.
-- Nodes are **cattle, not pets** ⇒ autoscaling, rolling deploys, instant failover.
+- Any node can serve any request => trivial load balancing, no sticky sessions.
+- Nodes are **cattle, not pets** => autoscaling, rolling deploys, instant failover.
 - Scaling = changing a replica count, not migrating state.
 
 > [!WARNING]
@@ -35552,7 +35552,7 @@ Each node owns its slice of data/compute and coordinates with peers only via mes
 - **Latency** = time for one request (p50/p95/p99, measured in ms). A *per-request* property.
 - **Throughput** = requests completed per unit time (QPS/RPS). A *system* property.
 
-Little's Law ties them together: **L = λ × W** → concurrency = throughput × latency. If average latency is 50 ms and you want 10,000 QPS, you need ~500 requests in flight concurrently (10,000 × 0.05). That number drives your thread-pool / connection-pool sizing.
+Little's Law ties them together: **L = λ x W** -> concurrency = throughput x latency. If average latency is 50 ms and you want 10,000 QPS, you need ~500 requests in flight concurrently (10,000 x 0.05). That number drives your thread-pool / connection-pool sizing.
 
 > [!WARNING]
 > Throughput and latency trade off. Batching, buffering, and queuing raise throughput but *add* latency. At saturation, latency explodes (the hockey-stick) while throughput plateaus — chasing more QPS past the knee just grows the queue and p99.
@@ -35563,20 +35563,20 @@ This is the most-tested skill in a design loop. Memorize the constants and the m
 
 > [!EU]
 > **Powers-of-two & latency cheat sheet (Jeff Dean numbers, rounded):**
-> L1 ref ≈ 1 ns · main memory ≈ 100 ns · SSD random read ≈ 16 µs · same-DC round trip ≈ 0.5 ms · disk seek ≈ 2 ms · CA→NL round trip ≈ 150 ms. Sequential memory read of 1 MB ≈ 100 µs; 1 MB over 10 GbE ≈ 1 ms. Seconds/day ≈ **86,400 ≈ 10⁵**.
+> L1 ref ~ 1 ns · main memory ~ 100 ns · SSD random read ~ 16 µs · same-DC round trip ~ 0.5 ms · disk seek ~ 2 ms · CA->NL round trip ~ 150 ms. Sequential memory read of 1 MB ~ 100 µs; 1 MB over 10 GbE ~ 1 ms. Seconds/day ~ **86,400 ~ 10⁵**.
 
 **Worked example — a Twitter-like timeline service.**
 
-Assume 300 M users, 50% daily active = 150 M DAU. Each user reads their timeline ~20×/day.
+Assume 300 M users, 50% daily active = 150 M DAU. Each user reads their timeline ~20x/day.
 
-- **Read QPS:** 150 M × 20 / 86,400 ≈ 3 × 10⁹ / 8.64 × 10⁴ ≈ **~35,000 QPS average**. Peak ≈ 2–3× average ⇒ plan for **~100,000 QPS**.
-- **Write QPS:** say each user posts 2×/day ⇒ 150 M × 2 / 86,400 ≈ **~3,500 writes/s** average, ~10,000 peak. **Read:write ≈ 10:1** ⇒ this is a *read-heavy* system (drives fan-out-on-write + caching).
-- **Storage:** a tweet ≈ 300 bytes text + metadata ≈ 1 KB stored (indexes, replicas factored separately). 150 M × 2 posts/day = 300 M posts/day × 1 KB = **~300 GB/day** ⇒ ~110 TB/year of raw posts; ×3 for replication ⇒ ~330 TB/yr. Media (images) dwarfs this — push to object storage/CDN.
-- **Bandwidth:** read 100 K QPS × ~5 KB per timeline payload ≈ **~500 MB/s = 4 Gbps egress** at the edge ⇒ mandates a CDN/caching layer, not origin serving.
-- **Cache sizing:** keep the hot timeline (last ~800 tweet IDs) for active users in Redis. 150 M × 800 × 8 bytes (IDs) ≈ **~1 TB** of cache ⇒ a sharded Redis cluster, not one node.
+- **Read QPS:** 150 M x 20 / 86,400 ~ 3 x 10⁹ / 8.64 x 10⁴ ~ **~35,000 QPS average**. Peak ~ 2–3x average => plan for **~100,000 QPS**.
+- **Write QPS:** say each user posts 2x/day => 150 M x 2 / 86,400 ~ **~3,500 writes/s** average, ~10,000 peak. **Read:write ~ 10:1** => this is a *read-heavy* system (drives fan-out-on-write + caching).
+- **Storage:** a tweet ~ 300 bytes text + metadata ~ 1 KB stored (indexes, replicas factored separately). 150 M x 2 posts/day = 300 M posts/day x 1 KB = **~300 GB/day** => ~110 TB/year of raw posts; x3 for replication => ~330 TB/yr. Media (images) dwarfs this — push to object storage/CDN.
+- **Bandwidth:** read 100 K QPS x ~5 KB per timeline payload ~ **~500 MB/s = 4 Gbps egress** at the edge => mandates a CDN/caching layer, not origin serving.
+- **Cache sizing:** keep the hot timeline (last ~800 tweet IDs) for active users in Redis. 150 M x 800 x 8 bytes (IDs) ~ **~1 TB** of cache => a sharded Redis cluster, not one node.
 
 > [!SUCCESS]
-> The method, every time: **(1) state assumptions out loud** (DAU, actions/user/day, payload size), **(2) convert to per-second** (÷86,400), **(3) apply a peak factor** (2–3×), **(4) derive QPS, storage/day, bandwidth, cache size**, **(5) name the architectural consequence** (CDN, sharding, fan-out). Interviewers grade the *method and the consequence*, not the exact digits.`,
+> The method, every time: **(1) state assumptions out loud** (DAU, actions/user/day, payload size), **(2) convert to per-second** (÷86,400), **(3) apply a peak factor** (2–3x), **(4) derive QPS, storage/day, bandwidth, cache size**, **(5) name the architectural consequence** (CDN, sharding, fan-out). Interviewers grade the *method and the consequence*, not the exact digits.`,
             code: [
               {
                 lang: `java`,
@@ -35667,7 +35667,7 @@ spec:
             flashcards: [
               {
                 q: `Define scalability precisely (not "handles more load").`,
-                a: `The relationship between cost and capacity: a system scales when N× resources yield ~N× capacity without a rewrite. You care about the slope/shape of the cost curve, not a single throughput number.`
+                a: `The relationship between cost and capacity: a system scales when Nx resources yield ~Nx capacity without a rewrite. You care about the slope/shape of the cost curve, not a single throughput number.`
               },
               {
                 q: `Vertical vs horizontal scaling — one-line trade-off.`,
@@ -35691,7 +35691,7 @@ spec:
               },
               {
                 q: `Latency vs throughput — define and relate via Little’s Law.`,
-                a: `Latency = time per request (p99, ms); throughput = requests/sec (QPS). Little’s Law: concurrency L = throughput λ × latency W. e.g. 10k QPS × 50 ms = 500 in-flight.`
+                a: `Latency = time per request (p99, ms); throughput = requests/sec (QPS). Little’s Law: concurrency L = throughput λ x latency W. e.g. 10k QPS x 50 ms = 500 in-flight.`
               },
               {
                 q: `How do throughput and latency trade off near saturation?`,
@@ -35699,15 +35699,15 @@ spec:
               },
               {
                 q: `How many seconds in a day, and why memorize it?`,
-                a: `86,400 ≈ 10⁵. It is the divisor that converts daily action counts into average QPS in every back-of-envelope estimate.`
+                a: `86,400 ~ 10⁵. It is the divisor that converts daily action counts into average QPS in every back-of-envelope estimate.`
               },
               {
                 q: `Give the 5-step capacity-estimation method.`,
-                a: `(1) State assumptions (DAU, actions/user/day, payload). (2) ÷86,400 → per-second. (3) ×2–3 peak factor. (4) Derive QPS, storage/day, bandwidth, cache size. (5) Name the architectural consequence (CDN, shard, fan-out).`
+                a: `(1) State assumptions (DAU, actions/user/day, payload). (2) ÷86,400 -> per-second. (3) x2–3 peak factor. (4) Derive QPS, storage/day, bandwidth, cache size. (5) Name the architectural consequence (CDN, shard, fan-out).`
               },
               {
                 q: `Rough same-DC round trip vs cross-continent round trip?`,
-                a: `Same-datacenter RTT ≈ 0.5 ms; California↔Netherlands RTT ≈ 150 ms. SSD random read ≈ 16 µs; main memory ≈ 100 ns; disk seek ≈ 2 ms.`
+                a: `Same-datacenter RTT ~ 0.5 ms; California↔Netherlands RTT ~ 150 ms. SSD random read ~ 16 µs; main memory ~ 100 ns; disk seek ~ 2 ms.`
               },
               {
                 q: `Why is "scale up the box" often architectural debt?`,
@@ -35758,8 +35758,8 @@ flowchart TD
 | **Round robin** | Next node in rotation | Homogeneous nodes, uniform requests | Ignores load; a slow node still gets its turn |
 | **Weighted RR** | RR biased by capacity weight | Heterogeneous instance sizes | Static weights drift from reality |
 | **Least connections** | Node with fewest active conns | Long-lived/variable requests | Needs accurate conn counts; herd to a fresh node |
-| **Least response time** | Lowest latency × conns | Latency-sensitive APIs | Needs live latency telemetry |
-| **Consistent hashing** | hash(key) → ring position | Cache affinity, sticky-by-key, sharding | Hot keys; needs virtual nodes |
+| **Least response time** | Lowest latency x conns | Latency-sensitive APIs | Needs live latency telemetry |
+| **Consistent hashing** | hash(key) -> ring position | Cache affinity, sticky-by-key, sharding | Hot keys; needs virtual nodes |
 | **Power of two choices** | Pick 2 random, choose lesser-loaded | Huge fleets, cheap & near-optimal | Slightly worse than full least-conn |
 
 > [!SUCCESS]
@@ -35769,10 +35769,10 @@ flowchart TD
 
 Naive sharding by \`hash(key) % N\` remaps **almost every key** when N changes (add/remove a node) — catastrophic for a cache (mass miss storm) or a stateful shard (mass data movement). **Consistent hashing** places nodes and keys on a hash ring; a key maps to the next node clockwise. Adding/removing a node only remaps keys in **one arc (~1/N of keys)**, not all of them.
 
-- **Virtual nodes (vnodes):** each physical node gets many ring positions ⇒ smooth load distribution and graceful rebalancing when a node leaves. Used by Cassandra, DynamoDB, Riak, Envoy ring-hash, memcached clients.
+- **Virtual nodes (vnodes):** each physical node gets many ring positions => smooth load distribution and graceful rebalancing when a node leaves. Used by Cassandra, DynamoDB, Riak, Envoy ring-hash, memcached clients.
 
 > [!WARNING]
-> With \`% N\` and N: 4→5, ~80% of keys move. With consistent hashing, ~1/5 (20%) move. That difference is the whole reason the technique exists. (Demo in code.)
+> With \`% N\` and N: 4->5, ~80% of keys move. With consistent hashing, ~1/5 (20%) move. That difference is the whole reason the technique exists. (Demo in code.)
 
 ### Health Checks
 
@@ -35781,7 +35781,7 @@ Naive sharding by \`hash(key) % N\` remaps **almost every key** when N changes (
 - Health endpoints should be **shallow** by default (process up) but optionally **deep** (can reach DB) — a deep check that fails on a transient DB blip can cascade the *entire fleet* out of rotation. Prefer deep checks with hysteresis.
 
 > [!DANGER]
-> A naive deep health check is a fleet-wide footgun: a 2-second DB hiccup marks *every* pod unhealthy simultaneously → LB has zero healthy backends → total outage from a transient blip. Use shallow liveness + readiness gated on a *degraded* (not hard-fail) signal, plus a minimum-healthy floor.
+> A naive deep health check is a fleet-wide footgun: a 2-second DB hiccup marks *every* pod unhealthy simultaneously -> LB has zero healthy backends -> total outage from a transient blip. Use shallow liveness + readiness gated on a *degraded* (not hard-fail) signal, plus a minimum-healthy floor.
 
 ### Sticky Sessions (Session Affinity)
 
@@ -35963,7 +35963,7 @@ clusters:
               },
               {
                 q: `Why does hash(key) % N fail when N changes?`,
-                a: `Changing N remaps almost every key (4→5 moves ~80%), causing a cache-miss storm or mass data migration. Consistent hashing remaps only ~1/N (one ring arc).`
+                a: `Changing N remaps almost every key (4->5 moves ~80%), causing a cache-miss storm or mass data migration. Consistent hashing remaps only ~1/N (one ring arc).`
               },
               {
                 q: `What problem do virtual nodes solve in consistent hashing?`,
@@ -35983,7 +35983,7 @@ clusters:
               },
               {
                 q: `Why can a deep (DB-touching) health check cause a full outage?`,
-                a: `A transient DB blip fails the deep check on EVERY pod simultaneously → LB has zero healthy backends → total outage from a 2-second hiccup. Use shallow liveness + readiness with hysteresis and a minimum-healthy floor / panic threshold.`
+                a: `A transient DB blip fails the deep check on EVERY pod simultaneously -> LB has zero healthy backends -> total outage from a 2-second hiccup. Use shallow liveness + readiness with hysteresis and a minimum-healthy floor / panic threshold.`
               },
               {
                 q: `Why are sticky sessions a scaling smell?`,
@@ -36031,7 +36031,7 @@ CAP says: when a **network Partition (P)** occurs between replicas, a system mus
 
 CAP ignores the 99.9% of time with **no** partition. **PACELC** completes it:
 
-> **If Partition (P) → choose A or C; Else (E, normal operation) → choose Latency (L) or Consistency (C).**
+> **If Partition (P) -> choose A or C; Else (E, normal operation) -> choose Latency (L) or Consistency (C).**
 
 Even with a healthy network, strong consistency costs latency (you must coordinate replicas before answering). So the real taxonomy is e.g. **PA/EL** (Dynamo/Cassandra: available under partition, low-latency otherwise — sacrifices consistency both times) vs **PC/EC** (Spanner, VoltDB: consistent under partition *and* willing to pay latency for it normally).
 
@@ -36040,7 +36040,7 @@ Even with a healthy network, strong consistency costs latency (you must coordina
 
 ### Eventual vs Strong Consistency
 
-- **Strong / linearizable:** reads always reflect the most recent write; the system behaves as if there is one copy. Costs coordination → latency, lower availability.
+- **Strong / linearizable:** reads always reflect the most recent write; the system behaves as if there is one copy. Costs coordination -> latency, lower availability.
 - **Eventual:** replicas converge *if writes stop*; a read may return a stale value. Add **read-your-writes**, **monotonic reads**, **causal** consistency as stronger-than-eventual session guarantees that cover the common UX papercuts cheaply.
 
 > [!WARNING]
@@ -36050,7 +36050,7 @@ Even with a healthy network, strong consistency costs latency (you must coordina
 
 In a Dynamo-style system, data is replicated to **N** nodes. A write must be acknowledged by **W** replicas; a read must gather from **R** replicas. The core inequality:
 
-> **R + W > N  ⇒  the read and write quorums overlap by at least one node ⇒ every read sees the latest acknowledged write (strong-ish consistency).**
+> **R + W > N  =>  the read and write quorums overlap by at least one node => every read sees the latest acknowledged write (strong-ish consistency).**
 
 \`\`\`mermaid
 flowchart LR
@@ -36067,10 +36067,10 @@ flowchart LR
 | Strong | 3 | 1 | R+W=4>3, fast write, slow read | read-heavy needing freshness |
 | Strong | 1 | 3 | R+W=4>3, fast read, slow/durable write | write-once read-many |
 | Balanced quorum | 2 | 2 | R+W=4>3, both tolerate 1 failure | the common default |
-| Fast/eventual | 1 | 1 | R+W=2≤3, may read stale | max availability, AP |
+| Fast/eventual | 1 | 1 | R+W=2<=3, may read stale | max availability, AP |
 
 > [!SUCCESS]
-> Tunable consistency = you set R, W, N **per operation**. Use W=ALL or quorum for a payment; R=1/W=1 for a like-count. The single most quotable line: **"R + W > N gives quorum overlap, hence strong consistency; R + W ≤ N gives availability and possible staleness."**
+> Tunable consistency = you set R, W, N **per operation**. Use W=ALL or quorum for a payment; R=1/W=1 for a like-count. The single most quotable line: **"R + W > N gives quorum overlap, hence strong consistency; R + W <= N gives availability and possible staleness."**
 
 > [!WARNING]
 > Quorum overlap guarantees you *read a node that has the latest write*, but with last-write-wins it does not resolve concurrent conflicting writes correctly — clock skew can silently drop a write. Real systems use **version vectors / dotted version vectors** (or CRDTs) to detect and merge conflicts instead of LWW.
@@ -36079,12 +36079,12 @@ flowchart LR
 
 In a distributed system, **retries are guaranteed** (timeouts, at-least-once delivery, client double-clicks). An operation is **idempotent** if applying it N times equals applying it once. Without idempotency, retries double-charge cards and double-ship orders.
 
-- **Idempotency key:** client sends a unique key (UUID); server records "key → result" and on replay returns the stored result instead of re-executing. Stripe, PayPal, and every serious payments API do this.
+- **Idempotency key:** client sends a unique key (UUID); server records "key -> result" and on replay returns the stored result instead of re-executing. Stripe, PayPal, and every serious payments API do this.
 - Natural idempotency: \`SET x = 5\` (idempotent) vs \`x = x + 1\` (not). Prefer **set-to-target** over **delta** semantics where possible.
 - Exactly-once *delivery* is impossible across a network; you get **at-least-once delivery + idempotent processing = effectively-once**.
 
 > [!DANGER]
-> The classic bug: client times out (but the server *did* process), client retries, second request also succeeds → double charge. The fix is server-side dedup on an idempotency key with an atomic "insert-key-or-return-prior-result," not client-side cleverness.
+> The classic bug: client times out (but the server *did* process), client retries, second request also succeeds -> double charge. The fix is server-side dedup on an idempotency key with an atomic "insert-key-or-return-prior-result," not client-side cleverness.
 
 ### Distributed Counters — A Microcosm of the Whole Problem
 
@@ -36197,7 +36197,7 @@ public class ShardedCounter {
     }
 }`,
                 runnable: true,
-                note: `The striped counter is the in-process analog of the distributed sharded-counter pattern: increment a random shard (write contention ÷K), sum all shards on read (read cost ×K). Correct under massive concurrency; eventually-correct totals across replicas.`
+                note: `The striped counter is the in-process analog of the distributed sharded-counter pattern: increment a random shard (write contention ÷K), sum all shards on read (read cost xK). Correct under massive concurrency; eventually-correct totals across replicas.`
               }
             ],
             flashcards: [
@@ -36207,7 +36207,7 @@ public class ShardedCounter {
               },
               {
                 q: `What does PACELC add over CAP?`,
-                a: `It covers normal operation: if Partition → A or C; Else → Latency or Consistency. Even with a healthy network, strong consistency costs latency. e.g. Cassandra=PA/EL, Spanner=PC/EC.`
+                a: `It covers normal operation: if Partition -> A or C; Else -> Latency or Consistency. Even with a healthy network, strong consistency costs latency. e.g. Cassandra=PA/EL, Spanner=PC/EC.`
               },
               {
                 q: `Classify Cassandra and Spanner in PACELC.`,
@@ -36215,7 +36215,7 @@ public class ShardedCounter {
               },
               {
                 q: `State the quorum inequality and what it guarantees.`,
-                a: `R + W > N. The read and write quorums overlap by ≥1 node, so every read touches a replica holding the latest acknowledged write → strong-ish consistency. R + W ≤ N → may read stale, more available.`
+                a: `R + W > N. The read and write quorums overlap by >=1 node, so every read touches a replica holding the latest acknowledged write -> strong-ish consistency. R + W <= N -> may read stale, more available.`
               },
               {
                 q: `For N=3, give the common balanced quorum and why.`,
@@ -36231,11 +36231,11 @@ public class ShardedCounter {
               },
               {
                 q: `Why is exactly-once delivery impossible, and what do we do instead?`,
-                a: `Network failures make a sender unable to know if a message was delivered, so it must retry → at-least-once. We get effectively-once by combining at-least-once DELIVERY with idempotent PROCESSING.`
+                a: `Network failures make a sender unable to know if a message was delivered, so it must retry -> at-least-once. We get effectively-once by combining at-least-once DELIVERY with idempotent PROCESSING.`
               },
               {
                 q: `How does an idempotency key prevent double charges?`,
-                a: `Client sends a unique key; the server atomically inserts "key→result" or returns the prior result, so a retried/duplicated request returns the stored outcome instead of re-executing the side effect.`
+                a: `Client sends a unique key; the server atomically inserts "key->result" or returns the prior result, so a retried/duplicated request returns the stored outcome instead of re-executing the side effect.`
               },
               {
                 q: `Why is UPDATE counter SET n=n+1 a scaling problem, and one fix?`,
@@ -36302,7 +36302,7 @@ Named after a ship’s watertight compartments: **isolate resources so one faili
 |---|---|---|---|---|
 | **Token bucket** | Tokens refill at rate R, cap B; each request spends 1 | Yes, up to B | O(1)/key | Most common; bursty-friendly (APIs, Stripe, AWS) |
 | **Leaky bucket** | Requests queue, drain at fixed rate | No — smooths to constant rate | O(queue) | Traffic shaping; constant output |
-| **Fixed window** | Count per wall-clock window | Boundary spikes (2× at edge) | O(1) | Simple but bursty at window edges |
+| **Fixed window** | Count per wall-clock window | Boundary spikes (2x at edge) | O(1) | Simple but bursty at window edges |
 | **Sliding window log** | Timestamp log, count last T | Accurate | O(requests) | Exact but memory-heavy |
 | **Sliding window counter** | Weighted prev+current window | Approx, smooth | O(1) | Cloudflare’s choice; great accuracy/cost ratio |
 
@@ -36324,8 +36324,8 @@ When overloaded, a senior system **sheds load deliberately** instead of failing 
 ### Timeouts and Retries — With Jitter
 
 - **Every remote call needs a timeout.** No timeout = a hung dependency leaks threads until the caller dies. Set timeouts from the p99 of the dependency, not a guess.
-- **Retries amplify load.** Naive immediate retry of a struggling service = a retry storm that finishes it off. Use **exponential backoff with full jitter**: \`sleep = random(0, min(cap, base × 2^attempt))\`.
-- **Cap total attempts (2–3)**, and use a **retry budget** (e.g. retries ≤ 10% of requests) so retries can never more than ~double load.
+- **Retries amplify load.** Naive immediate retry of a struggling service = a retry storm that finishes it off. Use **exponential backoff with full jitter**: \`sleep = random(0, min(cap, base x 2^attempt))\`.
+- **Cap total attempts (2–3)**, and use a **retry budget** (e.g. retries <= 10% of requests) so retries can never more than ~double load.
 - **Only retry idempotent / safe operations** — see §3.
 
 > [!WARNING]
@@ -36453,7 +36453,7 @@ public class Bulkhead {
             flashcards: [
               {
                 q: `How does synchronous call-chaining hurt availability?`,
-                a: `Availability multiplies: 3 chained 99.9% services ≈ 99.7%. Worse, a slowdown deep in the chain blocks threads all the way up until the whole stack saturates. Async/decoupling contains the failure to one feature.`
+                a: `Availability multiplies: 3 chained 99.9% services ~ 99.7%. Worse, a slowdown deep in the chain blocks threads all the way up until the whole stack saturates. Async/decoupling contains the failure to one feature.`
               },
               {
                 q: `What does a message queue actually buy you?`,
@@ -36477,11 +36477,11 @@ public class Bulkhead {
               },
               {
                 q: `Token bucket vs leaky bucket.`,
-                a: `Token bucket: tokens refill at rate R up to cap B, each request spends one → allows controlled bursts up to B, O(1) state (default API limiter). Leaky bucket: requests drain at a fixed rate → no bursts, perfectly smooth output for protecting a fragile downstream.`
+                a: `Token bucket: tokens refill at rate R up to cap B, each request spends one -> allows controlled bursts up to B, O(1) state (default API limiter). Leaky bucket: requests drain at a fixed rate -> no bursts, perfectly smooth output for protecting a fragile downstream.`
               },
               {
                 q: `Why is fixed-window rate limiting flawed, and what fixes it cheaply?`,
-                a: `It allows up to 2× the limit at the window boundary (burst at the edge of one window + start of the next). Sliding-window-counter (weighted previous+current window) fixes it with O(1) state — Cloudflare’s approach.`
+                a: `It allows up to 2x the limit at the window boundary (burst at the edge of one window + start of the next). Sliding-window-counter (weighted previous+current window) fixes it with O(1) state — Cloudflare’s approach.`
               },
               {
                 q: `Under extreme overload, why is rejecting requests the MOST available action?`,
@@ -36509,17 +36509,17 @@ You never "scale the system" — you find the current bottleneck, move it, and f
 
 ### Amdahl’s Law — The Serial Fraction Caps Speedup
 
-If a fraction **s** of work is inherently serial (can’t parallelize) and (1−s) parallelizes across **p** workers, max speedup is:
+If a fraction **s** of work is inherently serial (can’t parallelize) and (1-s) parallelizes across **p** workers, max speedup is:
 
-> **Speedup(p) = 1 / ( s + (1−s)/p )**, and as p→∞, **Speedup → 1/s**.
+> **Speedup(p) = 1 / ( s + (1-s)/p )**, and as p->∞, **Speedup -> 1/s**.
 
-If just **5% is serial**, the absolute ceiling is **20×** no matter how many machines you add. 1% serial → 100× ceiling. The lesson: **the serial fraction — a global lock, a single sequence generator, one coordinator — sets a hard ceiling that more hardware cannot break.**
+If just **5% is serial**, the absolute ceiling is **20x** no matter how many machines you add. 1% serial -> 100x ceiling. The lesson: **the serial fraction — a global lock, a single sequence generator, one coordinator — sets a hard ceiling that more hardware cannot break.**
 
 ### Universal Scalability Law — Why More Nodes Can Make It SLOWER
 
 Amdahl undersells the danger. Gunther’s **USL** adds a second penalty — **crosstalk / coherency cost** (nodes must coordinate, O(N²)):
 
-> **C(N) = N / ( 1 + α(N−1) + βN(N−1) )**
+> **C(N) = N / ( 1 + α(N-1) + βN(N-1) )**
 >
 > α = contention (serialization, like Amdahl’s s) · β = coherency (coordination/crosstalk between nodes).
 
@@ -36533,7 +36533,7 @@ flowchart LR
 
 | Region | Behavior | Cause |
 |---|---|---|
-| Linear | ~N× throughput | low α, low β |
+| Linear | ~Nx throughput | low α, low β |
 | Sub-linear (knee) | flattens | contention α (serial section) |
 | Peak N* | max throughput | α and β balance |
 | **Retrograde** | throughput **decreases** as you add nodes | coherency β (coordination cost > work) |
@@ -36542,7 +36542,7 @@ flowchart LR
 > The non-obvious, interview-gold insight: **adding capacity past the USL peak makes the system slower**, because the marginal node adds more coordination cost than work. This is why "just add servers" can deepen an outage — more app servers hammering one contended DB lock increases lock contention and lowers total throughput. Find α and β, don’t blindly scale.
 
 > [!SUCCESS]
-> Practical takeaway: **minimize α (kill serial sections / global locks → shard, partition, batch) and minimize β (reduce cross-node chatter → caching, locality, async, fewer distributed transactions).** Those two levers, not node count, set your real ceiling.
+> Practical takeaway: **minimize α (kill serial sections / global locks -> shard, partition, batch) and minimize β (reduce cross-node chatter -> caching, locality, async, fewer distributed transactions).** Those two levers, not node count, set your real ceiling.
 
 ### Finding the Bottleneck — Method
 
@@ -36567,8 +36567,8 @@ A SPOF is any component whose failure takes down the system. Hunt them: single L
 | **Async** (ack before replica) | Eventual; window of data loss on failover | Low latency, may lose last writes (RPO>0) | Most web apps |
 | **Semi-sync** | At least one replica synced | Balanced | Common RDBMS default |
 
-- **Failover** = promote a replica to primary when the primary dies. Needs **failure detection** (heartbeats/leases), **leader election** (Raft/Paxos/ZooKeeper) to avoid **split-brain** (two primaries accepting writes → divergent data), and a **fencing token** so the old primary, if it revives, can’t keep writing.
-- **RPO** (Recovery Point Objective) = max acceptable data loss; **RTO** (Recovery Time Objective) = max acceptable downtime. Sync repl drives RPO→0; automated failover drives RTO down.
+- **Failover** = promote a replica to primary when the primary dies. Needs **failure detection** (heartbeats/leases), **leader election** (Raft/Paxos/ZooKeeper) to avoid **split-brain** (two primaries accepting writes -> divergent data), and a **fencing token** so the old primary, if it revives, can’t keep writing.
+- **RPO** (Recovery Point Objective) = max acceptable data loss; **RTO** (Recovery Time Objective) = max acceptable downtime. Sync repl drives RPO->0; automated failover drives RTO down.
 
 > [!DANGER]
 > **Split-brain** is the failover nightmare: a network partition makes a healthy replica think the primary is dead and promote itself, so two primaries accept conflicting writes. Prevent it with quorum-based election (a node needs a majority to lead) and fencing tokens. Never failover on a single missed heartbeat.
@@ -36578,15 +36578,15 @@ A SPOF is any component whose failure takes down the system. Hunt them: single L
 This single question reorganizes any design answer:
 
 **Read-heavy (e.g. 100:1 — feeds, catalogs, profiles):**
-- **Caching** (CDN → app cache → Redis) absorbs most reads; cache hit ratio is your main lever.
-- **Read replicas** scale read throughput (watch replication lag → read-your-writes issues).
+- **Caching** (CDN -> app cache -> Redis) absorbs most reads; cache hit ratio is your main lever.
+- **Read replicas** scale read throughput (watch replication lag -> read-your-writes issues).
 - **Denormalize / materialized views / fan-out-on-write** to make reads cheap.
 - **CQRS:** separate the read model from the write model.
 
 **Write-heavy (e.g. logs, metrics, IoT, payments ledger):**
 - **Sharding/partitioning** by key spreads write load (the Z-axis); avoid hot partitions.
 - **LSM-tree stores** (Cassandra, RocksDB) optimize for write throughput over read.
-- **Batching & async ingestion** (queue → bulk insert) smooths write spikes.
+- **Batching & async ingestion** (queue -> bulk insert) smooths write spikes.
 - **Append-only / event-sourcing**; avoid read-modify-write hotspots and global secondary indexes on the hot path.
 
 > [!TIP]
@@ -36607,7 +36607,7 @@ This single question reorganizes any design answer:
 > 9. **State trade-offs out loud** — there is no free lunch; every choice (consistency↔latency, cost↔redundancy) is a deliberate trade. Naming them is the staff signal.
 
 > [!WARNING]
-> What interviewers probe at staff level: *Where exactly does this fall over at 10× / 100×? What’s your bottleneck and how do you know? What happens during a partition / an AZ loss / a hot key? What are you trading away?* If your answer has no explicit trade-offs and no named bottleneck, it reads as junior regardless of the buzzwords.`,
+> What interviewers probe at staff level: *Where exactly does this fall over at 10x / 100x? What’s your bottleneck and how do you know? What happens during a partition / an AZ loss / a hot key? What are you trading away?* If your answer has no explicit trade-offs and no named bottleneck, it reads as junior regardless of the buzzwords.`,
             code: [
               {
                 lang: `java`,
@@ -36645,7 +36645,7 @@ public class ScalingLaws {
     }
 }`,
                 runnable: true,
-                note: `Quantifies both laws: Amdahl shows 5% serial work caps you at 20× forever; USL finds the node count N* where throughput peaks and then goes RETROGRADE — concrete proof that "just add servers" can reduce capacity.`
+                note: `Quantifies both laws: Amdahl shows 5% serial work caps you at 20x forever; USL finds the node count N* where throughput peaks and then goes RETROGRADE — concrete proof that "just add servers" can reduce capacity.`
               },
               {
                 lang: `text`,
@@ -36681,15 +36681,15 @@ RESILIENCE (both):  remove SPOFs (multi-AZ, failover w/ quorum election + fencin
             flashcards: [
               {
                 q: `State Amdahl’s Law and its blunt consequence.`,
-                a: `Speedup(p)=1/(s+(1−s)/p); as p→∞ it approaches 1/s. If 5% of work is serial, you can never exceed 20× speedup no matter how many machines. The serial fraction (global lock, single sequence) is a hard ceiling.`
+                a: `Speedup(p)=1/(s+(1-s)/p); as p->∞ it approaches 1/s. If 5% of work is serial, you can never exceed 20x speedup no matter how many machines. The serial fraction (global lock, single sequence) is a hard ceiling.`
               },
               {
                 q: `What does the USL add over Amdahl, and what is the scary region?`,
-                a: `USL adds a coherency/crosstalk term β (O(N²) coordination) on top of contention α: C(N)=N/(1+α(N−1)+βN(N−1)). Past the peak N* it goes RETROGRADE — adding nodes DECREASES throughput.`
+                a: `USL adds a coherency/crosstalk term β (O(N²) coordination) on top of contention α: C(N)=N/(1+α(N-1)+βN(N-1)). Past the peak N* it goes RETROGRADE — adding nodes DECREASES throughput.`
               },
               {
                 q: `In USL, what do α and β represent and how do you reduce each?`,
-                a: `α = contention/serialization (reduce by killing global locks → shard, partition, batch). β = coherency/coordination between nodes (reduce by caching, locality, async, fewer distributed transactions). These set the real ceiling, not node count.`
+                a: `α = contention/serialization (reduce by killing global locks -> shard, partition, batch). β = coherency/coordination between nodes (reduce by caching, locality, async, fewer distributed transactions). These set the real ceiling, not node count.`
               },
               {
                 q: `Why can "just add more servers" deepen an outage?`,
@@ -36705,7 +36705,7 @@ RESILIENCE (both):  remove SPOFs (multi-AZ, failover w/ quorum election + fencin
               },
               {
                 q: `Sync vs async replication — RPO trade-off.`,
-                a: `Sync waits for replica ack → strong, RPO=0 (no data loss) but higher write latency and a slow replica stalls writes. Async acks before replicating → low latency but a data-loss window on failover (RPO>0). Semi-sync balances them.`
+                a: `Sync waits for replica ack -> strong, RPO=0 (no data loss) but higher write latency and a slow replica stalls writes. Async acks before replicating -> low latency but a data-loss window on failover (RPO>0). Semi-sync balances them.`
               },
               {
                 q: `Define RPO and RTO.`,
@@ -36713,7 +36713,7 @@ RESILIENCE (both):  remove SPOFs (multi-AZ, failover w/ quorum election + fencin
               },
               {
                 q: `What is split-brain and how do you prevent it?`,
-                a: `A partition makes a replica wrongly promote itself, so two primaries accept conflicting writes → divergent data. Prevent with quorum/majority leader election (Raft/Paxos) and fencing tokens so a revived old primary can’t keep writing. Never failover on one missed heartbeat.`
+                a: `A partition makes a replica wrongly promote itself, so two primaries accept conflicting writes -> divergent data. Prevent with quorum/majority leader election (Raft/Paxos) and fencing tokens so a revived old primary can’t keep writing. Never failover on one missed heartbeat.`
               },
               {
                 q: `Read-heavy system — name the main scaling levers.`,
@@ -37301,7 +37301,7 @@ Treating Redis as \`SET k <json>\` wastes most of its power. The data structures
 
 ## Persistence: RDB vs AOF
 - **RDB**: periodic point-in-time fork+snapshot. Compact, fast restart, but you can lose everything since the last snapshot. Good for backups.
-- **AOF**: append every write command; replay on restart. \`appendfsync everysec\` (default) loses ≤1s; \`always\` is safest/slowest. AOF rewrites compact the log.
+- **AOF**: append every write command; replay on restart. \`appendfsync everysec\` (default) loses <=1s; \`always\` is safest/slowest. AOF rewrites compact the log.
 - **Both together** is common: AOF for durability, RDB for fast restart/backups.
 
 > [!WARNING]
@@ -37749,13 +37749,13 @@ This table is interview gold. **Safe** = no observable server state change (cach
 | GET | Yes | Yes | No | Read resource/collection | Cacheable; never mutate |
 | HEAD | Yes | Yes | No | Headers only (existence, size) | Like GET, no body |
 | OPTIONS | Yes | Yes | No | Capabilities / CORS preflight | |
-| POST | No | **No** | Yes | Create, or non-CRUD action | Each call may create a new resource → needs idempotency keys |
+| POST | No | **No** | Yes | Create, or non-CRUD action | Each call may create a new resource -> needs idempotency keys |
 | PUT | No | **Yes** | Yes | Full replace at a known URI | Re-sending same body = same end state |
 | PATCH | No | **No*** | Yes | Partial update | *Idempotent only if the patch is absolute, not relative (see below) |
-| DELETE | No | **Yes** | No | Remove resource | 2nd delete → 404 but state is identical |
+| DELETE | No | **Yes** | No | Remove resource | 2nd delete -> 404 but state is identical |
 
 > [!WARNING]
-> **PATCH is NOT inherently idempotent.** \`PATCH {"balance": 100}\` (set) is idempotent. \`PATCH {"op":"increment","by":10}\` (JSON Patch relative op) is **not** — two retries add 20. This is a classic senior trap: "Is PATCH idempotent?" → "It depends on whether the patch is absolute or relative."
+> **PATCH is NOT inherently idempotent.** \`PATCH {"balance": 100}\` (set) is idempotent. \`PATCH {"op":"increment","by":10}\` (JSON Patch relative op) is **not** — two retries add 20. This is a classic senior trap: "Is PATCH idempotent?" -> "It depends on whether the patch is absolute or relative."
 
 > [!DANGER]
 > **PUT vs POST for create.** PUT to a *client-chosen* URI (\`PUT /files/report.pdf\`) is idempotent and great for upserts. POST to a *collection* (\`POST /orders\`) lets the **server** assign the ID and is non-idempotent — which is exactly why POST creates need idempotency keys (Section 3).
@@ -38118,7 +38118,7 @@ Link: <https://api.shop.com/docs/migrating-v1-to-v2>; rel="deprecation"
 Warning: 299 - "v1 is deprecated; migrate to v2 before 2026-12-31"
 \`\`\`
 
-The senior playbook: announce → emit \`Deprecation\`/\`Sunset\` headers → dashboard the remaining callers → email the top consumers → brownout (intermittent 410s) → remove. Never hard-cut without telemetry on who still calls.
+The senior playbook: announce -> emit \`Deprecation\`/\`Sunset\` headers -> dashboard the remaining callers -> email the top consumers -> brownout (intermittent 410s) -> remove. Never hard-cut without telemetry on who still calls.
 
 ### OpenAPI / Swagger — the contract artifact
 
@@ -38365,9 +38365,9 @@ GET/PUT/DELETE are already idempotent. The dangerous one is **POST** (create / c
 
 1. Client generates a UUID, sends it as \`Idempotency-Key: <uuid>\`, and **reuses the same key on every retry** of that logical request.
 2. Server, in a single transaction, checks a key store:
-   - **Unseen key** → process the work, persist \`(key → response, status)\`, return result.
-   - **Seen key, completed** → return the **stored** response (replay), do NOT redo the work.
-   - **Seen key, in-flight** → return **409 Conflict** (or 425 Too Early) — a concurrent duplicate is still running.
+   - **Unseen key** -> process the work, persist \`(key -> response, status)\`, return result.
+   - **Seen key, completed** -> return the **stored** response (replay), do NOT redo the work.
+   - **Seen key, in-flight** -> return **409 Conflict** (or 425 Too Early) — a concurrent duplicate is still running.
 3. Keys expire (e.g. 24h TTL) — long enough to cover client retry windows.
 
 > [!WARNING]
@@ -38417,7 +38417,7 @@ For *updates*, the lost-update problem (two clients read v7, both write, one sil
 
 - Server returns a version as an **ETag** (\`ETag: "7"\`) — derived from a version column or content hash.
 - Client echoes it on write: \`If-Match: "7"\`.
-- If the current version still matches → apply, bump to "8". If not → **412 Precondition Failed**; client re-reads and retries.
+- If the current version still matches -> apply, bump to "8". If not -> **412 Precondition Failed**; client re-reads and retries.
 - Require it with **428 Precondition Required** to force conditional writes (prevents blind overwrites).
 
 \`\`\`sql
@@ -38644,9 +38644,9 @@ Strengths: ubiquitous, human-readable, browser-native, cache-friendly (HTTP cach
 
 Contract-first with **Protocol Buffers** (a \`.proto\` schema), transported over **HTTP/2** with a compact binary wire format and generated client/server stubs in many languages.
 
-- **HTTP/2**: multiplexed streams over one connection, header compression, binary framing → low latency, high throughput.
+- **HTTP/2**: multiplexed streams over one connection, header compression, binary framing -> low latency, high throughput.
 - **Four call types**: unary, **server-streaming**, **client-streaming**, **bidirectional streaming**.
-- **Codegen**: the \`.proto\` is the single source of truth; \`protoc\` generates type-safe stubs → no hand-written client.
+- **Codegen**: the \`.proto\` is the single source of truth; \`protoc\` generates type-safe stubs -> no hand-written client.
 - **Strong typing & evolution**: field numbers (not names) are the contract; add fields safely, never reuse/renumber.
 
 Weaknesses: not browser-native (needs gRPC-Web + a proxy), binary payloads are not human-readable, less mature HTTP caching, steeper ops/debug story. **Default for internal east-west microservice calls and streaming.**
@@ -39132,9 +39132,9 @@ The classic warm-up question — but at senior level the interviewer is not test
 - "Can short links ever be updated or deleted? Does the same long URL always map to the same short code?"
 - "Latency target for the redirect path? Availability vs consistency preference?"
 
-**Functional:** shorten a long URL → unique short code; redirect short → long; optional custom alias; optional TTL/expiry; basic click analytics.
+**Functional:** shorten a long URL -> unique short code; redirect short -> long; optional custom alias; optional TTL/expiry; basic click analytics.
 
-**Non-functional:** redirect p99 < 50 ms (it sits in front of *someone else's* page load); 99.99% availability on the read path; codes must be non-guessable-ish (no trivially enumerable sequence if links can be private); read:write ≈ 100:1; eventual consistency acceptable for analytics, **not** for redirects of a just-created link (read-your-write for the creator).
+**Non-functional:** redirect p99 < 50 ms (it sits in front of *someone else's* page load); 99.99% availability on the read path; codes must be non-guessable-ish (no trivially enumerable sequence if links can be private); read:write ~ 100:1; eventual consistency acceptable for analytics, **not** for redirects of a just-created link (read-your-write for the creator).
 
 > [!TIP]
 > Scoping sentence that scores points: *"The redirect path is the product — I'll design for read availability and latency first, and treat creation and analytics as secondary planes that can degrade independently."*
@@ -39143,13 +39143,13 @@ The classic warm-up question — but at senior level the interviewer is not test
 
 | Quantity | Calculation | Result |
 |---|---|---|
-| Writes | 100M/month ÷ (30 × 86,400 ≈ 2.6M s) | ~40/s avg, **~120/s peak** (×3) |
+| Writes | 100M/month ÷ (30 x 86,400 ~ 2.6M s) | ~40/s avg, **~120/s peak** (x3) |
 | Reads | 100:1 ratio | ~4,000/s avg, **~12,000/s peak** |
-| Rows over 5 years | 100M × 60 months | **6B rows** |
-| Storage | 6B × ~500 B (long URL + metadata) | **~3 TB** — one big Postgres or a small shard set |
-| Bandwidth (read) | 12k/s × ~500 B response | ~6 MB/s — trivial |
-| Code space | 62⁷ = **3.5 × 10¹²** | 7 base62 chars covers 6B rows 500× over |
-| Cache | top ~20M hot URLs × 500 B | **~10 GB → one Redis node** |
+| Rows over 5 years | 100M x 60 months | **6B rows** |
+| Storage | 6B x ~500 B (long URL + metadata) | **~3 TB** — one big Postgres or a small shard set |
+| Bandwidth (read) | 12k/s x ~500 B response | ~6 MB/s — trivial |
+| Code space | 62⁷ = **3.5 x 10¹²** | 7 base62 chars covers 6B rows 500x over |
+| Cache | top ~20M hot URLs x 500 B | **~10 GB -> one Redis node** |
 
 The punchline you should say out loud: **3 TB and 12k QPS is not "big data"** — a primary + replicas + cache handles it. The interesting problems are ID generation, cache strategy, and the 301/302 decision, not sharding heroics.
 
@@ -39193,18 +39193,18 @@ Read path: cache hit ratio ~90%+ (Zipfian access — a small fraction of links g
 
 | Strategy | How | Pros | Cons |
 |---|---|---|---|
-| Auto-increment + base62 | encode DB sequence | trivial, no collisions | sequential → enumerable; single point; leaks volume |
-| Hash long URL (MD5→take 7 chars) | deterministic | same URL → same code (free dedup) | collisions need probing; can't have per-user codes for same URL |
-| Random 7-char base62 | generate + insert, retry on conflict | non-guessable | needs uniqueness check (birthday: at 6B rows in 3.5T space, collision chance per insert ≈ 0.17% — retries are rare but must be handled) |
-| **Counter ranges (chosen)** | coordinator (ZooKeeper/DB) hands each app node a range, e.g. 1M IDs; node encodes base62 locally | no per-request coordination, no collisions ever | crash loses unused range (fine — space is huge); still k-sortable → XOR/bit-shuffle with a fixed key if enumerability matters |
+| Auto-increment + base62 | encode DB sequence | trivial, no collisions | sequential -> enumerable; single point; leaks volume |
+| Hash long URL (MD5->take 7 chars) | deterministic | same URL -> same code (free dedup) | collisions need probing; can't have per-user codes for same URL |
+| Random 7-char base62 | generate + insert, retry on conflict | non-guessable | needs uniqueness check (birthday: at 6B rows in 3.5T space, collision chance per insert ~ 0.17% — retries are rare but must be handled) |
+| **Counter ranges (chosen)** | coordinator (ZooKeeper/DB) hands each app node a range, e.g. 1M IDs; node encodes base62 locally | no per-request coordination, no collisions ever | crash loses unused range (fine — space is huge); still k-sortable -> XOR/bit-shuffle with a fixed key if enumerability matters |
 | Snowflake 64-bit | timestamp + worker + sequence | decentralized, sortable, 10M+/s | 11 base62 chars, longer codes; clock-skew handling |
 
 **Commit:** counter ranges for a 7-char product; snowflake if the interviewer pushes multi-region active-active writes.
 
 ### 6b. 301 vs 302
 
-- \`301 Moved Permanently\`: browsers and intermediaries cache it → after the first click **your server never sees the request again**. Lowest latency and load — but you **lose analytics** and cannot re-point or expire the link for that client.
-- \`302/307\`: every click hits you → full analytics, expiry works, links are mutable — at the cost of serving every request.
+- \`301 Moved Permanently\`: browsers and intermediaries cache it -> after the first click **your server never sees the request again**. Lowest latency and load — but you **lose analytics** and cannot re-point or expire the link for that client.
+- \`302/307\`: every click hits you -> full analytics, expiry works, links are mutable — at the cost of serving every request.
 
 > [!SUCCESS]
 > Senior move: this is a **business decision disguised as an HTTP trivia question**. bit.ly's revenue *is* analytics, so it uses 301 with \`Cache-Control\` tuning / effectively 302 semantics where tracking matters. Say: *"I'd use 302 by default because analytics and revocability are product requirements, and add \`Cache-Control: private, max-age=90\` to soften the load without losing clicks for long."*
@@ -39212,21 +39212,21 @@ Read path: cache hit ratio ~90%+ (Zipfian access — a small fraction of links g
 ### 6c. Custom aliases, expiry, analytics
 
 - **Custom alias**: same table, \`code\` is user-supplied; enforce uniqueness via the PK; reserve a namespace (e.g. min length 8 for generated codes, customs can be shorter) to avoid collisions with the generator; profanity/reserved-word filter.
-- **Expiry**: don't \`DELETE\` on the hot path. Store \`expires_at\`, check it on read (return 410), and lazily purge with a background sweeper. Cache TTL must be ≤ min remaining expiry or you serve dead links from Redis.
+- **Expiry**: don't \`DELETE\` on the hot path. Store \`expires_at\`, check it on read (return 410), and lazily purge with a background sweeper. Cache TTL must be <= min remaining expiry or you serve dead links from Redis.
 - **Analytics**: redirect service fires an async event (Kafka) *after* responding — never block the redirect on the analytics write. Aggregate in ClickHouse; approximate uniques with HyperLogLog.
 
 ## 7. Bottlenecks, trade-offs & evolution
 
-- **Hot key**: one viral link → millions of QPS on one cache key. Mitigate: CDN-edge caching of the redirect itself, plus in-process caffeine cache in each redirect node (a few thousand entries, 1–5 s TTL) so Redis isn't the choke point.
+- **Hot key**: one viral link -> millions of QPS on one cache key. Mitigate: CDN-edge caching of the redirect itself, plus in-process caffeine cache in each redirect node (a few thousand entries, 1–5 s TTL) so Redis isn't the choke point.
 - **Cache stampede** on expiry of a hot key: per-key singleflight / probabilistic early refresh.
-- **DB growth**: at 10× scale (30 TB), shard by hash(code) — code-based lookup shards perfectly since every read carries the code. No cross-shard queries exist.
-- **Evolution story**: v1 = Postgres + Redis behind one service; v2 = split read/write services + Kafka analytics; v3 = shard DB + move redirect logic to edge workers with a replicated key→URL store.
+- **DB growth**: at 10x scale (30 TB), shard by hash(code) — code-based lookup shards perfectly since every read carries the code. No cross-shard queries exist.
+- **Evolution story**: v1 = Postgres + Redis behind one service; v2 = split read/write services + Kafka analytics; v3 = shard DB + move redirect logic to edge workers with a replicated key->URL store.
 
 > [!WARNING]
-> Common mid-level mistake: opening with "we'll shard Cassandra across regions". You just estimated 3 TB and 12k QPS — over-engineering against your own numbers is a red flag. Design to the numbers, then narrate the 10× plan.
+> Common mid-level mistake: opening with "we'll shard Cassandra across regions". You just estimated 3 TB and 12k QPS — over-engineering against your own numbers is a red flag. Design to the numbers, then narrate the 10x plan.
 
 > [!EU]
-> **What a senior answer sounds like:** "The estimation says this is a small-data, read-hot problem, so the design centers on the redirect path: cache-aside Redis over a replicated SQL store, code as primary key. For IDs I'd hand out counter ranges per node — zero coordination per request, zero collisions — and shuffle bits to prevent enumeration. I'd serve 302 with a short private cache TTL because analytics and revocability are the product. The known failure modes are hot keys and stampedes, which I handle with edge/in-process caching and singleflight; sharding by code is the clean 10× exit because every query carries the shard key."`,
+> **What a senior answer sounds like:** "The estimation says this is a small-data, read-hot problem, so the design centers on the redirect path: cache-aside Redis over a replicated SQL store, code as primary key. For IDs I'd hand out counter ranges per node — zero coordination per request, zero collisions — and shuffle bits to prevent enumeration. I'd serve 302 with a short private cache TTL because analytics and revocability are the product. The known failure modes are hot keys and stampedes, which I handle with edge/in-process caching and singleflight; sharding by code is the clean 10x exit because every query carries the shard key."`,
             code: [
               {
                 lang: `java`,
@@ -39337,11 +39337,11 @@ CREATE TABLE clicks (
             flashcards: [
               {
                 q: `Interviewer: "100M new URLs/month, read:write 100:1." What are your first three derived numbers?`,
-                a: `~40 writes/s (peak ~120/s), ~4k reads/s (peak ~12k/s), ~3 TB over 5 years (6B rows × ~500 B). Conclusion to state: this is small-data and read-hot, so the design centers on cache + replicas, not sharding.`
+                a: `~40 writes/s (peak ~120/s), ~4k reads/s (peak ~12k/s), ~3 TB over 5 years (6B rows x ~500 B). Conclusion to state: this is small-data and read-hot, so the design centers on cache + replicas, not sharding.`
               },
               {
                 q: `Why 7 base62 characters for the short code?`,
-                a: `62^7 ≈ 3.5 trillion codes vs ~6B rows over 5 years — 500× headroom, so random/range-allocated codes stay collision-free in practice while keeping URLs short. 6 chars (57B) would work but leaves only ~10× headroom.`
+                a: `62^7 ~ 3.5 trillion codes vs ~6B rows over 5 years — 500x headroom, so random/range-allocated codes stay collision-free in practice while keeping URLs short. 6 chars (57B) would work but leaves only ~10x headroom.`
               },
               {
                 q: `You picked auto-increment + base62 and the interviewer says "now codes are guessable — so what?" Answer?`,
@@ -39368,7 +39368,7 @@ CREATE TABLE clicks (
                 a: `Strictly after (or concurrent with) sending the 302 — fire an event to Kafka asynchronously. The redirect p99 target (<50 ms) must never depend on analytics infrastructure; if Kafka is down you drop/buffer events, you never fail a redirect.`
               },
               {
-                q: `The DB grows 10× beyond your estimate. What is your sharding key and why is this system "embarrassingly shardable"?`,
+                q: `The DB grows 10x beyond your estimate. What is your sharding key and why is this system "embarrassingly shardable"?`,
                 a: `Shard by hash(code). Every redirect carries the code, so every read maps to exactly one shard; there are no cross-shard queries or joins on the hot path. User-dashboard listing needs a user_id-keyed secondary store or scatter-gather, which is off the hot path.`
               },
               {
@@ -39395,9 +39395,9 @@ Deceptively small surface, brutal depth: algorithms, atomicity under concurrency
 - "Hard accuracy or is a few % overshoot acceptable? Fail-open or fail-closed if the limiter itself is down?"
 - "Single region or global? Do limits need to be enforced globally across regions?"
 
-**Functional:** limit requests per key per rule (e.g. \`user:123 → 100 req/min on /search\`); multiple rules per request; return \`429\` with \`Retry-After\`; rules configurable at runtime; per-plan tiers.
+**Functional:** limit requests per key per rule (e.g. \`user:123 -> 100 req/min on /search\`); multiple rules per request; return \`429\` with \`Retry-After\`; rules configurable at runtime; per-plan tiers.
 
-**Non-functional:** added latency budget **< 2 ms p99** (it's on every request); the limiter must never be less available than the API it protects → **fail-open** on limiter outage (log loudly); memory-bounded per key; slight overshoot (~1–5%) acceptable in exchange for performance.
+**Non-functional:** added latency budget **< 2 ms p99** (it's on every request); the limiter must never be less available than the API it protects -> **fail-open** on limiter outage (log loudly); memory-bounded per key; slight overshoot (~1–5%) acceptable in exchange for performance.
 
 > [!DANGER]
 > State the fail-open/fail-closed decision explicitly — it is a favorite probe. Fail-open for product APIs (a broken limiter must not become a self-inflicted outage); fail-closed only for abuse-critical endpoints like login/OTP, where unlimited traffic is worse than downtime.
@@ -39408,9 +39408,9 @@ Deceptively small surface, brutal depth: algorithms, atomicity under concurrency
 |---|---|---|
 | Gateway traffic | given | **100k req/s peak** — the limiter check runs on every one |
 | Active keys | 10M users, ~20% active/hour | ~2M hot keys |
-| Token-bucket state | 2 numbers (tokens, last_refill) ≈ 50 B + key overhead ≈ 100 B | 2M × 150 B ≈ **300 MB → one Redis, easily** |
-| Sliding **log** state | 100 req/min limit → up to 100 ZSET entries/key × ~120 B | 2M × 12 KB ≈ **24 GB — 80× more memory** |
-| Redis ops | 1 Lua call per request | 100k ops/s — near a single node's ceiling → **shard by key** (consistent hashing), 2–4 nodes with headroom |
+| Token-bucket state | 2 numbers (tokens, last_refill) ~ 50 B + key overhead ~ 100 B | 2M x 150 B ~ **300 MB -> one Redis, easily** |
+| Sliding **log** state | 100 req/min limit -> up to 100 ZSET entries/key x ~120 B | 2M x 12 KB ~ **24 GB — 80x more memory** |
+| Redis ops | 1 Lua call per request | 100k ops/s — near a single node's ceiling -> **shard by key** (consistent hashing), 2–4 nodes with headroom |
 
 The memory table *is* the algorithm argument: sliding log is O(limit) per key; token bucket and sliding-window counter are O(1).
 
@@ -39451,7 +39451,7 @@ graph LR
 
 | Algorithm | Memory/key | Accuracy | Bursts | Verdict |
 |---|---|---|---|---|
-| Fixed window counter | O(1) | up to **2× overshoot** at window edges (100 at 00:59 + 100 at 01:01) | allows edge bursts | baseline only |
+| Fixed window counter | O(1) | up to **2x overshoot** at window edges (100 at 00:59 + 100 at 01:01) | allows edge bursts | baseline only |
 | Sliding window **log** (ZSET of timestamps) | O(limit) | exact | precise | too much memory at scale; use for small, high-value limits (login attempts) |
 | Sliding window **counter** (current + weighted previous window) | O(1) | ~99% (assumes uniform spread in previous window) | smooths edges | great default for "N per window" semantics |
 | **Token bucket** | O(1): tokens + timestamp | exact over time | **configurable burst** (bucket capacity) — the killer feature | industry default (Stripe, AWS) |
@@ -39461,7 +39461,7 @@ graph LR
 
 ### 6b. Redis atomicity — the race condition
 
-Naive implementation: \`GET tokens\` → compute in app → \`SET tokens\`. Two gateway nodes read \`tokens=1\` concurrently, both allow, both write back \`0\` → limit breached. This read-modify-write race is the classic trap.
+Naive implementation: \`GET tokens\` -> compute in app -> \`SET tokens\`. Two gateway nodes read \`tokens=1\` concurrently, both allow, both write back \`0\` -> limit breached. This read-modify-write race is the classic trap.
 
 **Fix: a Lua script** — Redis executes scripts single-threaded and atomically, so read-compute-write happens as one indivisible unit, keyed data stays on one shard (all keys in the script must hash to the same slot in Cluster — use one key or hash tags). Alternatives: \`MULTI/EXEC\` with \`WATCH\` (optimistic, retries under contention — worse at 100k QPS), or Redis functions. Never app-side locks.
 
@@ -39474,16 +39474,16 @@ Naive implementation: \`GET tokens\` → compute in app → \`SET tokens\`. Two 
 |---|---|---|
 | One global Redis | exact global limit | cross-region RTT (50–150 ms) on EVERY request — blows the 2 ms budget. Dead on arrival. |
 | **Local buckets, divided quota** (chosen) | each region enforces \`limit / n_regions\` (weighted by traffic share) | zero cross-region latency; unfair if traffic is skewed |
-| Local full-quota + async reconciliation | each region allows up to full limit locally, gossips usage, tightens next window | up to N× short-term overshoot, converges; good middle ground |
+| Local full-quota + async reconciliation | each region allows up to full limit locally, gossips usage, tightens next window | up to Nx short-term overshoot, converges; good middle ground |
 
 **Commit:** local enforcement with traffic-weighted quota split, plus async usage sync to rebalance the weights every few seconds. Say the principle: *"Rate limiting is a damping mechanism, not an accounting ledger — 5% overshoot for 2 ms latency is the right trade. If it were billing quota, I'd flip the trade."*
 
 ## 7. Bottlenecks, trade-offs & evolution
 
 - **Redis is on the critical path**: mitigate with connection pooling, pipelining multiple rule checks into one script call, replicas + fast failover, and the fail-open circuit breaker (if Redis p99 > budget, skip checks and emit metrics).
-- **Hot key** (one API key doing 50k QPS — likely the abuser you exist to stop): a single Redis shard takes the hit. Mitigate with a tiny in-gateway local pre-limiter (e.g. token bucket in Caffeine at 2× fair share) that rejects the flood before Redis.
+- **Hot key** (one API key doing 50k QPS — likely the abuser you exist to stop): a single Redis shard takes the hit. Mitigate with a tiny in-gateway local pre-limiter (e.g. token bucket in Caffeine at 2x fair share) that rejects the flood before Redis.
 - **Rule explosion**: evaluate the 2–3 most specific rules, not all; precompile rule lookup into a trie/route-match at config load.
-- **Evolution**: v1 in-process Guava/Bucket4j per node (inaccurate ×N nodes, fine early) → v2 Redis+Lua centralized per region → v3 multi-region weighted quotas + usage gossip.
+- **Evolution**: v1 in-process Guava/Bucket4j per node (inaccurate xN nodes, fine early) -> v2 Redis+Lua centralized per region -> v3 multi-region weighted quotas + usage gossip.
 
 > [!EU]
 > **What a senior answer sounds like:** "Token bucket in Redis via a Lua script — O(1) memory, atomic check-and-decrement, burst capacity as a first-class knob, lazy refill from elapsed time so there are no timers. Enforced in gateway middleware after authn, keyed on api_key+route, returning 429 with Retry-After and X-RateLimit-* headers. Fail-open with loud metrics, because the limiter must never out-fail the API it protects. Multi-region I keep local with traffic-weighted quota shares and async rebalancing — exact global counting costs a cross-region RTT per request, and rate limiting is damping, not accounting."`,
@@ -39624,11 +39624,11 @@ return { allowed, retry_after_ms }`
             flashcards: [
               {
                 q: `Your fixed-window limiter (100/min) lets a client through 200 requests in 2 seconds. How?`,
-                a: `Window-edge burst: 100 requests at 00:59 count in window 1, 100 at 01:01 count in window 2 — both allowed, 2× the nominal rate across the boundary. Fix: sliding-window counter (weighted previous window) or token bucket.`
+                a: `Window-edge burst: 100 requests at 00:59 count in window 1, 100 at 01:01 count in window 2 — both allowed, 2x the nominal rate across the boundary. Fix: sliding-window counter (weighted previous window) or token bucket.`
               },
               {
                 q: `Why does the sliding window LOG lose to token bucket at scale? Quantify it.`,
-                a: `Log stores one ZSET entry per request per key: at 100/min limits and 2M active keys that is ~24 GB vs ~300 MB for token bucket (two numbers/key) — roughly 80× more memory, plus O(log n) ZSET ops vs O(1). Reserve the log for small exact limits like login attempts.`
+                a: `Log stores one ZSET entry per request per key: at 100/min limits and 2M active keys that is ~24 GB vs ~300 MB for token bucket (two numbers/key) — roughly 80x more memory, plus O(log n) ZSET ops vs O(1). Reserve the log for small exact limits like login attempts.`
               },
               {
                 q: `Two gateway pods both read tokens=1 from Redis and both allow the request. Name the bug and the fix.`,
@@ -39656,7 +39656,7 @@ return { allowed, retry_after_ms }`
               },
               {
                 q: `A single API key floods you with 50k QPS and one Redis shard saturates. Fix without scaling Redis?`,
-                a: `Local pre-limiter in each gateway process (in-memory token bucket per key at ~2× fair share): the flood is rejected in-process before touching Redis. The abuser is exactly who should not be allowed to hotspot your limiter store.`
+                a: `Local pre-limiter in each gateway process (in-memory token bucket per key at ~2x fair share): the flood is rejected in-process before touching Redis. The abuser is exactly who should not be allowed to hotspot your limiter store.`
               },
               {
                 q: `Token bucket with capacity 200, refill 100/min: what client behavior does this express that a plain 100/min window cannot?`,
@@ -39664,7 +39664,7 @@ return { allowed, retry_after_ms }`
               },
               {
                 q: `How does per-key limiter state get cleaned up in Redis without a background job?`,
-                a: `PEXPIRE on every touch, TTL ≈ 2× the time to fully refill the bucket. An untouched key means a full bucket anyway, so expiry loses no information — the default state (missing key) is treated as a full bucket. Self-cleaning, memory-bounded.`
+                a: `PEXPIRE on every touch, TTL ~ 2x the time to fully refill the bucket. An untouched key means a full bucket anyway, so expiry loses no information — the default state (missing key) is treated as a full bucket. Self-cleaning, memory-bounded.`
               }
             ]
           },
@@ -39690,12 +39690,12 @@ The canonical **fan-out** question. The whole interview hinges on one decision �
 
 | Quantity | Calculation | Result |
 |---|---|---|
-| Posts | 200M DAU × 2 posts/day | 400M/day ≈ **4.6k writes/s, peak ~15k/s** |
-| Feed reads | 200M × 10 opens/day | 2B/day ≈ **23k QPS avg, peak ~100k** |
-| Fan-out on write | 400M posts × 200 avg followers | **80B feed-list inserts/day ≈ ~1M inserts/s** ← the real write load, 200× the post rate |
-| Celebrity post | 1 post × 100M followers @ 1M inserts/s | **~100 s of the entire cluster's fan-out capacity** for ONE post → hybrid is forced |
-| Feed cache | 200M users × 800 post IDs × 20 B | ~3.2 TB → but only ~25% weekly-active need warm feeds → **~800 GB across a Redis cluster** |
-| Post text storage | 400M/day × 1 KB × 5 yr | ~730 TB → sharded store; media is separate (S3+CDN, petabytes) |
+| Posts | 200M DAU x 2 posts/day | 400M/day ~ **4.6k writes/s, peak ~15k/s** |
+| Feed reads | 200M x 10 opens/day | 2B/day ~ **23k QPS avg, peak ~100k** |
+| Fan-out on write | 400M posts x 200 avg followers | **80B feed-list inserts/day ~ ~1M inserts/s** <- the real write load, 200x the post rate |
+| Celebrity post | 1 post x 100M followers @ 1M inserts/s | **~100 s of the entire cluster's fan-out capacity** for ONE post -> hybrid is forced |
+| Feed cache | 200M users x 800 post IDs x 20 B | ~3.2 TB -> but only ~25% weekly-active need warm feeds -> **~800 GB across a Redis cluster** |
+| Post text storage | 400M/day x 1 KB x 5 yr | ~730 TB -> sharded store; media is separate (S3+CDN, petabytes) |
 
 > [!TIP]
 > Say the multiplication out loud: *"fan-out multiplies my write load by average followers — 4.6k posts/s becomes ~1M feed inserts/s. That number is fine for normal users and catastrophic for celebrities, which is why I'll split the strategy."* This single sentence is the spine of the interview.
@@ -39736,7 +39736,7 @@ graph TB
     C -->|images and video| CDN[CDN] --> S3[(Object storage)]
 \`\`\`
 
-Write path: post → post store → Kafka event → fan-out workers push \`post_id\` into each follower's Redis ZSET (async, seconds of lag is fine). Read path: read your ZSET, hydrate post bodies (multi-get from post store / post cache), merge in celebrity posts, rank, return page. Media never flows through these services — clients get presigned upload URLs and CDN download URLs.
+Write path: post -> post store -> Kafka event -> fan-out workers push \`post_id\` into each follower's Redis ZSET (async, seconds of lag is fine). Read path: read your ZSET, hydrate post bodies (multi-get from post store / post cache), merge in celebrity posts, rank, return page. Media never flows through these services — clients get presigned upload URLs and CDN download URLs.
 
 ## 6. Deep dives
 
@@ -39754,7 +39754,7 @@ Write path: post → post store → Kafka event → fan-out workers push \`post_
 
 ### 6b. Timeline cache in Redis
 
-\`ZADD feed:{user} score=snowflake_id member=post_id\`, \`ZREMRANGEBYRANK\` to cap at ~800, TTL ~30 days sliding. Store **IDs only** — bodies come from a separate post cache, so an edit/delete touches one place and feed lists stay tiny. Cache miss (evicted/inactive user) → fall back to pull mode: query recent posts of followees, rebuild ZSET, serve. Deletes: lazy — filter out missing posts at hydration time rather than reaching into millions of ZSETs.
+\`ZADD feed:{user} score=snowflake_id member=post_id\`, \`ZREMRANGEBYRANK\` to cap at ~800, TTL ~30 days sliding. Store **IDs only** — bodies come from a separate post cache, so an edit/delete touches one place and feed lists stay tiny. Cache miss (evicted/inactive user) -> fall back to pull mode: query recent posts of followees, rebuild ZSET, serve. Deletes: lazy — filter out missing posts at hydration time rather than reaching into millions of ZSETs.
 
 ### 6c. Ranking (keep it one layer deep)
 
@@ -39762,16 +39762,16 @@ Chronological = ZSET order, done. Ranked feed: over-fetch ~200 candidates from t
 
 ## 7. Bottlenecks, trade-offs & evolution
 
-- **Thundering herd on a hot post**: millions hydrating the same \`post_id\` → post cache with singleflight; counters (likes/views) are approximate and batched — nobody audits 1.2M vs 1.201M likes.
+- **Thundering herd on a hot post**: millions hydrating the same \`post_id\` -> post cache with singleflight; counters (likes/views) are approximate and batched — nobody audits 1.2M vs 1.201M likes.
 - **Fan-out lag during peaks** (Super Bowl): Kafka absorbs the burst; consumers scale horizontally; lag is observable and tolerable — freshness degrades by seconds, nothing fails. This is why fan-out is queue-decoupled rather than synchronous.
 - **Feed cache cluster failure**: fall back to pull mode for affected slots (degraded latency, not downtime); rebuild ZSETs lazily. State it: *"the feed list is a rebuildable projection, so losing it is a latency event, not a data-loss event."*
-- **Evolution**: v1 pure pull (fine to ~1M users) → v2 push + Kafka fan-out → v3 hybrid with celebrity threshold → v4 ranked feed with separate candidate/scoring tiers.
+- **Evolution**: v1 pure pull (fine to ~1M users) -> v2 push + Kafka fan-out -> v3 hybrid with celebrity threshold -> v4 ranked feed with separate candidate/scoring tiers.
 
 > [!WARNING]
 > Don't ship likes/comments/notifications into this design uninvited — name them, park them ("notifications is its own system — happy to design it separately"), and protect your 45 minutes.
 
 > [!EU]
-> **What a senior answer sounds like:** "Estimation shows fan-out multiplies writes 200×, and a single celebrity post would monopolize the fan-out tier for minutes — so the architecture is hybrid by necessity, not preference: push via Kafka into Redis ZSET timelines for normal authors, pull-and-merge at read time for the handful of high-follower accounts each reader follows, skip inactive users. Feed lists hold IDs only and are rebuildable projections, so cache loss degrades latency, never data. Pagination is cursor-based on snowflake IDs; ranking is over-fetch-then-score with chronological as the degrade path; media is entirely on the CDN plane."`,
+> **What a senior answer sounds like:** "Estimation shows fan-out multiplies writes 200x, and a single celebrity post would monopolize the fan-out tier for minutes — so the architecture is hybrid by necessity, not preference: push via Kafka into Redis ZSET timelines for normal authors, pull-and-merge at read time for the handful of high-follower accounts each reader follows, skip inactive users. Feed lists hold IDs only and are rebuildable projections, so cache loss degrades latency, never data. Pagination is cursor-based on snowflake IDs; ranking is over-fetch-then-score with chronological as the degrade path; media is entirely on the CDN plane."`,
             code: [
               {
                 lang: `sql`,
@@ -39847,7 +39847,7 @@ ZREVRANGEBYSCORE feed:8842 (1846201033372683265 -inf LIMIT 0 20
               },
               {
                 q: `Fan-out on write: 400M posts/day, 200 avg followers. What write load does the feed tier actually see?`,
-                a: `80B timeline inserts/day ≈ ~1M inserts/s — 200× the raw post rate. The estimation exists to surface this multiplication; it is the number that forces queue-decoupled async fan-out and the celebrity exception.`
+                a: `80B timeline inserts/day ~ ~1M inserts/s — 200x the raw post rate. The estimation exists to surface this multiplication; it is the number that forces queue-decoupled async fan-out and the celebrity exception.`
               },
               {
                 q: `Why must feed pagination be cursor-based instead of page/offset?`,
@@ -39855,7 +39855,7 @@ ZREVRANGEBYSCORE feed:8842 (1846201033372683265 -inf LIMIT 0 20
               },
               {
                 q: `What exactly is stored in the Redis timeline, and why not full post JSON?`,
-                a: `Only post IDs (ZSET, score = snowflake ID), capped ~800, 30-day TTL. IDs keep entries at ~20 B (3.2 TB → manageable), edits/deletes touch one post cache entry instead of millions of feed lists, and hydration hits a shared post cache with high locality.`
+                a: `Only post IDs (ZSET, score = snowflake ID), capped ~800, 30-day TTL. IDs keep entries at ~20 B (3.2 TB -> manageable), edits/deletes touch one post cache entry instead of millions of feed lists, and hydration hits a shared post cache with high locality.`
               },
               {
                 q: `The whole Redis feed cluster is lost. What happens to users, and what sentence do you say to the interviewer?`,
@@ -39901,9 +39901,9 @@ The stateful one. Everything else in this module is stateless request/response; 
 - "Delivery/read receipts? Online presence? Message history sync across devices?"
 - "End-to-end encryption required, or TLS-in-transit enough?" *(mention E2EE, scope it out — see below)*
 
-**Functional:** 1:1 and group messaging; delivery states (sent → delivered → read); presence (online/last-seen); offline delivery + push notification; multi-device history sync; media via separate upload path.
+**Functional:** 1:1 and group messaging; delivery states (sent -> delivered -> read); presence (online/last-seen); offline delivery + push notification; multi-device history sync; media via separate upload path.
 
-**Non-functional:** delivery latency < 100 ms when both online; **no message loss, ever** (at-least-once + dedup — users forgive lateness, never loss); per-conversation ordering (global ordering is neither needed nor cheap); 100M concurrent connections; graceful offline→online catch-up.
+**Non-functional:** delivery latency < 100 ms when both online; **no message loss, ever** (at-least-once + dedup — users forgive lateness, never loss); per-conversation ordering (global ordering is neither needed nor cheap); 100M concurrent connections; graceful offline->online catch-up.
 
 ## 2. Back-of-envelope estimation
 
@@ -39911,9 +39911,9 @@ The stateful one. Everything else in this module is stateless request/response; 
 |---|---|---|
 | Messages | 50B/day ÷ 86,400 | **~580k msg/s avg, peak ~1.5M/s** |
 | Concurrent connections | given | **100M** |
-| Chat servers | ~1M idle WebSocket conns/box (epoll + tuned kernel; mostly-idle conns are cheap: ~10 KB each ≈ 10 GB RAM) | **~100 servers, run 150 for headroom/draining** |
-| Storage | 50B × ~200 B (text + metadata) | **10 TB/day, ~3.7 PB/yr** → wide-column store, TTL/cold-tiering |
-| Presence writes | 100M × heartbeat/30 s | ~3.3M updates/s → **must not hit a DB**; in-memory, and fan out lazily (on viewer demand), not on every flap |
+| Chat servers | ~1M idle WebSocket conns/box (epoll + tuned kernel; mostly-idle conns are cheap: ~10 KB each ~ 10 GB RAM) | **~100 servers, run 150 for headroom/draining** |
+| Storage | 50B x ~200 B (text + metadata) | **10 TB/day, ~3.7 PB/yr** -> wide-column store, TTL/cold-tiering |
+| Presence writes | 100M x heartbeat/30 s | ~3.3M updates/s -> **must not hit a DB**; in-memory, and fan out lazily (on viewer demand), not on every flap |
 
 Two conclusions to state: connection handling and message flow are **separate scaling problems** (servers sized by conns, storage by messages), and presence at 3.3M writes/s must be handled in memory with demand-driven fan-out.
 
@@ -39927,7 +39927,7 @@ GET  /v1/conversations/{id}/messages?before=...&limit=50    history / backfill
 WS   /v1/connect                      one socket per device; frames below
 \`\`\`
 
-WebSocket frames: \`send\`, \`ack\` (server→sender: persisted, here's the canonical ID), \`deliver\` (server→recipient), \`receipt\` (delivered/read), \`presence\`, \`ping/pong\`. Every client \`send\` carries a **client_msg_id** (UUID) so retries after reconnect are deduplicated server-side → at-least-once transport, exactly-once *appearance*.
+WebSocket frames: \`send\`, \`ack\` (server->sender: persisted, here's the canonical ID), \`deliver\` (server->recipient), \`receipt\` (delivered/read), \`presence\`, \`ping/pong\`. Every client \`send\` carries a **client_msg_id** (UUID) so retries after reconnect are deduplicated server-side -> at-least-once transport, exactly-once *appearance*.
 
 ## 4. Data model
 
@@ -39950,22 +39950,22 @@ graph TB
     A -.media upload.-> S3[(Object storage + CDN)]
 \`\`\`
 
-Send path: A → its chat server → message service **persists first**, assigns \`(conversation_id, seq)\`, acks A → routes to B: look up B's server in the session registry, deliver over B's socket (or via Kafka topic per server); if B offline → enqueue push notification. Persist-then-deliver is the no-loss invariant.
+Send path: A -> its chat server -> message service **persists first**, assigns \`(conversation_id, seq)\`, acks A -> routes to B: look up B's server in the session registry, deliver over B's socket (or via Kafka topic per server); if B offline -> enqueue push notification. Persist-then-deliver is the no-loss invariant.
 
 ## 6. Deep dives
 
 ### 6a. Connection service & routing
 
-Chat servers are *almost* stateless — the state is the socket itself. Session registry maps \`user_id → {server_id, device_ids}\` with TTL refreshed by heartbeat. LB uses least-connections; on deploy, servers drain (stop accepting, let clients reconnect elsewhere — clients always have reconnect-with-backoff + resume logic anyway). Cross-server delivery: direct RPC to the target server, or a Kafka/Redis-pubsub channel per server — pick RPC for latency, pubsub for simplicity; say you'd measure.
+Chat servers are *almost* stateless — the state is the socket itself. Session registry maps \`user_id -> {server_id, device_ids}\` with TTL refreshed by heartbeat. LB uses least-connections; on deploy, servers drain (stop accepting, let clients reconnect elsewhere — clients always have reconnect-with-backoff + resume logic anyway). Cross-server delivery: direct RPC to the target server, or a Kafka/Redis-pubsub channel per server — pick RPC for latency, pubsub for simplicity; say you'd measure.
 
 ### 6b. Ordering & message IDs
 
-Global ordering across all conversations: unnecessary and expensive. **Per-conversation ordering** is the contract. Options: per-conversation sequence number (Redis \`INCR conv:{id}:seq\` or a light sequencer service) — dense, gap-detectable (client sees seq 41 then 43 → requests 42, catches missed messages for free); or snowflake time-ordered IDs — coordination-free but gaps are meaningless so clients can't detect holes. Choose **per-conversation seq**: gap detection doubles as the sync/repair protocol. Sender timestamps are display-only — never ordering (client clocks lie).
+Global ordering across all conversations: unnecessary and expensive. **Per-conversation ordering** is the contract. Options: per-conversation sequence number (Redis \`INCR conv:{id}:seq\` or a light sequencer service) — dense, gap-detectable (client sees seq 41 then 43 -> requests 42, catches missed messages for free); or snowflake time-ordered IDs — coordination-free but gaps are meaningless so clients can't detect holes. Choose **per-conversation seq**: gap detection doubles as the sync/repair protocol. Sender timestamps are display-only — never ordering (client clocks lie).
 
 ### 6c. Delivery states & offline flow
 
 - **sent**: server persisted the message (ack to sender). Not before — an ack before persistence is a lie you'll pay for in lost messages.
-- **delivered**: recipient's device acked the \`deliver\` frame → receipt frame back to sender.
+- **delivered**: recipient's device acked the \`deliver\` frame -> receipt frame back to sender.
 - **read**: recipient's client marked the conversation viewed (batched: "read up to seq N", not per-message).
 
 Offline: message is already durable in Cassandra; bump the recipient's per-conversation unread cursor; send push (via the Notification-service pattern from case study 5). On reconnect, client sends \`last_seq\` per conversation, server streams the delta. **The store is the queue** — no separate offline-message queue to keep consistent.
@@ -39979,13 +39979,13 @@ Group send = one persisted message, fan-out delivery to N online members' server
 
 ## 7. Bottlenecks, trade-offs & evolution
 
-- **Hot partition**: a mega-group hammers one Cassandra partition → time-bucketed partition keys, and read-time pull for huge rooms.
-- **Reconnect storm** after a network blip or deploy: 100M clients reconnecting → jittered exponential backoff client-side, connection-rate limiting at LB, and resume (delta since \`last_seq\`) instead of full history sync.
-- **Thundering push**: a viral group generates N pushes per message → collapse keys / notification coalescing ("12 new messages"), rate-limit per device.
-- **Evolution**: v1 single region, Redis registry + RPC routing → v2 multi-region with users homed to nearest region, cross-region delivery via inter-region Kafka → v3 E2EE + multi-device key distribution.
+- **Hot partition**: a mega-group hammers one Cassandra partition -> time-bucketed partition keys, and read-time pull for huge rooms.
+- **Reconnect storm** after a network blip or deploy: 100M clients reconnecting -> jittered exponential backoff client-side, connection-rate limiting at LB, and resume (delta since \`last_seq\`) instead of full history sync.
+- **Thundering push**: a viral group generates N pushes per message -> collapse keys / notification coalescing ("12 new messages"), rate-limit per device.
+- **Evolution**: v1 single region, Redis registry + RPC routing -> v2 multi-region with users homed to nearest region, cross-region delivery via inter-region Kafka -> v3 E2EE + multi-device key distribution.
 
 > [!EU]
-> **What a senior answer sounds like:** "Two separable problems: a connection tier (100M sockets ≈ 100–150 servers, session registry in Redis) and a message plane (persist-first to a conversation-partitioned wide-row store, then route). Ordering is per-conversation via a dense sequence — which gives gap-detection and therefore offline catch-up for free; the store is the offline queue. Delivery is at-least-once with client-generated IDs deduped server-side, so users see exactly-once. Presence is in-memory heartbeats fanned out on demand with debounce, never broadcast. Groups push under ~1k members and flip to notify-and-fetch above. E2EE: I design for ciphertext payloads and explicitly scope key management out."`,
+> **What a senior answer sounds like:** "Two separable problems: a connection tier (100M sockets ~ 100–150 servers, session registry in Redis) and a message plane (persist-first to a conversation-partitioned wide-row store, then route). Ordering is per-conversation via a dense sequence — which gives gap-detection and therefore offline catch-up for free; the store is the offline queue. Delivery is at-least-once with client-generated IDs deduped server-side, so users see exactly-once. Presence is in-memory heartbeats fanned out on demand with debounce, never broadcast. Groups push under ~1k members and flip to notify-and-fetch above. E2EE: I design for ciphertext payloads and explicitly scope key management out."`,
             code: [
               {
                 lang: `sql`,
@@ -40105,11 +40105,11 @@ public class ChatOrderingDemo {
               },
               {
                 q: `Messages in a conversation sometimes render out of order after reconnects. Sender timestamps look fine. What is the correct ordering mechanism?`,
-                a: `Never order by sender clocks (skewed, spoofable). Use a dense per-conversation sequence assigned at persist time (Redis INCR or sequencer). Dense means clients detect gaps (41 → 43 implies 42 missing) and request backfill — ordering and sync-repair from one mechanism.`
+                a: `Never order by sender clocks (skewed, spoofable). Use a dense per-conversation sequence assigned at persist time (Redis INCR or sequencer). Dense means clients detect gaps (41 -> 43 implies 42 missing) and request backfill — ordering and sync-repair from one mechanism.`
               },
               {
                 q: `How do you deliver to a user connected to a different chat server than the sender?`,
-                a: `Session registry (Redis): user_id → {server_id, devices}, TTL-refreshed by heartbeat. Message service persists, looks up the recipient's server, routes via direct RPC (or per-server pubsub topic), that server writes to the socket. Offline (no registry entry) → unread cursor + push notification.`
+                a: `Session registry (Redis): user_id -> {server_id, devices}, TTL-refreshed by heartbeat. Message service persists, looks up the recipient's server, routes via direct RPC (or per-server pubsub topic), that server writes to the socket. Offline (no registry entry) -> unread cursor + push notification.`
               },
               {
                 q: `Why is there no separate "offline message queue", and what replaces it?`,
@@ -40121,7 +40121,7 @@ public class ChatOrderingDemo {
               },
               {
                 q: `Presence: 100M users heartbeating every 30 s. Why can't this touch a database, and what is the design?`,
-                a: `~3.3M updates/s of ephemeral, loss-tolerant data. Keep liveness in sharded in-memory stores (TTL = missed heartbeats → offline); flush last_seen lazily. Fan out changes only to subscribed viewers (open chat lists) with debouncing — never broadcast every online/offline flap to all contacts.`
+                a: `~3.3M updates/s of ephemeral, loss-tolerant data. Keep liveness in sharded in-memory stores (TTL = missed heartbeats -> offline); flush last_seen lazily. Fan out changes only to subscribed viewers (open chat lists) with debouncing — never broadcast every online/offline flap to all contacts.`
               },
               {
                 q: `A client retries a send after a reconnect and the recipient sees the message twice. What was missing?`,
@@ -40152,7 +40152,7 @@ The "boring" system every company actually builds — which is why it's asked. I
 **Clarifying questions:**
 - "Is this a platform other teams call, or one product's notifier?" *(assume: internal platform, many producer teams)*
 - "Channels? Push, email, SMS, in-app? Who decides the channel — caller or the service (user preferences)?"
-- "Delivery guarantee: is a duplicate SMS acceptable? A lost 2FA code?" *(→ per-class guarantees)*
+- "Delivery guarantee: is a duplicate SMS acceptable? A lost 2FA code?" *(-> per-class guarantees)*
 - "Scale, and burstiness — do marketing campaigns blast millions at once?"
 
 **Functional:** accept notification requests via API/events; resolve user preferences + opt-outs + quiet hours; render templates (localized); deliver via pluggable providers (FCM/APNs, SES/SendGrid, Twilio); track delivery status; schedule/campaign sends.
@@ -40167,12 +40167,12 @@ The "boring" system every company actually builds — which is why it's asked. I
 | Quantity | Calculation | Result |
 |---|---|---|
 | Steady volume | 100M notifications/day | **~1.2k/s average** |
-| Campaign burst | 10M-recipient blast enqueued in minutes | **50k+/s into the queue** — 40× average; queue absorbs, workers drain at provider-allowed rate |
-| Provider ceilings | e.g. SMS provider 500/s, email 10k/s | **egress is provider-limited** → per-provider outbound rate limiters, backpressure via queue depth |
-| Delivery records | 100M/day × ~500 B × 90-day retention | **~4.5 TB** — partitioned table / wide-column, TTL'd |
-| Preference reads | 1 per notification, ~1.2k/s avg | cache in Redis (~10M active users × 1 KB = 10 GB), invalidate on update |
+| Campaign burst | 10M-recipient blast enqueued in minutes | **50k+/s into the queue** — 40x average; queue absorbs, workers drain at provider-allowed rate |
+| Provider ceilings | e.g. SMS provider 500/s, email 10k/s | **egress is provider-limited** -> per-provider outbound rate limiters, backpressure via queue depth |
+| Delivery records | 100M/day x ~500 B x 90-day retention | **~4.5 TB** — partitioned table / wide-column, TTL'd |
+| Preference reads | 1 per notification, ~1.2k/s avg | cache in Redis (~10M active users x 1 KB = 10 GB), invalidate on update |
 
-Estimation punchline: ingress is bursty and unbounded, egress is contractually bounded → **a queue between them is not optional**, it's the load-matching device.
+Estimation punchline: ingress is bursty and unbounded, egress is contractually bounded -> **a queue between them is not optional**, it's the load-matching device.
 
 ## 3. API design
 
@@ -40206,20 +40206,20 @@ graph LR
     SES -.bounce/complaint.-> SUP[(suppression list)]
 \`\`\`
 
-Pipeline: ingest (validate, **dedup on idempotency key**, persist intent, ack producer in <10 ms) → process (resolve preferences/opt-outs/quiet hours, pick channels, render template) → per-channel queues → workers with per-provider rate limiters and circuit breakers → provider → async receipts (webhooks) update delivery state.
+Pipeline: ingest (validate, **dedup on idempotency key**, persist intent, ack producer in <10 ms) -> process (resolve preferences/opt-outs/quiet hours, pick channels, render template) -> per-channel queues -> workers with per-provider rate limiters and circuit breakers -> provider -> async receipts (webhooks) update delivery state.
 
 ## 6. Deep dives
 
 ### 6a. Idempotency & dedup — the interviewer's favorite
 
 Three layers, because duplicates enter at three places:
-1. **Producer retries** → \`idempotency_key\` unique-constraint at ingestion (insert-or-return-existing; Redis \`SET NX\` + DB constraint as belt-and-braces).
-2. **Consumer redelivery** (Kafka at-least-once: worker crashes after send, before commit) → before calling the provider, atomically transition state \`rendered → sending\` (conditional update); a redelivered message finds state ≠ rendered and skips. Window remains between provider-call and state-write — crash there = possible duplicate send. That residual risk is **why the guarantee is "at-least-once with dedup", not "exactly-once"**; some providers accept a client dedup ID to close even that.
-3. **Cross-trigger dupes** (two producers notify the same event) → optional content-hash dedup per (user, event-type) within a time window.
+1. **Producer retries** -> \`idempotency_key\` unique-constraint at ingestion (insert-or-return-existing; Redis \`SET NX\` + DB constraint as belt-and-braces).
+2. **Consumer redelivery** (Kafka at-least-once: worker crashes after send, before commit) -> before calling the provider, atomically transition state \`rendered -> sending\` (conditional update); a redelivered message finds state != rendered and skips. Window remains between provider-call and state-write — crash there = possible duplicate send. That residual risk is **why the guarantee is "at-least-once with dedup", not "exactly-once"**; some providers accept a client dedup ID to close even that.
+3. **Cross-trigger dupes** (two producers notify the same event) -> optional content-hash dedup per (user, event-type) within a time window.
 
 ### 6b. Retries, backoff, DLQ
 
-Classify errors first: **retryable** (timeouts, 5xx, 429 → exponential backoff + jitter, honor \`Retry-After\`) vs **permanent** (invalid token, unsubscribed, malformed → no retry: suppress or fail fast). Retry budget per class — OTP: 3 fast attempts then failover channel; marketing: lazy retries, then drop. After budget exhaustion → **DLQ per channel** with full context (payload, attempts, last error). DLQ is *operated*, not just configured: alert on depth, dashboard, and a replay tool that re-injects after the outage/bug is fixed. Failed pushes with \`UNREGISTERED\` tokens feed back into token cleanup.
+Classify errors first: **retryable** (timeouts, 5xx, 429 -> exponential backoff + jitter, honor \`Retry-After\`) vs **permanent** (invalid token, unsubscribed, malformed -> no retry: suppress or fail fast). Retry budget per class — OTP: 3 fast attempts then failover channel; marketing: lazy retries, then drop. After budget exhaustion -> **DLQ per channel** with full context (payload, attempts, last error). DLQ is *operated*, not just configured: alert on depth, dashboard, and a replay tool that re-injects after the outage/bug is fixed. Failed pushes with \`UNREGISTERED\` tokens feed back into token cleanup.
 
 > [!WARNING]
 > Retries without jitter synchronize into waves that re-hammer a recovering provider — and retrying *through* an open circuit breaker just burns your rate limit. Backoff + jitter + breaker per provider, and failover to the secondary provider while the breaker is open.
@@ -40230,15 +40230,15 @@ Two distinct limiters: **egress per provider** (contractual: Twilio 500/s — to
 
 ### 6d. Templates & preferences
 
-Versioned templates (\`order_shipped\` v7, per-locale, per-channel variants); render at process time with strict variable validation — a missing variable is a **permanent** failure to DLQ, retrying won't invent the data. Preference resolution order: hard suppressions (legal) → user opt-outs → quiet hours → channel selection by notification class + user choice. Cache preferences; invalidate on write.
+Versioned templates (\`order_shipped\` v7, per-locale, per-channel variants); render at process time with strict variable validation — a missing variable is a **permanent** failure to DLQ, retrying won't invent the data. Preference resolution order: hard suppressions (legal) -> user opt-outs -> quiet hours -> channel selection by notification class + user choice. Cache preferences; invalidate on write.
 
 ## 7. Bottlenecks, trade-offs & evolution
 
 - **Campaign starves transactional**: separate topics/worker pools per class (already in the design); optionally weighted fair scheduling inside processors.
-- **Provider outage**: circuit breaker trips → failover provider (pre-integrated, warmed); if both down, queue holds (that's its job) and transactional overflows to alternate channel where sensible (push→SMS for OTP).
+- **Provider outage**: circuit breaker trips -> failover provider (pre-integrated, warmed); if both down, queue holds (that's its job) and transactional overflows to alternate channel where sensible (push->SMS for OTP).
 - **Hot user** (celebrity gets 1M likes/hour): collapse/digest at the processing tier — notification *generation* is where you aggregate, not delivery.
-- **Delivery-state writes** (100M/day × several transitions) → batch/async status writes; the state machine tolerates out-of-order webhook receipts (\`delivered\` arriving after \`sent\` write lag) via monotonic state precedence.
-- **Evolution**: v1 single service + one queue + one provider each → v2 class-separated queues, failover providers, DLQ tooling → v3 campaign scheduler, digesting, per-tenant quotas + analytics.
+- **Delivery-state writes** (100M/day x several transitions) -> batch/async status writes; the state machine tolerates out-of-order webhook receipts (\`delivered\` arriving after \`sent\` write lag) via monotonic state precedence.
+- **Evolution**: v1 single service + one queue + one provider each -> v2 class-separated queues, failover providers, DLQ tooling -> v3 campaign scheduler, digesting, per-tenant quotas + analytics.
 
 > [!EU]
 > **What a senior answer sounds like:** "It's a load-matching problem: unbounded bursty ingress, contractually bounded egress — so Kafka sits in the middle, split by traffic class so campaigns never queue ahead of OTPs. Guarantee is at-least-once with layered dedup: idempotency keys at ingestion, conditional state transitions at the worker, provider dedup IDs where supported — and I'll say plainly that a crash between provider-call and state-write is why exactly-once is a myth here. Per-provider token buckets and circuit breakers with a failover provider handle egress; DLQs are operated with alerts and replay tooling; suppressions are checked before every send because they're a legal boundary, not a feature."`,
@@ -40383,7 +40383,7 @@ CREATE TABLE suppressions (                          -- legal boundary: checked 
               },
               {
                 q: `A user gets the same "order shipped" push twice. Enumerate the three places the duplicate could have entered and the guard at each.`,
-                a: `(1) Producer retried the API call → idempotency_key unique constraint at ingestion returns the original. (2) Kafka redelivered after a worker crash → conditional state transition rendered→sending skips already-claimed work. (3) Two services fired on the same event → content-hash dedup per (user, event, window). Residual: crash between provider-call and state-write — hence "at-least-once with dedup".`
+                a: `(1) Producer retried the API call -> idempotency_key unique constraint at ingestion returns the original. (2) Kafka redelivered after a worker crash -> conditional state transition rendered->sending skips already-claimed work. (3) Two services fired on the same event -> content-hash dedup per (user, event, window). Residual: crash between provider-call and state-write — hence "at-least-once with dedup".`
               },
               {
                 q: `Interviewer: "just make delivery exactly-once." Your answer?`,
@@ -40403,7 +40403,7 @@ CREATE TABLE suppressions (                          -- legal boundary: checked 
               },
               {
                 q: `FCM starts timing out on 80% of calls. Walk the failure handling chain.`,
-                a: `Retries with exp backoff + jitter → error rate trips the per-provider circuit breaker → workers stop burning attempts, traffic fails over to the secondary push path or alternate channel for critical sends → queue depth absorbs the rest → breaker half-opens to probe recovery → DLQ replay for anything that exhausted its budget mid-outage.`
+                a: `Retries with exp backoff + jitter -> error rate trips the per-provider circuit breaker -> workers stop burning attempts, traffic fails over to the secondary push path or alternate channel for critical sends -> queue depth absorbs the rest -> breaker half-opens to probe recovery -> DLQ replay for anything that exhausted its budget mid-outage.`
               },
               {
                 q: `Why do producers send template_id + data instead of rendered content?`,
@@ -40435,20 +40435,20 @@ Cron, but nothing may be missed when a box dies, and nothing may run twice when 
 
 **Functional:** CRUD jobs (cron expr / one-shot, payload, target); fire at schedule; retries with backoff; priorities; misfire policy per job; pause/resume; execution history + observability.
 
-**Non-functional:** **no lost triggers** (crash ≠ skipped job); no concurrent duplicate execution of the same job instance (best-effort — see fencing); trigger precision ~1 s; horizontally scalable to 10M jobs; multi-tenant fairness (one tenant's 100k jobs must not starve others).
+**Non-functional:** **no lost triggers** (crash != skipped job); no concurrent duplicate execution of the same job instance (best-effort — see fencing); trigger precision ~1 s; horizontally scalable to 10M jobs; multi-tenant fairness (one tenant's 100k jobs must not starve others).
 
 ## 2. Back-of-envelope estimation
 
 | Quantity | Calculation | Result |
 |---|---|---|
-| Job definitions | given | **10M rows × ~1 KB = 10 GB** — one Postgres, comfortably |
+| Job definitions | given | **10M rows x ~1 KB = 10 GB** — one Postgres, comfortably |
 | Firing rate | 1M firings/hour peak | **~280/s avg-peak; design for 3k/s bursts** (top-of-minute clustering: everyone schedules \`* * * * *\` and \`0 * * * *\`) |
-| Due-scan | poll every 1 s for \`next_run_at <= now\` | index-range scan returning ≤ few thousand rows — trivial *if indexed* |
-| History | 24M executions/day × 300 B × 30 d | **~215 GB** — partitioned by day, dropped on schedule |
-| Executor throughput | jobs avg 30 s runtime × 280/s | ~8,400 concurrent executions → worker fleet sized separately from scheduler (**they scale independently — that's why we split them**) |
+| Due-scan | poll every 1 s for \`next_run_at <= now\` | index-range scan returning <= few thousand rows — trivial *if indexed* |
+| History | 24M executions/day x 300 B x 30 d | **~215 GB** — partitioned by day, dropped on schedule |
+| Executor throughput | jobs avg 30 s runtime x 280/s | ~8,400 concurrent executions -> worker fleet sized separately from scheduler (**they scale independently — that's why we split them**) |
 
 > [!TIP]
-> Mention **top-of-minute clustering** unprompted: real schedulers see 10–50× spikes at :00 seconds. It justifies the queue between trigger and execution and (optionally) schedule jitter for tenant jobs.
+> Mention **top-of-minute clustering** unprompted: real schedulers see 10–50x spikes at :00 seconds. It justifies the queue between trigger and execution and (optionally) schedule jitter for tenant jobs.
 
 ## 3. API design
 
@@ -40482,7 +40482,7 @@ graph TB
     MON[Watchdog: overdue next_run_at, stuck runs, DLQ depth] --> JDB
 \`\`\`
 
-Trigger flow: scheduler polls its partitions for due jobs → atomically claims each (\`SKIP LOCKED\`) → writes a \`job_run\` row → enqueues → advances \`next_run_at\` (computed from the cron expr) → commits. Enqueue-then-commit vs commit-then-enqueue is exactly the dual-write problem → use the **transactional outbox**: the \`job_run\` row *is* the outbox entry; a relay publishes it. Crash anywhere → the run row or due \`next_run_at\` survives → retriggered. **At-least-once, never zero.**
+Trigger flow: scheduler polls its partitions for due jobs -> atomically claims each (\`SKIP LOCKED\`) -> writes a \`job_run\` row -> enqueues -> advances \`next_run_at\` (computed from the cron expr) -> commits. Enqueue-then-commit vs commit-then-enqueue is exactly the dual-write problem -> use the **transactional outbox**: the \`job_run\` row *is* the outbox entry; a relay publishes it. Crash anywhere -> the run row or due \`next_run_at\` survives -> retriggered. **At-least-once, never zero.**
 
 ## 6. Deep dives
 
@@ -40504,7 +40504,7 @@ Single leader (all jobs on one active scheduler, elected via ZooKeeper/etcd leas
 
 ### 6c. Execution semantics: at-least-once + idempotency + fencing
 
-Crash matrix: worker dies mid-job → lease on the run expires → watchdog re-queues → **job runs twice** (first attempt may have half-completed side effects). Therefore: **handlers must be idempotent** — the platform documents it as a contract and helps: per-run \`execution_id\` passed to the target so it can dedup, and a **fencing token** (monotonic attempt number): a zombie worker that wakes after GC-pause/partition and tries to report/act with attempt=1 is rejected because attempt=2 already ran. This is the classic zombie/split-brain guard — name-drop it; it's the difference between "I've read about this" and "I've been paged for this."
+Crash matrix: worker dies mid-job -> lease on the run expires -> watchdog re-queues -> **job runs twice** (first attempt may have half-completed side effects). Therefore: **handlers must be idempotent** — the platform documents it as a contract and helps: per-run \`execution_id\` passed to the target so it can dedup, and a **fencing token** (monotonic attempt number): a zombie worker that wakes after GC-pause/partition and tries to report/act with attempt=1 is rejected because attempt=2 already ran. This is the classic zombie/split-brain guard — name-drop it; it's the difference between "I've read about this" and "I've been paged for this."
 
 > [!DANGER]
 > "I'll take a distributed lock so the job can't run twice" is the trap answer. Locks with TTLs expire during long GC pauses/network partitions while the old holder still runs — you get two executions *and* a false sense of safety. Locks reduce duplicate probability; only **idempotency + fencing** gives correctness.
@@ -40512,18 +40512,18 @@ Crash matrix: worker dies mid-job → lease on the run expires → watchdog re-q
 ### 6d. Misfires, retries, priorities
 
 - **Misfire** (scheduler down 20 min; \`next_run_at\` in the past): per-job policy — \`fire_once_now\` (default: coalesce all missed into one), \`skip_to_next\` (metrics emitters — stale data is worthless), \`run_all_missed\` (billing/ledger jobs where every period must exist). Never silently pick one globally.
-- **Retries:** per-job policy (max attempts, exp backoff + jitter) via delayed re-enqueue; exhausted → DLQ + alert to the owning team.
+- **Retries:** per-job policy (max attempts, exp backoff + jitter) via delayed re-enqueue; exhausted -> DLQ + alert to the owning team.
 - **Priorities:** separate queue topics per priority class with dedicated worker capacity for the top class (avoids priority inversion where a flood of P3s occupies every worker ahead of a P0 — reserved capacity, not just ordering).
 
 ## 7. Bottlenecks, trade-offs & evolution
 
 - **\`next_run_at\` index contention** at top-of-minute: partitioned pollers + batch claiming (\`LIMIT 500\` per poll) + optional per-tenant schedule jitter.
 - **Long-running jobs blocking workers**: heartbeat-based run leases (worker extends lease while alive) rather than fixed timeouts; stuck-run watchdog.
-- **Observability is a feature, not ops garnish**: lag metric (\`now − scheduled_time\` at execution start) is THE health signal; plus per-tenant firing dashboards, DLQ depth, misfire counts.
-- **Evolution**: v1 single Postgres + \`SKIP LOCKED\` + one worker pool (this is genuinely enough for most companies) → v2 partition leases + priority queues + DLQ tooling → v3 timing-wheel front-end for >50k/s, workflow/DAG support (job B after job A) — at which point you're building Temporal and should say so.
+- **Observability is a feature, not ops garnish**: lag metric (\`now - scheduled_time\` at execution start) is THE health signal; plus per-tenant firing dashboards, DLQ depth, misfire counts.
+- **Evolution**: v1 single Postgres + \`SKIP LOCKED\` + one worker pool (this is genuinely enough for most companies) -> v2 partition leases + priority queues + DLQ tooling -> v3 timing-wheel front-end for >50k/s, workflow/DAG support (job B after job A) — at which point you're building Temporal and should say so.
 
 > [!EU]
-> **What a senior answer sounds like:** "The store is the source of truth: jobs with next_run_at, claimed by competing pollers with FOR UPDATE SKIP LOCKED — correct with zero coordination; partition leases come later for cache efficiency. The run row doubles as a transactional outbox, so triggering is at-least-once by construction, and execution is therefore at-least-once with idempotent handlers plus fencing tokens for zombies — I'd explicitly reject 'a distributed lock makes it exactly-once'. Misfire policy is per job because coalescing is right for cache-warming and wrong for billing. The number I page on is trigger lag, and the 10× exit is an in-memory timing wheel in front of the same durable store."
+> **What a senior answer sounds like:** "The store is the source of truth: jobs with next_run_at, claimed by competing pollers with FOR UPDATE SKIP LOCKED — correct with zero coordination; partition leases come later for cache efficiency. The run row doubles as a transactional outbox, so triggering is at-least-once by construction, and execution is therefore at-least-once with idempotent handlers plus fencing tokens for zombies — I'd explicitly reject 'a distributed lock makes it exactly-once'. Misfire policy is per job because coalescing is right for cache-warming and wrong for billing. The number I page on is trigger lag, and the 10x exit is an in-memory timing wheel in front of the same durable store."
 
 ---
 
@@ -40697,14 +40697,14 @@ public class TimingWheelDemo {
               },
               {
                 q: `The scheduler was down 30 minutes. A cache-refresh job, a metrics job, and a billing job all missed runs. Same recovery for all three?`,
-                a: `No — misfire policy is per job: cache refresh → fire_once_now (coalesce misses into one run); metrics emitter → skip_to_next (late data is worthless); billing rollup → run_all_missed (every period must exist in the ledger). A global policy is wrong for at least one of them.`
+                a: `No — misfire policy is per job: cache refresh -> fire_once_now (coalesce misses into one run); metrics emitter -> skip_to_next (late data is worthless); billing rollup -> run_all_missed (every period must exist in the ledger). A global policy is wrong for at least one of them.`
               },
               {
                 q: `DB polling vs timing wheel: when do you switch, and what does the hybrid look like?`,
                 a: `SKIP LOCKED polling is durable, multi-node-safe, ~1 s precision, good to thousands of firings/s. Past ~50k/s or for ms precision, load the next few minutes of due jobs into per-partition in-memory hashed timing wheels (O(1) schedule/fire); the DB remains the durable truth and the wheel is rebuilt on restart.`
               },
               {
-                q: `Why do real schedulers see 10–50× load spikes at :00 seconds, and what three mitigations do you name?`,
+                q: `Why do real schedulers see 10–50x load spikes at :00 seconds, and what three mitigations do you name?`,
                 a: `Humans schedule on round times ("every minute/hour at :00"), clustering firings at top-of-minute. Mitigate: queue between trigger and execution absorbs the spike; batch claiming (LIMIT N per poll) across partitioned pollers; optional per-tenant jitter (fire within [0,30s) of the slot) where contracts allow.`
               },
               {
@@ -40717,7 +40717,7 @@ public class TimingWheelDemo {
               },
               {
                 q: `Name THE health metric for a scheduler and why queue depth alone lies.`,
-                a: `Trigger lag = started_at − scheduled_at per run (p99, per priority class). Queue depth can be zero while the scheduler itself is stalled (nothing enqueued), and high depth is fine if drain rate matches. Lag measures the promise the system actually makes: things run when scheduled.`
+                a: `Trigger lag = started_at - scheduled_at per run (p99, per priority class). Queue depth can be zero while the scheduler itself is stalled (nothing enqueued), and high depth is fine if drain rate matches. Lag measures the promise the system actually makes: things run when scheduled.`
               },
               {
                 q: `Your job scheduler design is drifting into "job B runs after job A succeeds, fan-in on C". What do you say?`,
@@ -40725,7 +40725,7 @@ public class TimingWheelDemo {
               },
               {
                 q: `Given a brand-new design question ("design Ticketmaster"), how do you reuse these six case studies?`,
-                a: `Decompose into problem shapes and map to worked patterns: read-heavy browse → cache+replicas+CDN (shortener); purchase burst → queue as load-matcher (notifications); hot event → sharding + local cache + singleflight (feed); "don't sell a seat twice" → atomic single-writer op (rate limiter Lua) + outbox/idempotency (scheduler); notify buyers → notification pipeline. Name the pattern and its known trade-off out loud.`
+                a: `Decompose into problem shapes and map to worked patterns: read-heavy browse -> cache+replicas+CDN (shortener); purchase burst -> queue as load-matcher (notifications); hot event -> sharding + local cache + singleflight (feed); "don't sell a seat twice" -> atomic single-writer op (rate limiter Lua) + outbox/idempotency (scheduler); notify buyers -> notification pipeline. Name the pattern and its known trade-off out loud.`
               }
             ]
           }
@@ -40745,8 +40745,8 @@ public class TimingWheelDemo {
         hours: 6,
         sections: [
           {
-            title: `Monolith → Microservices: When (and When Not) to Split`,
-            notes: `## Monolith → Microservices
+            title: `Monolith -> Microservices: When (and When Not) to Split`,
+            notes: `## Monolith -> Microservices
 
 Microservices are an **organizational** technology before they are a technical one. You adopt them to let many teams ship independently — not because "REST is faster than a method call" (it is dramatically slower). Get this framing wrong and you build a *distributed monolith*: all the cost, none of the benefit.
 
@@ -40754,7 +40754,7 @@ Microservices are an **organizational** technology before they are a technical o
 
 ### The honest cost ledger
 
-A single in-process method call is ~1–10 **nanoseconds**. The equivalent cross-service call is ~0.5–5 **milliseconds** on a fast network — roughly a **100,000–1,000,000× latency tax** — and it can now *fail independently* (timeout, partial failure, retry storm). That is the core thing you are buying.
+A single in-process method call is ~1–10 **nanoseconds**. The equivalent cross-service call is ~0.5–5 **milliseconds** on a fast network — roughly a **100,000–1,000,000x latency tax** — and it can now *fail independently* (timeout, partial failure, retry storm). That is the core thing you are buying.
 
 | Concern | Monolith | Microservices |
 |---|---|---|
@@ -40775,7 +40775,7 @@ The boundary that matters is the **bounded context** (Eric Evans / DDD): a regio
 
 - **Ubiquitous language** per context — the model and the code share the same vocabulary.
 - **Context map** — define the relationship between contexts (Customer/Supplier, Conformist, Anti-Corruption Layer, Shared Kernel).
-- **Aggregate** = the transactional consistency boundary *inside* a service. A service usually owns one or a few aggregates. A good rule: **one service per bounded context, not per aggregate, not per entity** (per-entity → "nano-services" → distributed monolith).
+- **Aggregate** = the transactional consistency boundary *inside* a service. A service usually owns one or a few aggregates. A good rule: **one service per bounded context, not per aggregate, not per entity** (per-entity -> "nano-services" -> distributed monolith).
 
 > [!TIP] Map a service boundary onto a bounded context, and a transaction boundary onto an aggregate. If a single business operation must atomically mutate two aggregates in two services, your boundary is probably wrong — or you need a saga.
 
@@ -40808,11 +40808,11 @@ graph LR
 You have a distributed monolith if **services must be deployed together, share a database, or fail together.** Smells:
 
 - A shared database across services (the #1 cause — couples schemas, you can't change a column safely).
-- Synchronous call chains N levels deep (A→B→C→D) — latency adds, availability *multiplies down*.
+- Synchronous call chains N levels deep (A->B->C->D) — latency adds, availability *multiplies down*.
 - A change to one service forces a coordinated release of others (lock-step deploys).
 - Distributed transactions / 2PC trying to recreate ACID across the network.
 
-> [!DANGER] **Availability multiplies.** A request that fans out synchronously to 5 services each at 99.9% has a ceiling of 0.999^5 ≈ **99.5%** — that's ~3.6 hours/month of downtime created purely by topology. Worse, a deep sync chain means one slow dependency stalls every caller above it. The fix: fewer sync hops, async where possible, and resilience patterns (Section 4).
+> [!DANGER] **Availability multiplies.** A request that fans out synchronously to 5 services each at 99.9% has a ceiling of 0.999^5 ~ **99.5%** — that's ~3.6 hours/month of downtime created purely by topology. Worse, a deep sync chain means one slow dependency stalls every caller above it. The fix: fewer sync hops, async where possible, and resilience patterns (Section 4).
 
 ### Conway's Law — the punchline
 
@@ -40879,7 +40879,7 @@ public interface OrderFacade {                 // stable, published contract
             flashcards: [
               {
                 q: `Why are microservices fundamentally an organizational pattern, not just a technical one?`,
-                a: `Their primary payoff is independent deployability and team autonomy (Conway's Law). The technical change — replacing in-process calls with network calls — is a net *cost* (100k+× slower, can fail independently). You only come out ahead if multiple teams need to ship without coordinating.`
+                a: `Their primary payoff is independent deployability and team autonomy (Conway's Law). The technical change — replacing in-process calls with network calls — is a net *cost* (100k+x slower, can fail independently). You only come out ahead if multiple teams need to ship without coordinating.`
               },
               {
                 q: `Define a 'distributed monolith' and give three smells.`,
@@ -40887,11 +40887,11 @@ public interface OrderFacade {                 // stable, published contract
               },
               {
                 q: `What's the difference between a bounded context and an aggregate, and how do they map to services?`,
-                a: `A bounded context is a model boundary where terms have one meaning → maps to a *service*. An aggregate is a transactional consistency boundary inside a service → maps to a *transaction*. One service per bounded context (not per entity).`
+                a: `A bounded context is a model boundary where terms have one meaning -> maps to a *service*. An aggregate is a transactional consistency boundary inside a service -> maps to a *transaction*. One service per bounded context (not per entity).`
               },
               {
                 q: `How does availability behave across a synchronous call fan-out and why is that dangerous?`,
-                a: `It multiplies: five 99.9% services in a sync chain ≈ 99.9%^5 ≈ 99.5% (~3.6h/month down). Topology alone destroys availability; the fix is fewer sync hops, async messaging, and resilience patterns.`
+                a: `It multiplies: five 99.9% services in a sync chain ~ 99.9%^5 ~ 99.5% (~3.6h/month down). Topology alone destroys availability; the fix is fewer sync hops, async messaging, and resilience patterns.`
               },
               {
                 q: `What is the Strangler Fig pattern?`,
@@ -40943,7 +40943,7 @@ The caller blocks (logically) until it gets an answer. Simple mental model, but 
 
 | | REST/JSON over HTTP/1.1 | gRPC/Protobuf over HTTP/2 |
 |---|---|---|
-| Encoding | text JSON (human-readable, verbose) | binary Protobuf (compact, ~3–10× smaller) |
+| Encoding | text JSON (human-readable, verbose) | binary Protobuf (compact, ~3–10x smaller) |
 | Contract | OpenAPI (optional, often drifts) | .proto (mandatory, code-generated, typed) |
 | Transport | HTTP/1.1 (HTTP/2 possible) | HTTP/2 (multiplexed, header compression) |
 | Streaming | no (SSE/websocket bolt-ons) | yes: client/server/bidi streaming |
@@ -40959,7 +40959,7 @@ The caller blocks (logically) until it gets an answer. Simple mental model, but 
 
 ### Asynchronous / event-driven
 
-The producer emits an event and moves on; consumers react later. This **decouples availability** (broker buffers while a consumer is down) and **decouples the producer from consumers** (it doesn't know who listens). Use for **writes and cross-service side-effects**: \`OrderPlaced\` → inventory reserves stock, shipping schedules, notifications send.
+The producer emits an event and moves on; consumers react later. This **decouples availability** (broker buffers while a consumer is down) and **decouples the producer from consumers** (it doesn't know who listens). Use for **writes and cross-service side-effects**: \`OrderPlaced\` -> inventory reserves stock, shipping schedules, notifications send.
 
 \`\`\`mermaid
 sequenceDiagram
@@ -40993,7 +40993,7 @@ sequenceDiagram
 
 ### Backpressure — the failure mode juniors miss
 
-If a producer emits faster than a consumer can handle, something must give. Without backpressure you get **unbounded queue growth → OOM**, or you drop data silently.
+If a producer emits faster than a consumer can handle, something must give. Without backpressure you get **unbounded queue growth -> OOM**, or you drop data silently.
 
 - **Pull-based (Kafka):** consumers pull at their own pace; the broker is the buffer (bounded by retention/disk). Lag is observable as *consumer lag*. This is natural backpressure.
 - **Push-based (naive):** producer overwhelms consumer. You need flow control — bounded queues, **Reactive Streams** \`request(n)\` (Project Reactor / RSocket), HTTP/2 flow-control windows, or 429/503 with \`Retry-After\`.
@@ -41126,7 +41126,7 @@ public class BackpressureDemo {
               },
               {
                 q: `Command vs Event — define and say which to prefer for integration.`,
-                a: `A command is a directed request to do something (one owner, rejectable → coupling). An event is an immutable fact about the past (broadcast, fire-and-forget → decoupling). Prefer events for cross-context integration.`
+                a: `A command is a directed request to do something (one owner, rejectable -> coupling). An event is an immutable fact about the past (broadcast, fire-and-forget -> decoupling). Prefer events for cross-context integration.`
               },
               {
                 q: `Why does async messaging 'decouple availability'?`,
@@ -41142,7 +41142,7 @@ public class BackpressureDemo {
               },
               {
                 q: `What is backpressure and why is it critical?`,
-                a: `A mechanism for a slow consumer to signal a fast producer to slow down. Without it you get unbounded queue growth → OOM, or silent data loss. Examples: Kafka pull model, Reactive Streams request(n), HTTP/2 flow control, 429/Retry-After.`
+                a: `A mechanism for a slow consumer to signal a fast producer to slow down. Without it you get unbounded queue growth -> OOM, or silent data loss. Examples: Kafka pull model, Reactive Streams request(n), HTTP/2 flow control, 429/Retry-After.`
               },
               {
                 q: `Why is Kafka's pull model natural backpressure?`,
@@ -41172,7 +41172,7 @@ The gateway is the **edge** between untrusted clients and your service mesh. It 
 
 | Responsibility | Why at the gateway |
 |---|---|
-| Routing | Path/host → service; clients see one stable host |
+| Routing | Path/host -> service; clients see one stable host |
 | AuthN/AuthZ | Validate JWT/OAuth once at the edge; services trust internal traffic |
 | Rate limiting / quotas | Protect the whole estate; per-client throttling |
 | TLS termination | Terminate once; mTLS internally (or via mesh) |
@@ -41200,7 +41200,7 @@ graph LR
 
 ### Service Discovery — finding instances in a dynamic fleet
 
-Instances come and go (autoscaling, rolling deploys, crashes) and IPs are ephemeral. You can't hardcode addresses. A **service registry** maps logical name → healthy instances.
+Instances come and go (autoscaling, rolling deploys, crashes) and IPs are ephemeral. You can't hardcode addresses. A **service registry** maps logical name -> healthy instances.
 
 **Client-side discovery (e.g. Netflix Eureka + Ribbon):**
 - Client queries the registry, gets the instance list, and load-balances itself.
@@ -41442,7 +41442,7 @@ In a distributed system, **failure is the steady state**, not the exception. The
 
 A call with **no timeout is a resource leak waiting to happen.** Every remote call needs a bounded timeout (connect + read). Set it from the dependency's p99 latency, not a guess. Without timeouts, threads block forever and pools exhaust — this is the root of most cascades.
 
-> [!WARNING] Sum your timeouts down a chain. If A→B→C and each has a 30s timeout, A could wait 90s. Timeouts should *decrease* downstream (deadline propagation): pass the remaining budget so inner calls give up before the outer one does.
+> [!WARNING] Sum your timeouts down a chain. If A->B->C and each has a 30s timeout, A could wait 90s. Timeouts should *decrease* downstream (deadline propagation): pass the remaining budget so inner calls give up before the outer one does.
 
 ### 2. Retries — necessary but dangerous
 
@@ -41450,7 +41450,7 @@ Retries handle *transient* faults (a dropped packet, a brief blip). They are dan
 
 - Only retry **idempotent** operations (or those guarded by an idempotency key).
 - Only retry **transient/retriable** errors (timeouts, 503, connection reset) — never 400/404/business errors.
-- Use **exponential backoff + jitter**. Without jitter, all clients retry in lockstep → synchronized thundering herd. Jitter spreads them out.
+- Use **exponential backoff + jitter**. Without jitter, all clients retry in lockstep -> synchronized thundering herd. Jitter spreads them out.
 - Use a **retry budget / token bucket**: cap retries to e.g. 10% of normal traffic, so a failing dependency can't be hammered to death. Stop retrying when the budget is empty.
 
 > [!TIP] **"Equal jitter" / "full jitter"** (AWS Architecture Blog): \`sleep = random(0, base * 2^attempt)\`. Full jitter spreads retries best. Cap with a max backoff. Combine with a *deadline*: don't retry past the request's overall budget.
@@ -41473,7 +41473,7 @@ stateDiagram-v2
 **Resilience4j states:**
 - **CLOSED** — calls flow; track failure rate over a sliding window (count- or time-based).
 - **OPEN** — fail fast immediately for \`waitDurationInOpenState\`; no real calls made.
-- **HALF_OPEN** — allow a few trial calls; if they succeed → CLOSED, if they fail → back to OPEN.
+- **HALF_OPEN** — allow a few trial calls; if they succeed -> CLOSED, if they fail -> back to OPEN.
 - Plus **DISABLED** (always allow) and **FORCED_OPEN** (always block) for ops control.
 
 > [!EU] **Interviewers probe the difference between timeout and circuit breaker.** Timeout bounds *one* call. The circuit breaker uses the *history* of recent calls to stop making them at all when the dependency is clearly down. They compose: timeouts feed failures into the breaker's window.
@@ -41488,9 +41488,9 @@ When a call fails (or the breaker is open), return a *degraded* answer instead o
 
 ### 6. Idempotency — the glue that makes retries safe
 
-If retries and at-least-once delivery exist, **every mutating operation must be idempotent.** Client sends an \`Idempotency-Key\`; the server records "I already processed key X → here's the same result" and refuses to do the work twice. This is what lets you retry a POST safely.
+If retries and at-least-once delivery exist, **every mutating operation must be idempotent.** Client sends an \`Idempotency-Key\`; the server records "I already processed key X -> here's the same result" and refuses to do the work twice. This is what lets you retry a POST safely.
 
-### Order of composition (outer → inner)
+### Order of composition (outer -> inner)
 
 \`\`\`
 Retry( CircuitBreaker( Bulkhead( TimeLimiter( RateLimiter( call ) ) ) ) )
@@ -41682,7 +41682,7 @@ ResponseEntity<?> reserve(@RequestHeader("Idempotency-Key") String key, @Request
               },
               {
                 q: `What is deadline propagation and why does it matter in a call chain?`,
-                a: `Passing the remaining time budget down the chain so inner timeouts are tighter than outer ones. Without it, A→B→C with 30s each lets A wait 90s; with it, each hop gives up before its caller does.`
+                a: `Passing the remaining time budget down the chain so inner timeouts are tighter than outer ones. Without it, A->B->C with 30s each lets A wait 90s; with it, each hop gives up before its caller does.`
               },
               {
                 q: `When is it safe to retry, and what three guards must hold?`,
@@ -41690,7 +41690,7 @@ ResponseEntity<?> reserve(@RequestHeader("Idempotency-Key") String key, @Request
               },
               {
                 q: `Why add jitter to exponential backoff?`,
-                a: `Without jitter, all clients that failed together retry at the same instants → a synchronized thundering herd that re-overloads the recovering service. Jitter (full/equal jitter) randomizes the spacing.`
+                a: `Without jitter, all clients that failed together retry at the same instants -> a synchronized thundering herd that re-overloads the recovering service. Jitter (full/equal jitter) randomizes the spacing.`
               },
               {
                 q: `What is a retry budget?`,
@@ -41698,7 +41698,7 @@ ResponseEntity<?> reserve(@RequestHeader("Idempotency-Key") String key, @Request
               },
               {
                 q: `Name the circuit breaker states and the transitions.`,
-                a: `CLOSED (calls flow, track failure rate) → OPEN when the rate crosses threshold over the window (fail fast) → HALF_OPEN after waitDurationInOpenState (allow trial calls) → CLOSED if probes succeed, back to OPEN if any probe fails. Plus DISABLED/FORCED_OPEN for ops.`
+                a: `CLOSED (calls flow, track failure rate) -> OPEN when the rate crosses threshold over the window (fail fast) -> HALF_OPEN after waitDurationInOpenState (allow trial calls) -> CLOSED if probes succeed, back to OPEN if any probe fails. Plus DISABLED/FORCED_OPEN for ops.`
               },
               {
                 q: `How does a circuit breaker differ from a timeout?`,
@@ -41762,7 +41762,7 @@ The data lives in different databases (maybe different engines, different clouds
 | Freshness | strong (live query) | eventual (event lag) |
 | Read latency | sum of N calls | single local read (fast) |
 | Cross-service filter/sort/page | poor | excellent (pre-joined) |
-| Resilience to source outage | low (any down → fail) | high (read model is independent) |
+| Resilience to source outage | low (any down -> fail) | high (read model is independent) |
 | Complexity | low | high (replication pipeline, dedupe) |
 | Best for | detail views, small joins | dashboards, search, big list/aggregate views |
 
@@ -41776,7 +41776,7 @@ Cross-service writes can't be atomic without distributed transactions (2PC), whi
 
 A subtle, critical bug: a service that does \`db.commit()\` **and then** \`broker.publish(event)\` as two separate steps can crash between them — DB updated, event lost (or vice versa). They aren't atomic.
 
-**Fix — Transactional Outbox:** write the event to an \`outbox\` table in the *same local transaction* as the business data. A separate relay (polling or CDC like Debezium reading the DB log) publishes outbox rows to the broker and marks them sent. Now the state change and the intent-to-publish commit atomically; the relay guarantees the event eventually goes out (at-least-once → consumers must dedupe).
+**Fix — Transactional Outbox:** write the event to an \`outbox\` table in the *same local transaction* as the business data. A separate relay (polling or CDC like Debezium reading the DB log) publishes outbox rows to the broker and marks them sent. Now the state change and the intent-to-publish commit atomically; the relay guarantees the event eventually goes out (at-least-once -> consumers must dedupe).
 
 \`\`\`mermaid
 sequenceDiagram
@@ -41954,7 +41954,7 @@ Heroku's 12 factors are the table-stakes checklist for cloud-native services. Th
 
 | Factor | What it means | Why it matters |
 |---|---|---|
-| III. Config | Config in the **environment**, not code | Same artifact promotes dev→prod; no secrets in git |
+| III. Config | Config in the **environment**, not code | Same artifact promotes dev->prod; no secrets in git |
 | IV. Backing services | DBs/queues as attachable **resources** via URL | Swap a managed DB without code change |
 | VI. Processes | Services are **stateless**; state in backing services | Any instance handles any request; horizontal scale |
 | IX. Disposability | Fast startup, **graceful shutdown** (SIGTERM) | Safe rolling deploys, autoscaling, spot instances |
@@ -41976,7 +41976,7 @@ You can't SSH into 50 services to change a setting. Externalize config to a conf
 In a monolith one request = one stack trace. Across services, a single user action becomes a tree of calls over many processes. A **correlation/trace ID** generated at the edge and propagated through every hop (HTTP headers / message headers) lets you stitch them back together.
 
 - **Trace** = the whole request tree; **Span** = one unit of work (one service's handling); spans nest with parent IDs.
-- Standard: **W3C Trace Context** (\`traceparent\` header). Instrumentation: **OpenTelemetry** (vendor-neutral) → export to Jaeger/Zipkin/Tempo/Honeycomb.
+- Standard: **W3C Trace Context** (\`traceparent\` header). Instrumentation: **OpenTelemetry** (vendor-neutral) -> export to Jaeger/Zipkin/Tempo/Honeycomb.
 - In Spring: **Micrometer Tracing** (successor to Spring Cloud Sleuth) auto-propagates IDs and puts them in the **MDC**, so every log line carries \`[traceId, spanId]\`.
 
 \`\`\`mermaid
@@ -41998,15 +41998,15 @@ sequenceDiagram
 
 ### Observability — the three pillars (+ a caveat)
 
-- **Metrics** (Micrometer → Prometheus): aggregate numbers — latency p50/p95/p99, error rate, throughput, saturation. Cheap, great for alerting/dashboards (Grafana). The **RED** method: Rate, Errors, Duration. The **USE** method for resources: Utilization, Saturation, Errors.
-- **Logs** (structured JSON → Loki/ELK): discrete events with the trace ID. Structure them so you can query fields, not regex.
-- **Traces** (OpenTelemetry → Jaeger/Tempo): request flow across services.
+- **Metrics** (Micrometer -> Prometheus): aggregate numbers — latency p50/p95/p99, error rate, throughput, saturation. Cheap, great for alerting/dashboards (Grafana). The **RED** method: Rate, Errors, Duration. The **USE** method for resources: Utilization, Saturation, Errors.
+- **Logs** (structured JSON -> Loki/ELK): discrete events with the trace ID. Structure them so you can query fields, not regex.
+- **Traces** (OpenTelemetry -> Jaeger/Tempo): request flow across services.
 
 > [!TIP] **Monitoring vs observability:** monitoring answers *known* questions ("is error rate > 1%?"). Observability lets you ask *new* questions about *unknown* failures after the fact ("why are requests from this one tenant on this one shard slow?") — which needs high-cardinality, well-correlated telemetry. Use **exemplars** to jump from a slow metric straight to a representative trace.
 
 ### Deployment, versioning & graceful change
 
-- **Deploy strategies:** rolling (default), blue-green (instant switch + rollback), canary (route 1% → watch metrics → ramp). Decouple deploy from release with **feature flags**.
+- **Deploy strategies:** rolling (default), blue-green (instant switch + rollback), canary (route 1% -> watch metrics -> ramp). Decouple deploy from release with **feature flags**.
 - **API versioning:** prefer **additive, backward-compatible** changes (Protobuf field numbers, optional JSON fields). When you must break, version the path (\`/v2\`) or content type, run **old and new in parallel**, and migrate consumers before retiring v1. Honor **Tolerant Reader** (ignore unknown fields) on both sides.
 - **Graceful shutdown:** on SIGTERM, stop accepting new requests, deregister from discovery, drain in-flight, then exit within the platform's grace period — otherwise rolling deploys drop requests.
 - **Health probes:** separate **liveness** (am I alive? restart if not) from **readiness** (can I take traffic? pull from LB if not, e.g. while warming caches or a dependency is down).
@@ -42133,7 +42133,7 @@ curl -s -H 'traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
             flashcards: [
               {
                 q: `Which 12 factors do interviewers care about most and why?`,
-                a: `III Config (in the environment → same artifact dev→prod, no secrets in git), IV Backing services (attach via URL), VI Processes (stateless → horizontal scale), IX Disposability (fast start, graceful SIGTERM shutdown → safe rolling deploys), XI Logs (stdout event stream → platform aggregates).`
+                a: `III Config (in the environment -> same artifact dev->prod, no secrets in git), IV Backing services (attach via URL), VI Processes (stateless -> horizontal scale), IX Disposability (fast start, graceful SIGTERM shutdown -> safe rolling deploys), XI Logs (stdout event stream -> platform aggregates).`
               },
               {
                 q: `What's the most commonly violated 12-factor and how does it bite you?`,
@@ -42157,7 +42157,7 @@ curl -s -H 'traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
               },
               {
                 q: `Name the three pillars of observability and a method for each.`,
-                a: `Metrics (Micrometer→Prometheus; RED = Rate/Errors/Duration, USE = Utilization/Saturation/Errors), Logs (structured JSON with trace id → Loki/ELK), Traces (OpenTelemetry → Jaeger/Tempo). Exemplars link a metric to a representative trace.`
+                a: `Metrics (Micrometer->Prometheus; RED = Rate/Errors/Duration, USE = Utilization/Saturation/Errors), Logs (structured JSON with trace id -> Loki/ELK), Traces (OpenTelemetry -> Jaeger/Tempo). Exemplars link a metric to a representative trace.`
               },
               {
                 q: `Monitoring vs observability.`,
@@ -42165,7 +42165,7 @@ curl -s -H 'traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
               },
               {
                 q: `Liveness vs readiness probes.`,
-                a: `Liveness = 'is the process alive?' — fail → restart the container. Readiness = 'can it take traffic right now?' — fail → pull it from the load balancer (e.g. while warming caches or a dependency is down) without restarting.`
+                a: `Liveness = 'is the process alive?' — fail -> restart the container. Readiness = 'can it take traffic right now?' — fail -> pull it from the load balancer (e.g. while warming caches or a dependency is down) without restarting.`
               },
               {
                 q: `How do you achieve lossless rolling deploys?`,
@@ -42211,13 +42211,13 @@ Cluster
 - **Offset** — the consumer's position. \`__consumer_offsets\` (a compacted internal topic, 50 partitions by default) stores committed offsets per (group, topic, partition).
 
 > [!TIP]
-> "Offset" is overloaded. Distinguish: **current position** (next offset to read), **committed offset** (last durably stored progress), **log-end-offset / LEO** (next offset the broker will write), **high-water mark / HWM** (highest offset replicated to all ISR — the boundary of what consumers can read). **Lag = LEO − committed offset.**
+> "Offset" is overloaded. Distinguish: **current position** (next offset to read), **committed offset** (last durably stored progress), **log-end-offset / LEO** (next offset the broker will write), **high-water mark / HWM** (highest offset replicated to all ISR — the boundary of what consumers can read). **Lag = LEO - committed offset.**
 
 ### Why the log is fast: sequential I/O + zero-copy
 
 Kafka's throughput (millions of msgs/s on commodity hardware) comes from physics, not magic:
 - **Sequential disk writes** — appending to a log is sequential I/O; a spinning disk does ~100 MB/s random but ~600 MB/s sequential. Kafka leans on the OS **page cache** rather than an in-JVM cache (so a broker with 64 GB RAM uses most of it as page cache, not heap — keep Kafka heap at ~6 GB).
-- **Zero-copy** (\`sendfile\` syscall) — data goes disk → page cache → NIC **without** copying through user space / the JVM heap. This breaks when you enable TLS or broker-side decompression/re-compression, which is a real throughput cliff.
+- **Zero-copy** (\`sendfile\` syscall) — data goes disk -> page cache -> NIC **without** copying through user space / the JVM heap. This breaks when you enable TLS or broker-side decompression/re-compression, which is a real throughput cliff.
 - **Batching** — producers and the broker operate on record batches, amortising per-message overhead.
 
 ### Replication: leader, followers, ISR
@@ -42250,7 +42250,7 @@ graph TD
 
 The **controller** is a special broker role that manages cluster metadata: partition leader election, ISR changes, topic create/delete, broker membership.
 
-| Aspect | ZooKeeper (legacy, ≤2.x default) | KRaft (Kafka Raft, 3.3+ GA, 4.0 only) |
+| Aspect | ZooKeeper (legacy, <=2.x default) | KRaft (Kafka Raft, 3.3+ GA, 4.0 only) |
 |---|---|---|
 | Metadata store | External ZK ensemble (3-5 nodes) | Internal \`__cluster_metadata\` Raft log |
 | Controller | One elected broker talks to ZK | A quorum of controller nodes (Raft) |
@@ -42271,11 +42271,11 @@ The **controller** is a special broker role that manages cluster metadata: parti
 > If you need ordering and use \`acks=all\` with retries, you **must** either enable the idempotent producer or set \`max.in.flight.requests.per.connection=1\`. Otherwise a retried batch can be re-ordered behind a later in-flight batch. (Idempotence caps in-flight at 5 and preserves order — see section 2.)
 
 ### What interviewers probe (architecture)
-- "Where does ordering hold and where does it break?" → per-partition only; key routing.
-- "RF=3 — how many brokers can you lose and still write?" → depends on \`min.insync.replicas\`; with =2 you lose one.
-- "What is the high-water mark and why can't consumers read past it?" → durability boundary.
-- "Why is Kafka fast?" → sequential I/O, page cache, zero-copy, batching — and when zero-copy breaks (TLS).
-- "What did KRaft change?" → metadata as a Raft log, no ZK, faster failover, more partitions.`,
+- "Where does ordering hold and where does it break?" -> per-partition only; key routing.
+- "RF=3 — how many brokers can you lose and still write?" -> depends on \`min.insync.replicas\`; with =2 you lose one.
+- "What is the high-water mark and why can't consumers read past it?" -> durability boundary.
+- "Why is Kafka fast?" -> sequential I/O, page cache, zero-copy, batching — and when zero-copy breaks (TLS).
+- "What did KRaft change?" -> metadata as a Raft log, no ZK, faster failover, more partitions.`,
             code: [
               {
                 lang: `java`,
@@ -42391,7 +42391,7 @@ kafka-topics.sh --describe --topic orders --bootstrap-server broker1:9092
               },
               {
                 q: `Distinguish LEO, HWM, committed offset, and lag.`,
-                a: `LEO (log-end-offset) = next offset the broker will write. HWM (high-water mark) = highest offset replicated to all ISR; consumers can only read up to it. Committed offset = last durably stored consumer progress. Lag = LEO − committed offset.`
+                a: `LEO (log-end-offset) = next offset the broker will write. HWM (high-water mark) = highest offset replicated to all ISR; consumers can only read up to it. Committed offset = last durably stored consumer progress. Lag = LEO - committed offset.`
               },
               {
                 q: `RF=3 with acks=all — how many brokers can you lose and still produce?`,
@@ -42456,10 +42456,10 @@ send(record)
 |---|---|---|---|---|
 | \`0\` | nothing (fire-and-forget) | highest | lowest | loses on any failure; no retries possible |
 | \`1\` | leader's own write | high | medium | **loses if leader dies before followers replicate** |
-| \`all\` (\`-1\`) | all ISR replicas | lower | highest | none, given \`min.insync.replicas≥2\` |
+| \`all\` (\`-1\`) | all ISR replicas | lower | highest | none, given \`min.insync.replicas>=2\` |
 
 > [!WARNING]
-> \`acks=1\` is the silent data-loss config. Leader acks, then crashes before any follower fetched the batch → a new leader is elected from a follower that never saw the record → **gone**, with the producer believing it succeeded. For anything that matters, \`acks=all\` + \`min.insync.replicas=2\`.
+> \`acks=1\` is the silent data-loss config. Leader acks, then crashes before any follower fetched the batch -> a new leader is elected from a follower that never saw the record -> **gone**, with the producer believing it succeeded. For anything that matters, \`acks=all\` + \`min.insync.replicas=2\`.
 
 ### Idempotent producer — exactly-once *per partition*
 
@@ -42484,7 +42484,7 @@ Enabling idempotence implicitly requires/sets:
 
 ### Transactions — atomic multi-partition writes + EOS
 
-\`transactional.id\` upgrades idempotence to **cross-partition, cross-session atomicity**. A producer can write to many partitions/topics and **commit or abort them all atomically**. This is the foundation of Kafka's exactly-once **stream processing** (consume → process → produce, all in one transaction, including the consumer offset commit via \`sendOffsetsToTransaction\`).
+\`transactional.id\` upgrades idempotence to **cross-partition, cross-session atomicity**. A producer can write to many partitions/topics and **commit or abort them all atomically**. This is the foundation of Kafka's exactly-once **stream processing** (consume -> process -> produce, all in one transaction, including the consumer offset commit via \`sendOffsetsToTransaction\`).
 
 \`\`\`mermaid
 sequenceDiagram
@@ -42508,7 +42508,7 @@ sequenceDiagram
 ### What interviewers probe (producers)
 - "acks=1 vs all — show me the exact data-loss scenario." (leader crash pre-replication)
 - "What does the idempotent producer actually dedup, and what are its limits?" (per-partition, per-session; PID+seq).
-- "How do you keep ordering under retries at high throughput?" (idempotence + max.in.flight≤5, not =1).
+- "How do you keep ordering under retries at high throughput?" (idempotence + max.in.flight<=5, not =1).
 - "linger.ms and batch.size — which way do you turn them for throughput vs latency?"
 - "What does transactional.id buy you that idempotence doesn't?" (cross-partition atomicity, fencing, EOS read-process-write).`,
             code: [
@@ -42643,7 +42643,7 @@ A **consumer group** (\`group.id\`) is a set of consumers that **cooperatively**
 > **Each partition is assigned to exactly one consumer within a group.** Across different groups, every group gets its own full copy of the stream.
 
 Consequences:
-- **Max parallelism = partition count.** 12 partitions → at most 12 useful consumers in a group; a 13th sits idle. **Partition count is your concurrency ceiling — size it for peak.**
+- **Max parallelism = partition count.** 12 partitions -> at most 12 useful consumers in a group; a 13th sits idle. **Partition count is your concurrency ceiling — size it for peak.**
 - Two groups on the same topic = pub/sub fan-out (each sees all records).
 - One group = competing consumers / work queue.
 
@@ -42683,7 +42683,7 @@ When membership changes (a consumer joins, dies, or misses a heartbeat) or parti
 > **Static membership** (\`group.instance.id\`) is the other half of taming rebalances. With a stable instance id, a consumer that restarts within \`session.timeout.ms\` **rejoins with its old partitions and triggers NO rebalance**. Combine \`group.instance.id\` + \`CooperativeStickyAssignor\` to make rolling deploys near-silent.
 
 #### Liveness: two independent timers
-- **\`heartbeat.interval.ms\`** (3s) / **\`session.timeout.ms\`** (45s) — a background thread heartbeats; miss \`session.timeout.ms\` worth and you're declared dead → rebalance.
+- **\`heartbeat.interval.ms\`** (3s) / **\`session.timeout.ms\`** (45s) — a background thread heartbeats; miss \`session.timeout.ms\` worth and you're declared dead -> rebalance.
 - **\`max.poll.interval.ms\`** (5 min) — the **app** must call \`poll()\` again within this window. If your processing of a batch takes longer, the consumer is considered stuck, **leaves the group**, and its partitions are reassigned — even though heartbeats were fine.
 
 > [!DANGER]
@@ -42713,12 +42713,12 @@ while (running) {
 
 ### Lag
 
-**Consumer lag = log-end-offset − committed-offset**, per partition. It's the #1 health metric: rising lag = consumers can't keep up. Watch **per-partition** lag (a single hot partition can lag while others are fine), and watch the **rate of change**, not just the absolute value. Tools: \`kafka-consumer-groups.sh --describe\`, Burrow, or JMX \`records-lag-max\`.
+**Consumer lag = log-end-offset - committed-offset**, per partition. It's the #1 health metric: rising lag = consumers can't keep up. Watch **per-partition** lag (a single hot partition can lag while others are fine), and watch the **rate of change**, not just the absolute value. Tools: \`kafka-consumer-groups.sh --describe\`, Burrow, or JMX \`records-lag-max\`.
 
 ### What interviewers probe (consumers)
-- "More consumers than partitions — what happens?" → extras idle; partition count caps parallelism.
-- "Eager vs cooperative-sticky rebalancing — why does cooperative matter?" → no stop-the-world.
-- "session.timeout vs max.poll.interval — what's the difference?" → heartbeat liveness vs processing liveness.
+- "More consumers than partitions — what happens?" -> extras idle; partition count caps parallelism.
+- "Eager vs cooperative-sticky rebalancing — why does cooperative matter?" -> no stop-the-world.
+- "session.timeout vs max.poll.interval — what's the difference?" -> heartbeat liveness vs processing liveness.
 - "Walk me through a rebalance storm and how you'd fix it."
 - "Where exactly do you commit for at-least-once, and what makes the consumer correct?" (after process + idempotent).
 - "How do you compute and alert on lag?"`,
@@ -42821,7 +42821,7 @@ kafka-consumer-groups.sh --bootstrap-server broker1:9092 --group fulfilment \\
               },
               {
                 q: `How do you compute consumer lag and what should you watch?`,
-                a: `Lag = log-end-offset − committed-offset, per partition. Watch per-partition lag (a hot partition can lag while others are fine) and the rate of change, not just the absolute value. Tools: kafka-consumer-groups.sh, Burrow, JMX records-lag-max.`
+                a: `Lag = log-end-offset - committed-offset, per partition. Watch per-partition lag (a hot partition can lag while others are fine) and the rate of change, not just the absolute value. Tools: kafka-consumer-groups.sh, Burrow, JMX records-lag-max.`
               },
               {
                 q: `What does auto.offset.reset control?`,
@@ -42858,12 +42858,12 @@ Distributed exactly-once **delivery** is impossible (two generals / FLP). What K
 
 Because your processing usually touches a non-Kafka system, **build idempotency in**:
 1. **Natural-key upsert** — \`INSERT ... ON CONFLICT (order_id) DO UPDATE\`. Reprocessing converges to the same row.
-2. **Dedup table / processed-id set** — record \`eventId\` in a table with a unique constraint; second insert fails → skip. TTL it to bound size.
+2. **Dedup table / processed-id set** — record \`eventId\` in a table with a unique constraint; second insert fails -> skip. TTL it to bound size.
 3. **Conditional / versioned writes** — only apply if \`event.version > current.version\` (handles redelivery and reordering).
 
 ### The Transactional Outbox — the pattern interviewers want
 
-**Problem:** you must update your DB **and** publish an event. Doing both as separate calls is a **dual-write**: the DB commits, then the broker publish fails (or vice-versa) → DB and stream diverge. There is no distributed transaction across Postgres and Kafka you'd actually want.
+**Problem:** you must update your DB **and** publish an event. Doing both as separate calls is a **dual-write**: the DB commits, then the broker publish fails (or vice-versa) -> DB and stream diverge. There is no distributed transaction across Postgres and Kafka you'd actually want.
 
 **Solution:** write the event into an \`outbox\` table **in the same local DB transaction** as the business change. A separate relay reads the outbox and publishes to Kafka, marking rows sent. The DB transaction makes the business write + outbox insert atomic; the relay provides at-least-once publish (idempotent consumers dedup).
 
@@ -42889,12 +42889,12 @@ sequenceDiagram
 > Modern outbox uses **CDC** (Debezium reading the WAL/binlog) instead of polling: the relay tails the database log, so there's no poll lag and no extra load. This is the canonical microservices answer to "how do you reliably publish events from a service that owns a database?"
 
 > [!DANGER]
-> The outbox guarantees **at-least-once publish**, not exactly-once. The relay can crash after publishing but before marking \`sent=true\` → republish. Therefore the **consumer must still be idempotent**. Anyone who claims the outbox gives exactly-once end-to-end without idempotent consumers is wrong.
+> The outbox guarantees **at-least-once publish**, not exactly-once. The relay can crash after publishing but before marking \`sent=true\` -> republish. Therefore the **consumer must still be idempotent**. Anyone who claims the outbox gives exactly-once end-to-end without idempotent consumers is wrong.
 
 ### What interviewers probe (delivery)
-- "Is exactly-once real? Explain precisely what Kafka guarantees." → effectively-once within Kafka; not across external side effects.
-- "Two services, one DB write + one Kafka publish — how do you avoid the dual-write problem?" → transactional outbox (+ CDC).
-- "Your consumer is at-least-once — what makes it correct?" → idempotent processing (upsert / dedup table / versioned writes).
+- "Is exactly-once real? Explain precisely what Kafka guarantees." -> effectively-once within Kafka; not across external side effects.
+- "Two services, one DB write + one Kafka publish — how do you avoid the dual-write problem?" -> transactional outbox (+ CDC).
+- "Your consumer is at-least-once — what makes it correct?" -> idempotent processing (upsert / dedup table / versioned writes).
 - "read_committed vs read_uncommitted and the LSO."`,
             code: [
               {
@@ -43058,19 +43058,19 @@ public void payOrder(UUID orderId, OrderEvent ev) {
 The modern stack (spring-kafka 2.7+):
 - **\`DefaultErrorHandler\`** (replaced \`SeekToCurrentErrorHandler\`) — on a failed record it re-seeks and retries with a **\`BackOff\`** (e.g. \`ExponentialBackOff\`). After exhausting retries it invokes a **recoverer**.
 - **\`DeadLetterPublishingRecoverer\`** — the recoverer publishes the poison record to \`<topic>.DLT\` (preserving original headers, exception, partition).
-- **\`@RetryableTopic\`** — declarative **non-blocking retries**: failed records go to \`topic-retry-0\`, \`topic-retry-1\` (with increasing delay) instead of blocking the main partition; final failure → DLT. This is preferred over blocking \`DefaultErrorHandler\` retries because **blocking retries stall the whole partition** (head-of-line blocking + max.poll.interval risk).
+- **\`@RetryableTopic\`** — declarative **non-blocking retries**: failed records go to \`topic-retry-0\`, \`topic-retry-1\` (with increasing delay) instead of blocking the main partition; final failure -> DLT. This is preferred over blocking \`DefaultErrorHandler\` retries because **blocking retries stall the whole partition** (head-of-line blocking + max.poll.interval risk).
 
 > [!WARNING]
-> **Blocking retry (in-listener \`Thread.sleep\` / DefaultErrorHandler with long backoff) blocks the partition** — every record behind the poison message waits, and you risk breaching \`max.poll.interval.ms\` → rebalance. For anything but trivial fixed retries, use \`@RetryableTopic\` (separate retry topics) so the main partition keeps flowing.
+> **Blocking retry (in-listener \`Thread.sleep\` / DefaultErrorHandler with long backoff) blocks the partition** — every record behind the poison message waits, and you risk breaching \`max.poll.interval.ms\` -> rebalance. For anything but trivial fixed retries, use \`@RetryableTopic\` (separate retry topics) so the main partition keeps flowing.
 
 > [!TIP]
-> Classify exceptions: **transient** (timeout, 503) → retry; **fatal** (deserialization failure, validation error) → straight to DLT, never retry. Configure \`DefaultErrorHandler.addNotRetryableExceptions(...)\`. A \`DeserializationException\` retried forever is a classic poison-pill outage — use \`ErrorHandlingDeserializer\` so a bad payload becomes a DLT record instead of an infinite crash loop.
+> Classify exceptions: **transient** (timeout, 503) -> retry; **fatal** (deserialization failure, validation error) -> straight to DLT, never retry. Configure \`DefaultErrorHandler.addNotRetryableExceptions(...)\`. A \`DeserializationException\` retried forever is a classic poison-pill outage — use \`ErrorHandlingDeserializer\` so a bad payload becomes a DLT record instead of an infinite crash loop.
 
 ### Serialization: Avro + Schema Registry
 
 JSON is convenient but schemaless and verbose. Production event platforms use **Avro** (or Protobuf) + **Confluent Schema Registry**:
 - The serializer registers/looks up the schema and prepends a **5-byte header** (magic byte + 4-byte schema id); the payload is compact binary.
-- The registry enforces **compatibility** (\`BACKWARD\` default): a new schema must be readable by consumers using the old one → you can **add optional fields** but not remove required ones. This is how you evolve events without breaking consumers.
+- The registry enforces **compatibility** (\`BACKWARD\` default): a new schema must be readable by consumers using the old one -> you can **add optional fields** but not remove required ones. This is how you evolve events without breaking consumers.
 
 | Compatibility | Allowed change | Who upgrades first |
 |---|---|---|
@@ -43082,10 +43082,10 @@ JSON is convenient but schemaless and verbose. Production event platforms use **
 > Schema Registry + Avro is the difference between "we changed the event and three downstream services broke in prod" and "CI rejected the incompatible schema before merge". Wire the registry's compatibility check into your build.
 
 ### What interviewers probe (Spring)
-- "How do you do non-blocking retries and why not just sleep-and-retry?" → \`@RetryableTopic\`; partition head-of-line blocking.
-- "A bad message poison-pills your consumer — how do you survive it?" → \`ErrorHandlingDeserializer\` + DLT + non-retryable classification.
-- "What does Schema Registry enforce and how do you evolve a schema safely?" → compatibility modes; add optional fields.
-- "concurrency=10 on a 4-partition topic — what happens?" → 6 idle threads.`,
+- "How do you do non-blocking retries and why not just sleep-and-retry?" -> \`@RetryableTopic\`; partition head-of-line blocking.
+- "A bad message poison-pills your consumer — how do you survive it?" -> \`ErrorHandlingDeserializer\` + DLT + non-retryable classification.
+- "What does Schema Registry enforce and how do you evolve a schema safely?" -> compatibility modes; add optional fields.
+- "concurrency=10 on a 4-partition topic — what happens?" -> 6 idle threads.`,
             code: [
               {
                 lang: `java`,
@@ -43226,19 +43226,19 @@ Two cleanup policies (\`cleanup.policy\`):
 
 ### Partition sizing — the trade-off that bites
 
-Partition count is a **one-way-ish door** (you can add but adding **breaks key→partition mapping and per-key ordering**, and you can't reduce). Choose deliberately:
+Partition count is a **one-way-ish door** (you can add but adding **breaks key->partition mapping and per-key ordering**, and you can't reduce). Choose deliberately:
 
-**More partitions →**
+**More partitions ->**
 - ✅ higher max consumer parallelism, higher throughput
 - ❌ more open file handles & memory per broker; **longer leader-election / failover** (controller must move more leaders); more end-to-end **latency** (more requests, more replication fan-out); bigger rebalances
 
 Rules of thumb:
-- Target ~**partition count ≥ peak consumer count** (your concurrency ceiling).
+- Target ~**partition count >= peak consumer count** (your concurrency ceiling).
 - A common heuristic: \`max(throughput/producer_per_partition, throughput/consumer_per_partition)\`, then round up for headroom.
 - Keep total partitions per broker reasonable (low thousands on ZK clusters; KRaft relaxes this). **Don't default everything to 50 partitions** — empty partitions still cost replication, files, and rebalance time.
 
 > [!DANGER]
-> **Adding partitions to a keyed topic re-shards keys.** \`order-123\` that lived on P2 may now hash to P5, so its new events interleave with a different partition's history → **ordering for that key is broken across the change**, and any partition-local state (dedup, aggregation) is wrong. If you must scale a keyed topic, prefer **creating a new topic with more partitions and migrating**, or design keys/partitions for peak from day one.
+> **Adding partitions to a keyed topic re-shards keys.** \`order-123\` that lived on P2 may now hash to P5, so its new events interleave with a different partition's history -> **ordering for that key is broken across the change**, and any partition-local state (dedup, aggregation) is wrong. If you must scale a keyed topic, prefer **creating a new topic with more partitions and migrating**, or design keys/partitions for peak from day one.
 
 ### Hot partitions / skew
 
@@ -43270,11 +43270,11 @@ You can't max all three. Senior answer: state the SLO first (e.g. p99 < 50 ms vs
 > The four golden Kafka metrics to alert on: **UnderReplicatedPartitions** (durability at risk), **consumer lag / records-lag-max** (consumers falling behind), **request handler idle ratio** (broker saturation), and **active controller count = 1** (split-brain detection). Memorise these; they're a frequent ops-screen question.
 
 ### What interviewers probe (ops)
-- "How many partitions for topic X?" → tie to peak consumer parallelism + throughput, mention the costs of too many.
-- "What breaks if you add partitions to a keyed topic?" → key re-sharding, ordering, partition-local state.
+- "How many partitions for topic X?" -> tie to peak consumer parallelism + throughput, mention the costs of too many.
+- "What breaks if you add partitions to a keyed topic?" -> key re-sharding, ordering, partition-local state.
 - "delete vs compact retention — when each?"
-- "Walk me through diagnosing rising consumer lag." → per-partition lag, hot partition, slow processing, GC.
-- "Top metrics you'd alert on?" → under-replicated, lag, controller count, idle ratio.`,
+- "Walk me through diagnosing rising consumer lag." -> per-partition lag, hot partition, slow processing, GC.
+- "Top metrics you'd alert on?" -> under-replicated, lag, controller count, idle ratio.`,
             code: [
               {
                 lang: `bash`,
@@ -43603,7 +43603,7 @@ A useful taxonomy (from Microservices Patterns, Richardson):
 - **Pivot transaction** — the point of no return. Once it commits, the saga *will* complete forward; it has no compensation. Often the last compensatable step is followed by the pivot.
 - **Retriable transaction** — comes after the pivot; guaranteed to eventually succeed (with retries). E.g., \`shipOrder\`, \`sendReceipt\`.
 
-Ordering steps as **[compensatable...] → pivot → [retriable...]** minimizes the blast radius: you only ever compensate the cheap/reversible prefix, and everything after the pivot is forward-only.
+Ordering steps as **[compensatable...] -> pivot -> [retriable...]** minimizes the blast radius: you only ever compensate the cheap/reversible prefix, and everything after the pivot is forward-only.
 
 ## Backward vs Forward Recovery
 
@@ -43694,7 +43694,7 @@ int debitIfUnlocked(@Param("id") Long id, @Param("amt") long amt);
               },
               {
                 q: `Define pivot, compensatable, and retriable transactions and why ordering them matters.`,
-                a: `Compensatable: undoable by a compensation. Pivot: the point of no return, no compensation; once it commits the saga must complete forward. Retriable: after the pivot, guaranteed to eventually succeed via retries. Ordering as compensatable...→pivot→retriable... means you only ever compensate the cheap reversible prefix, and everything after the pivot is forward-only — minimizing rollback blast radius.`
+                a: `Compensatable: undoable by a compensation. Pivot: the point of no return, no compensation; once it commits the saga must complete forward. Retriable: after the pivot, guaranteed to eventually succeed via retries. Ordering as compensatable...->pivot->retriable... means you only ever compensate the cheap reversible prefix, and everything after the pivot is forward-only — minimizing rollback blast radius.`
               },
               {
                 q: `Contrast backward and forward recovery; do real sagas pick one?`,
@@ -43752,8 +43752,8 @@ graph LR
     I -- OutOfStock --> O
 \`\`\`
 
-- Happy path: \`OrderCreated → StockReserved → PaymentCaptured → OrderShipped\`.
-- Failure path: \`PaymentFailed → StockReleased → OrderCancelled\` (each service compensates on the relevant failure event).
+- Happy path: \`OrderCreated -> StockReserved -> PaymentCaptured -> OrderShipped\`.
+- Failure path: \`PaymentFailed -> StockReleased -> OrderCancelled\` (each service compensates on the relevant failure event).
 
 > [!TIP]
 > Choreography shines for **short sagas (2–4 steps)** with **few participants** and **loose coupling** — adding a service that just subscribes to an existing event needs zero changes to producers.
@@ -43810,7 +43810,7 @@ The orchestrator persists its **saga state** after each step (durable, so it sur
 | Best for | Short, simple, stable workflows; high autonomy | Complex/long workflows, many steps, branching, strong observability needs |
 
 > [!WARNING]
-> **Cyclic dependency / event storm risk in choreography.** If Service A emits an event B reacts to, and B emits one A reacts to, you can create feedback loops, hard-to-trace cascades, and ordering bugs. As the number of participants grows, the emergent flow becomes a black box: nobody can answer "what is the current state of this order and why is it stuck?" without tracing logs across N services. This is the #1 reason teams migrate choreography → orchestration as workflows grow.
+> **Cyclic dependency / event storm risk in choreography.** If Service A emits an event B reacts to, and B emits one A reacts to, you can create feedback loops, hard-to-trace cascades, and ordering bugs. As the number of participants grows, the emergent flow becomes a black box: nobody can answer "what is the current state of this order and why is it stuck?" without tracing logs across N services. This is the #1 reason teams migrate choreography -> orchestration as workflows grow.
 
 > [!DANGER]
 > Don't put **business logic in the orchestrator's steps**. The orchestrator should coordinate (send commands, track state, decide next/compensate) — the *domain logic* (how to reserve stock) lives in the owning service. A "god orchestrator" that does the work itself recreates a distributed monolith.
@@ -43853,7 +43853,7 @@ Smell that you've outgrown choreography:
               },
               {
                 q: `What is the cyclic-dependency risk in choreography and why does it worsen with scale?`,
-                a: `Because services both emit and react to events, A→B→...→A feedback loops and event storms can form, causing infinite loops, cascades, and ordering bugs. As participants grow the emergent flow becomes a black box with no single source of truth for an order's state, so cycles are hard to detect and debug. Orchestration imposes a DAG via one coordinator, eliminating this.`
+                a: `Because services both emit and react to events, A->B->...->A feedback loops and event storms can form, causing infinite loops, cascades, and ordering bugs. As participants grow the emergent flow becomes a black box with no single source of truth for an order's state, so cycles are hard to detect and debug. Orchestration imposes a DAG via one coordinator, eliminating this.`
               },
               {
                 q: `In an orchestrated saga, what must the orchestrator persist and why?`,
@@ -43938,7 +43938,7 @@ On the consumer side, defend against duplicates with an **inbox** (processed-mes
 
 - Every message carries a stable, unique **message id / idempotency key** (e.g. a UUID generated by the producer at outbox-insert time — NOT a Kafka offset, which changes on replay).
 - The consumer, **in the same transaction** as its business write, inserts the message id into a \`processed_messages\` table with a unique constraint.
-- If the insert violates the unique constraint, this is a **duplicate** → skip (the effect already happened). Otherwise process and commit together.
+- If the insert violates the unique constraint, this is a **duplicate** -> skip (the effect already happened). Otherwise process and commit together.
 
 This gives **exactly-once effect**: at-least-once delivery + idempotent consumer = each message's effect applied exactly once.
 
@@ -44080,7 +44080,7 @@ CREATE TABLE processed_messages (
               },
               {
                 q: `Why can't you just enable Kafka transactions / exactly-once-semantics (EOS) instead of an outbox?`,
-                a: `Kafka EOS gives exactly-once between Kafka consume→produce→commit WITHIN Kafka — it does not span your external database. The dual-write is DB + Kafka, two different systems; Kafka transactions can't atomically include a Postgres row write. The outbox keeps the atomic boundary inside one DB transaction and uses CDC to bridge to Kafka, which EOS alone cannot do.`
+                a: `Kafka EOS gives exactly-once between Kafka consume->produce->commit WITHIN Kafka — it does not span your external database. The dual-write is DB + Kafka, two different systems; Kafka transactions can't atomically include a Postgres row write. The outbox keeps the atomic boundary inside one DB transaction and uses CDC to bridge to Kafka, which EOS alone cannot do.`
               }
             ]
           },
@@ -44089,7 +44089,7 @@ CREATE TABLE processed_messages (
             notes: `
 # Implementing Sagas in Java / Spring
 
-We'll build an **orchestrated Order saga**: \`createOrder → reserveInventory → chargePayment → shipOrder\`, with compensations \`releaseInventory\` and \`refundPayment\` on failure. The runnable demo below is pure Java (no frameworks) so you can run and watch the rollback. After it, a Spring/durable sketch shows the production shape.
+We'll build an **orchestrated Order saga**: \`createOrder -> reserveInventory -> chargePayment -> shipOrder\`, with compensations \`releaseInventory\` and \`refundPayment\` on failure. The runnable demo below is pure Java (no frameworks) so you can run and watch the rollback. After it, a Spring/durable sketch shows the production shape.
 
 ## The state machine
 
@@ -44302,7 +44302,7 @@ class OrderSagaOrchestrator {
               },
               {
                 q: `Differentiate retryable vs non-retryable step failures and how each affects the saga.`,
-                a: `Retryable (timeout, 503, DB deadlock, transient network) → retry the step with bounded exponential backoff + jitter; only after exhaustion does it become terminal. Non-retryable / business rejection (out-of-stock, card declined) → don't retry; immediately trigger backward recovery (compensation). Misclassifying a business decline as retryable wastes time and may double-charge; treating a transient blip as terminal triggers needless rollbacks.`
+                a: `Retryable (timeout, 503, DB deadlock, transient network) -> retry the step with bounded exponential backoff + jitter; only after exhaustion does it become terminal. Non-retryable / business rejection (out-of-stock, card declined) -> don't retry; immediately trigger backward recovery (compensation). Misclassifying a business decline as retryable wastes time and may double-charge; treating a transient blip as terminal triggers needless rollbacks.`
               },
               {
                 q: `Why must the orchestrator persist saga state after every transition?`,
@@ -44437,12 +44437,12 @@ RabbitMQ shines for complex, evolving routing.`,
             code: [
               {
                 lang: `text`,
-                title: `Producer → exchange → binding → queue → consumer (mental model)`,
+                title: `Producer -> exchange -> binding -> queue -> consumer (mental model)`,
                 code: `Producer
    │  basic.publish(exchange="orders", routingKey="order.created.eu", body=...)
    ▼
 ┌──────────────────────────────┐
-│  Exchange "orders" (topic)   │   ← the SMART part: applies bindings
+│  Exchange "orders" (topic)   │   <- the SMART part: applies bindings
 └──────────────────────────────┘
    │ matches binding key "order.*.eu"        │ matches "order.created.#"
    ▼                                         ▼
@@ -44612,7 +44612,7 @@ AMQP has no native scheduled delivery. Two approaches:
 
 1. **TTL + DLX trick:** publish to a queue with a per-message TTL and no consumer; on
    expiry the message dead-letters to your real queue. Classic but fiddly (TTL applies
-   to the head of the queue → ordering quirks).
+   to the head of the queue -> ordering quirks).
 2. **\`rabbitmq_delayed_message_exchange\` plugin:** a special exchange type
    \`x-delayed-message\` holds messages and releases them after \`x-delay\` ms. Cleaner;
    the de-facto standard for scheduled/retry-with-backoff messages.`,
@@ -44622,14 +44622,14 @@ AMQP has no native scheduled delivery. Two approaches:
                 title: `Topic routing cheat-sheet (* = one word, # = zero+ words)`,
                 code: `routing key:  order.created.eu
 
-binding "order.created.eu"  → MATCH (exact)
-binding "order.*.eu"        → MATCH (* = "created")
-binding "order.#"           → MATCH (# = "created.eu")
-binding "*.created.*"       → MATCH
-binding "#"                 → MATCH (catch-all)
-binding "order.*"           → NO    (* is one word; "created.eu" is two)
-binding "payment.#"         → NO
-binding "order.created"     → NO    (no trailing word to consume)`,
+binding "order.created.eu"  -> MATCH (exact)
+binding "order.*.eu"        -> MATCH (* = "created")
+binding "order.#"           -> MATCH (# = "created.eu")
+binding "*.created.*"       -> MATCH
+binding "#"                 -> MATCH (catch-all)
+binding "order.*"           -> NO    (* is one word; "created.eu" is two)
+binding "payment.#"         -> NO
+binding "order.created"     -> NO    (no trailing word to consume)`,
                 runnable: false,
                 note: `Reference table`
               }
@@ -44685,11 +44685,11 @@ binding "order.created"     → NO    (no trailing word to consume)`,
             title: `Reliability & Delivery Guarantees`,
             notes: `## Reliability & Delivery — Confirms, Acks, DLX, Idempotency
 
-A message can be lost at three boundaries: **producer → broker**, **broker durability**,
-and **broker → consumer**. RabbitMQ gives you a knob for each. Default settings are
+A message can be lost at three boundaries: **producer -> broker**, **broker durability**,
+and **broker -> consumer**. RabbitMQ gives you a knob for each. Default settings are
 **fast but lossy** — you opt into safety.
 
-### 1. Publisher confirms (producer → broker)
+### 1. Publisher confirms (producer -> broker)
 
 Plain \`basic.publish\` is fire-and-forget: the broker may have crashed before persisting.
 Enable **publisher confirms** (\`confirm.select\`): the broker sends an async \`basic.ack\`
@@ -44718,7 +44718,7 @@ message in a durable queue is also lost (never written). You need both.
 > **with publisher confirms** for an end-to-end guarantee — the confirm waits for the
 > message to be persisted.
 
-### 3. Consumer acknowledgements (broker → consumer)
+### 3. Consumer acknowledgements (broker -> consumer)
 
 | Action | Effect |
 |---|---|
@@ -44740,7 +44740,7 @@ consumer at once. \`prefetch=1\` = strict fairness (don't give me message N+1 un
 hogging the queue and big redelivery storms on crash.
 
 > [!TIP]
-> Start with prefetch ≈ \`(round-trip-time / processing-time)\` per consumer, often 10–50.
+> Start with prefetch ~ \`(round-trip-time / processing-time)\` per consumer, often 10–50.
 > prefetch=1 for long heterogeneous tasks; high prefetch for tiny fast messages. There is
 > no single right number — measure.
 
@@ -44759,7 +44759,7 @@ sequenceDiagram
   participant P as Producer
   participant B as Broker (work queue)
   participant C as Consumer
-  participant DLX as DLX → dead-letter-queue
+  participant DLX as DLX -> dead-letter-queue
   P->>B: publish (confirm-mode)
   B-->>P: basic.ack (persisted)
   B->>C: deliver (prefetch=10, unacked)
@@ -44777,7 +44777,7 @@ sequenceDiagram
 > [!TIP]
 > For **delayed retry with backoff**, dead-letter to a *waiting* queue with a TTL that
 > dead-letters *back* to the work queue after the delay. Chain multiple TTL queues for
-> exponential backoff (5s → 30s → 5m), then a terminal DLQ.
+> exponential backoff (5s -> 30s -> 5m), then a terminal DLQ.
 
 ### 6. At-least-once + idempotency
 
@@ -44971,7 +44971,7 @@ Often correct: BOTH — Kafka as event backbone, Rabbit for task routing/RPC.`,
               },
               {
                 q: `What is the single most important question to decide Rabbit vs Kafka?`,
-                a: `"Do you need to replay / re-read the history (new or recovering consumers reading from the start)?" If yes → Kafka (retained, offset-based log). If no, and you need rich routing/priority/RPC → RabbitMQ.`
+                a: `"Do you need to replay / re-read the history (new or recovering consumers reading from the start)?" If yes -> Kafka (retained, offset-based log). If no, and you need rich routing/priority/RPC -> RabbitMQ.`
               },
               {
                 q: `How does message lifecycle differ between the two?`,
@@ -45031,7 +45031,7 @@ The template uses a **message converter** to serialize. The default is Java seri
 interoperable with non-JVM consumers.
 
 > [!WARNING]
-> Default \`SimpleMessageConverter\` uses Java serialization → fragile, insecure, JVM-only.
+> Default \`SimpleMessageConverter\` uses Java serialization -> fragile, insecure, JVM-only.
 > Register a \`Jackson2JsonMessageConverter\` bean. Spring picks it up for both
 > \`RabbitTemplate\` and \`@RabbitListener\`.
 
@@ -45098,7 +45098,7 @@ sequenceDiagram
 | **Lazy queues** | Store messages on disk by default (low memory footprint) — for long/large backlogs. Trade latency for stability. |
 | **Quorum queues** | Raft-based, replicated, the modern HA default. Replace classic **mirrored** queues (deprecated) for durability/failover. |
 | **Connection/channel churn** | Reuse connections; cache channels (\`CachingConnectionFactory\`). Per-request connections kill the broker. |
-| **Prefetch tuning** | Too high → unfair load + redelivery storms; too low → idle consumers. Measure. |
+| **Prefetch tuning** | Too high -> unfair load + redelivery storms; too low -> idle consumers. Measure. |
 
 > [!DANGER]
 > **Classic mirrored queues are deprecated.** For new HA deployments use **quorum queues**
@@ -45402,9 +45402,9 @@ interface ProcessedStore { boolean markIfNew(String messageId); }`,
 
 A container is **not** a lightweight VM. There is no "container" object in the Linux kernel. A container is a **normal Linux process** that the kernel has been told to view through a restricted lens. Three kernel features create that illusion:
 
-- **Namespaces** → what the process can *see* (isolation).
-- **cgroups** → what the process can *use* (resource limits/accounting).
-- **Union / overlay filesystems** → how the root filesystem is assembled cheaply (layers + copy-on-write).
+- **Namespaces** -> what the process can *see* (isolation).
+- **cgroups** -> what the process can *use* (resource limits/accounting).
+- **Union / overlay filesystems** -> how the root filesystem is assembled cheaply (layers + copy-on-write).
 
 A "container runtime" (runc, crun) is just glue that calls \`clone(2)\`/\`unshare(2)\` with the right flags, sets up cgroups, pivots the root, drops capabilities, and \`exec\`s your binary.
 
@@ -45465,8 +45465,8 @@ The **user namespace** is the security crown jewel: it lets a process be **root 
 
 Namespaces isolate *visibility*; cgroups limit *consumption* and provide *accounting*. cgroups v2 (unified hierarchy, default on modern distros) exposes controllers:
 
-- **cpu** — \`cpu.max\` (quota/period → effective core count), \`cpu.weight\` (relative shares).
-- **memory** — \`memory.max\` (hard limit → OOM-kill on breach), \`memory.high\` (throttle).
+- **cpu** — \`cpu.max\` (quota/period -> effective core count), \`cpu.weight\` (relative shares).
+- **memory** — \`memory.max\` (hard limit -> OOM-kill on breach), \`memory.high\` (throttle).
 - **io** — block device read/write throttling.
 - **pids** — max number of processes (fork-bomb protection).
 
@@ -45487,9 +45487,9 @@ graph TB
   M --> L1["lowerdir L1 (read-only base layer)"]
 \`\`\`
 
-- **Read** of an unchanged file → served directly from the read-only layer (zero copy, shared across all containers from that image).
-- **Write/modify** → file is **copied up** to the writable layer first (copy-on-write), then modified there.
-- **Delete** → a "whiteout" marker is written in the upper layer hiding the lower file.
+- **Read** of an unchanged file -> served directly from the read-only layer (zero copy, shared across all containers from that image).
+- **Write/modify** -> file is **copied up** to the writable layer first (copy-on-write), then modified there.
+- **Delete** -> a "whiteout" marker is written in the upper layer hiding the lower file.
 
 > [!SUCCESS]
 > CoW + shared read-only layers is *why* 100 containers from the same image use almost no extra disk and start instantly: they all share the same immutable lower layers; only their tiny writable upper layers differ.
@@ -45498,7 +45498,7 @@ graph TB
 
 "Docker image" is colloquial. The real standards live under the **Open Container Initiative (OCI)**:
 
-- **OCI Image Spec** — the on-disk/registry format: a JSON **manifest** pointing to a **config** (env, entrypoint, layer ordering) + a list of **layer blobs** (tar.gz), all content-addressed by **digest** (sha256). A **manifest list / image index** enables multi-arch images (one tag → arm64 + amd64).
+- **OCI Image Spec** — the on-disk/registry format: a JSON **manifest** pointing to a **config** (env, entrypoint, layer ordering) + a list of **layer blobs** (tar.gz), all content-addressed by **digest** (sha256). A **manifest list / image index** enables multi-arch images (one tag -> arm64 + amd64).
 - **OCI Runtime Spec** — how a runtime turns an unpacked bundle + \`config.json\` into a running process (runc is the reference impl).
 - **OCI Distribution Spec** — the registry HTTP API (push/pull).
 
@@ -46454,7 +46454,7 @@ docker run -d \\
 ### Vulnerability Scanning & Supply Chain
 
 > [!TIP]
-> Scan images in CI and **fail the build** on HIGH/CRITICAL fixable CVEs. Tools: Trivy, Grype, Docker Scout, Snyk. Generate an **SBOM** (Syft → SPDX/CycloneDX) so you can answer "are we affected by CVE-X?" by querying inventory instead of rebuilding. **Sign** images with cosign and **verify signatures** at admission (Kyverno/OPA Gatekeeper, Sigstore policy-controller) so only trusted images run.
+> Scan images in CI and **fail the build** on HIGH/CRITICAL fixable CVEs. Tools: Trivy, Grype, Docker Scout, Snyk. Generate an **SBOM** (Syft -> SPDX/CycloneDX) so you can answer "are we affected by CVE-X?" by querying inventory instead of rebuilding. **Sign** images with cosign and **verify signatures** at admission (Kyverno/OPA Gatekeeper, Sigstore policy-controller) so only trusted images run.
 
 \`\`\`bash
 trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 ghcr.io/acme/app:1.4.2
@@ -46494,8 +46494,8 @@ flowchart TB
 
 The JVM derives **GC thread count, JIT compiler threads, common ForkJoinPool size, and \`availableProcessors()\`** from the CPU it detects. Under cgroups:
 
-- \`--cpus=N\` (CPU **quota**) → JVM rounds up to N processors. Predictable.
-- \`--cpu-shares\` only (no quota) → relative weight, not a count; the JVM may see all host CPUs and spawn too many GC/JIT threads, causing context-switch thrash on a constrained host.
+- \`--cpus=N\` (CPU **quota**) -> JVM rounds up to N processors. Predictable.
+- \`--cpu-shares\` only (no quota) -> relative weight, not a count; the JVM may see all host CPUs and spawn too many GC/JIT threads, causing context-switch thrash on a constrained host.
 
 > [!WARNING]
 > Prefer **\`--cpus\` (quota)** over bare \`--cpu-shares\` for Java. With only shares, the JVM can over-provision GC/compiler threads based on the host core count, hurting throughput and latency on a busy node. If you must use shares, pin \`-XX:ActiveProcessorCount=N\` to tell the JVM the truth.
@@ -46504,7 +46504,7 @@ The JVM derives **GC thread count, JIT compiler threads, common ForkJoinPool siz
 > Recommended baseline JVM flags for containers (Java 17/21): \`-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError\` and set \`--memory\` + \`--cpus\` explicitly. \`ExitOnOutOfMemoryError\` makes the orchestrator restart a poisoned pod instead of limping with a corrupt heap.
 
 > [!WARNING]
-> Verify container-awareness by running \`java -XX:+PrintFlagsFinal -version | grep MaxHeapSize\` **inside** the constrained container — confirm MaxHeapSize ≈ 75% of \`--memory\`, not 25% of the host RAM. Don't assume; measure.`,
+> Verify container-awareness by running \`java -XX:+PrintFlagsFinal -version | grep MaxHeapSize\` **inside** the constrained container — confirm MaxHeapSize ~ 75% of \`--memory\`, not 25% of the host RAM. Don't assume; measure.`,
             code: [
               {
                 lang: `bash`,
@@ -46663,7 +46663,7 @@ graph TB
   subgraph CP["Control Plane (the brain)"]
     API["kube-apiserver<br/>(REST front door, authN/authZ, validation)"]
     ETCD["etcd<br/>(consistent KV store · single source of truth)"]
-    SCHED["kube-scheduler<br/>(binds Pods → Nodes)"]
+    SCHED["kube-scheduler<br/>(binds Pods -> Nodes)"]
     CM["kube-controller-manager<br/>(Deployment/RS/Node/Job controllers)"]
     CCM["cloud-controller-manager<br/>(LB, routes, volumes)"]
     API <--> ETCD
@@ -46699,10 +46699,10 @@ graph TB
 
 | Component | Role | Interview probe |
 |---|---|---|
-| **kube-apiserver** | The *only* component that talks to etcd. Front door for every read/write. Does authN, authZ (RBAC), admission control, validation. Horizontally scalable (stateless). | "How does kubelet learn what to run?" → it **watches** the API server, never reads etcd directly. |
-| **etcd** | Distributed, strongly-consistent (Raft) key-value store. Holds the *entire* cluster state. Lose etcd = lose the cluster. | "Why an odd number of etcd members?" → Raft quorum = (n/2)+1; odd avoids split-brain and wasted nodes. |
+| **kube-apiserver** | The *only* component that talks to etcd. Front door for every read/write. Does authN, authZ (RBAC), admission control, validation. Horizontally scalable (stateless). | "How does kubelet learn what to run?" -> it **watches** the API server, never reads etcd directly. |
+| **etcd** | Distributed, strongly-consistent (Raft) key-value store. Holds the *entire* cluster state. Lose etcd = lose the cluster. | "Why an odd number of etcd members?" -> Raft quorum = (n/2)+1; odd avoids split-brain and wasted nodes. |
 | **kube-scheduler** | Watches for Pods with no \`nodeName\`. Filters (predicates: resources, taints, affinity) then scores (spread, least-loaded) and **binds** the Pod to a node. | "Scheduler only *decides*; kubelet *executes*." |
-| **kube-controller-manager** | Bundle of control loops: Deployment, ReplicaSet, Node, Job, EndpointSlice, ServiceAccount controllers. Each loop = observe → diff → act. | "What makes a crashed Pod come back?" → the ReplicaSet controller, not kubelet restarting a container. |
+| **kube-controller-manager** | Bundle of control loops: Deployment, ReplicaSet, Node, Job, EndpointSlice, ServiceAccount controllers. Each loop = observe -> diff -> act. | "What makes a crashed Pod come back?" -> the ReplicaSet controller, not kubelet restarting a container. |
 | **cloud-controller-manager** | Integrates with the cloud provider: provisions LoadBalancers, routes, attaches volumes. | Decouples cloud-specific logic from core. |
 
 ### Worker node components
@@ -46832,7 +46832,7 @@ status:               # <-- OBSERVED state (what the cluster REPORTS)
               },
               {
                 q: `Which component performs RBAC authorization and admission control?`,
-                a: `The kube-apiserver, as part of the request pipeline: authentication → authorization (RBAC) → admission controllers → validation → persist to etcd.`
+                a: `The kube-apiserver, as part of the request pipeline: authentication -> authorization (RBAC) -> admission controllers -> validation -> persist to etcd.`
               }
             ]
           },
@@ -47283,7 +47283,7 @@ kubectl scale deployment/orders --replicas=5 -n team-orders`,
                 a: `An init container runs to completion (ordered) before app containers start — for setup like migrations. A sidecar is a long-running helper alongside the app — log shipping, proxy, config reload.`
               },
               {
-                q: `What is the Deployment → ReplicaSet → Pod ownership chain?`,
+                q: `What is the Deployment -> ReplicaSet -> Pod ownership chain?`,
                 a: `A Deployment manages ReplicaSets (one per pod-template revision); each ReplicaSet ensures N identical Pods exist. The Deployment adds rolling updates, rollback, and revision history on top of ReplicaSets.`
               },
               {
@@ -47324,7 +47324,7 @@ kubectl scale deployment/orders --replicas=5 -n team-orders`,
             title: `Services, Networking & Ingress`,
             notes: `## The Problem Services Solve
 
-Pods are ephemeral with changing IPs. A **Service** gives a stable virtual IP (the *ClusterIP*) and DNS name in front of a dynamic set of Pods, load-balancing across the ones currently **ready**. The Service tracks backends via a **selector** → the EndpointSlice controller maintains the list of ready Pod IPs.
+Pods are ephemeral with changing IPs. A **Service** gives a stable virtual IP (the *ClusterIP*) and DNS name in front of a dynamic set of Pods, load-balancing across the ones currently **ready**. The Service tracks backends via a **selector** -> the EndpointSlice controller maintains the list of ready Pod IPs.
 
 > [!TIP]
 > One-liner: *"A Service is a stable, load-balanced abstraction over an ephemeral set of Pods, with membership driven by label selectors and readiness."*
@@ -47352,7 +47352,7 @@ graph TB
 
 ### How a Service routes (kube-proxy)
 
-A ClusterIP is **virtual** — no process listens on it. **kube-proxy** programs each node's **iptables** (or **IPVS**, or an eBPF CNI like Cilium does it kernel-side) so packets to the ClusterIP are DNAT'd to one of the backend Pod IPs. CoreDNS resolves the Service name → ClusterIP.
+A ClusterIP is **virtual** — no process listens on it. **kube-proxy** programs each node's **iptables** (or **IPVS**, or an eBPF CNI like Cilium does it kernel-side) so packets to the ClusterIP are DNAT'd to one of the backend Pod IPs. CoreDNS resolves the Service name -> ClusterIP.
 
 > [!WARNING]
 > Only **Ready** Pods (passing readiness probes) are in the Service's endpoint list. A Pod that is Running but failing readiness gets **no traffic** — that's the mechanism behind safe rollouts and graceful startup.
@@ -47540,7 +47540,7 @@ The **12-factor app** principle III says: *store config in the environment*, str
 | Mount as | env var or file | env var or file (file is preferred) |
 
 > [!DANGER]
-> base64 is **encoding, not encryption** — anyone with \`get secret\` RBAC can decode it. For real protection: enable **encryption at rest** for etcd, restrict RBAC on Secrets, and prefer an external manager (External Secrets Operator → Vault/AWS Secrets Manager, or Sealed Secrets for GitOps).
+> base64 is **encoding, not encryption** — anyone with \`get secret\` RBAC can decode it. For real protection: enable **encryption at rest** for etcd, restrict RBAC on Secrets, and prefer an external manager (External Secrets Operator -> Vault/AWS Secrets Manager, or Sealed Secrets for GitOps).
 
 ### Two ways to consume: env vars vs volume mounts
 
@@ -47569,7 +47569,7 @@ graph LR
 \`\`\`
 
 > [!SUCCESS]
-> Probe: *"How does the same image become prod-specific?"* → It doesn't bake config in. The Deployment binds a ConfigMap + Secret; Spring's relaxed binding turns \`SPRING_DATASOURCE_URL\` into \`spring.datasource.url\`. Image stays immutable; config is the only variable.
+> Probe: *"How does the same image become prod-specific?"* -> It doesn't bake config in. The Deployment binds a ConfigMap + Secret; Spring's relaxed binding turns \`SPRING_DATASOURCE_URL\` into \`spring.datasource.url\`. Image stays immutable; config is the only variable.
 
 > [!EU]
 > For GDPR, keep customer-identifying secrets and connection strings out of ConfigMaps. Use Secrets with encryption-at-rest, and prefer an external secret store so secret material never lands in your Git repo.`,
@@ -47751,7 +47751,7 @@ graph LR
 \`\`\`
 
 > [!DANGER]
-> Classic bug: pointing **liveness** at an endpoint that depends on the database. DB blips → liveness fails → kubelet **restarts** the Pod → makes the outage worse (restart storm). Liveness should check *only* the process itself; **readiness** is where you reflect dependency health.
+> Classic bug: pointing **liveness** at an endpoint that depends on the database. DB blips -> liveness fails -> kubelet **restarts** the Pod -> makes the outage worse (restart storm). Liveness should check *only* the process itself; **readiness** is where you reflect dependency health.
 
 > [!TIP]
 > Use a **startupProbe** for slow-booting JVMs so a generous startup window doesn't force you to weaken liveness (\`failureThreshold * periodSeconds\` = total startup budget).
@@ -47766,7 +47766,7 @@ graph LR
 | Scheduling | A Pod is placed only if a node has free *requests* | — |
 
 > [!WARNING]
-> CPU is *compressible* (you get throttled), memory is *incompressible* (exceed the limit → **OOMKilled**, exit code 137). Set memory requests = limits for predictable behavior; be cautious with tight CPU limits causing latency from throttling.
+> CPU is *compressible* (you get throttled), memory is *incompressible* (exceed the limit -> **OOMKilled**, exit code 137). Set memory requests = limits for predictable behavior; be cautious with tight CPU limits causing latency from throttling.
 
 ### QoS classes (drive eviction order)
 
@@ -47915,7 +47915,7 @@ kubectl get pod orders-xyz -n team-orders -o jsonpath='{.status.qosClass}'`,
             flashcards: [
               {
                 q: `Liveness vs readiness probe — effect of failure?`,
-                a: `Liveness failure → kubelet restarts the container. Readiness failure → Pod is removed from Service endpoints (no restart) so it stops receiving traffic.`
+                a: `Liveness failure -> kubelet restarts the container. Readiness failure -> Pod is removed from Service endpoints (no restart) so it stops receiving traffic.`
               },
               {
                 q: `What is a startup probe for?`,
@@ -47977,7 +47977,7 @@ A container's filesystem is **ephemeral** — it dies with the container. For an
 |---|---|
 | Scratch space, shared between containers in a Pod | \`emptyDir\` (dies with the Pod) |
 | Mount a ConfigMap/Secret as files | \`configMap\` / \`secret\` volume |
-| Durable data surviving Pod deletion/reschedule | **PersistentVolumeClaim → PersistentVolume** |
+| Durable data surviving Pod deletion/reschedule | **PersistentVolumeClaim -> PersistentVolume** |
 | Stable identity + storage per replica (databases) | **StatefulSet** |
 
 ## The PV / PVC / StorageClass model
@@ -47996,7 +47996,7 @@ graph LR
   PV --> DISK["Cloud disk / NFS / CSI backend"]
 \`\`\`
 
-**Binding lifecycle**: PVC created → matched to (or dynamically provisioned as) a PV → \`Bound\` → Pod mounts it. The PV's \`reclaimPolicy\` decides what happens when the PVC is deleted: \`Delete\` (destroy the disk) or \`Retain\` (keep it for manual recovery).
+**Binding lifecycle**: PVC created -> matched to (or dynamically provisioned as) a PV -> \`Bound\` -> Pod mounts it. The PV's \`reclaimPolicy\` decides what happens when the PVC is deleted: \`Delete\` (destroy the disk) or \`Retain\` (keep it for manual recovery).
 
 | Access mode | Meaning |
 |---|---|
@@ -48031,7 +48031,7 @@ graph TB
 > Deleting a StatefulSet does **not** delete its PVCs by default (data safety). You must delete the PVCs manually to release storage — easy to leak orphaned volumes (and cloud cost).
 
 > [!SUCCESS]
-> Probe: *"Why not run a database as a Deployment?"* → Deployment Pods are interchangeable and may share or lose their volume; a DB needs **stable identity + stable per-replica storage + ordered bootstrap** (so replica-0 initializes before replicas join). StatefulSet provides exactly that.
+> Probe: *"Why not run a database as a Deployment?"* -> Deployment Pods are interchangeable and may share or lose their volume; a DB needs **stable identity + stable per-replica storage + ordered bootstrap** (so replica-0 initializes before replicas join). StatefulSet provides exactly that.
 
 > [!EU]
 > For data residency, bind PVs to a StorageClass/zone in the required region and ensure volume snapshots/backups stay in-region — persistent volumes hold the actual customer data.`,
@@ -48260,16 +48260,16 @@ graph TB
 | \`CrashLoopBackOff\`, exit 1 | App throws on startup (bad config/DB down) | \`logs --previous\` |
 | \`OOMKilled\` (exit 137) | Memory limit too low / leak | \`describe\` Last State; \`top pods\` |
 | Pod \`Pending\` | No node fits requests, taint, unbound PVC | \`describe pod\` events |
-| Pod Running but no traffic | Readiness failing → not in endpoints | \`describe\` readiness; \`get endpointslices\` |
+| Pod Running but no traffic | Readiness failing -> not in endpoints | \`describe\` readiness; \`get endpointslices\` |
 | Service returns nothing | Selector doesn't match Pod labels | \`describe svc\` (Endpoints empty?) |
 | \`CreateContainerConfigError\` | Referenced ConfigMap/Secret/key missing | \`describe pod\` events |
 | DNS fails | CoreDNS down / wrong FQDN | resolve from a debug Pod |
 
 > [!SUCCESS]
-> Probe: *"Pod is Pending — walk me through it."* → \`kubectl describe pod\` and read **Events**: \`Insufficient cpu/memory\` (requests too big / cluster full → scale nodes), \`untolerated taint\` (add toleration), \`pod has unbound immediate PersistentVolumeClaims\` (storage issue), or \`didn't match node affinity\`.
+> Probe: *"Pod is Pending — walk me through it."* -> \`kubectl describe pod\` and read **Events**: \`Insufficient cpu/memory\` (requests too big / cluster full -> scale nodes), \`untolerated taint\` (add toleration), \`pod has unbound immediate PersistentVolumeClaims\` (storage issue), or \`didn't match node affinity\`.
 
 > [!SUCCESS]
-> Probe: *"Service has no endpoints."* → 99% of the time the Service \`selector\` doesn't match the Pod \`labels\`, or the Pods aren't **Ready**. \`kubectl describe svc\` shows an empty Endpoints list — the smoking gun.`,
+> Probe: *"Service has no endpoints."* -> 99% of the time the Service \`selector\` doesn't match the Pod \`labels\`, or the Pods aren't **Ready**. \`kubectl describe svc\` shows an empty Endpoints list — the smoking gun.`,
             code: [
               {
                 lang: `bash`,
@@ -48400,7 +48400,7 @@ kubectl get pods -n team-orders --show-labels         # do labels match the sele
               },
               {
                 q: `What does CrashLoopBackOff mean?`,
-                a: `A container repeatedly starts and exits; the kubelet applies an exponential back-off (10s→20s→40s...) before each restart. Investigate with describe (exit code) + logs --previous.`
+                a: `A container repeatedly starts and exits; the kubelet applies an exponential back-off (10s->20s->40s...) before each restart. Investigate with describe (exit code) + logs --previous.`
               },
               {
                 q: `ImagePullBackOff — what causes it and how to check?`,
@@ -48482,7 +48482,7 @@ These three nouns appear in every Helm interview. Keep them crisp:
 | **Revision** | a git commit | A numbered snapshot of a release. Each \`upgrade\` bumps the revision; \`rollback\` targets one. |
 
 > [!TIP]
-> The single sharpest distinction: **a chart is a template/definition; a release is a running, named, versioned instance of that chart in a cluster.** One chart → many releases. One release → many revisions.
+> The single sharpest distinction: **a chart is a template/definition; a release is a running, named, versioned instance of that chart in a cluster.** One chart -> many releases. One release -> many revisions.
 
 ## How Helm Renders & Applies
 
@@ -48517,7 +48517,7 @@ Helm 2 shipped a cluster-side component called **Tiller** — a pod with broad R
 | OCI registries | no | **yes** (charts as OCI artifacts) |
 
 > [!DANGER]
-> If a job posting or codebase still mentions **Tiller**, \`helm init\`, or \`helm reset\`, it is Helm 2 (EOL since 2020). Migrating means the \`helm-2to3\` plugin: convert config, convert releases (ConfigMaps→Secrets), then clean up Tiller. Never run new workloads on Helm 2.
+> If a job posting or codebase still mentions **Tiller**, \`helm init\`, or \`helm reset\`, it is Helm 2 (EOL since 2020). Migrating means the \`helm-2to3\` plugin: convert config, convert releases (ConfigMaps->Secrets), then clean up Tiller. Never run new workloads on Helm 2.
 
 > [!SUCCESS]
 > Mental model to walk into the interview with: **Helm = templating engine + values + a release database living in the cluster.** Helm 3 made it safe by deleting the server and deferring entirely to Kubernetes RBAC.`,
@@ -48585,7 +48585,7 @@ helm version --short   # v3.x => no Tiller anywhere in the cluster`,
               },
               {
                 q: `Precisely distinguish a Helm chart, a release, and a repository.`,
-                a: `Chart = a versioned bundle of templates + default values (the package/definition). Release = a specific named installation of a chart into a namespace with a value set (one chart → many releases). Repository = an HTTP or OCI server hosting packaged .tgz charts plus an index.yaml.`
+                a: `Chart = a versioned bundle of templates + default values (the package/definition). Release = a specific named installation of a chart into a namespace with a value set (one chart -> many releases). Repository = an HTTP or OCI server hosting packaged .tgz charts plus an index.yaml.`
               },
               {
                 q: `What is a Helm revision and how does it relate to a release?`,
@@ -49231,7 +49231,7 @@ metadata:
               },
               {
                 q: `Why do fullname helpers \`trunc 63 | trimSuffix "-"\`?`,
-                a: `Kubernetes object names must be valid DNS labels ≤ 63 chars. \`trunc 63\` enforces the limit; \`trimSuffix "-"\` ensures truncation didn't leave a trailing hyphen (illegal as the last char of a DNS label).`
+                a: `Kubernetes object names must be valid DNS labels <= 63 chars. \`trunc 63\` enforces the limit; \`trimSuffix "-"\` ensures truncation didn't leave a trailing hyphen (illegal as the last char of a DNS label).`
               },
               {
                 q: `How do you gate a template on the cluster's API support?`,
@@ -49281,7 +49281,7 @@ stateDiagram-v2
 | Best for | one-off overrides (\`image.tag=$GIT_SHA\` in CI) | the env's standing config |
 | Precedence | **highest** (beats files) | lower than \`--set\` |
 
-**Precedence (lowest → highest):** chart \`values.yaml\` → \`-f a.yaml\` → \`-f b.yaml\` (later \`-f\` wins) → \`--set\` → \`--set-string\`/\`--set-file\`.
+**Precedence (lowest -> highest):** chart \`values.yaml\` -> \`-f a.yaml\` -> \`-f b.yaml\` (later \`-f\` wins) -> \`--set\` -> \`--set-string\`/\`--set-file\`.
 
 > [!WARNING]
 > \`--set a.b=1 --set a.c=2\` deep-merges, but \`--set list={x,y}\` **replaces** the whole list — Helm does not merge lists. The same applies to \`-f\`: a list in an override file replaces, never appends to, the default list. This surprises people overriding \`ingress.hosts\` or \`env\`.
@@ -49323,7 +49323,7 @@ helm diff upgrade payments ./payments -f values-prod.yaml
 Indispensable for change reviews — you see the exact manifest delta (image tag, replica count, env var) before touching prod.
 
 > [!SUCCESS]
-> Production deploy recipe: \`helm diff upgrade\` in the PR for review → \`helm upgrade --install --atomic --wait --timeout 5m -f values-prod.yaml\` in the pipeline → \`helm history\` / \`helm rollback\` as the break-glass. Three commands cover plan, apply, and recover.`,
+> Production deploy recipe: \`helm diff upgrade\` in the PR for review -> \`helm upgrade --install --atomic --wait --timeout 5m -f values-prod.yaml\` in the pipeline -> \`helm history\` / \`helm rollback\` as the break-glass. Three commands cover plan, apply, and recover.`,
             code: [
               {
                 lang: `bash`,
@@ -49428,7 +49428,7 @@ helm template payments ./payments -f values.yaml -f values-prod.yaml --set repli
               },
               {
                 q: `Precedence order of values sources, lowest to highest?`,
-                a: `Chart \`values.yaml\` → \`-f\` files in order (later \`-f\` overrides earlier) → \`--set\` → \`--set-string\`/\`--set-file\`. \`--set\` always beats values files; among \`-f\` files the last one wins on conflicts.`
+                a: `Chart \`values.yaml\` -> \`-f\` files in order (later \`-f\` overrides earlier) -> \`--set\` -> \`--set-string\`/\`--set-file\`. \`--set\` always beats values files; among \`-f\` files the last one wins on conflicts.`
               },
               {
                 q: `Do \`--set\`/\`-f\` list overrides merge or replace?`,
@@ -49536,7 +49536,7 @@ A chart with \`type: library\` ships **only named templates** (no installable ob
 
 Charts are distributed as \`.tgz\` archives. Two distribution models:
 
-1. **Classic HTTP repo** — \`helm package\` → \`helm repo index\` → host \`.tgz\` + \`index.yaml\` on any web server / GitHub Pages / ChartMuseum.
+1. **Classic HTTP repo** — \`helm package\` -> \`helm repo index\` -> host \`.tgz\` + \`index.yaml\` on any web server / GitHub Pages / ChartMuseum.
 2. **OCI registry** (modern, Helm 3.8+ GA) — push the chart as an **OCI artifact** to the same registry you use for container images (ECR/GHCR/Harbor/ACR). No separate \`index.yaml\`; the registry is the index.
 
 \`\`\`
@@ -49767,7 +49767,7 @@ helm repo index . --url https://charts.example.com   # generates/updates index.y
               },
               {
                 q: `What does \`values.schema.json\` enforce and when does it run?`,
-                a: `A JSON Schema validating merged values on install/upgrade/lint/template. It can require keys (resources, image.repository), enforce types/ranges (replicaCount integer ≥ 1), and ban values (image tag == latest), failing the render with a clear message before anything is applied.`
+                a: `A JSON Schema validating merged values on install/upgrade/lint/template. It can require keys (resources, image.repository), enforce types/ranges (replicaCount integer >= 1), and ban values (image tag == latest), failing the render with a clear message before anything is applied.`
               }
             ]
           }
@@ -49808,7 +49808,7 @@ flowchart LR
 | Build | Compiles, deps resolve | Yes | Maven / Gradle |
 | Unit test | Logic correctness | Yes | JUnit5, AssertJ |
 | Coverage gate | No silent rot | Yes (threshold) | JaCoCo |
-| Static analysis | Bug patterns, style | Warn→fail | SpotBugs, Checkstyle, PMD, Error Prone |
+| Static analysis | Bug patterns, style | Warn->fail | SpotBugs, Checkstyle, PMD, Error Prone |
 | SAST | Security defects in code | Yes on high | CodeQL, Semgrep, Snyk Code |
 | Secret scan | No leaked creds | Yes | gitleaks, trufflehog |
 | Package | Build deployable jar | Yes | mvn package |
@@ -49854,7 +49854,7 @@ Every build must yield an **immutable, traceable** artifact:
 | CI implication | Main is always releasable | Pipelines per branch type |
 
 > [!SUCCESS]
-> **Trunk-based development is the prerequisite for elite DORA performance.** Short-lived branches (< 1 day) + feature flags + a continuously-green main are what enable multiple deploys/day. GitFlow's release branches inflate lead time. Staff interviewers want you to connect *branching model → deploy frequency → DORA*.
+> **Trunk-based development is the prerequisite for elite DORA performance.** Short-lived branches (< 1 day) + feature flags + a continuously-green main are what enable multiple deploys/day. GitFlow's release branches inflate lead time. Staff interviewers want you to connect *branching model -> deploy frequency -> DORA*.
 
 ### Test pyramid inside CI
 
@@ -49934,7 +49934,7 @@ mvn -B com.google.cloud.tools:jib-maven-plugin:build \\
               },
               {
                 q: `How do you make a build artifact traceable to its source?`,
-                a: `Tag the image with the git SHA, stamp OCI labels (org.opencontainers.image.revision, .source, .created, build URL), and generate provenance/SBOM. Given a running image you can map digest → SHA → PR → pipeline run.`
+                a: `Tag the image with the git SHA, stamp OCI labels (org.opencontainers.image.revision, .source, .created, build URL), and generate provenance/SBOM. Given a running image you can map digest -> SHA -> PR -> pipeline run.`
               }
             ]
           },
@@ -50216,7 +50216,7 @@ CD is where senior interviews get interesting: the question is rarely "how do yo
 
 ### Canary done right = progressive delivery
 
-A real canary isn't "send 5% and eyeball Grafana." It's **automated analysis**: shift 5% → query SLO metrics (error rate, p99 latency) → if healthy, 25% → 50% → 100%; if a metric breaches, **auto-abort and roll back**. Tools: **Argo Rollouts** (with AnalysisTemplates querying Prometheus), **Flagger**.
+A real canary isn't "send 5% and eyeball Grafana." It's **automated analysis**: shift 5% -> query SLO metrics (error rate, p99 latency) -> if healthy, 25% -> 50% -> 100%; if a metric breaches, **auto-abort and roll back**. Tools: **Argo Rollouts** (with AnalysisTemplates querying Prometheus), **Flagger**.
 
 \`\`\`mermaid
 flowchart LR
@@ -50232,7 +50232,7 @@ flowchart LR
 ### Feature flags decouple deploy from release
 
 > [!SUCCESS]
-> **Deploy ≠ release.** Ship code dark behind a flag (LaunchDarkly/Unleash/Flagsmith), then *release* by flipping the flag to a cohort — independent of the deploy. This enables trunk-based development (merge incomplete features safely), instant kill-switches without a redeploy, and A/B experiments. The flag flip *is* the canary at the application layer.
+> **Deploy != release.** Ship code dark behind a flag (LaunchDarkly/Unleash/Flagsmith), then *release* by flipping the flag to a cohort — independent of the deploy. This enables trunk-based development (merge incomplete features safely), instant kill-switches without a redeploy, and A/B experiments. The flag flip *is* the canary at the application layer.
 
 ### Database migrations in the pipeline — the hard part
 
@@ -50241,7 +50241,7 @@ Schema changes are the #1 cause of failed deploys and irreversible incidents. Us
 > [!DANGER]
 > **Never couple a non-backward-compatible schema change to the same release as the code that needs it.** During a rolling/canary deploy, old and new app versions run *simultaneously* against *one* database. A dropped/renamed column breaks the old pods still serving traffic. Use the **expand–contract (parallel change)** pattern.
 
-**Expand–contract for renaming a column** \`name\` → \`full_name\`:
+**Expand–contract for renaming a column** \`name\` -> \`full_name\`:
 1. **Expand**: add \`full_name\`, backfill, dual-write from app. Old code still uses \`name\` — both work.
 2. **Migrate reads**: deploy app version that reads \`full_name\`.
 3. **Contract**: in a *later* release, drop \`name\`.
@@ -50260,11 +50260,11 @@ Each step is independently deployable and reversible. Migrations are **forward-o
 ### Environment promotion
 
 > [!TIP]
-> **Promote the same immutable artifact** (same image digest) dev → staging → prod. Never rebuild per environment — rebuilding can pull different transitive deps and breaks the "what I tested is what I shipped" guarantee. Config differs per env (via ConfigMaps/secrets/Helm values), the *binary* does not.`,
+> **Promote the same immutable artifact** (same image digest) dev -> staging -> prod. Never rebuild per environment — rebuilding can pull different transitive deps and breaks the "what I tested is what I shipped" guarantee. Config differs per env (via ConfigMaps/secrets/Helm values), the *binary* does not.`,
             code: [
               {
                 lang: `sql`,
-                title: `Flyway expand–contract migration (V8 → V10)`,
+                title: `Flyway expand–contract migration (V8 -> V10)`,
                 code: `-- db/migration/V8__add_full_name_expand.sql  (EXPAND step)
 ALTER TABLE customer ADD COLUMN full_name VARCHAR(255);
 
@@ -50366,7 +50366,7 @@ GitOps inverts deployment: instead of CI *pushing* to the cluster, a controller 
 1. **Declarative** — the whole system is described declaratively (YAML/Helm/Kustomize).
 2. **Versioned & immutable** — desired state lives in git; every change is a commit.
 3. **Pulled automatically** — agents pull approved state from git.
-4. **Continuously reconciled** — agents observe and converge actual → desired, forever.
+4. **Continuously reconciled** — agents observe and converge actual -> desired, forever.
 
 ### The pull-based reconciliation loop
 
@@ -50393,7 +50393,7 @@ flowchart LR
 | Source of truth | Pipeline logs / imperative scripts | **Git, declarative** |
 | Drift handling | None — manual \`kubectl\` sticks | **Detected + auto-healed** |
 | Audit trail | Scattered CI logs | **git log = full history** |
-| Rollback | Re-run a pipeline | \`git revert\` → reconcile |
+| Rollback | Re-run a pipeline | \`git revert\` -> reconcile |
 | Multi-cluster | Pipeline fans out | Each cluster pulls its own state |
 
 > [!SUCCESS]
@@ -50410,7 +50410,7 @@ flowchart LR
 ### App-of-apps pattern
 
 > [!TIP]
-> Bootstrap an entire platform from one root Application. The **app-of-apps** is an ArgoCD Application whose git source is a directory of *other* Application manifests. Sync the root → it creates all child apps (ingress, monitoring, cert-manager, your services). One \`git clone\` + one apply reconstructs the whole platform — the basis of disaster recovery and ephemeral environments.
+> Bootstrap an entire platform from one root Application. The **app-of-apps** is an ArgoCD Application whose git source is a directory of *other* Application manifests. Sync the root -> it creates all child apps (ingress, monitoring, cert-manager, your services). One \`git clone\` + one apply reconstructs the whole platform — the basis of disaster recovery and ephemeral environments.
 
 ### Secrets in GitOps — you cannot commit plaintext
 
@@ -50612,7 +50612,7 @@ flowchart LR
 | Metric | Question it answers | Elite benchmark | Improve by |
 |---|---|---|---|
 | **Deployment Frequency** | How often do we ship to prod? | On-demand, multiple/day | Trunk-based, small batches, automation |
-| **Lead Time for Changes** | Commit → running in prod? | < 1 hour | CI automation, fast pipelines, feature flags |
+| **Lead Time for Changes** | Commit -> running in prod? | < 1 hour | CI automation, fast pipelines, feature flags |
 | **MTTR / Time to Restore** | How fast do we recover? | < 1 hour | Fast rollback, canary auto-abort, good observability |
 | **Change Failure Rate** | % of deploys causing a failure | 0–15% | Testing, progressive delivery, expand-contract |
 
@@ -50729,7 +50729,7 @@ spec:
         hours: 7,
         sections: [
           {
-            title: `1. The System & the Toolchain (Code → Production)`,
+            title: `1. The System & the Toolchain (Code -> Production)`,
             notes: `# The "Orders" system, end to end
 
 Everything in this module is built around **one** concrete system so the tooling never feels abstract. We take a 3-service Spring Boot estate from a Maven build on your laptop to a self-healing, observable, GitOps-driven Kubernetes deployment.
@@ -50744,7 +50744,7 @@ An **Orders** platform composed of three Spring Boot microservices, a relational
 | **inventory-service** | Stock levels, reservations | Kafka (consume \`order.created\`) | \`inventory\` DB (Postgres) |
 | **payment-service** | Charges, refunds, settlement | Kafka (consume \`order.confirmed\`) | \`payments\` DB (Postgres) |
 
-The **happy path**: a client calls \`POST /api/orders\` → order-service synchronously checks stock via inventory-service → persists the order → publishes \`order.created\` to Kafka → inventory reserves stock and emits \`order.confirmed\` → payment-service charges the card. North-south traffic enters through an **Ingress + gateway**; east-west traffic is service-to-service inside the cluster.
+The **happy path**: a client calls \`POST /api/orders\` -> order-service synchronously checks stock via inventory-service -> persists the order -> publishes \`order.created\` to Kafka -> inventory reserves stock and emits \`order.confirmed\` -> payment-service charges the card. North-south traffic enters through an **Ingress + gateway**; east-west traffic is service-to-service inside the cluster.
 
 > [!TIP]
 > The single most common staff-interview failure mode is talking about Kubernetes primitives in isolation. Anchor every answer to a request flowing through a real system: "a \`POST /api/orders\` lands on the Ingress, gets routed to the order-service Service, which load-balances across 3 pods…". Concrete beats encyclopedic.
@@ -50794,11 +50794,11 @@ You do not "use Kubernetes". You compose a **toolchain**, each layer with one jo
 flowchart LR
   dev([Developer])
   git[("Git repo<br/>(app + manifests)")]
-  ci["CI: GitHub Actions<br/>mvn verify → docker build → push"]
+  ci["CI: GitHub Actions<br/>mvn verify -> docker build -> push"]
   reg[["Container Registry<br/>ghcr.io/acme/order-service:sha-abc123"]]
   argo["ArgoCD<br/>(GitOps controller)"]
   k8s["Kubernetes API"]
-  cluster["Cluster pods<br/>orders-dev → orders-prod"]
+  cluster["Cluster pods<br/>orders-dev -> orders-prod"]
   obs["Prometheus + Grafana<br/>scrape /actuator/prometheus"]
 
   dev -->|git push| git
@@ -50816,7 +50816,7 @@ flowchart LR
 
 A subtle but staff-level point: there are **two** flows and they meet only in Git.
 
-- **CI (push-based):** code → test → image → push → *commit the new image tag*. CI never talks to the cluster.
+- **CI (push-based):** code -> test -> image -> push -> *commit the new image tag*. CI never talks to the cluster.
 - **CD (pull-based / GitOps):** ArgoCD watches the manifests repo and *pulls* desired state into the cluster.
 
 > [!WARNING]
@@ -50832,7 +50832,7 @@ A subtle but staff-level point: there are **two** flows and they meet only in Gi
 3. Namespaces, quotas, RBAC isolate dev from prod.
 4. Deployments + Services + Config/Secrets run the services with probes and limits.
 5. Ingress + TLS + NetworkPolicy control north-south and east-west traffic.
-6. An umbrella Helm chart + ArgoCD ships dev → prod from Git.
+6. An umbrella Helm chart + ArgoCD ships dev -> prod from Git.
 7. HPA, rolling updates, dashboards, traces, and a runbook keep it alive.`,
             code: [
               {
@@ -50892,7 +50892,7 @@ kubectl config current-context   # 'orders-dev' or 'orders-prod' — CHECK befor
               },
               {
                 q: `Distinguish north-south from east-west traffic in this system.`,
-                a: `North-south is external client traffic entering through the Ingress/gateway (e.g. POST /api/orders). East-west is service-to-service traffic inside the cluster (order-service → inventory-service over cluster DNS). They have different security and routing controls — Ingress/TLS for N-S, NetworkPolicy/mTLS for E-W.`
+                a: `North-south is external client traffic entering through the Ingress/gateway (e.g. POST /api/orders). East-west is service-to-service traffic inside the cluster (order-service -> inventory-service over cluster DNS). They have different security and routing controls — Ingress/TLS for N-S, NetworkPolicy/mTLS for E-W.`
               },
               {
                 q: `What is 'GitOps' and what makes a deployment GitOps vs. just CI/CD?`,
@@ -50900,7 +50900,7 @@ kubectl config current-context   # 'orders-dev' or 'orders-prod' — CHECK befor
               },
               {
                 q: `Which two pipelines exist in this architecture and where do they meet?`,
-                a: `A push-based CI pipeline (code → test → image → push → commit tag) and a pull-based CD/GitOps pipeline (ArgoCD watches the manifests repo). They meet only in Git: CI's output is a commit; CD's input is that commit.`
+                a: `A push-based CI pipeline (code -> test -> image -> push -> commit tag) and a pull-based CD/GitOps pipeline (ArgoCD watches the manifests repo). They meet only in Git: CI's output is a commit; CD's input is that commit.`
               },
               {
                 q: `Why are immutable, content-addressed image tags (e.g. sha-abc123) preferred over \`latest\` in this pipeline?`,
@@ -50908,7 +50908,7 @@ kubectl config current-context   # 'orders-dev' or 'orders-prod' — CHECK befor
               },
               {
                 q: `In a staff interview, what's the strongest way to frame a Kubernetes answer?`,
-                a: `Anchor it to a concrete request flowing through a real system rather than reciting primitives in isolation: trace POST /api/orders from Ingress → Service → pod → downstream service → Kafka → DB, naming the controls at each hop.`
+                a: `Anchor it to a concrete request flowing through a real system rather than reciting primitives in isolation: trace POST /api/orders from Ingress -> Service -> pod -> downstream service -> Kafka -> DB, naming the controls at each hop.`
               },
               {
                 q: `What is the kubectl/API-server version skew rule and why does it matter?`,
@@ -50938,11 +50938,11 @@ Each service must become a **small, secure, reproducible** OCI image. The two no
 
 \`\`\`mermaid
 flowchart LR
-  subgraph s1["Stage 1: builder (≈600 MB)"]
+  subgraph s1["Stage 1: builder (~600 MB)"]
     a["maven:3.9-eclipse-temurin-21"]
     b["mvn -o package -DskipTests<br/>+ layertools extract"]
   end
-  subgraph s2["Stage 2: runtime (≈180 MB)"]
+  subgraph s2["Stage 2: runtime (~180 MB)"]
     c["eclipse-temurin:21-jre + non-root user"]
     d["COPY only extracted layers"]
   end
@@ -51002,7 +51002,7 @@ WORKDIR /app
 # Non-root user
 RUN groupadd -r app && useradd -r -g app -u 10001 app
 
-# Copy layers in change-frequency order (least → most frequently changed)
+# Copy layers in change-frequency order (least -> most frequently changed)
 COPY --from=builder /build/target/extracted/dependencies/ ./
 COPY --from=builder /build/target/extracted/spring-boot-loader/ ./
 COPY --from=builder /build/target/extracted/snapshot-dependencies/ ./
@@ -51214,7 +51214,7 @@ flowchart TB
 | Object | Scope | Answers |
 |---|---|---|
 | **ResourceQuota** | Whole namespace | "This namespace may use at most 20 CPU / 40Gi total." |
-| **LimitRange** | Each pod/container | "Every container must request ≥100m and may not exceed 2 CPU; here's the default if you omit it." |
+| **LimitRange** | Each pod/container | "Every container must request >=100m and may not exceed 2 CPU; here's the default if you omit it." |
 
 > [!WARNING]
 > If a namespace has a ResourceQuota on \`requests.cpu\`/\`requests.memory\`, then **every** pod *must* declare requests and limits or the API server rejects it. The LimitRange's \`defaultRequest\`/\`default\` saves you here by injecting sane defaults, so a developer who forgets isn't blocked. Pair them.
@@ -51410,7 +51410,7 @@ kubectl auth can-i get configmaps/order-service-config \\
 
 Now we run the images. Each service is a **Deployment** (manages a ReplicaSet of pods) fronted by a **Service** (stable virtual IP + DNS name for discovery). Configuration comes from **ConfigMaps** (non-secret) and **Secrets** (credentials). **Probes** tell Kubernetes when a pod is alive vs ready. **Requests/limits** drive scheduling and protect neighbors.
 
-## Service discovery: how order→inventory→payment actually resolves
+## Service discovery: how order->inventory->payment actually resolves
 
 A Service named \`inventory-service\` in namespace \`orders-prod\` is reachable at:
 
@@ -51446,7 +51446,7 @@ sequenceDiagram
 | **livenessProbe** | "Is it deadlocked/unrecoverable?" | Pod is **killed and restarted** |
 
 > [!DANGER]
-> The classic outage: pointing the **liveness** probe at a deep health check that also pings the DB. The DB hiccups → liveness fails → Kubernetes kills *every* pod → a transient DB blip becomes a full outage and a restart storm. **Liveness must be cheap and self-only** (\`/actuator/health/liveness\`). Put the dependency checks in **readiness** (\`/actuator/health/readiness\`) — that just removes the pod from rotation until the DB recovers.
+> The classic outage: pointing the **liveness** probe at a deep health check that also pings the DB. The DB hiccups -> liveness fails -> Kubernetes kills *every* pod -> a transient DB blip becomes a full outage and a restart storm. **Liveness must be cheap and self-only** (\`/actuator/health/liveness\`). Put the dependency checks in **readiness** (\`/actuator/health/readiness\`) — that just removes the pod from rotation until the DB recovers.
 
 > [!TIP]
 > Spring Boot has built-in liveness/readiness groups. Enable \`management.endpoint.health.probes.enabled=true\` and point Kubernetes at \`/actuator/health/liveness\` and \`/actuator/health/readiness\`. Spring even flips readiness to OUT_OF_SERVICE during graceful shutdown automatically.
@@ -51459,7 +51459,7 @@ sequenceDiagram
 ## Requests vs limits — the scheduling contract
 
 - **requests**: what the scheduler *reserves* (guaranteed). Drives bin-packing.
-- **limits**: the hard ceiling. Exceed CPU → throttled. Exceed memory → **OOMKilled**.
+- **limits**: the hard ceiling. Exceed CPU -> throttled. Exceed memory -> **OOMKilled**.
 
 > [!TIP]
 > For latency-sensitive Java services, set memory \`request == limit\` (Guaranteed QoS) to avoid OOM surprises, and set a CPU request but be cautious with tight CPU limits — aggressive CPU limits cause throttling that tanks p99 latency. Many teams omit CPU limits and rely on requests + HPA.`,
@@ -51725,7 +51725,7 @@ flowchart TB
 |---|---|
 | \`Service type: ClusterIP\` | Internal-only (all three services internally) |
 | \`Service type: LoadBalancer\` | One service needs a raw cloud L4 LB (rare for HTTP) |
-| **Ingress** (L7) | HTTP host/path routing, TLS termination, one IP for many services ← our choice |
+| **Ingress** (L7) | HTTP host/path routing, TLS termination, one IP for many services <- our choice |
 
 > [!TIP]
 > Use **one** Ingress (or a gateway) as the single north-south entry. Only \`order-service\` is exposed publicly; inventory and payment stay ClusterIP-only. Exposing payment-service to the internet "because it was easy" is a classic finding in security reviews.
@@ -51742,7 +51742,7 @@ The Ingress controller handles TLS + routing, but cross-cutting API concerns —
 ## NetworkPolicy: default-deny, then allow what's needed
 
 > [!DANGER]
-> By default, **every pod can reach every other pod** in the cluster — a flat network. If payment-service is compromised, it can scan and hit Postgres, Kafka, and every other service freely. The fix is a **default-deny** NetworkPolicy per namespace, then explicit allow rules for the real traffic edges (order→inventory, *→kafka, *→postgres). This is the east-west firewall.
+> By default, **every pod can reach every other pod** in the cluster — a flat network. If payment-service is compromised, it can scan and hit Postgres, Kafka, and every other service freely. The fix is a **default-deny** NetworkPolicy per namespace, then explicit allow rules for the real traffic edges (order->inventory, *->kafka, *->postgres). This is the east-west firewall.
 
 > [!WARNING]
 > NetworkPolicy is enforced by the **CNI plugin** (Calico, Cilium). On a cluster whose CNI doesn't support NetworkPolicy, the objects apply silently but enforce **nothing** — a dangerous false sense of security. Verify enforcement with a probe pod.
@@ -51931,7 +51931,7 @@ kubectl exec deploy/order-service -n orders-prod -- \\
             title: `6. Package with Helm & Ship with GitOps (CI/CD + ArgoCD)`,
             notes: `# One chart, many environments, Git as the trigger
 
-Raw YAML doesn't scale across three services × multiple environments. **Helm** templates and parameterizes. **ArgoCD** continuously reconciles the cluster to what's declared in Git.
+Raw YAML doesn't scale across three services x multiple environments. **Helm** templates and parameterizes. **ArgoCD** continuously reconciles the cluster to what's declared in Git.
 
 ## Umbrella chart with per-service subcharts
 
@@ -51967,7 +51967,7 @@ flowchart LR
     t["mvn verify"] --> img["docker build"] --> push["push image<br/>sha-abc123"] --> bump["commit: bump<br/>image tag in values-prod.yaml"]
   end
   subgraph cd["CD — ArgoCD (pull)"]
-    watch["watch manifests repo"] --> diff["detect drift"] --> sync["sync → cluster"]
+    watch["watch manifests repo"] --> diff["detect drift"] --> sync["sync -> cluster"]
   end
   bump -->|git commit| watch
   sync --> dev["orders-dev"] --> gate{manual<br/>promote?}
@@ -51977,7 +51977,7 @@ flowchart LR
 > [!SUCCESS]
 > **The handoff is a Git commit.** CI's final act isn't a deploy — it's updating the image tag in \`values-<env>.yaml\` and committing. ArgoCD sees the commit and reconciles. This keeps cluster credentials out of CI and makes every deployment a reviewable, revertible Git change.
 
-## Progressive delivery: dev → prod
+## Progressive delivery: dev -> prod
 
 Two ArgoCD \`Application\` objects point at the **same** chart with different value files: \`app-orders-dev\` (auto-sync, \`values-dev.yaml\`) and \`app-orders-prod\` (manual sync or gated, \`values-prod.yaml\`).
 
@@ -52079,7 +52079,7 @@ helm rollback orders 3 -n orders-prod  # roll back to revision 3`,
               },
               {
                 lang: `yaml`,
-                title: `.github/workflows/ci.yml — build → image → push → bump tag`,
+                title: `.github/workflows/ci.yml — build -> image -> push -> bump tag`,
                 code: `name: ci
 on:
   push:
@@ -52261,7 +52261,7 @@ flowchart LR
   v1a["v1"] --- v1b["v1"] --- v1c["v1"]
   step1["+ v2 (surge)"] --> ready{"v2 Ready?"}
   ready -->|yes| retire["- v1"]
-  ready -->|no, timeout| rollback["rollout undo → all v1"]
+  ready -->|no, timeout| rollback["rollout undo -> all v1"]
 \`\`\`
 
 \`kubectl rollout undo deployment/order-service\` reverts to the previous ReplicaSet. In GitOps, prefer reverting the Git commit so the cluster and Git don't diverge.
@@ -52271,7 +52271,7 @@ flowchart LR
 Scale replicas on observed load. CPU is the easy default; for JVM services, **custom metrics** (requests/sec, Kafka consumer lag, p99 latency) are often better signals.
 
 > [!WARNING]
-> HPA needs **resource requests** set to compute CPU utilization (% of request). No request → no CPU-based HPA. And HPA won't help a service bottlenecked on the DB connection pool or a slow downstream — more pods just pile more load onto the same Postgres. Scale the bottleneck, not the symptom.
+> HPA needs **resource requests** set to compute CPU utilization (% of request). No request -> no CPU-based HPA. And HPA won't help a service bottlenecked on the DB connection pool or a slow downstream — more pods just pile more load onto the same Postgres. Scale the bottleneck, not the symptom.
 
 ## Observability: the three pillars + correlation
 
@@ -52285,8 +52285,8 @@ flowchart LR
   tempo -. correlate .-> loki
 \`\`\`
 
-- **Metrics:** Micrometer → \`/actuator/prometheus\`; Prometheus scrapes (via the \`prometheus.io/scrape\` pod annotations or a ServiceMonitor). RED method: Rate, Errors, Duration.
-- **Tracing:** Micrometer Tracing + OpenTelemetry propagates a **traceId** across order→inventory→payment and into Kafka headers, so you can follow one order end-to-end.
+- **Metrics:** Micrometer -> \`/actuator/prometheus\`; Prometheus scrapes (via the \`prometheus.io/scrape\` pod annotations or a ServiceMonitor). RED method: Rate, Errors, Duration.
+- **Tracing:** Micrometer Tracing + OpenTelemetry propagates a **traceId** across order->inventory->payment and into Kafka headers, so you can follow one order end-to-end.
 - **Logs:** structured JSON including the \`traceId\`/\`spanId\` (MDC) so a trace links straight to its logs.
 
 > [!TIP]
@@ -52306,7 +52306,7 @@ flowchart LR
 > CrashLoopBackOff debugging mistake: reading \`kubectl logs <pod>\` shows the *current* (already-restarted, maybe empty) container. Use \`--previous\` to see the logs of the crashed instance that actually contains the stack trace. This single flag is the difference between solving it in 30 seconds and flailing for an hour.
 
 > [!SUCCESS]
-> Methodical incident flow: (1) \`describe pod\` → read **Events** and **Last State**, (2) \`logs --previous\` for the crash trace, (3) check **endpoints** + **NetworkPolicy** for connectivity, (4) follow the **traceId** across services, (5) check **resource** metrics for throttle/OOM. State the hypothesis, then the command that confirms it — that narration is what staff interviews score.`,
+> Methodical incident flow: (1) \`describe pod\` -> read **Events** and **Last State**, (2) \`logs --previous\` for the crash trace, (3) check **endpoints** + **NetworkPolicy** for connectivity, (4) follow the **traceId** across services, (5) check **resource** metrics for throttle/OOM. State the hypothesis, then the command that confirms it — that narration is what staff interviews score.`,
             code: [
               {
                 lang: `bash`,
@@ -52496,7 +52496,7 @@ kubectl exec deploy/order-service -n orders-prod -- \\
               },
               {
                 q: `Why is a correlation/trace ID the operational superpower across these three services?`,
-                a: `A single traceId propagated across order→inventory→payment (and into Kafka headers) plus embedded in every log line turns 'order 8842 failed' into one filtered view spanning all services and the broker. Without it you're grepping three log streams by timestamp and guessing causality.`
+                a: `A single traceId propagated across order->inventory->payment (and into Kafka headers) plus embedded in every log line turns 'order 8842 failed' into one filtered view spanning all services and the broker. Without it you're grepping three log streams by timestamp and guessing causality.`
               },
               {
                 q: `How does a Spring Boot service expose metrics to Prometheus, and what's the cleaner alternative to scrape annotations at scale?`,
@@ -52681,13 +52681,13 @@ BPMN (Business Process Model and Notation) 2.0 is an OMG standard with an XML se
 
 | Gateway | Symbol | Split behaviour | Merge behaviour |
 |---|---|---|---|
-| **Exclusive (XOR)** | × | Takes **exactly one** outgoing flow (first condition true, or default) | Pass-through: each arriving token proceeds; no sync |
+| **Exclusive (XOR)** | x | Takes **exactly one** outgoing flow (first condition true, or default) | Pass-through: each arriving token proceeds; no sync |
 | **Parallel (AND)** | + | Activates **all** outgoing flows (token splits into N) | **Waits** for a token on every incoming flow, then merges to one |
-| **Inclusive (OR)** | ○ in × | Activates **every** outgoing flow whose condition is true (≥1) | Waits for all *active* incoming branches (the tricky one) |
+| **Inclusive (OR)** | ○ in x | Activates **every** outgoing flow whose condition is true (>=1) | Waits for all *active* incoming branches (the tricky one) |
 | **Event-based** | pentagon | Routes to whichever *event* fires first (message vs timer race) | n/a |
 
 > [!DANGER]
-> The classic deadlock: split with a **parallel** gateway, merge with an **exclusive** gateway. The parallel split creates 2 tokens; the exclusive merge passes each one through → you fire the downstream path **twice**. Conversely, split exclusive + merge parallel → the parallel join waits forever for a token that never comes → stuck instance. **Match your split and join gateway types.**
+> The classic deadlock: split with a **parallel** gateway, merge with an **exclusive** gateway. The parallel split creates 2 tokens; the exclusive merge passes each one through -> you fire the downstream path **twice**. Conversely, split exclusive + merge parallel -> the parallel join waits forever for a token that never comes -> stuck instance. **Match your split and join gateway types.**
 
 > [!TIP]
 > Exclusive gateway evaluates conditions **top-to-bottom** and takes the first true one; always set a **default flow** or an instance can fail with "no outgoing flow could be selected".
@@ -52709,7 +52709,7 @@ flowchart LR
   Sh --> E((End))
 \`\`\`
 
-Trace it: 1 token at Start → Validate → the XOR sends it down exactly one branch → the parallel split (P1) turns 1 token into 2 (Reserve + Notify run concurrently) → the parallel join (P2) waits for **both** then merges back to 1 → Ship → End.
+Trace it: 1 token at Start -> Validate -> the XOR sends it down exactly one branch -> the parallel split (P1) turns 1 token into 2 (Reserve + Notify run concurrently) -> the parallel join (P2) waits for **both** then merges back to 1 -> Ship -> End.
 
 ### Pools & lanes
 
@@ -53112,7 +53112,7 @@ public class ReleaseStockWorker {
             notes: `## Modeling for production, not for the demo
 
 ### Idempotent service tasks (non-negotiable)
-The engine guarantees **at-least-once** execution of a job. A worker can complete its side effect, then the engine crashes before recording the ack → on recovery the job runs **again**. Therefore every service task that has a side effect must be idempotent: dedupe by a business key or an idempotency key passed as a process variable.
+The engine guarantees **at-least-once** execution of a job. A worker can complete its side effect, then the engine crashes before recording the ack -> on recovery the job runs **again**. Therefore every service task that has a side effect must be idempotent: dedupe by a business key or an idempotency key passed as a process variable.
 
 > [!DANGER]
 > "We charged the card twice" is the canonical workflow-engine production incident. The engine is at-least-once; your payment call must carry an idempotency key so the provider collapses the duplicate.
@@ -53129,18 +53129,18 @@ Why you need them:
 > Heuristic: put an **async-before** on every service task that calls an external system. State is saved before the call; on failure only that task retries; the external call won’t be re-driven by an unrelated rollback.
 
 ### Incidents & retries
-- A job fails → engine decrements retries and reschedules with backoff.
-- Retries hit 0 → the engine creates an **incident** (no more automatic retries). The instance pauses at that step.
-- Ops resolves: fix data / redeploy / bump retries in Cockpit/Operate → the job runs again.
+- A job fails -> engine decrements retries and reschedules with backoff.
+- Retries hit 0 -> the engine creates an **incident** (no more automatic retries). The instance pauses at that step.
+- Ops resolves: fix data / redeploy / bump retries in Cockpit/Operate -> the job runs again.
 
 Configure \`retryTimeCycle\` (e.g. \`R5/PT1M\`) so transient failures self-heal and only persistent ones become incidents and pages.
 
 ### Versioning long-running instances
-Deploy a new process definition → the engine assigns a **new version**. By default:
+Deploy a new process definition -> the engine assigns a **new version**. By default:
 - **Running instances keep running on the version they started on** (you don’t rewrite history mid-flight).
 - **New instances** start on the latest version.
 
-For a process that lives weeks, you will have many versions live simultaneously. When you *must* move running instances to a new version (e.g. you removed a step they’re stuck on), you run an **instance migration**: a mapping of old activity ids → new activity ids. Migrating a token sitting on a removed/renamed node requires an explicit mapping or it fails.
+For a process that lives weeks, you will have many versions live simultaneously. When you *must* move running instances to a new version (e.g. you removed a step they’re stuck on), you run an **instance migration**: a mapping of old activity ids -> new activity ids. Migrating a token sitting on a removed/renamed node requires an explicit mapping or it fails.
 
 > [!WARNING]
 > Don’t casually rename or delete activities in a long-running process. A token parked on \`reviewClaim\` cannot be migrated to a version where that id no longer exists without a mapping. Treat activity ids as a stable contract.
@@ -53248,7 +53248,7 @@ runtimeService.newMigration(plan)
               },
               {
                 q: `What is instance migration and when do you need it?`,
-                a: `Explicitly moving running instances to a new definition version via an old-activity-id → new-activity-id mapping — needed when you must move stuck/long-lived instances onto a changed model.`
+                a: `Explicitly moving running instances to a new definition version via an old-activity-id -> new-activity-id mapping — needed when you must move stuck/long-lived instances onto a changed model.`
               },
               {
                 q: `Why are activity ids effectively a stable contract in long-running processes?`,
@@ -53300,7 +53300,7 @@ Three tools for "coordinate a multi-step process." They are not interchangeable;
 ### Decision guide
 
 > [!TIP]
-> Choose a **hand-rolled state machine** when: the flow is small and stable (3–5 states), no long waits or human tasks, and you want zero new infrastructure. Don’t pull in an engine to track \`PENDING → PAID → SHIPPED\`.
+> Choose a **hand-rolled state machine** when: the flow is small and stable (3–5 states), no long waits or human tasks, and you want zero new infrastructure. Don’t pull in an engine to track \`PENDING -> PAID -> SHIPPED\`.
 
 > [!TIP]
 > Choose a **saga library** when: your core need is *distributed-transaction compensation* across services you already build with that framework (e.g. Axon + event sourcing), you’re choreography-minded, and you don’t need human tasks or a visual ops tool.
@@ -53317,7 +53317,7 @@ Three tools for "coordinate a multi-step process." They are not interchangeable;
 > The engine path has real operational cost: another stateful system (DB or Zeebe cluster + Elasticsearch), a new failure mode (incidents), and a modeling skill the team must learn. Don’t adopt it for a two-step flow — you’ll pay the tax with no payoff.
 
 > [!SUCCESS]
-> Senior answer to "engine or not?": orient on **coordination complexity × time horizon × who needs visibility**. Low-low-engineers-only → state machine. High distributed-TX, framework-native → saga library. High-coordination, long-lived, business-visible → workflow engine. State the trade-off explicitly; don’t default to the shiny tool.`,
+> Senior answer to "engine or not?": orient on **coordination complexity x time horizon x who needs visibility**. Low-low-engineers-only -> state machine. High distributed-TX, framework-native -> saga library. High-coordination, long-lived, business-visible -> workflow engine. State the trade-off explicitly; don’t default to the shiny tool.`,
             code: [
               {
                 lang: `java`,
@@ -53370,7 +53370,7 @@ public class MiniStateMachine {
               },
               {
                 q: `When is a hand-rolled state machine the right call?`,
-                a: `Small, stable flow (a few states), no long waits, no human tasks, and you want zero new infrastructure — e.g. PENDING → PAID → SHIPPED.`
+                a: `Small, stable flow (a few states), no long waits, no human tasks, and you want zero new infrastructure — e.g. PENDING -> PAID -> SHIPPED.`
               },
               {
                 q: `When is a saga library the better fit than an engine?`,
@@ -53390,7 +53390,7 @@ public class MiniStateMachine {
               },
               {
                 q: `What three axes should drive the engine-or-not decision?`,
-                a: `Coordination complexity × time horizon × who needs visibility. Low/low/engineers → state machine; high distributed-TX framework-native → saga library; high/long-lived/business-visible → engine.`
+                a: `Coordination complexity x time horizon x who needs visibility. Low/low/engineers -> state machine; high distributed-TX framework-native -> saga library; high/long-lived/business-visible -> engine.`
               },
               {
                 q: `Why is "the model is the spec" a differentiator for engines?`,
@@ -53592,7 +53592,7 @@ Camunda 7’s state is in an RDBMS, and the JobExecutor coordinates via DB row l
 - **RocksDB** — each broker keeps local materialized state in embedded RocksDB (not a shared RDBMS). No central database to contend on.
 - **gRPC API** — clients (your services) talk to the **gateway** over gRPC (deploy, create instance, activate jobs, complete/fail job, publish message).
 - **Job workers** — your code no longer runs inside the engine. Workers **poll/stream jobs** of a given **type** from the gateway, do the work, and report back. Pure pull, no engine-embedded delegates.
-- **Exporters → Elasticsearch/OpenSearch** — Zeebe brokers stay lean; they **export** the processed event stream to an exporter. The default exporter writes to **Elasticsearch**, which powers **Operate** (monitoring), **Tasklist** (human tasks), and **Optimize** (analytics). Zeebe itself does not serve queries/history.
+- **Exporters -> Elasticsearch/OpenSearch** — Zeebe brokers stay lean; they **export** the processed event stream to an exporter. The default exporter writes to **Elasticsearch**, which powers **Operate** (monitoring), **Tasklist** (human tasks), and **Optimize** (analytics). Zeebe itself does not serve queries/history.
 
 \`\`\`mermaid
 flowchart TB
@@ -53629,7 +53629,7 @@ flowchart TB
 | Transaction with your DB | Possible (shared DS) | Not possible — must use idempotency |
 
 > [!DANGER]
-> The biggest mental shift: in Camunda 8 there is **no shared transaction** between the engine and your database. A job worker completes its business write and then acks the job over gRPC as two separate steps. The ack can fail after the write succeeds → the job is re-activated → your worker runs again. **At-least-once is now unavoidable; idempotent workers are mandatory, not optional.**
+> The biggest mental shift: in Camunda 8 there is **no shared transaction** between the engine and your database. A job worker completes its business write and then acks the job over gRPC as two separate steps. The ack can fail after the write succeeds -> the job is re-activated -> your worker runs again. **At-least-once is now unavoidable; idempotent workers are mandatory, not optional.**
 
 > [!TIP]
 > "Why two products?" Camunda 7 = strong consistency, embedded, on-prem-easy, RDBMS-bound scale. Camunda 8 = horizontal scale, polyglot workers, SaaS-first, but you operate (or buy) a Zeebe + Elasticsearch stack and give up shared transactions.
@@ -53780,13 +53780,13 @@ These are **not** "old vs new where new always wins." They are two architectures
 > Lean **Camunda 8** when: you need **horizontal scale** / very high instance volume; you want **polyglot** workers (Go, Node, .NET) not just Java; you want **SaaS** (no engine to operate) or you’re already a Kubernetes/Elasticsearch shop; you’re green-field and want Camunda’s strategic direction.
 
 > [!WARNING]
-> Migration cost from 7 → 8 is **not** a version bump. Different execution model (no shared TX), different worker API (gRPC job workers vs delegates), different querying (Elasticsearch not SQL), and BPMN feature differences (Zeebe historically supported a subset; FEEL replaces JUEL expressions). Treat it as a re-platform with a re-test of every process, not an upgrade.
+> Migration cost from 7 -> 8 is **not** a version bump. Different execution model (no shared TX), different worker API (gRPC job workers vs delegates), different querying (Elasticsearch not SQL), and BPMN feature differences (Zeebe historically supported a subset; FEEL replaces JUEL expressions). Treat it as a re-platform with a re-test of every process, not an upgrade.
 
 > [!DANGER]
 > Don’t pick Camunda 8 for a low-volume internal monolith just because it’s newer. You’ll operate a Zeebe + Elasticsearch cluster and lose shared transactions to solve a scaling problem you don’t have. Conversely, don’t force Camunda 7 to do 10k+ instances/sec — you’ll be tuning a database into the ground.
 
 > [!SUCCESS]
-> The senior framing for "7 or 8?": **scale + polyglot + deployment model** drive it. Need shared transactions, on-prem-simple, Java, moderate volume → 7. Need horizontal scale, polyglot, SaaS-or-K8s → 8. Name the lost capability (shared TX) and the gained operational cost explicitly.`,
+> The senior framing for "7 or 8?": **scale + polyglot + deployment model** drive it. Need shared transactions, on-prem-simple, Java, moderate volume -> 7. Need horizontal scale, polyglot, SaaS-or-K8s -> 8. Name the lost capability (shared TX) and the gained operational cost explicitly.`,
             code: [
               {
                 lang: `text`,
@@ -53827,7 +53827,7 @@ Always state the trade-off you accept:
                 a: `Camunda 7 scales vertically (bigger shared RDBMS); Camunda 8/Zeebe scales horizontally by adding partitions and brokers.`
               },
               {
-                q: `Why is a 7 → 8 migration a re-platform, not an upgrade?`,
+                q: `Why is a 7 -> 8 migration a re-platform, not an upgrade?`,
                 a: `Different execution model (no shared TX), different worker API (gRPC job workers vs delegates), Elasticsearch instead of SQL querying, FEEL instead of JUEL, and BPMN feature differences — every process must be re-tested.`
               },
               {
@@ -53874,7 +53874,7 @@ You implement service tasks three ways:
 3. **External task worker** — BPMN marks the task \`camunda:type="external" camunda:topic="..."\`; a worker (same app or separate) **polls** the topic via the External Task API. This decouples the worker from the engine even in Camunda 7 — the conceptual bridge to Camunda 8’s job workers.
 
 > [!TIP]
-> Use **delegates** when you want transactional, in-process work and a Java monolith. Use **external tasks** when you want to decouple/scale workers independently, use a non-Java worker, or you’re planning a path to Camunda 8 (external task ≈ job worker).
+> Use **delegates** when you want transactional, in-process work and a Java monolith. Use **external tasks** when you want to decouple/scale workers independently, use a non-Java worker, or you’re planning a path to Camunda 8 (external task ~ job worker).
 
 ### Camunda 8: spring-zeebe (spring-boot-starter-camunda-sdk)
 Add the Spring Zeebe starter, annotate the app with \`@Deployment(resources = "classpath:*.bpmn")\` to auto-deploy, and implement workers with \`@JobWorker(type = "...")\`. The starter manages the gRPC client, polling, retries, and back-pressure handling. There are **no JavaDelegates** — everything is an out-of-process worker.
@@ -53895,7 +53895,7 @@ flowchart LR
 > A JavaDelegate that throws an unchecked exception **rolls back the engine transaction** to the last commit — if there’s no async boundary before it, you can roll back more than the failed step. External tasks/job workers fail explicitly (\`handleFailure\`/throwing), giving precise retry control. Prefer explicit failure handling for anything that calls out.
 
 > [!SUCCESS]
-> Mapping to remember: Camunda 7 **JavaDelegate** (in-process, shared TX) ≈ a monolith pattern; Camunda 7 **external task** and Camunda 8 **@JobWorker** (out-of-process, pull-based, at-least-once) ≈ the distributed pattern. The external-task API is the migration bridge between the two worlds.`,
+> Mapping to remember: Camunda 7 **JavaDelegate** (in-process, shared TX) ~ a monolith pattern; Camunda 7 **external task** and Camunda 8 **@JobWorker** (out-of-process, pull-based, at-least-once) ~ the distributed pattern. The external-task API is the migration bridge between the two worlds.`,
             code: [
               {
                 lang: `java`,
@@ -54071,14 +54071,14 @@ Both engines are **at-least-once**. In Camunda 8 there is no shared TX so it’s
 
 ### Retries, incidents, and back-pressure
 - **Retries**: configure count + backoff (\`retryTimeCycle\` in 7; worker/job retries in 8). Transient faults self-heal.
-- **Incidents**: retries exhausted → incident; the instance pauses. Monitor incident counts and **alert** — an incident is unhandled work, often a downstream outage or a bad payload.
+- **Incidents**: retries exhausted -> incident; the instance pauses. Monitor incident counts and **alert** — an incident is unhandled work, often a downstream outage or a bad payload.
 - **Back-pressure (Camunda 8 specifically)**: if brokers can’t keep up, the gateway **rejects** commands with a back-pressure (RESOURCE_EXHAUSTED) error. Clients must **retry with backoff**, not hammer. The spring-zeebe client handles much of this; your own command callers (createInstance, publishMessage) must handle the rejection.
 
 > [!WARNING]
 > Don’t set retries to a huge number to "hide" failures — you just delay the incident and keep re-driving a broken downstream. Set sane retries (e.g. 3–5 with exponential backoff) and let real failures surface as incidents you can see and act on.
 
 ### Versioning & migrating running instances
-- New deploy → new version; **running instances stay on their version** (both engines).
+- New deploy -> new version; **running instances stay on their version** (both engines).
 - Long-lived instances mean **many versions live at once** — keep old definitions deployable.
 - To move running instances onto a new version, use **migration**: Camunda 7 \`MigrationPlan\` (mature), Camunda 8 migration (supported, evolving). A token on a removed/renamed activity needs an explicit mapping or migration fails.
 - Keep **activity ids stable**; treat them as API.
@@ -54237,7 +54237,7 @@ camunda:
               },
               {
                 q: `How do you move running instances onto a new version, and what breaks it?`,
-                a: `Instance migration (Camunda 7 MigrationPlan; Camunda 8 migration) with an old→new activity-id mapping; a token on a removed/renamed activity with no mapping fails migration.`
+                a: `Instance migration (Camunda 7 MigrationPlan; Camunda 8 migration) with an old->new activity-id mapping; a token on a removed/renamed activity with no mapping fails migration.`
               },
               {
                 q: `How do you test a Camunda 7 process definition?`,
@@ -54438,7 +54438,7 @@ An **inode** stores a file's metadata (owner, perms, size, timestamps, link coun
 - You can run out of inodes while having free disk space — \`df -i\` shows inode usage. Classic cause: millions of tiny files.
 
 > [!TIP]
-> "Disk full but \`df\` shows space free" → check \`df -i\` (inodes exhausted) **or** a deleted-but-still-open file (\`lsof | grep deleted\`). Space is reclaimed only when the last fd closes.
+> "Disk full but \`df\` shows space free" -> check \`df -i\` (inodes exhausted) **or** a deleted-but-still-open file (\`lsof | grep deleted\`). Space is reclaimed only when the last fd closes.
 
 ### Permissions: rwx, chmod, chown
 Each file has owner/group/other triplets of read(4)/write(2)/execute(1).
@@ -54584,7 +54584,7 @@ Swap:          2.0Gi          0B       2.0Gi
 \`uptime\` / \`top\` show three numbers: 1-, 5-, 15-minute averages of the number of tasks **runnable or in uninterruptible (D) sleep**.
 
 > [!TIP]
-> Compare load to **core count**. On an 8-core box, load 8.0 ≈ fully utilized; 16.0 ≈ tasks waiting twice as long as they run. Crucially, Linux load includes \`D\`-state (I/O-blocked) tasks, so **high load with low CPU% means you are I/O-bound, not CPU-bound** — a frequent senior gotcha.
+> Compare load to **core count**. On an 8-core box, load 8.0 ~ fully utilized; 16.0 ~ tasks waiting twice as long as they run. Crucially, Linux load includes \`D\`-state (I/O-blocked) tasks, so **high load with low CPU% means you are I/O-bound, not CPU-bound** — a frequent senior gotcha.
 
 | Symptom | Likely cause |
 |---------|-------------|
@@ -54595,8 +54595,8 @@ Swap:          2.0Gi          0B       2.0Gi
 
 ### vmstat
 \`vmstat 1\` is the fastest whole-box triage. Watch:
-- \`r\` (run queue) high → CPU pressure; \`b\` (blocked) high → I/O.
-- \`si\`/\`so\` (swap in/out) **non-zero → you are swapping → latency disaster**. Healthy boxes show 0.
+- \`r\` (run queue) high -> CPU pressure; \`b\` (blocked) high -> I/O.
+- \`si\`/\`so\` (swap in/out) **non-zero -> you are swapping -> latency disaster**. Healthy boxes show 0.
 - \`us\`/\`sy\`/\`id\`/\`wa\` — user/system/idle/iowait CPU split.
 
 ### The OOM killer
@@ -54852,7 +54852,7 @@ A thread entry looks like:
 \`\`\`
 - **State:** RUNNABLE (on CPU / runnable), BLOCKED (waiting on a monitor someone else holds), WAITING/TIMED_WAITING (parked, e.g. queue/lock/sleep).
 - **\`nid\`** is the OS thread id in hex — match it to \`top -H\` output to pin the CPU hog.
-- **Many BLOCKED on the same lock** → contention/deadlock. jstack prints an explicit \`Found one Java-level deadlock\` section when it detects one.
+- **Many BLOCKED on the same lock** -> contention/deadlock. jstack prints an explicit \`Found one Java-level deadlock\` section when it detects one.
 - Take **2-3 dumps a few seconds apart**: threads stuck on the same frame across all dumps are truly stuck; threads that move are just busy.
 
 > [!DANGER]
@@ -54872,8 +54872,8 @@ A thread entry looks like:
 > \`strace\` is invaluable but **pauses the target on every syscall** — it can massively slow a hot process. Use it briefly, target one thread (\`-p <tid>\`), filter (\`-e trace=network\`), and never leave it attached to a latency-sensitive prod process. Prefer \`-c\` for a syscall summary over a short window.
 
 ### Socket states worth recognizing
-- **Many \`CLOSE_WAIT\`** → *your* app is not closing sockets the peer already closed → a connection/fd leak in your code.
-- **Many \`TIME_WAIT\`** → normal for a busy client that opens many short connections; usually benign (kernel-tuned).
+- **Many \`CLOSE_WAIT\`** -> *your* app is not closing sockets the peer already closed -> a connection/fd leak in your code.
+- **Many \`TIME_WAIT\`** -> normal for a busy client that opens many short connections; usually benign (kernel-tuned).
 
 \`\`\`mermaid
 flowchart TD
@@ -55013,8 +55013,8 @@ flowchart TB
 
 An **IPv4** address is 32 bits (4 octets, e.g. \`10.20.30.40\`). **CIDR** notation \`a.b.c.d/n\` says the first **n** bits are the *network prefix*; the rest identify hosts.
 
-- \`/24\` → 24 network bits, 8 host bits → **256** addresses (254 usable; .0 network, .255 broadcast). Mask \`255.255.255.0\`.
-- \`/16\` → 65,536 addresses. \`/32\` → exactly one host (used in firewall rules, route targets).
+- \`/24\` -> 24 network bits, 8 host bits -> **256** addresses (254 usable; .0 network, .255 broadcast). Mask \`255.255.255.0\`.
+- \`/16\` -> 65,536 addresses. \`/32\` -> exactly one host (used in firewall rules, route targets).
 - **Subnetting** = borrowing host bits to make more, smaller networks. \`10.0.0.0/8\` split into \`/24\`s gives you 65k subnets of 254 hosts.
 
 **Private (RFC 1918) ranges** — never routed on the public internet:
@@ -55028,7 +55028,7 @@ An **IPv4** address is 32 bits (4 octets, e.g. \`10.20.30.40\`). **CIDR** notati
 
 ## Routing, NAT, ports & ARP
 
-- **Routing**: each hop consults its routing table (longest-prefix match) to pick the next hop. The **default route** \`0.0.0.0/0\` is "anything I don't have a more specific route for → send to the gateway." TTL decrements per hop; hits 0 → ICMP Time Exceeded (this is how \`traceroute\` works).
+- **Routing**: each hop consults its routing table (longest-prefix match) to pick the next hop. The **default route** \`0.0.0.0/0\` is "anything I don't have a more specific route for -> send to the gateway." TTL decrements per hop; hits 0 -> ICMP Time Exceeded (this is how \`traceroute\` works).
 - **NAT** (Network Address Translation): your router rewrites the private source IP+port to its public IP+port and tracks the mapping in a translation table, so many internal hosts share one public IP. **PAT/NAPT** multiplexes on port. Breaks the end-to-end principle — inbound connections need port-forwarding or hole-punching (STUN/TURN).
 - **Ports**: 16-bit (0–65535). Well-known < 1024 (80, 443, 22, 53). The 4-tuple \`(srcIP, srcPort, dstIP, dstPort)\` uniquely identifies a TCP connection — that's why one server port can hold thousands of simultaneous client connections.
 - **ARP** (Address Resolution Protocol): maps an IP to a MAC *within a LAN*. "Who has 10.0.0.5? Tell 10.0.0.1." Broadcast question, unicast answer, cached. Layer 2/3 glue.
@@ -55058,7 +55058,7 @@ sequenceDiagram
   B->>B: 6. Parse HTML, fetch sub-resources, render
 \`\`\`
 
-The full journey: **URL parse → HSTS → DNS → ARP for gateway → TCP 3-way handshake → TLS handshake → HTTP request → response → render**. A senior answer names the layer at each step and the failure mode (NXDOMAIN, connection refused/RST, cert error, 5xx).
+The full journey: **URL parse -> HSTS -> DNS -> ARP for gateway -> TCP 3-way handshake -> TLS handshake -> HTTP request -> response -> render**. A senior answer names the layer at each step and the failure mode (NXDOMAIN, connection refused/RST, cert error, 5xx).
 
 > [!SUCCESS]
 > Strong framing for interviews: "Every step is a place latency and failure can hide. DNS adds a round trip (cacheable via TTL), TCP adds one RTT, TLS adds one more (1.3) — that's why CDNs terminate close to the user and why we measure TTFB."`,
@@ -55204,13 +55204,13 @@ sequenceDiagram
   Note over A: CLOSED (after timer)
 \`\`\`
 
-Four-way teardown (each direction closes independently). The side that closes *first* (usually the client) enters **TIME_WAIT** for 2×MSL (~60s on Linux).
+Four-way teardown (each direction closes independently). The side that closes *first* (usually the client) enters **TIME_WAIT** for 2xMSL (~60s on Linux).
 
 > [!WARNING]
 > **Why TIME_WAIT matters at scale:** it exists to (1) absorb delayed/duplicate segments from the old connection so they don't corrupt a *new* connection reusing the same 4-tuple, and (2) ensure the final ACK is delivered. A busy proxy that initiates and closes millions of short connections accumulates huge TIME_WAIT counts and can exhaust local ports. Mitigation: keep-alive/connection reuse, make the *server* close first when possible, \`tcp_tw_reuse\`. Avoid the deprecated \`tcp_tw_recycle\` (breaks NAT).
 
 ### Reliability machinery
-- **Sequencing & ACKs**: every byte numbered; receiver ACKs the next expected byte. Lost segment ⇒ retransmit (fast retransmit on 3 duplicate ACKs, or RTO timeout).
+- **Sequencing & ACKs**: every byte numbered; receiver ACKs the next expected byte. Lost segment => retransmit (fast retransmit on 3 duplicate ACKs, or RTO timeout).
 - **Flow control**: the **receive window (rwnd)** advertised in each ACK throttles the sender to what the receiver can buffer. Window=0 stalls the sender (zero-window probes).
 - **Congestion control**: protects the *network*. Slow start (exponential cwnd growth), congestion avoidance (linear), then react to loss. Algorithms: CUBIC (Linux default), **BBR** (Google, models bandwidth+RTT instead of treating loss as congestion).
 - **Head-of-line (HOL) blocking**: because TCP guarantees in-order delivery, one lost segment stalls *all* bytes behind it even if they already arrived. This is TCP's structural weakness and the reason HTTP/2-over-TCP still suffers HOL blocking (solved by HTTP/3 over QUIC).
@@ -55364,7 +55364,7 @@ DNS turns a name (\`www.example.com\`) into an address and other metadata. It's 
 
 - **Stub resolver** — the tiny client in your OS/app.
 - **Recursive resolver** (your ISP, 8.8.8.8, 1.1.1.1) — does the legwork, caches results, returns the final answer.
-- **Authoritative server** — holds the actual zone data; it's the source of truth for its domain. *Root* → *TLD* (\`.com\`) → *domain* authoritative.
+- **Authoritative server** — holds the actual zone data; it's the source of truth for its domain. *Root* -> *TLD* (\`.com\`) -> *domain* authoritative.
 
 \`\`\`mermaid
 sequenceDiagram
@@ -55385,22 +55385,22 @@ sequenceDiagram
 \`\`\`
 
 > [!TIP]
-> The recursive resolver does the iterative walk (root → TLD → authoritative); the app just asks once. "Recursive" describes the *service contract* (give me the final answer); "iterative" describes the *walk* the resolver performs. Senior candidates keep these straight.
+> The recursive resolver does the iterative walk (root -> TLD -> authoritative); the app just asks once. "Recursive" describes the *service contract* (give me the final answer); "iterative" describes the *walk* the resolver performs. Senior candidates keep these straight.
 
 ## Record types you must know
 
 | Record | Maps | Notes |
 |---|---|---|
-| **A** | name → IPv4 | the workhorse |
-| **AAAA** | name → IPv6 | quad-A |
-| **CNAME** | name → another name (alias) | cannot coexist with other records at same node; not allowed at zone apex |
-| **MX** | domain → mail servers (+ priority) | lower priority value wins |
-| **TXT** | name → free text | SPF, DKIM, domain ownership verification |
-| **NS** | zone → authoritative name servers | the delegation glue |
-| **SOA** | zone → start-of-authority (serial, refresh, TTL) | one per zone |
-| **PTR** | IP → name | reverse DNS (in-addr.arpa) |
-| **SRV** | service → host:port | used by SIP, LDAP, Kubernetes |
-| **CAA** | domain → which CAs may issue certs | hardening |
+| **A** | name -> IPv4 | the workhorse |
+| **AAAA** | name -> IPv6 | quad-A |
+| **CNAME** | name -> another name (alias) | cannot coexist with other records at same node; not allowed at zone apex |
+| **MX** | domain -> mail servers (+ priority) | lower priority value wins |
+| **TXT** | name -> free text | SPF, DKIM, domain ownership verification |
+| **NS** | zone -> authoritative name servers | the delegation glue |
+| **SOA** | zone -> start-of-authority (serial, refresh, TTL) | one per zone |
+| **PTR** | IP -> name | reverse DNS (in-addr.arpa) |
+| **SRV** | service -> host:port | used by SIP, LDAP, Kubernetes |
+| **CAA** | domain -> which CAs may issue certs | hardening |
 
 > [!WARNING]
 > **CNAME at the apex** (\`example.com\` itself) is illegal because the apex must carry SOA/NS records and CNAME can't coexist. Providers fake it with ALIAS/ANAME/flattening. Bite a lot of teams pointing a root domain at a CDN.
@@ -55545,7 +55545,7 @@ flowchart TB
 \`\`\`
 
 Validation the client performs:
-1. Build the chain leaf → intermediate(s) → a root in its **trust store**.
+1. Build the chain leaf -> intermediate(s) -> a root in its **trust store**.
 2. Verify each signature, validity dates, **name match** (SAN must include the hostname; CN is legacy).
 3. Check **revocation** (CRL, or OCSP / OCSP stapling — server staples a fresh signed "still valid" proof to avoid a client-side OCSP round trip).
 
@@ -55554,7 +55554,7 @@ Validation the client performs:
 
 ## SNI & mutual TLS
 
-- **SNI (Server Name Indication)**: the client puts the target hostname in the ClientHello (in cleartext in TLS ≤1.3, unless ECH) so a server hosting many domains on one IP picks the right cert. Without SNI, virtual hosting over HTTPS is impossible. **ECH (Encrypted Client Hello)** is the emerging fix to hide SNI from on-path observers.
+- **SNI (Server Name Indication)**: the client puts the target hostname in the ClientHello (in cleartext in TLS <=1.3, unless ECH) so a server hosting many domains on one IP picks the right cert. Without SNI, virtual hosting over HTTPS is impossible. **ECH (Encrypted Client Hello)** is the emerging fix to hide SNI from on-path observers.
 - **Mutual TLS (mTLS)**: the *client* also presents a certificate and the server validates it. Used for service-to-service auth in zero-trust meshes (Istio/Linkerd), high-security APIs. Authentication becomes bidirectional — no bearer tokens to leak.
 
 > [!EU]
@@ -55687,8 +55687,8 @@ Content-Length: 57
 |---|---|---|
 | 201 Created | resource created | return \`Location\` header pointing to it |
 | 204 No Content | success, empty body | PUT/DELETE that returns nothing |
-| 301 vs 308 | permanent redirect | 301 historically lets clients switch POST→GET; **308 preserves method+body** |
-| 302 vs 307 | temporary redirect | 307 **preserves method+body**, 302 often degrades POST→GET |
+| 301 vs 308 | permanent redirect | 301 historically lets clients switch POST->GET; **308 preserves method+body** |
+| 302 vs 307 | temporary redirect | 307 **preserves method+body**, 302 often degrades POST->GET |
 | 304 Not Modified | conditional GET hit | revalidation via ETag/If-None-Match — saves bandwidth, keeps caching |
 | 401 vs 403 | auth | 401 = *not authenticated* (who are you?); 403 = *authenticated but not allowed* |
 | 409 Conflict | state conflict | optimistic-concurrency / version clash |
@@ -55701,7 +55701,7 @@ Content-Length: 57
 
 ## Headers that matter
 
-- **Caching**: \`Cache-Control: max-age=60, must-revalidate, no-store, private/public\`; \`ETag\` + \`If-None-Match\` (validation token) or \`Last-Modified\` + \`If-Modified-Since\` → **304**. \`Vary\` tells caches which request headers change the response.
+- **Caching**: \`Cache-Control: max-age=60, must-revalidate, no-store, private/public\`; \`ETag\` + \`If-None-Match\` (validation token) or \`Last-Modified\` + \`If-Modified-Since\` -> **304**. \`Vary\` tells caches which request headers change the response.
 - **Content negotiation**: \`Accept\`, \`Accept-Encoding\` (gzip/br), \`Accept-Language\`, \`Content-Type\`.
 - **CORS**: browser same-origin policy gate. Simple requests check \`Access-Control-Allow-Origin\`; non-simple ones do an **OPTIONS preflight** checking \`Allow-Methods/Headers\`. CORS is enforced by the *browser*, not the server — it's not a server-side security boundary.
 - **Cookies**: \`Set-Cookie: id=…; Secure; HttpOnly; SameSite=Lax\`. HttpOnly hides from JS (XSS mitigation), Secure = HTTPS-only, SameSite mitigates CSRF.
@@ -55728,7 +55728,7 @@ flowchart LR
 | Feature | HTTP/1.1 | HTTP/2 | HTTP/3 |
 |---|---|---|---|
 | Transport | TCP | TCP | **QUIC over UDP** |
-| Concurrency | 1/conn (≈6 conns) | multiplexed streams | multiplexed streams |
+| Concurrency | 1/conn (~6 conns) | multiplexed streams | multiplexed streams |
 | Header compression | none (plaintext) | **HPACK** | QPACK |
 | Server push | no | yes (largely deprecated) | yes (rare) |
 | HOL blocking | app + TCP | **TCP-level only** | **none** |
@@ -55863,7 +55863,7 @@ Content-Length: 1256\\r\\n
 | Approach | Direction | Transport | Best for | Watch out |
 |---|---|---|---|---|
 | **Long-polling** | client pulls | repeated HTTP | legacy fallback | latency, connection churn |
-| **SSE** (Server-Sent Events) | server → client only | one HTTP/1.1+ stream | live feeds, notifications, token streaming | one-way; ~6-conn limit on HTTP/1.1; auto-reconnect built in |
+| **SSE** (Server-Sent Events) | server -> client only | one HTTP/1.1+ stream | live feeds, notifications, token streaming | one-way; ~6-conn limit on HTTP/1.1; auto-reconnect built in |
 | **WebSocket** | full duplex | \`Upgrade\` from HTTP to ws/wss | chat, games, collaborative editing | not request/response; needs its own auth, backpressure, LB stickiness |
 
 > [!SUCCESS]
@@ -55912,7 +55912,7 @@ The senior set-piece — name them and how they interact:
 - **Rate limiting / load shedding** — token bucket / sliding window; return **429 + Retry-After**. Shed load (drop low-priority traffic) before you fall over. Bulkheads isolate pools so one dependency can't drown the rest.
 
 > [!DANGER]
-> **Retries + missing timeouts = built-in amplification attack on yourself.** A blip causes everyone to retry simultaneously, multiplying load on an already-struggling service (retry storm). Always combine: bounded timeout → bounded retries with jittered backoff → circuit breaker → 429/load-shed. Interviewers specifically probe whether you know retries alone are dangerous.
+> **Retries + missing timeouts = built-in amplification attack on yourself.** A blip causes everyone to retry simultaneously, multiplying load on an already-struggling service (retry storm). Always combine: bounded timeout -> bounded retries with jittered backoff -> circuit breaker -> 429/load-shed. Interviewers specifically probe whether you know retries alone are dangerous.
 
 > [!EU]
 > When designing the edge for EU traffic, terminate TLS and apply rate limiting/WAF within the data-residency region, and ensure observability (logs with IPs, headers) respects GDPR — pseudonymise/limit retention of client IPs captured via X-Forwarded-For.`,
@@ -56897,10 +56897,10 @@ This question is not hostility — it is the rubric forcing itself into the room
 
 > [!SUCCESS]
 > Drill-proof answers survive this ladder:
-> 1. "What was your specific role?" → have a one-sentence role statement ready.
-> 2. "Who else was involved and what did they do?" → crediting others *precisely* proves you know the boundary of your own contribution.
-> 3. "What would have happened if you weren't there?" → the honest counterfactual is your value.
-> 4. "Walk me through the exact conversation/commit/decision." → have ONE zoom-in detail per story: an actual sentence you said, a config value, a graph you showed.
+> 1. "What was your specific role?" -> have a one-sentence role statement ready.
+> 2. "Who else was involved and what did they do?" -> crediting others *precisely* proves you know the boundary of your own contribution.
+> 3. "What would have happened if you weren't there?" -> the honest counterfactual is your value.
+> 4. "Walk me through the exact conversation/commit/decision." -> have ONE zoom-in detail per story: an actual sentence you said, a config value, a graph you showed.
 
 If you genuinely can't answer a drill question, say so and offer the nearest real detail: "I don't remember the exact figure, but the order of magnitude was X, and I remember it because..." — recovering honestly scores better than improvising a fact you may be asked to defend two questions later.`,
             code: [
@@ -56998,9 +56998,9 @@ You do not need 40 stories. You need **8–10 well-chosen ones**, each drill-pro
 5. **Things you got wrong** — with real cost
 6. **Times you changed a decision above your pay grade** (influence)
 
-Then select for **coverage** using a competency × story matrix:
+Then select for **coverage** using a competency x story matrix:
 
-### The competency × story matrix (fill in your own)
+### The competency x story matrix (fill in your own)
 
 | Your story (working title) | Ownership | Conflict | Influence | Failure | Mentoring | Pressure |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
@@ -57023,7 +57023,7 @@ Then select for **coverage** using a competency × story matrix:
 > [!WARNING]
 > The two stories below are **templates to adapt to your own experience — not scripts to copy**. Interviewers at major employers have heard every canned story on the internet. Replace every fact with your own; keep only the *structure* and the *level of specificity*.
 
-See the two code blocks below: **Template A** (production incident owned end-to-end → Ownership + Pressure) and **Template B** (technical disagreement with a senior colleague resolved with data → Conflict + Influence).
+See the two code blocks below: **Template A** (production incident owned end-to-end -> Ownership + Pressure) and **Template B** (technical disagreement with a senior colleague resolved with data -> Conflict + Influence).
 
 ### One story, many questions
 
@@ -57143,7 +57143,7 @@ as a concrete act; decision rule agreed before data; a real concession
                 a: `Incidents you owned; deliveries/migrations under a hard constraint; disagreements (technical and interpersonal); people you grew; things you got wrong with real cost; times you changed a decision above your pay grade.`
               },
               {
-                q: `What is the competency × story matrix and what two rules govern it?`,
+                q: `What is the competency x story matrix and what two rules govern it?`,
                 a: `A table mapping each story to the competencies it can evidence (Primary/secondary). Rules: every competency column needs one P and one s; every story row must serve at least 2 competencies or it's cut.`
               },
               {
@@ -57317,7 +57317,7 @@ For each classic: the hidden rubric, the red flags, and a weak-vs-strong sketch.
 
 | Topic | Germany | Netherlands | Nordics (SE/DK/NO/FI) |
 |---|---|---|---|
-| Quoted as | Annual gross (Brutto), often ×12 or ×13 payments — ask which | Annual gross incl. 8% statutory holiday allowance — ask if included | Monthly gross is common — convert carefully to annual |
+| Quoted as | Annual gross (Brutto), often x12 or x13 payments — ask which | Annual gross incl. 8% statutory holiday allowance — ask if included | Monthly gross is common — convert carefully to annual |
 | Extras to probe | Bonus %, car/transport, pension top-up | 30% ruling eligibility (huge net difference), 13th month, pension | Pension contributions (often generous), collective agreements, vacation (25–30 days norm) |
 | Range culture | Ranges increasingly published (EU Pay Transparency Directive rolling in) | Often shared by recruiter if asked directly | Compressed bands, smaller spread junior↔senior than US/UK |
 | When to name a number | Deflect once ("I'd like to understand the role's band first"), then give a researched range | Same; Dutch directness means a straight question — a straight range answer works well | Name a range confidently but expect less headroom; over-anchoring can price you out |
@@ -57325,7 +57325,7 @@ For each classic: the hidden rubric, the red flags, and a weak-vs-strong sketch.
 **When to name a number:** first, try to get the band ("could you share the budgeted range for this role?" — increasingly answerable under EU pay-transparency rules). If pressed, give a **researched range** anchored to local market data (levels.fyi has EU data; local sources: Gehalt.de/kununu for DE, Loonwijzer/Intermediair for NL, union stats in Nordics) and state it as gross annual including what you know of bonus/holiday allowance. Account for the **net difference**: NL with 30% ruling can beat a nominally higher German gross; Nordic taxes are higher but pensions/benefits are substantial.
 
 > [!WARNING]
-> Comparing offers across countries by gross salary alone is the classic relocation mistake. Model: net after tax (with/without 30% ruling), pension contributions, vacation days, healthcare setup, and cost of living (Munich ≠ Leipzig, Amsterdam ≠ Eindhoven).
+> Comparing offers across countries by gross salary alone is the classic relocation mistake. Model: net after tax (with/without 30% ruling), pension contributions, vacation days, healthcare setup, and cost of living (Munich != Leipzig, Amsterdam != Eindhoven).
 
 ## Working language & cultural notes
 
@@ -57470,7 +57470,7 @@ A senior system-design round is scored on **how you think out loud**, not on whe
 The single strongest senior signal is **driving**: you propose the agenda, you decide what to deepen, you check in ("I'd like to go deep on the storage layer next — or is there an area you'd rather explore?"). Being dragged looks like: silence until prompted, answering exactly what was asked and stopping, waiting for permission before every move.
 
 > [!TIP]
-> Driving is not monologuing. The rhythm is: **propose → check → proceed**. "I'll start with requirements, then estimate scale, then the API and data model, then the high-level design, and we'll go deep wherever it's most interesting — does that work for you?" Ten seconds, and you've already banked the structure points.
+> Driving is not monologuing. The rhythm is: **propose -> check -> proceed**. "I'll start with requirements, then estimate scale, then the API and data model, then the high-level design, and we'll go deep wherever it's most interesting — does that work for you?" Ten seconds, and you've already banked the structure points.
 
 ### Collaboration signals interviewers write down
 
@@ -57503,7 +57503,7 @@ A mid-level engineer names concepts; a senior *ranks* them for the situation at 
               },
               {
                 q: `What does 'driving vs being dragged' mean, and what's the rhythm of healthy driving?`,
-                a: `Driving: you propose the agenda, choose deep-dive areas, and check in. Dragged: silence until prompted, minimal answers. Rhythm: propose → check → proceed ('I'll do requirements, estimation, API, design, then deep dives — does that work?').`
+                a: `Driving: you propose the agenda, choose deep-dive areas, and check in. Dragged: silence until prompted, minimal answers. Rhythm: propose -> check -> proceed ('I'll do requirements, estimation, API, design, then deep dives — does that work?').`
               },
               {
                 q: `How should you interpret almost any interviewer question mid-design?`,
@@ -57549,7 +57549,7 @@ A mid-level engineer names concepts; a senior *ranks* them for the situation at 
 
 One framework, rehearsed until automatic, so your working memory goes to the *problem* instead of the *process*:
 
-**Requirements → Estimation → API → Data model → High-level design → Deep dives → Wrap**
+**Requirements -> Estimation -> API -> Data model -> High-level design -> Deep dives -> Wrap**
 
 \`\`\`mermaid
 flowchart TD
@@ -57571,22 +57571,22 @@ flowchart TD
 | 3. API | 3 min | 5 min | 3–5 core endpoints, no exhaustive CRUD |
 | 4. Data model | 4 min | 5 min | Main entities, the partition/primary key question raised |
 | 5. High-level design | 10 min | 13 min | Every requirement traceable to a box; a request traced end-to-end |
-| 6. Deep dives (×2) | 15 min | 20 min | Chosen jointly; each dive names a failure mode + mitigation |
+| 6. Deep dives (x2) | 15 min | 20 min | Chosen jointly; each dive names a failure mode + mitigation |
 | 7. Wrap | 3 min | 5 min | Bottlenecks named, evolution path stated |
 
 > [!WARNING]
-> The budget's job is the **exit criteria**, not the stopwatch. Requirements past 8 minutes is stalling; estimation past 5 minutes is arithmetic theater — round aggressively (100k/day ≈ 1/s sustained, ~×10 for peak; 86,400 ≈ 10^5 seconds/day) and *draw a conclusion*: "that's ~2 TB/year — fits one Postgres primary for years, so no sharding on day one."
+> The budget's job is the **exit criteria**, not the stopwatch. Requirements past 8 minutes is stalling; estimation past 5 minutes is arithmetic theater — round aggressively (100k/day ~ 1/s sustained, ~x10 for peak; 86,400 ~ 10^5 seconds/day) and *draw a conclusion*: "that's ~2 TB/year — fits one Postgres primary for years, so no sharding on day one."
 
 ### Transition phrases — the connective tissue
 
 Stage transitions are where structure points are won. Memorize the *function* of each phrase, adapt the words:
 
 - **Into requirements:** "Before I draw anything, let me confirm scope — who are the users, what are the top three operations, and what scale are we designing for?"
-- **Requirements → estimation:** "I think I have enough to size this. Let me do quick math to see what class of problem we're in."
-- **Estimation → API:** "So we're read-heavy at roughly 10:1 — that will shape everything. Let me pin the API before the boxes."
-- **API → data model:** "These endpoints imply three core entities — let me sketch how they're stored, because the partition key choice will drive the design."
-- **Data model → high-level:** "Now I'll draw the end-to-end picture — I'll start simple and we can stress it afterwards."
-- **High-level → deep dives:** "The skeleton is complete. I see two areas worth going deep on: X and Y. Which is more interesting for you — or shall I pick?"
+- **Requirements -> estimation:** "I think I have enough to size this. Let me do quick math to see what class of problem we're in."
+- **Estimation -> API:** "So we're read-heavy at roughly 10:1 — that will shape everything. Let me pin the API before the boxes."
+- **API -> data model:** "These endpoints imply three core entities — let me sketch how they're stored, because the partition key choice will drive the design."
+- **Data model -> high-level:** "Now I'll draw the end-to-end picture — I'll start simple and we can stress it afterwards."
+- **High-level -> deep dives:** "The skeleton is complete. I see two areas worth going deep on: X and Y. Which is more interesting for you — or shall I pick?"
 - **Into wrap (self-initiated at T-minus-5):** "Let me use the last minutes to summarize: what we built, the main trade-offs, the bottlenecks I'd watch, and what I'd evolve first."
 
 > [!TIP]
@@ -57646,11 +57646,11 @@ SELF-INITIATED WRAP (at T-5)
             flashcards: [
               {
                 q: `Recite the seven-stage design-interview framework in order.`,
-                a: `Requirements → Estimation → API sketch → Data model → High-level design → Deep dives (×2) → Wrap. Rehearse until automatic so working memory goes to the problem, not the process.`
+                a: `Requirements -> Estimation -> API sketch -> Data model -> High-level design -> Deep dives (x2) -> Wrap. Rehearse until automatic so working memory goes to the problem, not the process.`
               },
               {
                 q: `Give the approximate 45-minute time budget across the seven stages.`,
-                a: `Requirements 5', estimation 3', API 3', data model 4', high-level design 10', deep dives 15', wrap 3' (≈43' + slack). In 60 minutes: 7/5/5/5/13/20/5.`
+                a: `Requirements 5', estimation 3', API 3', data model 4', high-level design 10', deep dives 15', wrap 3' (~43' + slack). In 60 minutes: 7/5/5/5/13/20/5.`
               },
               {
                 q: `What is the exit criterion for the requirements stage, and what does overstaying signal?`,
@@ -57662,7 +57662,7 @@ SELF-INITIATED WRAP (at T-5)
               },
               {
                 q: `What's the standard mental math for converting daily volume to QPS?`,
-                a: `A day is ~10^5 seconds (86,400). So 100k/day ≈ 1/s sustained; multiply ~10x for peak. 10M/day ≈ 100/s sustained, ~1000/s peak. Round aggressively and state the conclusion the number implies.`
+                a: `A day is ~10^5 seconds (86,400). So 100k/day ~ 1/s sustained; multiply ~10x for peak. 10M/day ~ 100/s sustained, ~1000/s peak. Round aggressively and state the conclusion the number implies.`
               },
               {
                 q: `When do you ASK the interviewer vs ASSUME-AND-STATE?`,
@@ -57705,7 +57705,7 @@ The whiteboard/canvas is not decoration: it is the **externalized state** of the
 Draw in the direction a request flows — it doubles as your narration script:
 
 1. **Clients** (browser / mobile / third-party API consumers) — leftmost or top.
-2. **Edge**: DNS → CDN → load balancer → API gateway (only the ones you need — each drawn box is a box you must justify).
+2. **Edge**: DNS -> CDN -> load balancer -> API gateway (only the ones you need — each drawn box is a box you must justify).
 3. **Services**: start with ONE box ("API service"), split it only when a requirement forces the split — narrate the force: "the feed generation is CPU-heavy and scales differently from the CRUD path, so I'll split it."
 4. **Async spine**: queues/streams between services, drawn with distinct arrows.
 5. **Data layer** (rightmost/bottom): databases, caches, object storage, search indexes.
@@ -57729,7 +57729,7 @@ Silent drawing is dead air; describing every pixel is noise. The senior pattern 
 2. *Draw while giving the reason*: "CDN because 80% of this traffic is static media."
 3. *Land on the consequence*: "which means the API layer only sees ~200 QPS, so two instances behind the LB is plenty to start."
 
-Announce → reason → consequence. The interviewer hears a design decision, not a stationery inventory.
+Announce -> reason -> consequence. The interviewer hears a design decision, not a stationery inventory.
 
 ### Remote-interview specifics (Excalidraw / Miro / diagram-in-doc)
 
@@ -57784,7 +57784,7 @@ SCHEMA MOMENT      main table + partition key REASONING out loud:
             flashcards: [
               {
                 q: `What is the correct drawing order for a system diagram, and why that order?`,
-                a: `Clients → edge (DNS/CDN/LB/gateway) → services → async spine (queues/streams) → data layer. It follows the request flow, so the drawing order doubles as your narration script for tracing a request end-to-end.`
+                a: `Clients -> edge (DNS/CDN/LB/gateway) -> services -> async spine (queues/streams) -> data layer. It follows the request flow, so the drawing order doubles as your narration script for tracing a request end-to-end.`
               },
               {
                 q: `How should boxes be labeled, and why not just write 'Kafka'?`,
@@ -57800,7 +57800,7 @@ SCHEMA MOMENT      main table + partition key REASONING out loud:
               },
               {
                 q: `Describe the three-beat narration loop for drawing without dead air or noise.`,
-                a: `Announce the layer ('adding the edge next') → draw while giving the reason ('CDN because 80% is static media') → land the consequence ('so the API tier sees only ~200 QPS'). Decision-level narration, not pixel commentary.`
+                a: `Announce the layer ('adding the edge next') -> draw while giving the reason ('CDN because 80% is static media') -> land the consequence ('so the API tier sees only ~200 QPS'). Decision-level narration, not pixel commentary.`
               },
               {
                 q: `When you split one service box into two, what must you narrate?`,
@@ -57869,11 +57869,11 @@ Drop everything mid-sentence if needed and deliver the wrap you rehearsed: **(1)
 > [!TIP]
 > The unlock is **narrating option space instead of searching silently for the answer**:
 > "Let me think out loud. I see three directions: precompute the feeds (storage-heavy, fast reads), compute on read (cheap writes, slow reads), or hybrid — precompute for active users only. Given the 10:1 read ratio, I'll take the hybrid and we can stress it."
-> Options → criteria → pick → invite pressure. You've turned a stall into a demonstration of exactly the judgment being scored. If genuinely blank: zoom out to the requirements list — "let me re-anchor on what we're optimizing for" — it restarts thinking and looks like discipline, because it is.
+> Options -> criteria -> pick -> invite pressure. You've turned a stall into a demonstration of exactly the judgment being scored. If genuinely blank: zoom out to the requirements list — "let me re-anchor on what we're optimizing for" — it restarts thinking and looks like discipline, because it is.
 
 ### Disagreeing with the interviewer gracefully
 
-Sometimes the hint is wrong, or tests whether you have a spine. Protocol: **steel-man → evidence → offer the fork → concede the frame.**
+Sometimes the hint is wrong, or tests whether you have a spine. Protocol: **steel-man -> evidence -> offer the fork -> concede the frame.**
 "You're suggesting event sourcing here — the replay/audit benefits are real. My hesitation: this team also owns ops, and ES brings schema-evolution and rebuild costs that bite at exactly our growth stage. I'd propose plain CRUD with an outbox — we keep the integration events without the rebuild machinery. But if audit is a hard requirement I'm missing, ES becomes the right call — is it?"
 Disagree **once**, with a reason tied to requirements. If they push again, adopt their direction genuinely and design it well — the point is made, and flexibility is now the signal being scored.
 
@@ -57894,7 +57894,7 @@ Disagree **once**, with a reason tied to requirements. If they push again, adopt
               },
               {
                 q: `'Now make it multi-region' — what must you ask before drawing anything?`,
-                a: `The driver: latency, availability, or data residency? Latency → read replicas; availability → failover and write-region strategy; residency → jurisdiction partitioning (EU data pinned to EU), which is a different design entirely.`
+                a: `The driver: latency, availability, or data residency? Latency -> read replicas; availability -> failover and write-region strategy; residency -> jurisdiction partitioning (EU data pinned to EU), which is a different design entirely.`
               },
               {
                 q: `In a multi-region dive, what is THE design question to name out loud?`,
@@ -57906,7 +57906,7 @@ Disagree **once**, with a reason tied to requirements. If they push again, adopt
               },
               {
                 q: `What is the senior pattern for the 10x-traffic question?`,
-                a: `Walk the request path and ORDER the breakpoints: 'LB fine, stateless API scales out, first break is the DB at ~50k writes/s → now we shard and the partition key matters; second break is cache fan-out.' Plus state what survives unchanged. No panic re-architecture.`
+                a: `Walk the request path and ORDER the breakpoints: 'LB fine, stateless API scales out, first break is the DB at ~50k writes/s -> now we shard and the partition key matters; second break is cache fan-out.' Plus state what survives unchanged. No panic re-architecture.`
               },
               {
                 q: `'Five minutes left — wrap up.' What is the 90-second wrap structure?`,
@@ -57914,11 +57914,11 @@ Disagree **once**, with a reason tied to requirements. If they push again, adopt
               },
               {
                 q: `You're stuck and your mind is blank. What is the recovery move?`,
-                a: `Narrate option space: 'three directions — precompute (storage-heavy, fast reads), compute-on-read (cheap writes, slow reads), hybrid for active users; given 10:1 reads, hybrid.' Options → criteria → pick → invite pressure. If truly blank, re-anchor out loud on the requirements list.`
+                a: `Narrate option space: 'three directions — precompute (storage-heavy, fast reads), compute-on-read (cheap writes, slow reads), hybrid for active users; given 10:1 reads, hybrid.' Options -> criteria -> pick -> invite pressure. If truly blank, re-anchor out loud on the requirements list.`
               },
               {
                 q: `What is the four-part protocol for disagreeing with the interviewer's suggestion?`,
-                a: `Steel-man their idea → give your evidence/hesitation tied to requirements → offer the fork ('if audit is a hard requirement, your way wins — is it?') → if they push again, adopt their direction genuinely. Disagree once, with a reason; then flexibility is the signal.`
+                a: `Steel-man their idea -> give your evidence/hesitation tied to requirements -> offer the fork ('if audit is a hard requirement, your way wins — is it?') -> if they push again, adopt their direction genuinely. Disagree once, with a reason; then flexibility is the signal.`
               },
               {
                 q: `Give the formula for a senior 'I don't know'.`,
@@ -57930,7 +57930,7 @@ Disagree **once**, with a reason tied to requirements. If they push again, adopt
               },
               {
                 q: `How do you tell whether an interviewer's pushback is a real hint or a spine test?`,
-                a: `You mostly can't — so use a protocol that wins both ways: quantify honestly, disagree once with a requirement-tied reason, then commit to their direction if they insist. Genuine hint → you adapted; spine test → you showed conviction plus flexibility.`
+                a: `You mostly can't — so use a protocol that wins both ways: quantify honestly, disagree once with a requirement-tied reason, then commit to their direction if they insist. Genuine hint -> you adapted; spine test -> you showed conviction plus flexibility.`
               },
               {
                 q: `What should you do when a scope injection invalidates part of your existing diagram?`,
@@ -57981,7 +57981,7 @@ Record yourself (audio is enough) doing a full 45-minute mock, then score honest
 | **Collaboration** | Ignored hints; monologued or went silent | Responded to hints; some check-ins | Hints incorporated visibly; interviewer treated as design partner; pushback invited |
 | **Time** | Never finished the design | End-to-end design + 1 dive + squeezed wrap | Budget held; wrap self-initiated at T-5; nothing important unvisited |
 
-**Scoring discipline:** 20+/25 = interview-ready for that problem class. Any dimension at ≤2 = that dimension is your next practice focus, regardless of total. The two chronic senior weak spots are **Time** (over-investing in requirements or a pet component) and **Collaboration** (soloing the design at the interviewer).
+**Scoring discipline:** 20+/25 = interview-ready for that problem class. Any dimension at <=2 = that dimension is your next practice focus, regardless of total. The two chronic senior weak spots are **Time** (over-investing in requirements or a pet component) and **Collaboration** (soloing the design at the interviewer).
 
 \`\`\`mermaid
 flowchart LR
@@ -58068,7 +58068,7 @@ RECOVERY & HONESTY
               },
               {
                 q: `What are the five dimensions of the self-scoring rubric?`,
-                a: `Structure, Trade-offs, Depth, Collaboration, Time — each scored 1–5 against anchored descriptions. 20+/25 = ready for that problem class; any dimension ≤2 becomes the single focus of the next practice run.`
+                a: `Structure, Trade-offs, Depth, Collaboration, Time — each scored 1–5 against anchored descriptions. 20+/25 = ready for that problem class; any dimension <=2 becomes the single focus of the next practice run.`
               },
               {
                 q: `What does a 5/5 on the Trade-offs dimension require?`,
@@ -58080,7 +58080,7 @@ RECOVERY & HONESTY
               },
               {
                 q: `Describe the practice loop this module prescribes, and where the practice problems live.`,
-                a: `Pick one of module 5.4's six case studies → recorded 45-min mock in the real tool → honest rubric self-score → lowest dimension becomes next run's single focus → repeat. Six deliberate scored runs beat thirty unstructured ones.`
+                a: `Pick one of module 5.4's six case studies -> recorded 45-min mock in the real tool -> honest rubric self-score -> lowest dimension becomes next run's single focus -> repeat. Six deliberate scored runs beat thirty unstructured ones.`
               },
               {
                 q: `What is the danger of learning the phrase bank as a script?`,
@@ -58141,7 +58141,7 @@ your lockfile-equivalent and what a CVE scanner matches against.
 The **default** lifecycle is an ordered list of *phases*. Running a phase runs every
 phase before it. The ones that matter in interviews:
 
-\`validate → compile → test → package → verify → install → deploy\`
+\`validate -> compile -> test -> package -> verify -> install -> deploy\`
 
 - \`test\` runs unit tests via **surefire**; \`verify\` runs integration tests via
   **failsafe** plus quality gates (jacoco, enforcer).
@@ -58190,7 +58190,7 @@ the dependency at the **shortest path** from the root wins. Ties are broken by
 (that is Gradle's default), and it is the #1 source of "works on my machine" jar hell.
 
 > [!WARNING]
-> Nearest-wins can silently *downgrade* a transitive dependency. If A→B→C:2.0 but you
+> Nearest-wins can silently *downgrade* a transitive dependency. If A->B->C:2.0 but you
 > also declare C:1.0 directly, the **direct** C:1.0 wins because it is nearer (depth 1).
 > Diagnose with \`mvn dependency:tree -Dverbose\` and pin with
 > \`dependencyManagement\`.
@@ -58395,7 +58395,7 @@ Note the arrows all point **inward** toward the domain. The domain depends on no
 | Module boundary | compile-time (Maven) | network + contract |
 | Refactoring across boundary | easy (one repo, one build) | hard (versioned APIs) |
 | Failure isolation | shared JVM/heap | per-service |
-| Operational cost | low | high (mesh, tracing, CI×N) |
+| Operational cost | low | high (mesh, tracing, CIxN) |
 | Right when | <~20 devs, evolving domain | independent scaling/teams |
 
 > [!SUCCESS]
@@ -58526,7 +58526,7 @@ Note the arrows all point **inward** toward the domain. The domain depends on no
 > Source-code dependencies point **only inward**. Nothing in an inner layer knows
 > anything about an outer layer.
 
-Concentric rings: **Domain (entities) → Application (use cases) → Adapters/Interfaces →
+Concentric rings: **Domain (entities) -> Application (use cases) -> Adapters/Interfaces ->
 Frameworks/Infrastructure**. The database, the web framework, and Kafka are all
 **outer** details. The compiler should make it impossible for the domain to import them.
 
@@ -58560,7 +58560,7 @@ graph LR
 
 The use case depends on the **outbound port interface**, never on the JPA adapter. At
 runtime Spring injects the adapter — **dependency inversion** makes the arrow at compile
-time point from adapter → port (inward), even though control flows outward.
+time point from adapter -> port (inward), even though control flows outward.
 
 ## Keeping the domain framework-free
 
@@ -58591,7 +58591,7 @@ Concrete techniques:
 > [!SUCCESS]
 > Prefer **package-by-feature** at the top level, then layer *inside* each feature
 > (\`billing/domain\`, \`billing/application\`, \`billing/adapter\`). It maximizes
-> package-private encapsulation and means a feature ≈ a future module ≈ a future service.
+> package-private encapsulation and means a feature ~ a future module ~ a future service.
 
 > [!TIP]
 > You can enforce "domain must not depend on Spring" mechanically. An ArchUnit rule in
@@ -58669,7 +58669,7 @@ class ArchitectureTest {
               },
               {
                 q: `How does dependency inversion keep compile-time arrows pointing inward while control flows out?`,
-                a: `The use case depends on an outbound port interface it owns; the adapter implements that interface, so the compile-time dependency runs adapter→port (inward). At runtime DI injects the adapter, so control flows outward to the DB/HTTP.`
+                a: `The use case depends on an outbound port interface it owns; the adapter implements that interface, so the compile-time dependency runs adapter->port (inward). At runtime DI injects the adapter, so control flows outward to the DB/HTTP.`
               },
               {
                 q: `Why not annotate the domain entity with \`@Entity\`?`,
@@ -58685,7 +58685,7 @@ class ArchitectureTest {
               },
               {
                 q: `What is the recommended hybrid packaging?`,
-                a: `Package-by-feature at the top level, then layer inside each feature (billing/domain, billing/application, billing/adapter). Feature ≈ future module ≈ future service.`
+                a: `Package-by-feature at the top level, then layer inside each feature (billing/domain, billing/application, billing/adapter). Feature ~ future module ~ future service.`
               },
               {
                 q: `Where do DTOs and JSON annotations belong in hexagonal architecture?`,
@@ -58701,7 +58701,7 @@ class ArchitectureTest {
               },
               {
                 q: `What are the concentric rings of clean architecture, inner to outer?`,
-                a: `Domain entities → application use cases → interface adapters → frameworks/infrastructure. Dependencies cross the boundaries only inward.`
+                a: `Domain entities -> application use cases -> interface adapters -> frameworks/infrastructure. Dependencies cross the boundaries only inward.`
               },
               {
                 q: `How does package-by-feature aid later microservice extraction?`,
@@ -58949,7 +58949,7 @@ same: **one place to change a version.**
 > - Group patch/minor updates; review majors individually.
 > - Keep a green pipeline (the quality gates from §4) so auto-merge of low-risk updates
 >   is safe.
-> - Treat the framework BOM bump (e.g. Spring Boot N→N+1) as a planned epic with its own
+> - Treat the framework BOM bump (e.g. Spring Boot N->N+1) as a planned epic with its own
 >   testing, not a routine PR.
 
 ## Splitting the monolith later
@@ -59057,7 +59057,7 @@ trivy image --severity HIGH,CRITICAL acme/billing-app:1.4.0
                 a: `Tests (e.g. Spring Cloud Contract) that verify provider and consumer agree on the API shape, so the now-network boundary stays compatible across independent deploys where you can no longer recompile both sides together.`
               },
               {
-                q: `How should a major framework BOM bump (Spring Boot N→N+1) be treated?`,
+                q: `How should a major framework BOM bump (Spring Boot N->N+1) be treated?`,
                 a: `As a planned epic with dedicated testing and a migration plan, not a routine auto-merged PR, because it can change defaults, dependencies, and behavior across the whole fleet.`
               },
               {
@@ -59129,7 +59129,7 @@ Modern JVMs are **container-aware**: they read cgroup limits, so by default the 
 
 The **12-factor** rule: **store config in the environment**, never in the image. The same
 image promotes from staging to prod with only env vars changing. Spring Boot maps
-\`SPRING_DATASOURCE_URL\` → \`spring.datasource.url\` automatically (relaxed binding).
+\`SPRING_DATASOURCE_URL\` -> \`spring.datasource.url\` automatically (relaxed binding).
 
 > [!WARNING]
 > Never bake secrets into the image or commit them. A secret in a Docker layer is
@@ -59292,7 +59292,7 @@ must pass, and the app must **trust**, forwarding headers:
 
 > [!DANGER]
 > If Spring doesn't honor \`X-Forwarded-Proto\`, every redirect and \`Location\` header
-> comes out as \`http://\` → infinite redirect loops or mixed-content. Set
+> comes out as \`http://\` -> infinite redirect loops or mixed-content. Set
 > \`server.forward-headers-strategy=framework\` (or \`native\` behind a trusted proxy).
 
 > [!WARNING]
@@ -59664,8 +59664,8 @@ graph LR
 
 ## Push-to-deploy
 
-A minimal pipeline: push to \`main\` → CI builds + tests + scans → pushes image (or
-\`scp\`s the jar) → triggers a deploy script on the VPS (webhook or \`ssh\`) that does the
+A minimal pipeline: push to \`main\` -> CI builds + tests + scans -> pushes image (or
+\`scp\`s the jar) -> triggers a deploy script on the VPS (webhook or \`ssh\`) that does the
 blue-green flip. Keep it **idempotent** and **logged**, and gate prod on a green pipeline.
 
 > [!WARNING]
@@ -59756,7 +59756,7 @@ echo "Deployed $NEW_TAG on $IDLE. Rollback: re-point proxy to $ACTIVE."`
               },
               {
                 q: `What does a minimal push-to-deploy pipeline look like?`,
-                a: `Push to main → CI builds, tests, and runs CVE/coverage gates → pushes the image (or scps the jar) → triggers an idempotent, logged deploy script on the VPS that performs the blue-green flip, gated on a green pipeline.`
+                a: `Push to main -> CI builds, tests, and runs CVE/coverage gates -> pushes the image (or scps the jar) -> triggers an idempotent, logged deploy script on the VPS that performs the blue-green flip, gated on a green pipeline.`
               },
               {
                 q: `Why is push-to-deploy unsafe without a fast rollback path?`,
@@ -60195,11 +60195,11 @@ flowchart TD
 | 9 | \`RequestCacheAwareFilter\` | Replay the original request after login |
 | 10 | \`AnonymousAuthenticationFilter\` | Give unauthenticated requests an "anonymous" Authentication |
 | 11 | \`SessionManagementFilter\` | Session fixation protection, concurrency control |
-| 12 | \`ExceptionTranslationFilter\` | Translate AuthN/AuthZ exceptions → 401/403 |
+| 12 | \`ExceptionTranslationFilter\` | Translate AuthN/AuthZ exceptions -> 401/403 |
 | 13 | \`AuthorizationFilter\` | Apply \`authorizeHttpRequests\` rules (replaced \`FilterSecurityInterceptor\` in SS6) |
 
 > [!WARNING]
-> In **Spring Security 6** the old \`FilterSecurityInterceptor\` was replaced by \`AuthorizationFilter\`, and \`SecurityContextPersistenceFilter\` was replaced by \`SecurityContextHolderFilter\` (which no longer *saves* the context automatically — you save explicitly, important for performance). Interviewers love asking what changed from SS5 → SS6.
+> In **Spring Security 6** the old \`FilterSecurityInterceptor\` was replaced by \`AuthorizationFilter\`, and \`SecurityContextPersistenceFilter\` was replaced by \`SecurityContextHolderFilter\` (which no longer *saves* the context automatically — you save explicitly, important for performance). Interviewers love asking what changed from SS5 -> SS6.
 
 ## How authentication is performed inside a filter
 
@@ -60350,7 +60350,7 @@ class JpaUserDetailsService implements UserDetailsService {
               },
               {
                 q: `Give the rough order of the core Spring Security 6 filters.`,
-                a: `SecurityContextHolderFilter → HeaderWriterFilter → CorsFilter → CsrfFilter → LogoutFilter → UsernamePasswordAuthenticationFilter → BearerTokenAuthenticationFilter → AnonymousAuthenticationFilter → SessionManagementFilter → ExceptionTranslationFilter → AuthorizationFilter.`
+                a: `SecurityContextHolderFilter -> HeaderWriterFilter -> CorsFilter -> CsrfFilter -> LogoutFilter -> UsernamePasswordAuthenticationFilter -> BearerTokenAuthenticationFilter -> AnonymousAuthenticationFilter -> SessionManagementFilter -> ExceptionTranslationFilter -> AuthorizationFilter.`
               },
               {
                 q: `Why must ExceptionTranslationFilter sit immediately before AuthorizationFilter?`,
@@ -60418,8 +60418,8 @@ The first architectural fork: does the server **remember** the logged-in user (s
 
 CSRF works because **browsers automatically attach cookies** to any request to a domain — including a forged \`<form>\` POST from a malicious site. The server sees a valid \`JSESSIONID\` and trusts it.
 
-- **Cookie/session auth → CSRF protection required.** Spring's \`CsrfFilter\` issues a synchronizer token (or double-submit cookie) that the attacker's site can't read or guess.
-- **Bearer-token-in-header auth → no CSRF needed.** A cross-site \`<form>\` can't set an \`Authorization\` header, and a malicious site can't read your token to add it. Hence the common \`csrf.disable()\` on stateless \`/api/**\` chains.
+- **Cookie/session auth -> CSRF protection required.** Spring's \`CsrfFilter\` issues a synchronizer token (or double-submit cookie) that the attacker's site can't read or guess.
+- **Bearer-token-in-header auth -> no CSRF needed.** A cross-site \`<form>\` can't set an \`Authorization\` header, and a malicious site can't read your token to add it. Hence the common \`csrf.disable()\` on stateless \`/api/**\` chains.
 
 > [!WARNING]
 > If you store a JWT in a **cookie**, you re-introduce CSRF risk and MUST re-enable CSRF protection (or use \`SameSite=Strict/Lax\`). "Stateless JWT" only avoids CSRF when the token travels in a header the browser does NOT auto-send.
@@ -60632,7 +60632,7 @@ sequenceDiagram
 
 > [!DANGER]
 > - **\`alg: none\`** — some libraries accepted an unsigned token if the header said \`alg:none\`. Always pin the expected algorithm; never let the token's header choose.
-> - **Algorithm confusion (RS256 → HS256)** — attacker changes \`alg\` to HS256 and signs with your *public* key as the HMAC secret. Mitigation: pin the algorithm, don't auto-select from the header.
+> - **Algorithm confusion (RS256 -> HS256)** — attacker changes \`alg\` to HS256 and signs with your *public* key as the HMAC secret. Mitigation: pin the algorithm, don't auto-select from the header.
 > - **No \`exp\` claim** — a token that never expires can never be revoked.
 > - **Trusting unverified claims / not checking signature** — decoding is not verifying.
 > - **Putting secrets/PII in the payload** — it's only Base64, fully readable.
@@ -60866,7 +60866,7 @@ public class JwtDemo {
                 a: `A token sets header alg:none claiming it is unsigned; vulnerable libraries accept it without verifying. Prevent by pinning the expected algorithm server-side and never letting the token header choose the verification algorithm.`
               },
               {
-                q: `Explain the RS256→HS256 algorithm-confusion attack.`,
+                q: `Explain the RS256->HS256 algorithm-confusion attack.`,
                 a: `The attacker changes alg to HS256 and signs the token using the server's public RSA key as the HMAC secret. If the server blindly verifies per the header alg, it treats the public key as the shared secret and accepts the forgery. Fix: pin the algorithm.`
               },
               {
@@ -61120,7 +61120,7 @@ class ProfileController {
               },
               {
                 q: `How do OAuth2 scopes map to Spring authorities?`,
-                a: `By default the scope/scp claim values become authorities prefixed with SCOPE_ (e.g. scope "orders:read" → authority "SCOPE_orders:read"), checkable via hasAuthority("SCOPE_orders:read").`
+                a: `By default the scope/scp claim values become authorities prefixed with SCOPE_ (e.g. scope "orders:read" -> authority "SCOPE_orders:read"), checkable via hasAuthority("SCOPE_orders:read").`
               },
               {
                 q: `What is an ID token and how does it differ from an access token?`,
@@ -61391,7 +61391,7 @@ flowchart TD
 > Set the tenant once per request (e.g. \`SET app.current_tenant\`) and let RLS enforce it for ALL queries automatically. This protects against the inevitable developer who writes \`findById\` and forgets the tenant filter. RLS is the strongest, hardest-to-bypass control.
 
 > [!WARNING]
-> Multi-tenancy strategies trade isolation vs cost: **separate database per tenant** (max isolation, ops-heavy) → **separate schema per tenant** → **shared schema with a tenant_id column + RLS** (cheapest, most common, relies on discipline + RLS). Know the trade-offs.
+> Multi-tenancy strategies trade isolation vs cost: **separate database per tenant** (max isolation, ops-heavy) -> **separate schema per tenant** -> **shared schema with a tenant_id column + RLS** (cheapest, most common, relies on discipline + RLS). Know the trade-offs.
 
 > [!EU]
 > GDPR makes per-tenant isolation a legal control, not just hygiene: a cross-tenant leak is a reportable personal-data breach. RLS + query-level scoping provide demonstrable technical measures ("data protection by design", Art. 25). Also support per-tenant data export/erasure (Art. 15/17) — easier when isolation is enforced at the data layer.`,
@@ -62588,9 +62588,9 @@ flowchart TD
 
 GoF creational patterns largely existed to answer "who calls \`new\`, and how do I swap implementations?" A **DI container answers that globally**: you declare *what* you need (a constructor parameter) and the container decides *which* concrete bean to supply and *when* to create it. This subsumes most hand-rolled factories:
 
-- **Singleton** → \`@Component\` default scope.
-- **Factory Method / Abstract Factory** → \`@Bean\` methods, \`@Profile\`/\`@Conditional\` selecting implementations, \`ObjectProvider<T>\`/\`@Qualifier\`.
-- **Prototype** → \`@Scope("prototype")\`.
+- **Singleton** -> \`@Component\` default scope.
+- **Factory Method / Abstract Factory** -> \`@Bean\` methods, \`@Profile\`/\`@Conditional\` selecting implementations, \`ObjectProvider<T>\`/\`@Qualifier\`.
+- **Prototype** -> \`@Scope("prototype")\`.
 
 > [!SUCCESS]
 > The senior takeaway: in a Spring app you rarely write GoF creational patterns by hand — the container *is* the factory and the singleton manager. Know the patterns to understand *what the container does for you* and to recognize when you still need an explicit factory (e.g. building objects from runtime data the container can't know, where \`ObjectProvider\` or a small factory bean is the right tool).
@@ -63863,7 +63863,7 @@ The classic form needs one class per algorithm. With Java 8+, a strategy that is
 | Strategy with several methods | required | not a functional interface — must stay a class |
 
 > [!SUCCESS]
-> Rule of thumb: **single-method strategy → lambda; multi-method or stateful strategy → keep a real class/interface.** A \`Comparator\` is a lambda; a \`PaymentGateway\` with \`charge()\`, \`refund()\`, \`status()\` stays an interface with implementations.
+> Rule of thumb: **single-method strategy -> lambda; multi-method or stateful strategy -> keep a real class/interface.** A \`Comparator\` is a lambda; a \`PaymentGateway\` with \`charge()\`, \`refund()\`, \`status()\` stays an interface with implementations.
 
 ## In the wild (JDK / Spring)
 - \`java.util.Comparator\` passed to \`Collections.sort\`/\`Stream.sorted\` — the canonical Strategy.
@@ -64172,7 +64172,7 @@ class Analytics {
 
 **Intent:** Define the skeleton of an algorithm in a base method, deferring some steps to subclasses. Subclasses redefine certain steps without changing the algorithm's structure.
 
-**Problem it solves:** Several procedures share the same overall sequence but differ in a few steps (parse → validate → transform → write, with format-specific parse/write). You want the invariant order written **once** and the variant steps overridable, avoiding copy-paste of the skeleton.
+**Problem it solves:** Several procedures share the same overall sequence but differ in a few steps (parse -> validate -> transform -> write, with format-specific parse/write). You want the invariant order written **once** and the variant steps overridable, avoiding copy-paste of the skeleton.
 
 \`\`\`mermaid
 classDiagram
@@ -64352,7 +64352,7 @@ classDiagram
 
 ## What Command buys you (why seniors reach for it)
 - **Undo/redo:** each command knows how to reverse itself; keep two stacks.
-- **Queueing & scheduling:** commands are objects → put them on a \`BlockingQueue\`, a \`ThreadPoolExecutor\` (a \`Runnable\` *is* a Command), or a durable message queue.
+- **Queueing & scheduling:** commands are objects -> put them on a \`BlockingQueue\`, a \`ThreadPoolExecutor\` (a \`Runnable\` *is* a Command), or a durable message queue.
 - **Logging / replay / audit:** serialize the command stream; replay to rebuild state (this is the seed of **Event Sourcing**).
 - **Macro commands:** a composite command runs a list of commands as one unit (Composite + Command).
 
@@ -64654,7 +64654,7 @@ public class RequestTimingFilter implements Filter {
 
 **Intent:** Allow an object to alter its behavior when its internal state changes — the object appears to change its class. Each state is a class; transitions move the object between state objects.
 
-**Problem it solves:** An object's behavior depends on a mode/status (order: NEW→PAID→SHIPPED→DELIVERED; connection: CLOSED→OPEN; document: DRAFT→REVIEW→PUBLISHED). Encoding this with a \`status\` field plus \`switch\`/\`if\` in every method scatters the state logic, makes illegal transitions easy, and grows unmaintainably. State pattern makes each state a class that knows its own behavior **and** its legal transitions.
+**Problem it solves:** An object's behavior depends on a mode/status (order: NEW->PAID->SHIPPED->DELIVERED; connection: CLOSED->OPEN; document: DRAFT->REVIEW->PUBLISHED). Encoding this with a \`status\` field plus \`switch\`/\`if\` in every method scatters the state logic, makes illegal transitions easy, and grows unmaintainably. State pattern makes each state a class that knows its own behavior **and** its legal transitions.
 
 \`\`\`mermaid
 stateDiagram-v2
@@ -64840,7 +64840,7 @@ classDiagram
 
 ## Visitor
 **Intent:** Represent an operation to be performed on the elements of an object structure; define a new operation without changing the classes of the elements.
-**Problem:** You have a stable set of node types (AST, file tree, shapes) but keep adding *operations* (print, evaluate, type-check, optimize). Putting each op as a method on every node bloats the nodes. Visitor moves operations into visitor classes; **double dispatch** (\`element.accept(visitor)\` → \`visitor.visitConcrete(this)\`) routes to the right method.
+**Problem:** You have a stable set of node types (AST, file tree, shapes) but keep adding *operations* (print, evaluate, type-check, optimize). Putting each op as a method on every node bloats the nodes. Visitor moves operations into visitor classes; **double dispatch** (\`element.accept(visitor)\` -> \`visitor.visitConcrete(this)\`) routes to the right method.
 **The trade-off (key senior point):** Visitor makes **adding operations easy** but **adding new element types hard** (every visitor must add a method) — the opposite of the usual OO bias. This is the **Expression Problem**.
 **In the wild:** compiler ASTs, \`javax.lang.model\`'s \`ElementVisitor\` (annotation processing), \`FileVisitor\` in \`Files.walkFileTree\`, ASM bytecode visitors, XML/JSON tree processing. **Avoid when** the element hierarchy changes often, or sealed types + pattern-matching \`switch\` (Java 21) express the same dispatch more simply.
 
@@ -65014,11 +65014,11 @@ Java 8's lambdas and method references didn't *replace* design patterns — they
 | \`BiFunction<T,U,R>\` | \`(T,U) -> R\` | Strategy with two inputs |
 
 ## Patterns reduced to lambdas
-- **Strategy → lambda:** \`Comparator\`, \`Predicate\`, any single-method strategy.
-- **Command → \`Runnable\`/\`Consumer\`:** \`executor.submit(() -> doWork())\`.
-- **Factory → \`Supplier\` / constructor reference:** \`Supplier<List<String>> f = ArrayList::new\`.
-- **Template Method → higher-order function:** pass the variant steps as function params.
-- **Decorator → function composition:** \`f.andThen(g)\` wraps behavior without subclassing.
+- **Strategy -> lambda:** \`Comparator\`, \`Predicate\`, any single-method strategy.
+- **Command -> \`Runnable\`/\`Consumer\`:** \`executor.submit(() -> doWork())\`.
+- **Factory -> \`Supplier\` / constructor reference:** \`Supplier<List<String>> f = ArrayList::new\`.
+- **Template Method -> higher-order function:** pass the variant steps as function params.
+- **Decorator -> function composition:** \`f.andThen(g)\` wraps behavior without subclassing.
 
 \`\`\`mermaid
 flowchart LR
@@ -65176,7 +65176,7 @@ sequenceDiagram
 \`\`\`
 
 ## Template Method + Strategy: the \`*Template\` classes
-\`JdbcTemplate\`, \`RestTemplate\`/\`RestClient\`, \`JmsTemplate\`, \`TransactionTemplate\`, \`RedisTemplate\` all implement **Template Method** (fixed skeleton: acquire resource → execute → translate exceptions → release) with **Strategy callbacks** (\`RowMapper\`, \`ResultSetExtractor\`, \`RequestCallback\`) for the variant work. They exist to kill boilerplate and turn checked SQL/IO exceptions into a consistent runtime hierarchy.
+\`JdbcTemplate\`, \`RestTemplate\`/\`RestClient\`, \`JmsTemplate\`, \`TransactionTemplate\`, \`RedisTemplate\` all implement **Template Method** (fixed skeleton: acquire resource -> execute -> translate exceptions -> release) with **Strategy callbacks** (\`RowMapper\`, \`ResultSetExtractor\`, \`RequestCallback\`) for the variant work. They exist to kill boilerplate and turn checked SQL/IO exceptions into a consistent runtime hierarchy.
 
 ## Factory variants in Spring
 - \`@Bean\` methods are **Factory Methods**; \`@Configuration\` classes are configuration factories.
@@ -65357,7 +65357,7 @@ flowchart TD
 > [!DANGER]
 > CQRS is frequently **over-applied**. For a CRUD app it adds two models, eventual consistency, and sync complexity for no benefit. Start with one model; introduce CQRS only when read/write needs genuinely diverge. Saying "we'd reach for CQRS only when justified" is the senior answer.
 
-**Use the layering when:** non-trivial business logic, multiple data sources, an API contract distinct from the schema. **Avoid the ceremony when:** a tiny CRUD service — collapsing layers (controller→repository) can be the right call; don't cargo-cult five layers onto a 200-line app.`,
+**Use the layering when:** non-trivial business logic, multiple data sources, an API contract distinct from the schema. **Avoid the ceremony when:** a tiny CRUD service — collapsing layers (controller->repository) can be the right call; don't cargo-cult five layers onto a 200-line app.`,
             code: [
               {
                 lang: `java`,
@@ -65805,12 +65805,12 @@ flowchart TD
 \`\`\`
 
 ## The selection checklist (senior heuristics)
-1. **Name the force first.** What actually varies or couples *today*? No force → no pattern.
+1. **Name the force first.** What actually varies or couples *today*? No force -> no pattern.
 2. **Prefer the lightest tool.** Lambda before class; enum before class hierarchy; a \`Map\` before a Strategy interface; composition before inheritance.
 3. **Rule of Three.** Don't abstract until the second/third real variation shows the true axis of change.
 4. **Optimize for the reader.** The pattern must make intent *clearer*, not just more flexible. If it obscures the one real path, drop it.
 5. **Prefer patterns the platform already gives you.** A \`Comparator\`, a \`BlockingQueue\`, \`@Transactional\`, Spring Data — don't reinvent.
-6. **Watch for the pattern's own failure mode.** Strategy → speculative generality; Observer → leaks/ordering; Visitor → rigid type hierarchy; Singleton → global state; CQRS → eventual-consistency tax.
+6. **Watch for the pattern's own failure mode.** Strategy -> speculative generality; Observer -> leaks/ordering; Visitor -> rigid type hierarchy; Singleton -> global state; CQRS -> eventual-consistency tax.
 
 > [!SUCCESS]
 > **Composability beats catalog memorization.** Real systems combine patterns: a Spring \`*Template\` is Template Method + Strategy; a filter chain is CoR + Command; a command bus is Command + Mediator + Observer. Talk in forces and combinations, not isolated GoF cards.

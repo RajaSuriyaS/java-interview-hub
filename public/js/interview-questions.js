@@ -934,7 +934,7 @@ const INTERVIEW_QUESTIONS = {
     },
     {
       "q": "An interviewer says 'your design melts at 10x traffic' — what's your general framework for answering?",
-      "a": "First find the actual bottleneck rather than guessing: which component saturates first at 10x — DB writes, a hot cache key, fan-out amplification, connection counts? Then apply the matching pattern: read-heavy → cache + replicas; write bursts → queue and absorb; hot key/user → shard or special-case it; fan-out explosion → move from write-time to read-time work (or hybrid); state on app servers → make them stateless and scale horizontally. Naming the bottleneck out loud before proposing a fix is precisely the senior behaviour the question is testing."
+      "a": "First find the actual bottleneck rather than guessing: which component saturates first at 10x — DB writes, a hot cache key, fan-out amplification, connection counts? Then apply the matching pattern: read-heavy -> cache + replicas; write bursts -> queue and absorb; hot key/user -> shard or special-case it; fan-out explosion -> move from write-time to read-time work (or hybrid); state on app servers -> make them stateless and scale horizontally. Naming the bottleneck out loud before proposing a fix is precisely the senior behaviour the question is testing."
     }
   ],
   "6.1": [
@@ -1488,7 +1488,7 @@ const INTERVIEW_QUESTIONS = {
     },
     {
       "q": "Bridge and Strategy have nearly identical UML. When is it actually a Bridge, and what problem does Bridge prevent?",
-      "a": "Bridge is for two independent axes of variation that should evolve separately — Shape × Renderer, message × transport, JDBC API × vendor driver — so you make one axis the abstraction and the other the implementor and compose them, avoiding the combinatorial class explosion of VectorCircle/RasterCircle/VectorSquare. Strategy swaps one interchangeable algorithm behind an interface; the structure is the same delegation but the intent is a single pluggable behavior, not a structural separation of two hierarchies. The tell is catching yourself naming classes AdjectiveNoun for every pairing of two adjectives — that's a Bridge. SLF4J is literally called a bridge for exactly this reason."
+      "a": "Bridge is for two independent axes of variation that should evolve separately — Shape x Renderer, message x transport, JDBC API x vendor driver — so you make one axis the abstraction and the other the implementor and compose them, avoiding the combinatorial class explosion of VectorCircle/RasterCircle/VectorSquare. Strategy swaps one interchangeable algorithm behind an interface; the structure is the same delegation but the intent is a single pluggable behavior, not a structural separation of two hierarchies. The tell is catching yourself naming classes AdjectiveNoun for every pairing of two adjectives — that's a Bridge. SLF4J is literally called a bridge for exactly this reason."
     },
     {
       "q": "How does the JDK's Integer cache relate to Flyweight, and what bug does it cause?",
