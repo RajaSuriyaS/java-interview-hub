@@ -79,22 +79,26 @@ app.get('/api/state', requireAuth, (req, res) => {
   }
 });
 
+const VALID_MARK = new Set(['again', 'known']);
+
 app.post('/api/state', requireAuth, (req, res) => {
   if (!DB_OK) return res.status(503).json({ error: 'persistence unavailable' });
-  const { status = {}, notes = {} } = req.body || {};
-  if (typeof status !== 'object' || typeof notes !== 'object') {
-    return res.status(400).json({ error: 'status and notes must be objects' });
+  const { status = {}, notes = {}, cards = {} } = req.body || {};
+  if (typeof status !== 'object' || typeof notes !== 'object' || typeof cards !== 'object') {
+    return res.status(400).json({ error: 'status, notes and cards must be objects' });
   }
-  if (Object.keys(status).length > 2000 || Object.keys(notes).length > 2000) {
+  if (Object.keys(status).length > 2000 || Object.keys(notes).length > 2000 || Object.keys(cards).length > 20000) {
     return res.status(413).json({ error: 'too many entries' });
   }
-  // Sanitise: only known statuses, cap note size.
+  // Sanitise: only known statuses/marks, cap sizes.
   const safeStatus = {};
   for (const [k, v] of Object.entries(status)) if (VALID_STATUS.has(v)) safeStatus[k] = v;
   const safeNotes = {};
   for (const [k, v] of Object.entries(notes)) if (typeof v === 'string') safeNotes[k] = v.slice(0, 20000);
+  const safeCards = {};
+  for (const [k, v] of Object.entries(cards)) if (typeof k === 'string' && k.length <= 120 && VALID_MARK.has(v)) safeCards[k] = v;
   try {
-    replaceState(req.user.sub, { status: safeStatus, notes: safeNotes });
+    replaceState(req.user.sub, { status: safeStatus, notes: safeNotes, cards: safeCards });
     res.json({ ok: true });
   } catch (e) {
     console.error('[db] replaceState:', e.message);

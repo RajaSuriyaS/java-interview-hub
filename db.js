@@ -42,6 +42,13 @@ export function initDb() {
       updated_at INTEGER,
       PRIMARY KEY (user_id, module_id)
     );
+    CREATE TABLE IF NOT EXISTS card_marks (
+      user_id    TEXT NOT NULL,
+      card_key   TEXT NOT NULL,   -- '<moduleId>:<hash-of-question>'
+      mark       TEXT NOT NULL,   -- 'again' (review queue) | 'known'
+      updated_at INTEGER,
+      PRIMARY KEY (user_id, card_key)
+    );
   `);
   return file;
 }
@@ -59,25 +66,31 @@ export function upsertUser(u) {
   `).run(u.id, u.email || '', u.name || '', u.picture || '', now, now);
 }
 
-// Returns { status: { moduleId: status }, notes: { moduleId: note } }
+const MARKS = new Set(['again', 'known']);
+
+// Returns { status: { moduleId: status }, notes: { moduleId: note }, cards: { cardKey: mark } }
 export function getState(userId) {
-  const status = {}, notes = {};
+  const status = {}, notes = {}, cards = {};
   for (const r of db.prepare('SELECT module_id, status FROM module_status WHERE user_id = ?').all(userId)) {
     status[r.module_id] = r.status;
   }
   for (const r of db.prepare('SELECT module_id, note FROM module_notes WHERE user_id = ?').all(userId)) {
     notes[r.module_id] = r.note;
   }
-  return { status, notes };
+  for (const r of db.prepare('SELECT card_key, mark FROM card_marks WHERE user_id = ?').all(userId)) {
+    cards[r.card_key] = r.mark;
+  }
+  return { status, notes, cards };
 }
 
 // Full replace of a user's progress (the client always posts its complete state).
-export function replaceState(userId, { status = {}, notes = {} } = {}) {
+export function replaceState(userId, { status = {}, notes = {}, cards = {} } = {}) {
   const now = Date.now();
   db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM module_status WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM module_notes  WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM card_marks    WHERE user_id = ?').run(userId);
 
     const insStatus = db.prepare('INSERT INTO module_status (user_id, module_id, status, updated_at) VALUES (?, ?, ?, ?)');
     for (const [moduleId, st] of Object.entries(status)) {
@@ -86,6 +99,10 @@ export function replaceState(userId, { status = {}, notes = {} } = {}) {
     const insNote = db.prepare('INSERT INTO module_notes (user_id, module_id, note, updated_at) VALUES (?, ?, ?, ?)');
     for (const [moduleId, note] of Object.entries(notes)) {
       if (typeof note === 'string' && note.trim()) insNote.run(userId, moduleId, note, now);
+    }
+    const insCard = db.prepare('INSERT INTO card_marks (user_id, card_key, mark, updated_at) VALUES (?, ?, ?, ?)');
+    for (const [key, mark] of Object.entries(cards)) {
+      if (MARKS.has(mark)) insCard.run(userId, key, mark, now);
     }
     db.exec('COMMIT');
   } catch (e) {

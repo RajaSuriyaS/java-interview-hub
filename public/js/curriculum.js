@@ -9836,52 +9836,52 @@ HashSet.contains stays flat     -> O(1) average`
             ],
             flashcards: [
               {
-                front: `In plain terms, what does O(1) vs O(n) mean for a collection operation?`,
-                back: `O(1) (constant) takes about the same time no matter how big the collection is. O(n) (linear) takes proportionally longer as the collection grows — 10x bigger means ~10x slower.`
+                q: `In plain terms, what does O(1) vs O(n) mean for a collection operation?`,
+                a: `O(1) (constant) takes about the same time no matter how big the collection is. O(n) (linear) takes proportionally longer as the collection grows — 10x bigger means ~10x slower.`
               },
               {
-                front: `How fast does O(log n) grow compared to O(n)?`,
-                back: `Very slowly. For a million elements, O(n) is ~1,000,000 steps while O(log n) is only ~20. Doubling the data adds just one step to a log-time operation.`
+                q: `How fast does O(log n) grow compared to O(n)?`,
+                a: `Very slowly. For a million elements, O(n) is ~1,000,000 steps while O(log n) is only ~20. Doubling the data adds just one step to a log-time operation.`
               },
               {
-                front: `Why is ArrayList.get(i) O(1) but LinkedList.get(i) O(n)?`,
-                back: `ArrayList stores elements in one array and computes the address by index arithmetic (instant). LinkedList must hop node-by-node along pointers to reach index i, so cost grows with i.`
+                q: `Why is ArrayList.get(i) O(1) but LinkedList.get(i) O(n)?`,
+                a: `ArrayList stores elements in one array and computes the address by index arithmetic (instant). LinkedList must hop node-by-node along pointers to reach index i, so cost grows with i.`
               },
               {
-                front: `What does "amortized O(1)" mean for ArrayList.add?`,
-                back: `Most appends are instant. Occasionally the backing array is full and gets copied to a ~1.5x bigger one (O(n) for that one add). It happens rarely enough that the average add is still constant.`
+                q: `What does "amortized O(1)" mean for ArrayList.add?`,
+                a: `Most appends are instant. Occasionally the backing array is full and gets copied to a ~1.5x bigger one (O(n) for that one add). It happens rarely enough that the average add is still constant.`
               },
               {
-                front: `HashMap.get is "O(1) average" — what is the catch?`,
-                back: `It relies on a good hashCode() spreading keys across buckets. With heavy collisions it degrades, but Java 8+ converts an overloaded bucket to a balanced tree, so the worst case is O(log n), not O(n).`
+                q: `HashMap.get is "O(1) average" — what is the catch?`,
+                a: `It relies on a good hashCode() spreading keys across buckets. With heavy collisions it degrades, but Java 8+ converts an overloaded bucket to a balanced tree, so the worst case is O(log n), not O(n).`
               },
               {
-                front: `When would you choose TreeMap over HashMap despite TreeMap being slower per op?`,
-                back: `When you need keys sorted or need range/navigation queries (firstKey, ceilingKey, headMap, subMap). TreeMap is O(log n) but ordered; HashMap is O(1) but unordered.`
+                q: `When would you choose TreeMap over HashMap despite TreeMap being slower per op?`,
+                a: `When you need keys sorted or need range/navigation queries (firstKey, ceilingKey, headMap, subMap). TreeMap is O(log n) but ordered; HashMap is O(1) but unordered.`
               },
               {
-                front: `HashSet vs TreeSet vs LinkedHashSet — complexity and ordering?`,
-                back: `HashSet: O(1) ops, no order. LinkedHashSet: O(1) ops, insertion order. TreeSet: O(log n) ops, sorted order. Pay the log cost only when you need sorting.`
+                q: `HashSet vs TreeSet vs LinkedHashSet — complexity and ordering?`,
+                a: `HashSet: O(1) ops, no order. LinkedHashSet: O(1) ops, insertion order. TreeSet: O(log n) ops, sorted order. Pay the log cost only when you need sorting.`
               },
               {
-                front: `Why prefer ArrayDeque over LinkedList for a queue or stack?`,
-                back: `Both give O(1) at the ends, but ArrayDeque uses a contiguous array (faster, cache-friendly, no per-element node objects). It is the recommended replacement for both LinkedList queues and the legacy Stack.`
+                q: `Why prefer ArrayDeque over LinkedList for a queue or stack?`,
+                a: `Both give O(1) at the ends, but ArrayDeque uses a contiguous array (faster, cache-friendly, no per-element node objects). It is the recommended replacement for both LinkedList queues and the legacy Stack.`
               },
               {
-                front: `What does PriorityQueue give you and at what cost?`,
-                back: `It always returns the smallest (or comparator-defined) element next. offer and poll are O(log n), peek is O(1). It is a heap, so contains/remove(object) are O(n).`
+                q: `What does PriorityQueue give you and at what cost?`,
+                a: `It always returns the smallest (or comparator-defined) element next. offer and poll are O(log n), peek is O(1). It is a heap, so contains/remove(object) are O(n).`
               },
               {
-                front: `Why can an accidental O(n^2) be catastrophic?`,
-                back: `It scales as the square of n. At n = 1,000,000 that is a trillion operations. A common cause is calling list.contains (O(n)) inside a loop over the same list — switch to a HashSet to make membership O(1).`
+                q: `Why can an accidental O(n^2) be catastrophic?`,
+                a: `It scales as the square of n. At n = 1,000,000 that is a trillion operations. A common cause is calling list.contains (O(n)) inside a loop over the same list — switch to a HashSet to make membership O(1).`
               },
               {
-                front: `What are safe default collections and when do you deviate?`,
-                back: `Defaults: ArrayList, HashMap, HashSet, ArrayDeque. Use Tree* when you need sorting, LinkedHash* when you need predictable iteration order, and PriorityQueue when you need min/max-first processing.`
+                q: `What are safe default collections and when do you deviate?`,
+                a: `Defaults: ArrayList, HashMap, HashSet, ArrayDeque. Use Tree* when you need sorting, LinkedHash* when you need predictable iteration order, and PriorityQueue when you need min/max-first processing.`
               },
               {
-                front: `Why does iteration order matter when choosing between HashMap and LinkedHashMap?`,
-                back: `HashMap iterates in an unpredictable order. LinkedHashMap keeps a linked list of entries and iterates in insertion (or access) order at the same O(1) per-op cost — useful for caches and reproducible output.`
+                q: `Why does iteration order matter when choosing between HashMap and LinkedHashMap?`,
+                a: `HashMap iterates in an unpredictable order. LinkedHashMap keeps a linked list of entries and iterates in insertion (or access) order at the same O(1) per-op cost — useful for caches and reproducible output.`
               }
             ]
           },
@@ -10175,52 +10175,52 @@ public class ListIntersection {
             ],
             flashcards: [
               {
-                front: `Which collection removes duplicates, and how do you keep original order?`,
-                back: `A Set removes duplicates. HashSet is fastest (O(1)) but unordered; LinkedHashSet also dedupes but preserves insertion order. To dedupe a List keeping order: new ArrayList<>(new LinkedHashSet<>(list)).`
+                q: `Which collection removes duplicates, and how do you keep original order?`,
+                a: `A Set removes duplicates. HashSet is fastest (O(1)) but unordered; LinkedHashSet also dedupes but preserves insertion order. To dedupe a List keeping order: new ArrayList<>(new LinkedHashSet<>(list)).`
               },
               {
-                front: `What's the modern idiom for counting occurrences in a Map?`,
-                back: `map.merge(key, 1, Integer::sum). It inserts 1 if absent or adds 1 to the existing count. Cleaner than map.put(k, map.getOrDefault(k,0)+1). Each update is O(1).`
+                q: `What's the modern idiom for counting occurrences in a Map?`,
+                a: `map.merge(key, 1, Integer::sum). It inserts 1 if absent or adds 1 to the existing count. Cleaner than map.put(k, map.getOrDefault(k,0)+1). Each update is O(1).`
               },
               {
-                front: `Why use ArrayDeque as both a stack and a queue?`,
-                back: `It supports O(1) operations at both ends: push/pop for LIFO stack behaviour and offer/poll for FIFO queue behaviour. It replaces the legacy synchronized Stack class and is faster than LinkedList.`
+                q: `Why use ArrayDeque as both a stack and a queue?`,
+                a: `It supports O(1) operations at both ends: push/pop for LIFO stack behaviour and offer/poll for FIFO queue behaviour. It replaces the legacy synchronized Stack class and is faster than LinkedList.`
               },
               {
-                front: `How do you check balanced parentheses?`,
-                back: `Use a stack (ArrayDeque). Push every opening bracket; on a closing bracket, pop and check it matches the expected opener (or fail if empty/mismatched). Balanced iff the stack is empty at the end. O(n).`
+                q: `How do you check balanced parentheses?`,
+                a: `Use a stack (ArrayDeque). Push every opening bracket; on a closing bracket, pop and check it matches the expected opener (or fail if empty/mismatched). Balanced iff the stack is empty at the end. O(n).`
               },
               {
-                front: `Why is a PriorityQueue good for 'top-3 largest', and what's the trick?`,
-                back: `Maintain a size-3 MIN-heap: offer each element, and when size exceeds 3, poll() removes the current smallest. What remains are the 3 largest. O(n log 3) ~ O(n). Note: iterating the queue is NOT sorted; only poll() is ordered.`
+                q: `Why is a PriorityQueue good for 'top-3 largest', and what's the trick?`,
+                a: `Maintain a size-3 MIN-heap: offer each element, and when size exceeds 3, poll() removes the current smallest. What remains are the 3 largest. O(n log 3) ~ O(n). Note: iterating the queue is NOT sorted; only poll() is ordered.`
               },
               {
-                front: `What navigation does TreeMap give that HashMap cannot?`,
-                back: `Sorted keys with floorKey (<= k), ceilingKey (>= k), higherKey, lowerKey, firstKey, lastKey, and range views (subMap/headMap/tailMap) — all O(log n). HashMap has no ordering at all.`
+                q: `What navigation does TreeMap give that HashMap cannot?`,
+                a: `Sorted keys with floorKey (<= k), ceilingKey (>= k), higherKey, lowerKey, firstKey, lastKey, and range views (subMap/headMap/tailMap) — all O(log n). HashMap has no ordering at all.`
               },
               {
-                front: `How do you process a tree/graph level by level?`,
-                back: `BFS with a queue (ArrayDeque): enqueue the root, then loop while non-empty, snapshotting q.size() at the start of each level so you process exactly one level before enqueuing the next level's children.`
+                q: `How do you process a tree/graph level by level?`,
+                a: `BFS with a queue (ArrayDeque): enqueue the root, then loop while non-empty, snapshotting q.size() at the start of each level so you process exactly one level before enqueuing the next level's children.`
               },
               {
-                front: `How do you compute the intersection of two lists?`,
-                back: `Put one into a Set, then call retainAll(other) — it keeps only elements present in both. Use LinkedHashSet to keep order. Union = addAll; difference = removeAll. Each is about O(n).`
+                q: `How do you compute the intersection of two lists?`,
+                a: `Put one into a Set, then call retainAll(other) — it keeps only elements present in both. Use LinkedHashSet to keep order. Union = addAll; difference = removeAll. Each is about O(n).`
               },
               {
-                front: `What breaks if you put a custom object in a HashSet without overriding equals/hashCode?`,
-                back: `Dedupe and contains fail: each instance uses identity equality, so logically-equal objects are treated as distinct and the Set never recognises duplicates. Always override equals AND hashCode together for keys/Set elements.`
+                q: `What breaks if you put a custom object in a HashSet without overriding equals/hashCode?`,
+                a: `Dedupe and contains fail: each instance uses identity equality, so logically-equal objects are treated as distinct and the Set never recognises duplicates. Always override equals AND hashCode together for keys/Set elements.`
               },
               {
-                front: `How do you check if two strings are anagrams using a Map?`,
-                back: `Count chars of the first string up (merge +1), count the second down (merge -1); if any count goes negative or lengths differ, they're not anagrams. All counts zero at the end means yes. O(n).`
+                q: `How do you check if two strings are anagrams using a Map?`,
+                a: `Count chars of the first string up (merge +1), count the second down (merge -1); if any count goes negative or lengths differ, they're not anagrams. All counts zero at the end means yes. O(n).`
               },
               {
-                front: `What's the idiom for grouping items into buckets?`,
-                back: `map.computeIfAbsent(key, k -> new ArrayList<>()).add(value). It lazily creates the bucket list only when the key first appears. Use a TreeMap if you want the groups iterated in sorted key order.`
+                q: `What's the idiom for grouping items into buckets?`,
+                a: `map.computeIfAbsent(key, k -> new ArrayList<>()).add(value). It lazily creates the bucket list only when the key first appears. Use a TreeMap if you want the groups iterated in sorted key order.`
               },
               {
-                front: `Why doesn't printing a PriorityQueue show sorted order?`,
-                back: `A PriorityQueue is a binary heap stored in an array; only the head (peek/poll) is guaranteed to be the min. Iteration/toString shows internal heap array order. To get sorted output you must poll() repeatedly (or copy and sort).`
+                q: `Why doesn't printing a PriorityQueue show sorted order?`,
+                a: `A PriorityQueue is a binary heap stored in an array; only the head (peek/poll) is guaranteed to be the min. Iteration/toString shows internal heap array order. To get sorted output you must poll() repeatedly (or copy and sort).`
               }
             ]
           }
@@ -17675,52 +17675,52 @@ public class HashVsTreeDemo {
             ],
             flashcards: [
               {
-                front: `What does "amortized O(1)" mean for ArrayList.add?`,
-                back: `Most adds are O(1); occasionally a full array is copied to a ~1.5x larger one (O(n)). Because growth is geometric, copies happen rarely enough that the average over n appends is constant. Total work to append n items is O(n), not O(n^2).`
+                q: `What does "amortized O(1)" mean for ArrayList.add?`,
+                a: `Most adds are O(1); occasionally a full array is copied to a ~1.5x larger one (O(n)). Because growth is geometric, copies happen rarely enough that the average over n appends is constant. Total work to append n items is O(n), not O(n^2).`
               },
               {
-                front: `HashMap get: average vs worst case, and how Java 8 changed the worst case?`,
-                back: `Average O(1). Pre-Java 8 a colliding bucket was a linked list → O(n) worst. Java 8 treeifies a bucket to a red-black tree when it exceeds 8 entries and table capacity >= 64, bounding the worst case at O(log n).`
+                q: `HashMap get: average vs worst case, and how Java 8 changed the worst case?`,
+                a: `Average O(1). Pre-Java 8 a colliding bucket was a linked list → O(n) worst. Java 8 treeifies a bucket to a red-black tree when it exceeds 8 entries and table capacity >= 64, bounding the worst case at O(log n).`
               },
               {
-                front: `Exact treeify/untreeify thresholds in HashMap?`,
-                back: `TREEIFY_THRESHOLD = 8 (and MIN_TREEIFY_CAPACITY = 64; below that it resizes instead). UNTREEIFY_THRESHOLD = 6 — the tree reverts to a list when shrinking past 6.`
+                q: `Exact treeify/untreeify thresholds in HashMap?`,
+                a: `TREEIFY_THRESHOLD = 8 (and MIN_TREEIFY_CAPACITY = 64; below that it resizes instead). UNTREEIFY_THRESHOLD = 6 — the tree reverts to a list when shrinking past 6.`
               },
               {
-                front: `Why is LinkedList.get(i) O(n)?`,
-                back: `No index math — it must walk node pointers from the nearest end (up to n/2 hops). Each hop chases a scattered heap pointer, causing cache misses. ArrayList.get is O(1) via contiguous-array index arithmetic.`
+                q: `Why is LinkedList.get(i) O(n)?`,
+                a: `No index math — it must walk node pointers from the nearest end (up to n/2 hops). Each hop chases a scattered heap pointer, causing cache misses. ArrayList.get is O(1) via contiguous-array index arithmetic.`
               },
               {
-                front: `Why does ArrayList usually beat LinkedList even for "middle insert"?`,
-                back: `Application code rarely holds the node; it must first locate the position (O(n) walk) before the O(1) relink, so the net is O(n) anyway. Plus contiguous arrays are cache-friendly while pointer-chasing is not. The win only appears when you already hold an Iterator at the spot.`
+                q: `Why does ArrayList usually beat LinkedList even for "middle insert"?`,
+                a: `Application code rarely holds the node; it must first locate the position (O(n) walk) before the O(1) relink, so the net is O(n) anyway. Plus contiguous arrays are cache-friendly while pointer-chasing is not. The win only appears when you already hold an Iterator at the spot.`
               },
               {
-                front: `TreeMap/TreeSet complexity and what you buy with it?`,
-                back: `O(log n) for get/put/remove/contains via a self-balancing red-black tree (height ~log n). You pay the log factor for sorted order and navigation: firstKey, ceilingKey, floorEntry, headMap, subMap — none of which a hash structure offers.`
+                q: `TreeMap/TreeSet complexity and what you buy with it?`,
+                a: `O(log n) for get/put/remove/contains via a self-balancing red-black tree (height ~log n). You pay the log factor for sorted order and navigation: firstKey, ceilingKey, floorEntry, headMap, subMap — none of which a hash structure offers.`
               },
               {
-                front: `PriorityQueue: complexity of offer, poll, peek, and contains?`,
-                back: `Binary heap in an array: offer O(log n) (sift up), poll O(log n) (sift down), peek O(1) (root). contains/remove(Object) are O(n) — a heap is min-first, not searchable. Bulk heapify via constructor is O(n).`
+                q: `PriorityQueue: complexity of offer, poll, peek, and contains?`,
+                a: `Binary heap in an array: offer O(log n) (sift up), poll O(log n) (sift down), peek O(1) (root). contains/remove(Object) are O(n) — a heap is min-first, not searchable. Bulk heapify via constructor is O(n).`
               },
               {
-                front: `Why is iterating a HashMap O(n + capacity), not O(n)?`,
-                back: `Iteration walks every bucket slot including empty ones, so cost depends on table capacity. A map sized huge but holding few entries iterates slowly. LinkedHashMap keeps a linked list of entries and iterates in clean O(n) insertion/access order.`
+                q: `Why is iterating a HashMap O(n + capacity), not O(n)?`,
+                a: `Iteration walks every bucket slot including empty ones, so cost depends on table capacity. A map sized huge but holding few entries iterates slowly. LinkedHashMap keeps a linked list of entries and iterates in clean O(n) insertion/access order.`
               },
               {
-                front: `ArrayDeque vs LinkedList for a queue/stack — which and why?`,
-                back: `ArrayDeque. Both give O(1) ends, but ArrayDeque is a contiguous circular array (cache-friendly, less garbage, no per-node pointer overhead). LinkedList allocates a node per element and chases pointers. ArrayDeque also replaces the legacy synchronized Stack.`
+                q: `ArrayDeque vs LinkedList for a queue/stack — which and why?`,
+                a: `ArrayDeque. Both give O(1) ends, but ArrayDeque is a contiguous circular array (cache-friendly, less garbage, no per-node pointer overhead). LinkedList allocates a node per element and chases pointers. ArrayDeque also replaces the legacy synchronized Stack.`
               },
               {
-                front: `What is HashDoS and how does treeification mitigate it?`,
-                back: `An attacker submits keys engineered to collide into one bucket, degrading lookups to O(n) and causing CPU exhaustion. Java 8 treeification converts an overloaded bucket to a red-black tree, capping worst-case lookup at O(log n).`
+                q: `What is HashDoS and how does treeification mitigate it?`,
+                a: `An attacker submits keys engineered to collide into one bucket, degrading lookups to O(n) and causing CPU exhaustion. Java 8 treeification converts an overloaded bucket to a red-black tree, capping worst-case lookup at O(log n).`
               },
               {
-                front: `Space cost: why does LinkedList use more memory than ArrayList?`,
-                back: `LinkedList allocates a Node object per element with two pointers (prev/next) plus object header — often 3-4x the payload. ArrayList stores references in one contiguous array with only ~capacity slack from growth.`
+                q: `Space cost: why does LinkedList use more memory than ArrayList?`,
+                a: `LinkedList allocates a Node object per element with two pointers (prev/next) plus object header — often 3-4x the payload. ArrayList stores references in one contiguous array with only ~capacity slack from growth.`
               },
               {
-                front: `When should you pre-size a HashMap and why?`,
-                back: `When you know the expected count. Sizing new HashMap<>((int)(expected/0.75)+1) avoids repeated resize+rehash (each O(n)) as it grows past the 0.75 load factor, keeping inserts smooth and O(1) average.`
+                q: `When should you pre-size a HashMap and why?`,
+                a: `When you know the expected count. Sizing new HashMap<>((int)(expected/0.75)+1) avoids repeated resize+rehash (each O(n)) as it grows past the 0.75 load factor, keeping inserts smooth and O(1) average.`
               }
             ]
           },
@@ -18165,52 +18165,52 @@ public class MinMaxScan {
             ],
             flashcards: [
               {
-                front: `How do you implement an LRU cache with the JDK and nothing else?`,
-                back: `Subclass LinkedHashMap with access-order = true (the 3-arg constructor) and override removeEldestEntry to return size() > capacity. get/put stay O(1) and the eldest (least-recently-accessed) entry is evicted automatically.`
+                q: `How do you implement an LRU cache with the JDK and nothing else?`,
+                a: `Subclass LinkedHashMap with access-order = true (the 3-arg constructor) and override removeEldestEntry to return size() > capacity. get/put stay O(1) and the eldest (least-recently-accessed) entry is evicted automatically.`
               },
               {
-                front: `Why does removing from a collection during an enhanced for-loop throw ConcurrentModificationException?`,
-                back: `The fail-fast iterator tracks a modCount; structurally modifying the collection through anything other than the iterator changes modCount, so the next next()/hasNext() detects the mismatch and throws. Remove via Iterator.remove() or Collection.removeIf().`
+                q: `Why does removing from a collection during an enhanced for-loop throw ConcurrentModificationException?`,
+                a: `The fail-fast iterator tracks a modCount; structurally modifying the collection through anything other than the iterator changes modCount, so the next next()/hasNext() detects the mismatch and throws. Remove via Iterator.remove() or Collection.removeIf().`
               },
               {
-                front: `Which collection gives top-K frequent elements efficiently, and what's the complexity?`,
-                back: `Build a frequency HashMap (O(n)), then push keys into a size-k min-heap (PriorityQueue) comparing by frequency, polling when size > k. Total O(n log k) — better than the O(n log n) of fully sorting when k << n.`
+                q: `Which collection gives top-K frequent elements efficiently, and what's the complexity?`,
+                a: `Build a frequency HashMap (O(n)), then push keys into a size-k min-heap (PriorityQueue) comparing by frequency, polling when size > k. Total O(n log k) — better than the O(n log n) of fully sorting when k << n.`
               },
               {
-                front: `TreeMap: what do floorKey, ceilingKey, higherKey, lowerKey return?`,
-                back: `floorKey = greatest key <= arg; ceilingKey = smallest key >= arg; higherKey = strictly greater; lowerKey = strictly less. All O(log n). Plus subMap/headMap/tailMap for range views. This is why TreeMap beats HashMap for range/nearest queries.`
+                q: `TreeMap: what do floorKey, ceilingKey, higherKey, lowerKey return?`,
+                a: `floorKey = greatest key <= arg; ceilingKey = smallest key >= arg; higherKey = strictly greater; lowerKey = strictly less. All O(log n). Plus subMap/headMap/tailMap for range views. This is why TreeMap beats HashMap for range/nearest queries.`
               },
               {
-                front: `Why prefer ArrayDeque over Stack and LinkedList for stacks/queues?`,
-                back: `Stack/Vector are synchronized legacy classes (slow, locking on every op). ArrayDeque is an unsynchronized resizable-array deque: O(1) push/pop/offer/poll at both ends, cache-friendly, no per-node allocation like LinkedList. It's the modern default for both stack and FIFO queue.`
+                q: `Why prefer ArrayDeque over Stack and LinkedList for stacks/queues?`,
+                a: `Stack/Vector are synchronized legacy classes (slow, locking on every op). ArrayDeque is an unsynchronized resizable-array deque: O(1) push/pop/offer/poll at both ends, cache-friendly, no per-node allocation like LinkedList. It's the modern default for both stack and FIFO queue.`
               },
               {
-                front: `What is the idiomatic 'get-or-create the bucket' pattern for a multimap?`,
-                back: `map.computeIfAbsent(key, k -> new ArrayList<>()).add(value). It atomically creates the list only when absent and returns it, avoiding the get-null-check-put boilerplate. Counterpart for counters is map.merge(key, 1, Integer::sum).`
+                q: `What is the idiomatic 'get-or-create the bucket' pattern for a multimap?`,
+                a: `map.computeIfAbsent(key, k -> new ArrayList<>()).add(value). It atomically creates the list only when absent and returns it, avoiding the get-null-check-put boilerplate. Counterpart for counters is map.merge(key, 1, Integer::sum).`
               },
               {
-                front: `How do you sort a Map by value and keep the order?`,
-                back: `Stream the entrySet, sort with Map.Entry.comparingByValue() (.reversed() for desc), then collect into a LinkedHashMap via Collectors.toMap(k,v,(a,b)->a,LinkedHashMap::new). A plain HashMap would discard the imposed order.`
+                q: `How do you sort a Map by value and keep the order?`,
+                a: `Stream the entrySet, sort with Map.Entry.comparingByValue() (.reversed() for desc), then collect into a LinkedHashMap via Collectors.toMap(k,v,(a,b)->a,LinkedHashMap::new). A plain HashMap would discard the imposed order.`
               },
               {
-                front: `Big-O of HashMap.get/put — and the worst case?`,
-                back: `O(1) average. Worst case is O(n) when many keys collide into one bucket; since Java 8 a bin that exceeds the treeify threshold (8, with table >=64) converts to a red-black tree, making the worst case O(log n) instead of O(n).`
+                q: `Big-O of HashMap.get/put — and the worst case?`,
+                a: `O(1) average. Worst case is O(n) when many keys collide into one bucket; since Java 8 a bin that exceeds the treeify threshold (8, with table >=64) converts to a red-black tree, making the worst case O(log n) instead of O(n).`
               },
               {
-                front: `How does the monotonic-deque sliding-window-max run in O(n)?`,
-                back: `Keep an ArrayDeque of indices whose values are strictly decreasing. For each i: expire the front if it's out of window, pop the back while its value <= a[i], then offer i. The front is always the window max. Each index is pushed and popped at most once → amortised O(1) per element.`
+                q: `How does the monotonic-deque sliding-window-max run in O(n)?`,
+                a: `Keep an ArrayDeque of indices whose values are strictly decreasing. For each i: expire the front if it's out of window, pop the back while its value <= a[i], then offer i. The front is always the window max. Each index is pushed and popped at most once → amortised O(1) per element.`
               },
               {
-                front: `Which Set operations give intersection, union, and difference?`,
-                back: `Copy one set, then: retainAll(other) = intersection; addAll(other) = union; removeAll(other) = difference (this minus other). Each is roughly O(n). Wrap in TreeSet if you need the result sorted.`
+                q: `Which Set operations give intersection, union, and difference?`,
+                a: `Copy one set, then: retainAll(other) = intersection; addAll(other) = union; removeAll(other) = difference (this minus other). Each is roughly O(n). Wrap in TreeSet if you need the result sorted.`
               },
               {
-                front: `How do you find the first non-repeating character in one logical pass?`,
-                back: `Count with a LinkedHashMap (preserves first-seen order), then iterate entries returning the first with count 1. LinkedHashMap's insertion ordering means the first count-1 entry is genuinely the first unique char. O(n) time, O(k) space.`
+                q: `How do you find the first non-repeating character in one logical pass?`,
+                a: `Count with a LinkedHashMap (preserves first-seen order), then iterate entries returning the first with count 1. LinkedHashMap's insertion ordering means the first count-1 entry is genuinely the first unique char. O(n) time, O(k) space.`
               },
               {
-                front: `When would you pick LinkedHashMap over HashMap or TreeMap?`,
-                back: `LinkedHashMap when you need predictable iteration order — insertion-order by default, or access-order for LRU. HashMap when order is irrelevant and you want fastest O(1). TreeMap when you need keys sorted and navigation (floor/ceiling/range) at O(log n).`
+                q: `When would you pick LinkedHashMap over HashMap or TreeMap?`,
+                a: `LinkedHashMap when you need predictable iteration order — insertion-order by default, or access-order for LRU. HashMap when order is irrelevant and you want fastest O(1). TreeMap when you need keys sorted and navigation (floor/ceiling/range) at O(log n).`
               }
             ]
           }

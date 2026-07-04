@@ -40,7 +40,11 @@ jobs:
               if(!p.id||!p.title||!Array.isArray(p.modules)) bad.push('phase '+p.id);
               p.modules.forEach(m=>{
                 if(!m.id||!m.title||typeof m.hours!=='number') bad.push('module '+m.id);
-                (m.flashcards||[]).forEach(f=>{ if(!f.q||!f.a) bad.push('card '+m.id); });
+                // validate flashcards and code entries at BOTH module and section level
+                (m.sections||[m]).forEach(s=>{
+                  (s.flashcards||[]).forEach(f=>{ if(typeof f.q!=='string'||typeof f.a!=='string') bad.push('card '+m.id); });
+                  (s.code||[]).forEach(c=>{ const code=typeof c==='string'?c:c.code; if(typeof code!=='string') bad.push('code '+m.id); });
+                });
               });
             });
             const ids=CURRICULUM.flatMap(p=>p.modules.map(m=>m.id));
