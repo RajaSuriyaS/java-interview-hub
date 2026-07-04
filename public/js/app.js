@@ -1326,6 +1326,7 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
         minimap: { enabled: false },
         fontSize: 13.5,
         fontFamily: 'JetBrains Mono, monospace',
+        fontLigatures: false,
         scrollBeyondLastLine: false,
         padding: { top: 12, bottom: 12 },
         lineNumbers: 'on',

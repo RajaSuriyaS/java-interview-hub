@@ -10,6 +10,14 @@
 html, body { height: 100%; }
 * { -webkit-tap-highlight-color: transparent; }
 
+/* Show operators as the literal keystrokes you type (==, !=, >=, ->).
+   JetBrains Mono ships programming ligatures that redraw them as single
+   glyphs (≠, ⩾, long =) — confusing in a Java course, so turn them off. */
+pre, code, kbd, samp, textarea, .font-mono, .monaco-wrap, .output-pre {
+  font-variant-ligatures: none !important;
+  font-feature-settings: "liga" 0, "calt" 0, "dlig" 0 !important;
+}
+
 /* ─── Dim theme (GitHub-dim style — noticeably lighter than Dark) ────── */
 [data-theme="dim"] body              { background-color: #22272e !important; color: #adbac7 !important; }
 [data-theme="dim"] aside             { background-color: #2d333b !important; border-color: #444c56 !important; }
