@@ -579,6 +579,36 @@ const INTERVIEW_QUESTIONS = {
       "a": "Spring wraps each test in a transaction and rolls it back afterwards, which keeps the DB clean without truncation. It's misleading in two ways: code that runs in a separate transaction (REQUIRES_NEW, async workers, or another service instance) won't see the test's uncommitted data, and the rollback can hide problems that only appear at commit time — deferred constraints, flush-order issues, triggers. For those, I commit for real and clean up explicitly, or test through the API against a Testcontainer."
     }
   ],
+  "2.7": [
+    {
+      "q": "What is the difference between a static nested class and an inner (non-static) class?",
+      "a": "A static nested class is associated with the outer class, not an instance, so it can be created standalone as new Outer.Nested() and cannot access the outer instance's non-static fields. An inner class is tied to an enclosing instance: it holds an implicit reference (Outer.this) so it can read the outer object's state, and you can only create it via outerInstance.new Inner(). That hidden reference is also a memory-leak risk -- an inner-class instance keeps its outer object alive, which is why long-lived listeners or handlers should be static nested classes (or use a WeakReference). Prefer static nested unless you genuinely need the enclosing instance."
+    },
+    {
+      "q": "What does `this` refer to inside an anonymous class versus inside a lambda, and when can't a lambda replace an anonymous class?",
+      "a": "In an anonymous class, `this` refers to the anonymous instance itself; to reach the enclosing object you write Outer.this. In a lambda, `this` refers to the enclosing instance -- a lambda introduces no new scope for `this` or for variable shadowing. A lambda can only replace an anonymous class that implements a single-abstract-method (functional) interface with no state. You still need an anonymous class when the type is an abstract class, when it implements more than one method, when you need instance fields or a constructor, or when you need `this` to mean the handler object (common with self-removing listeners)."
+    },
+    {
+      "q": "Why must an annotation have RUNTIME retention to be readable by reflection, and what are the three retention policies?",
+      "a": "RetentionPolicy.SOURCE annotations (like @Override) are discarded by the compiler and exist only for tools/linters. CLASS (the default) keeps them in the .class file but the JVM does not load them, so reflection cannot see them. RUNTIME keeps them in the class file AND makes the JVM load them, so element.getAnnotation(X.class) or isAnnotationPresent works. Any framework that inspects annotations at run time -- Spring, JUnit, Jackson, Bean Validation -- requires its annotations to be @Retention(RUNTIME); if you write a custom annotation and forget it, your reflection code silently finds nothing."
+    },
+    {
+      "q": "What does setAccessible(true) do, what does it bypass, and why can it fail on modern JDKs?",
+      "a": "It suppresses Java's access checks so reflection can read or invoke private, protected or package-private members -- how frameworks populate private fields or call private methods. It bypasses normal encapsulation, so it should be used sparingly and never on untrusted input. On Java 9+ with the module system it can throw InaccessibleObjectException when the target package is not `open` to your module (strong encapsulation of the JDK internals). It also has a real performance cost versus direct access and defeats the compiler's ability to reason about the code, so hot paths should cache Method/Field handles or avoid reflection entirely (e.g. MethodHandles/LambdaMetafactory)."
+    },
+    {
+      "q": "What is serialVersionUID and what happens when it does not match on deserialization?",
+      "a": "serialVersionUID is a version stamp for a Serializable class. When you serialize, the current UID is written into the byte stream; when you deserialize, the JVM compares the stream's UID with the loaded class's UID and throws InvalidClassException if they differ. If you don't declare one explicitly, the compiler generates it from the class's structure, so almost any change (adding a field, changing a modifier) silently changes the UID and breaks old data. Declaring a fixed `private static final long serialVersionUID` gives you control: keep it stable across compatible changes and bump it only when you intend to break compatibility. transient and static fields are never part of the serialized state."
+    },
+    {
+      "q": "Why is deserializing untrusted data dangerous, and how do you defend against it?",
+      "a": "Java deserialization reconstructs arbitrary object graphs and runs code in readObject/readResolve and in the class's own logic during reconstruction. An attacker who controls the byte stream can craft a 'gadget chain' out of classes already on the classpath to achieve remote code execution, DoS, or resource exhaustion -- without ever calling your code directly. Defenses: never deserialize data from an untrusted source; if you must, install an ObjectInputFilter (an allow-list of expected classes and limits on depth/array size); prefer data formats that don't instantiate arbitrary types, such as JSON or protobuf with an explicit schema. Modern systems generally avoid native Java serialization for anything crossing a trust boundary."
+    },
+    {
+      "q": "When would you use Externalizable or writeReplace/readResolve instead of default serialization?",
+      "a": "Externalizable gives you full manual control of the wire format via writeExternal/readExternal -- useful for compactness or speed, but you write every field yourself and it needs a public no-arg constructor. writeReplace lets an object substitute a different object (often a compact 'serialization proxy') into the stream, and readResolve lets a class replace the freshly deserialized object with a canonical one -- essential for singletons and enums so deserialization does not silently create a second instance and break `==` identity. The serialization-proxy pattern (a small static nested class with writeReplace + readResolve) is the robust way to keep invariants and immutability across deserialization."
+    }
+  ],
   "3.1": [
     {
       "q": "Walk me through constructor vs setter vs field injection and which you'd use in production.",

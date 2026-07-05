@@ -26436,6 +26436,1401 @@ class GoodAssertionsTest {
             ]
           }
         ]
+      },
+      {
+        id: `2.7`,
+        title: `Reflection, Annotations, Serialization & Nested Classes`,
+        hours: 4,
+        sections: [
+          {
+            title: `Nested & Inner Classes — Static Nested, Inner, Local, Anonymous & Lambdas`,
+            notes: `## Why Java has four kinds of nested type
+
+A class declared inside another class is a **nested class**. Java has four flavours, and the single most important axis is: *does an instance need a link back to an enclosing instance?*
+
+\`\`\`mermaid
+flowchart TD
+  A[Class declared inside another type] --> B{Marked static?}
+  B -- yes --> C[Static nested class<br/>no enclosing instance]
+  B -- no --> D{Declared where?}
+  D -- class body --> E[Inner class<br/>holds Outer.this]
+  D -- inside a method --> F{Named?}
+  F -- yes --> G[Local class]
+  F -- no --> H[Anonymous class]
+\`\`\`
+
+### Static nested vs inner class (the classic interview question)
+
+A **static nested class** is essentially a top-level class that happens to live inside another for namespacing. It has **no** implicit reference to any enclosing object, can declare static members, and is created with plain \`new Outer.Nested()\`.
+
+A **(non-static) inner class** is bound to an instance of its enclosing class. The compiler gives every inner-class object a hidden synthetic field (typically \`this$0\`) pointing at the enclosing instance, which is how it reads outer fields and why you must write \`outer.new Inner()\`. You reach the enclosing instance explicitly as \`Outer.this\`.
+
+> [!WARNING]
+> That hidden \`this$0\` reference is a real memory-leak vector: an inner-class instance (or a non-static anonymous class / a lambda that captures \`this\`) keeps its **entire** enclosing object alive. A long-lived listener declared as an inner class can pin a whole Activity/Controller and its buffers. Default to \`static\` for nested helpers unless you genuinely need the outer state.
+
+### Local classes
+
+A **local class** is a named class declared inside a method (or block). It is visible only there, may capture **effectively final** local variables, and unlike a lambda can have constructors, multiple methods, and mutable instance state.
+
+### Anonymous class vs lambda
+
+Both capture effectively-final locals, but they differ sharply:
+
+| Aspect | Anonymous class | Lambda |
+|---|---|---|
+| \`this\` refers to | the anonymous object itself | the **enclosing** instance |
+| New \`.class\` file / type | yes (e.g. \`Outer$1\`) | no (invokedynamic, no extra class) |
+| Can implement | any interface **or** subclass any class | a **functional** interface only (1 abstract method) |
+| Own instance fields | yes | no |
+| Multiple methods | yes | no |
+
+A lambda **cannot** replace an anonymous class when you must subclass an abstract class, implement an interface with more than one abstract method, or hold private per-instance state.
+
+> [!TIP]
+> If you need \`this\` to mean "the callback object" (e.g. to deregister a listener from inside itself), use an anonymous class — a lambda's \`this\` is the outer object, not the callback.
+
+### Comparison table
+
+| Kind | Needs outer instance? | Static members? | Access to local vars? | Typical use |
+|---|---|---|---|---|
+| Static nested | No | Yes | n/a | Grouping a helper/builder with its owner |
+| Inner | Yes (\`Outer.this\`) | No (except constants) | n/a | Object tightly coupled to one outer instance (iterators) |
+| Local | Only if in an instance method | No (except constants) | Yes (effectively final) | One-off named helper with state, scoped to a method |
+| Anonymous | Only if in an instance method | No | Yes (effectively final) | One-shot subclass/impl; needs own \`this\` or fields |
+| Lambda | No (captures enclosing \`this\` if used) | n/a | Yes (effectively final) | Concise functional-interface impl |`,
+            code: [
+              {
+                lang: `java`,
+                title: `Static nested vs inner class`,
+                code: `import java.util.*;
+
+// Static nested class vs (non-static) inner class.
+public class NestedDemo1 {
+
+    private String outerField = "outer-state";
+    private static int counter = 0;
+
+    // Static nested class: no link to any Outer instance.
+    // Can have static members. Cannot see outerField directly.
+    static class StaticNested {
+        int id = ++counter; // can touch static members of enclosing class
+        String describe() {
+            return "StaticNested#" + id + " (no enclosing instance)";
+        }
+    }
+
+    // Inner class: every instance is tied to a NestedDemo1 instance.
+    // Cannot declare static members (except static final constants).
+    class Inner {
+        static final String KIND = "inner";
+        String describe() {
+            // Reads the enclosing instance's field via the implicit ref.
+            return "Inner sees outerField=" + outerField
+                    + ", explicit outer ref=" + NestedDemo1.this.outerField;
+        }
+    }
+
+    public static void main(String[] a) {
+        // Static nested needs no outer instance:
+        StaticNested s1 = new StaticNested();
+        StaticNested s2 = new StaticNested();
+        System.out.println(s1.describe());
+        System.out.println(s2.describe());
+
+        // Inner class needs an outer instance:
+        NestedDemo1 outer = new NestedDemo1();
+        NestedDemo1.Inner in = outer.new Inner();
+        System.out.println(in.describe());
+        System.out.println("Inner.KIND=" + Inner.KIND);
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `The implicit enclosing reference (leak risk)`,
+                code: `import java.lang.reflect.Field;
+import java.util.*;
+
+// Why an inner class holds an implicit reference to its enclosing instance,
+// and how that can leak memory.
+public class NestedDemo2 {
+
+    static class Host {
+        // A heavy object we do NOT want to keep alive longer than necessary.
+        final byte[] payload = new byte[1_000_000];
+
+        // Inner class: instances carry a hidden field pointing at the Host.
+        class Leaky {
+            String hello() { return "alive"; }
+        }
+
+        // Static nested class: no hidden reference to Host.
+        static class Clean {
+            String hello() { return "alive"; }
+        }
+
+        Leaky makeLeaky() { return new Leaky(); }
+        static Clean makeClean() { return new Clean(); }
+    }
+
+    public static void main(String[] a) throws Exception {
+        Host host = new Host();
+        Host.Leaky leaky = host.makeLeaky();
+        Host.Clean clean = Host.makeClean();
+
+        // The compiler synthesises a field like this$0 on the inner class.
+        System.out.println("Synthetic fields on Leaky:");
+        for (Field f : leaky.getClass().getDeclaredFields()) {
+            System.out.println("  " + f.getName() + " : " + f.getType().getSimpleName()
+                    + (f.isSynthetic() ? " (synthetic -> enclosing Host)" : ""));
+        }
+        System.out.println("Synthetic fields on Clean: "
+                + Arrays.toString(clean.getClass().getDeclaredFields()));
+
+        // Even if we drop 'host', 'leaky' keeps the 1MB payload reachable.
+        host = null;
+        System.out.println("leaky still says: " + leaky.hello()
+                + " -> its hidden this$0 pins the whole Host (and its 1MB payload).");
+        System.out.println("clean says: " + clean.hello()
+                + " -> holds nothing, Host is free to be collected.");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Local class with per-instance state`,
+                code: `import java.util.*;
+import java.util.function.*;
+
+// Local classes: a named class declared inside a method body.
+public class NestedDemo3 {
+
+    interface Greeter { String greet(String name); }
+
+    static Greeter makeGreeter(String salutation) {
+        // 'salutation' is effectively final, so the local class may capture it.
+        int year = 2026; // also effectively final
+
+        // A local class can have constructors, multiple methods and state,
+        // unlike a lambda. It is only visible inside makeGreeter.
+        class Local implements Greeter {
+            private int calls = 0;
+            public String greet(String name) {
+                calls++;
+                return salutation + ", " + name + "! (year=" + year
+                        + ", call #" + calls + ")";
+            }
+        }
+        return new Local();
+    }
+
+    public static void main(String[] a) {
+        Greeter g = makeGreeter("Hello");
+        System.out.println(g.greet("Ada"));
+        System.out.println(g.greet("Grace"));
+
+        // Local classes shine when you need per-instance state that a lambda
+        // cannot hold cleanly; here each Greeter counts its own calls.
+        Greeter g2 = makeGreeter("Hi");
+        System.out.println(g2.greet("Alan"));
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Anonymous class vs lambda: what 'this' means`,
+                code: `import java.util.*;
+import java.util.function.*;
+
+// Anonymous class vs lambda: what 'this' means, and capture rules.
+public class NestedDemo4 {
+
+    interface Task { void run(); }
+
+    private final String owner = "NestedDemo4-instance";
+
+    void demo() {
+        int local = 42; // effectively final; both forms may capture it.
+
+        // Anonymous class: 'this' refers to the anonymous object itself.
+        Task anon = new Task() {
+            @Override public void run() {
+                System.out.println("[anon] this class = " + this.getClass().getName());
+                System.out.println("[anon] this is a Task? " + (this instanceof Task));
+                System.out.println("[anon] captured local = " + local);
+                // To reach the outer instance you must qualify it:
+                System.out.println("[anon] outer owner = " + NestedDemo4.this.owner);
+            }
+        };
+
+        // Lambda: 'this' refers to the ENCLOSING instance (NestedDemo4), not the lambda.
+        Task lam = () -> {
+            System.out.println("[lambda] this class = " + this.getClass().getName());
+            System.out.println("[lambda] this is a Task? " + (this instanceof Task));
+            System.out.println("[lambda] captured local = " + local);
+            System.out.println("[lambda] outer owner = " + this.owner);
+        };
+
+        anon.run();
+        System.out.println("---");
+        lam.run();
+    }
+
+    public static void main(String[] a) {
+        new NestedDemo4().demo();
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `When a lambda cannot replace an anonymous class`,
+                code: `import java.util.*;
+
+// When a lambda CANNOT replace an anonymous class.
+public class NestedDemo5 {
+
+    // 1) Abstract CLASS (not a functional interface) -> lambdas do not apply.
+    abstract static class Handler {
+        private int handled = 0;
+        abstract void onEvent(String e);
+        void fire(String e) { handled++; onEvent(e); }
+        int handledCount() { return handled; }
+    }
+
+    // 2) Interface with MORE THAN ONE abstract method -> not a functional interface.
+    interface MultiOp {
+        int add(int x, int y);
+        int mul(int x, int y);
+    }
+
+    public static void main(String[] a) {
+        // Must use an anonymous class to subclass an abstract class:
+        Handler h = new Handler() {
+            @Override void onEvent(String e) {
+                System.out.println("handled event: " + e);
+            }
+        };
+        h.fire("click");
+        h.fire("scroll");
+        System.out.println("total handled = " + h.handledCount());
+
+        // Must use an anonymous class (or a named class) for a 2-method interface:
+        MultiOp ops = new MultiOp() {
+            @Override public int add(int x, int y) { return x + y; }
+            @Override public int mul(int x, int y) { return x * y; }
+        };
+        System.out.println("add=" + ops.add(3, 4) + ", mul=" + ops.mul(3, 4));
+
+        // Anonymous classes may also hold their own instance fields:
+        Runnable stateful = new Runnable() {
+            int ticks = 0;
+            @Override public void run() { System.out.println("tick " + (++ticks)); }
+        };
+        stateful.run();
+        stateful.run();
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Difference between a static nested class and an inner class?`,
+                a: `A static nested class has no link to any enclosing instance (like a namespaced top-level class) and can have static members. An inner (non-static) class is tied to an enclosing instance, holds a hidden reference to it (Outer.this), cannot declare static members except constants, and is created via outer.new Inner().`
+              },
+              {
+                q: `How does an inner class access the enclosing object's fields?`,
+                a: `The compiler adds a synthetic field (e.g. this$0) that points at the enclosing instance; field/method access is routed through it. You can name it explicitly as Outer.this.`
+              },
+              {
+                q: `Why can an inner class cause a memory leak?`,
+                a: `Its hidden reference keeps the whole enclosing instance reachable. A long-lived inner-class (or capturing anonymous/lambda) object pins the outer object and everything it holds, preventing GC.`
+              },
+              {
+                q: `What does 'this' mean inside a lambda vs an anonymous class?`,
+                a: `In a lambda, 'this' is the ENCLOSING instance. In an anonymous class, 'this' is the anonymous object itself; to reach the outer instance you write Outer.this.`
+              },
+              {
+                q: `What variables can a local/anonymous class or lambda capture?`,
+                a: `Only effectively final local variables (assigned once, never reassigned). Instance and static fields can be freely read and mutated; locals cannot be mutated after capture.`
+              },
+              {
+                q: `When can a lambda NOT replace an anonymous class?`,
+                a: `When you must subclass an abstract class, implement an interface with more than one abstract method, need the object's own 'this', or need per-instance fields/state or multiple methods.`
+              },
+              {
+                q: `Does a lambda create a new .class file like an anonymous class?`,
+                a: `No. Anonymous classes compile to separate class files (Outer$1). Lambdas are wired at runtime via invokedynamic and do not generate an extra named class file.`
+              },
+              {
+                q: `How do you instantiate an inner class from outside the enclosing class?`,
+                a: `You need an enclosing instance: Outer o = new Outer(); Outer.Inner i = o.new Inner();`
+              },
+              {
+                q: `What is a local class and when is it useful?`,
+                a: `A named class declared inside a method body, visible only there. Useful when you need a named, possibly multi-method, stateful helper scoped to one method (something a lambda cannot express).`
+              },
+              {
+                q: `Can a nested class access the outer class's private members?`,
+                a: `Yes. Nested classes (static or inner) and the enclosing class are in the same nest and can access each other's private members directly.`
+              },
+              {
+                q: `Why prefer a static nested class for helpers by default?`,
+                a: `It avoids the implicit enclosing reference, so it does not accidentally keep the outer instance alive and is cheaper; only make it non-static (inner) when you truly need outer state.`
+              }
+            ]
+          },
+          {
+            title: `Reflection — Inspecting & Invoking Types at Runtime`,
+            notes: `## Reflection: the runtime metadata API
+
+Reflection (\`java.lang.reflect\`) lets code inspect and manipulate classes, fields, methods and constructors that are unknown at compile time. It is how Spring wires beans, Jackson maps JSON to fields, JUnit finds \`@Test\` methods, and JPA populates entities.
+
+### Getting a \`Class<?>\`
+
+| Way | When | Note |
+|---|---|---|
+| \`Foo.class\` | type known at compile time | no instance, no exceptions |
+| \`obj.getClass()\` | you have an instance | returns the **runtime** class (subtype, not the static type) |
+| \`Class.forName("p.Foo")\` | name known only as a string | loads/initialises the class; throws \`ClassNotFoundException\` |
+
+### Declared vs non-declared accessors
+
+| Method | Returns |
+|---|---|
+| \`getFields()\` / \`getMethods()\` | **public** members, **including inherited** ones |
+| \`getDeclaredFields()\` / \`getDeclaredMethods()\` | **all** members (any access) declared in **this class only**, not inherited |
+
+\`\`\`mermaid
+sequenceDiagram
+  participant App
+  participant Class as Class<?>
+  participant Ctor as Constructor
+  participant Obj as new instance
+  App->>Class: Class.forName("Robot")
+  App->>Ctor: getConstructor(String,int)
+  Ctor->>Obj: newInstance("R2", 10)
+  App->>Obj: method.invoke(obj, 25)
+  Obj-->>App: return value
+\`\`\`
+
+### Breaking in: \`setAccessible(true)\`
+
+\`AccessibleObject.setAccessible(true)\` disables Java access checks so you can read/write private fields and call private methods — and even mutate \`final\` fields. This is exactly what serialization, mocking and DI frameworks rely on.
+
+> [!WARNING]
+> Under the Java module system (JPMS), \`setAccessible(true)\` on a member of a package that is **not** \`opens\`-ed to your module throws \`InaccessibleObjectException\`. Frameworks require \`--add-opens java.base/java.lang=ALL-UNNAMED\` (or an \`opens\` directive) precisely because deep reflection now needs explicit permission. It also silently defeats encapsulation and can corrupt invariants.
+
+### Generics are erased
+
+At runtime \`List<String>\` and \`List<Integer>\` are the same \`Class\` (\`ArrayList\`). You cannot do \`new T()\` or \`x instanceof Box<String>\`. Generic type arguments survive only in **signatures** on fields, methods and superclasses (readable via \`getGenericType()\` / \`getGenericSuperclass()\`), not on plain objects.
+
+### The real cost
+
+- **Performance**: reflective calls are slower than direct calls (member lookup, access checks, argument boxing/varargs, no inlining). Hot paths cache \`Method\`/\`Field\` handles or switch to \`MethodHandle\`/\`LambdaMetafactory\`.
+- **Safety**: it bypasses compile-time type checks; errors surface as runtime exceptions (\`NoSuchMethodException\`, \`IllegalAccessException\`, \`InvocationTargetException\`).
+- **Encapsulation & security**: \`setAccessible\` can reach secrets and break the module boundary.
+
+> [!NOTE]
+> An exception thrown *inside* a reflectively invoked method is wrapped in \`InvocationTargetException\`; call \`getCause()\` to get the real one.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Three ways to get a Class and basic introspection`,
+                code: `import java.util.*;
+
+// Three ways to obtain a Class object, and basic introspection.
+public class ReflectDemo1 {
+
+    static class Sample { int x; String name; }
+
+    public static void main(String[] a) throws Exception {
+        // 1) .class literal — compile-time, no instance needed.
+        Class<String> c1 = String.class;
+
+        // 2) .getClass() — the runtime class of an existing object.
+        Object o = new ArrayList<Integer>();
+        Class<?> c2 = o.getClass(); // ArrayList, NOT List (static type is erased at runtime)
+
+        // 3) Class.forName — load by fully-qualified name (used by frameworks/plugins).
+        Class<?> c3 = Class.forName("java.util.HashMap");
+
+        System.out.println("c1 = " + c1.getName());
+        System.out.println("c2 = " + c2.getName() + "  (static type was List<Integer>)");
+        System.out.println("c3 = " + c3.getName());
+
+        // Handy queries on a Class object:
+        Class<?> s = ReflectDemo1.Sample.class;
+        System.out.println("simpleName   = " + s.getSimpleName());
+        System.out.println("isInterface  = " + s.isInterface());
+        System.out.println("superclass   = " + s.getSuperclass().getName());
+        System.out.println("isArray      = " + int[].class.isArray());
+        System.out.println("component    = " + int[].class.getComponentType());
+
+        // Primitives and arrays have Class objects too:
+        System.out.println("int.class    = " + int.class + ", boxed = " + Integer.class);
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `getDeclaredFields/Methods vs getFields/Methods`,
+                code: `import java.lang.reflect.*;
+import java.util.*;
+
+// getDeclaredX vs getX: what each returns.
+public class ReflectDemo2 {
+
+    static class Base {
+        public int inheritedPublic;
+        private int inheritedPrivate;
+        public void baseMethod() {}
+    }
+
+    static class Child extends Base {
+        public String ownPublic;
+        private String ownPrivate;
+        protected String ownProtected;
+        public void childMethod() {}
+        private void hidden() {}
+    }
+
+    public static void main(String[] a) {
+        Class<?> c = Child.class;
+
+        // getFields(): PUBLIC members, including inherited ones.
+        System.out.println("getFields (public, incl. inherited):");
+        for (Field f : c.getFields()) {
+            System.out.println("  " + f.getName() + " from " + f.getDeclaringClass().getSimpleName());
+        }
+
+        // getDeclaredFields(): ALL members declared in THIS class only (any access),
+        // but NOT inherited ones.
+        System.out.println("getDeclaredFields (all access, this class only):");
+        for (Field f : c.getDeclaredFields()) {
+            System.out.println("  " + Modifier.toString(f.getModifiers()) + " " + f.getName());
+        }
+
+        System.out.println("getMethods count (public incl. inherited & Object) = "
+                + c.getMethods().length);
+        System.out.println("getDeclaredMethods (this class only):");
+        for (Method m : c.getDeclaredMethods()) {
+            System.out.println("  " + Modifier.toString(m.getModifiers()) + " " + m.getName());
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `setAccessible: reading/writing private (and final) fields`,
+                code: `import java.lang.reflect.*;
+import java.util.*;
+
+// setAccessible(true): reading/writing private members reflectively.
+public class ReflectDemo3 {
+
+    static class Account {
+        private double balance;
+        private final String id;
+        Account(String id, double balance) { this.id = id; this.balance = balance; }
+        public String toString() { return "Account[" + id + ", balance=" + balance + "]"; }
+    }
+
+    public static void main(String[] a) throws Exception {
+        Account acct = new Account("A-1", 100.0);
+        System.out.println("before: " + acct);
+
+        // Normally 'balance' is private and untouchable from here.
+        Field balance = Account.class.getDeclaredField("balance");
+        balance.setAccessible(true); // bypasses Java access checks
+        double current = balance.getDouble(acct);
+        balance.setDouble(acct, current + 50.0);
+        System.out.println("after write via reflection: " + acct);
+
+        // Even 'final' fields can be mutated reflectively (dangerous, breaks invariants).
+        Field id = Account.class.getDeclaredField("id");
+        id.setAccessible(true);
+        id.set(acct, "HACKED");
+        System.out.println("after mutating final field: " + acct);
+
+        System.out.println("NOTE: setAccessible defeats encapsulation; on modules that");
+        System.out.println("do not 'opens' this package it throws InaccessibleObjectException.");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Constructor.newInstance and Method.invoke`,
+                code: `import java.lang.reflect.*;
+import java.util.*;
+
+// Instantiating via Constructor.newInstance and invoking via Method.invoke.
+public class ReflectDemo4 {
+
+    public static class Robot {
+        private String name;
+        private int battery;
+        // A no-arg and a two-arg constructor:
+        public Robot() { this("anon", 0); }
+        public Robot(String name, int battery) { this.name = name; this.battery = battery; }
+        public String charge(int amount) {
+            battery = Math.min(100, battery + amount);
+            return name + " charged to " + battery + "%";
+        }
+        private String secret() { return name + "'s private diagnostics OK"; }
+        public String toString() { return "Robot(" + name + ", " + battery + "%)"; }
+    }
+
+    public static void main(String[] a) throws Exception {
+        Class<?> c = Robot.class;
+
+        // Instantiate via the two-arg constructor:
+        Constructor<?> ctor = c.getConstructor(String.class, int.class);
+        Object r = ctor.newInstance("R2", 10);
+        System.out.println("constructed: " + r);
+
+        // Invoke a public method reflectively:
+        Method charge = c.getMethod("charge", int.class);
+        Object result = charge.invoke(r, 25);
+        System.out.println("charge() returned: " + result);
+        System.out.println("state now: " + r);
+
+        // Invoke a private method after setAccessible:
+        Method secret = c.getDeclaredMethod("secret");
+        secret.setAccessible(true);
+        System.out.println("secret() returned: " + secret.invoke(r));
+
+        // A checked exception thrown inside invoke is wrapped:
+        Method bad = c.getMethod("charge", int.class);
+        try {
+            // pass wrong arg type on purpose to show IllegalArgumentException path
+            bad.invoke(r, "not-an-int");
+        } catch (IllegalArgumentException ex) {
+            System.out.println("bad invoke -> " + ex.getClass().getSimpleName());
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Generics erasure and what type info survives`,
+                code: `import java.lang.reflect.*;
+import java.util.*;
+
+// Generics erasure and its reflective limits (plus what CAN still be recovered).
+public class ReflectDemo5 {
+
+    static class Box<T> { T value; }
+
+    // Field/method/superclass generic type info IS retained in the class file
+    // as signatures, even though the runtime CLASS of the object is erased.
+    static class StringList extends ArrayList<String> {}
+
+    private Map<String, List<Integer>> data;
+
+    public static void main(String[] a) throws Exception {
+        // 1) Two differently-parameterised lists share ONE runtime class:
+        List<String> ls = new ArrayList<>();
+        List<Integer> li = new ArrayList<>();
+        System.out.println("same runtime class? " + (ls.getClass() == li.getClass())
+                + " -> both are " + ls.getClass().getName());
+
+        // 2) But declared generic signatures survive on fields/superclasses:
+        Field f = ReflectDemo5.class.getDeclaredField("data");
+        Type t = f.getGenericType(); // Map<String, List<Integer>>
+        System.out.println("field generic type = " + t);
+        if (t instanceof ParameterizedType pt) {
+            System.out.println("  raw type      = " + pt.getRawType());
+            System.out.println("  type args     = " + Arrays.toString(pt.getActualTypeArguments()));
+        }
+
+        // 3) A subclass that fixes the type parameter exposes it:
+        Type sup = StringList.class.getGenericSuperclass(); // ArrayList<String>
+        System.out.println("StringList extends " + sup);
+
+        // 4) You cannot do 'new T()' or 'x instanceof Box<String>' — erased at runtime.
+        System.out.println("Box<String> and Box<Integer> are indistinguishable at runtime.");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Three ways to obtain a Class object?`,
+                a: `Foo.class (compile-time literal), obj.getClass() (runtime class of an instance), and Class.forName("fully.qualified.Name") (load by string name).`
+              },
+              {
+                q: `getFields() vs getDeclaredFields()?`,
+                a: `getFields() returns only public fields including inherited ones. getDeclaredFields() returns all fields of any access modifier declared in this class only (not inherited).`
+              },
+              {
+                q: `What does setAccessible(true) do and what does it break?`,
+                a: `It disables Java language access checks so you can read/write private members and even final fields. It defeats encapsulation and, under JPMS, throws InaccessibleObjectException unless the package is opens-ed to your module.`
+              },
+              {
+                q: `How do you create an object reflectively with a specific constructor?`,
+                a: `Class.getConstructor(paramTypes...) then constructor.newInstance(args...). Use getDeclaredConstructor + setAccessible for non-public constructors.`
+              },
+              {
+                q: `How do you call a method reflectively, and where do its exceptions go?`,
+                a: `Class.getMethod(name, paramTypes...).invoke(target, args...). An exception thrown inside the target is wrapped in InvocationTargetException; unwrap with getCause().`
+              },
+              {
+                q: `Why can't reflection distinguish List<String> from List<Integer>?`,
+                a: `Generics are erased at runtime, so both have the same Class (ArrayList). Type arguments survive only in signatures on fields/methods/superclasses, not on objects.`
+              },
+              {
+                q: `How do you recover generic type arguments via reflection?`,
+                a: `From declared elements: Field.getGenericType(), Method.getGenericReturnType/ParameterTypes, or Class.getGenericSuperclass(), then cast to ParameterizedType and read getActualTypeArguments().`
+              },
+              {
+                q: `Why is reflection slower than a direct call?`,
+                a: `It does runtime member lookup, access checks, argument boxing and varargs packing, and the JIT generally cannot inline it. Frameworks cache Method/Field handles or use MethodHandles to reduce cost.`
+              },
+              {
+                q: `Which frameworks depend on reflection and why?`,
+                a: `Spring (DI/AOP), Hibernate/JPA (populating entities), Jackson/Gson (JSON binding), JUnit (finding @Test methods). They must inspect and wire types unknown at their own compile time.`
+              },
+              {
+                q: `What is the difference between getClass() and the variable's static type?`,
+                a: `getClass() returns the actual runtime class of the object (e.g. ArrayList), which may be a subtype of the declared variable type (e.g. List); the static type is a compile-time concept only.`
+              },
+              {
+                q: `What flag lets a framework reflect into java.base under JPMS?`,
+                a: `--add-opens java.base/java.lang=ALL-UNNAMED (or an 'opens' directive in module-info), which grants deep reflective access to an otherwise strongly-encapsulated package.`
+              }
+            ]
+          },
+          {
+            title: `Annotations — Metadata, Retention, Targets & Building a Mini Framework`,
+            notes: `## Annotations: typed metadata on code
+
+An annotation attaches metadata to declarations (types, methods, fields, parameters, ...). It has no behaviour by itself; a **processor** — the compiler, an annotation processor at build time, or reflective code at runtime — reads it and acts.
+
+### Built-in annotations
+
+| Annotation | Purpose |
+|---|---|
+| \`@Override\` | compile error if the method does not override a supertype method |
+| \`@Deprecated\` | marks an API as discouraged; callers get a warning |
+| \`@SuppressWarnings("...")\` | silences named compiler warnings on an element |
+| \`@FunctionalInterface\` | compile error unless the interface has exactly one abstract method |
+| \`@SafeVarargs\` | asserts a generic varargs method does nothing heap-polluting |
+
+### Meta-annotations (annotations on annotations)
+
+| Meta-annotation | Controls |
+|---|---|
+| \`@Retention\` | how long it is kept: \`SOURCE\` (dropped by compiler), \`CLASS\` (in .class, not at runtime — the default), \`RUNTIME\` (visible to reflection) |
+| \`@Target\` | which element kinds it may annotate (\`TYPE\`, \`METHOD\`, \`FIELD\`, ...) |
+| \`@Inherited\` | a class-level annotation is reported by subclasses too |
+| \`@Documented\` | include it in generated Javadoc |
+| \`@Repeatable\` | allow the same annotation multiple times on one element (via a container) |
+
+> [!IMPORTANT]
+> To read an annotation with reflection it MUST be \`@Retention(RUNTIME)\`. The default retention is \`CLASS\`, which is written to the .class file but discarded before it reaches \`getAnnotation(...)\` — a very common gotcha.
+
+### Defining a custom annotation
+
+\`\`\`java
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.TYPE, ElementType.METHOD})
+@interface Info {
+    String author();            // required element
+    int version() default 1;    // element with a default
+    String[] tags() default {}; // array element
+}
+\`\`\`
+
+Elements look like methods; allowed types are primitives, \`String\`, \`Class\`, enums, other annotations, and arrays of those.
+
+### Capstone: a reflection-driven framework
+
+\`\`\`mermaid
+flowchart LR
+  A[Object with @NotNull / @Min / @Size] --> B[Engine: getDeclaredFields]
+  B --> C{field.isAnnotationPresent?}
+  C -- yes --> D[read constraint + field value]
+  D --> E[check rule]
+  E --> F[collect violation messages]
+  C -- no --> B
+\`\`\`
+
+The capstone demo builds a tiny bean validator: custom \`RUNTIME\` annotations (\`@NotNull\`, \`@Min\`, \`@Size\`) plus reflection over \`getDeclaredFields()\` to enforce them — the same recipe as Hibernate Validator, JUnit's \`@Test\` runner, and Spring's \`@Autowired\`.
+
+> [!TIP]
+> Annotation + \`RUNTIME\` retention + reflection = the standard way frameworks turn declarative metadata into behaviour without you writing wiring code.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Built-in annotations and what they enforce`,
+                code: `import java.util.*;
+
+// Built-in annotations and what each one asks the compiler to do.
+public class AnnoDemo1 {
+
+    static class Base { void greet() { System.out.println("hi from Base"); } }
+
+    static class Child extends Base {
+        // @Override: compile error if this does not actually override anything.
+        @Override void greet() { System.out.println("hi from Child"); }
+    }
+
+    // @Deprecated: compiler warns callers; @deprecated javadoc explains why.
+    @Deprecated
+    static int oldApi() { return -1; }
+
+    // @FunctionalInterface: compile error if it has != 1 abstract method.
+    @FunctionalInterface interface Transform { String apply(String s); }
+
+    @SuppressWarnings("unchecked") // silences a specific compiler warning
+    static List<String> castRaw(Object raw) {
+        return (List<String>) raw; // unchecked cast, warning suppressed
+    }
+
+    @SafeVarargs // promises we do not do unsafe things with the generic varargs array
+    static <T> List<T> listOf(T... items) { return new ArrayList<>(Arrays.asList(items)); }
+
+    public static void main(String[] a) {
+        new Child().greet();
+        System.out.println("oldApi (deprecated) returned " + oldApi());
+
+        Transform upper = s -> s.toUpperCase();
+        System.out.println("transform: " + upper.apply("java"));
+
+        List<String> raw = castRaw(new ArrayList<>(List.of("x", "y")));
+        System.out.println("castRaw: " + raw);
+        System.out.println("listOf: " + listOf("a", "b", "c"));
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Defining a custom annotation with defaults and reading it`,
+                code: `import java.lang.annotation.*;
+import java.lang.reflect.*;
+import java.util.*;
+
+// Defining a custom annotation with elements + defaults, then reading it reflectively.
+public class AnnoDemo2 {
+
+    @Retention(RetentionPolicy.RUNTIME) // must be RUNTIME to be visible to reflection
+    @Target({ElementType.TYPE, ElementType.METHOD})
+    @interface Info {
+        String author();               // required element
+        int version() default 1;       // element with a default
+        String[] tags() default {};    // array element
+    }
+
+    @Info(author = "Ada", version = 3, tags = {"core", "demo"})
+    static class Widget {
+        @Info(author = "Grace") // version + tags fall back to defaults
+        public void render() {}
+    }
+
+    public static void main(String[] a) throws Exception {
+        // Read the class-level annotation:
+        Info onClass = Widget.class.getAnnotation(Info.class);
+        System.out.println("class author  = " + onClass.author());
+        System.out.println("class version = " + onClass.version());
+        System.out.println("class tags    = " + Arrays.toString(onClass.tags()));
+
+        // Read the method-level annotation (defaults applied automatically):
+        Method m = Widget.class.getMethod("render");
+        Info onMethod = m.getAnnotation(Info.class);
+        System.out.println("method author  = " + onMethod.author());
+        System.out.println("method version = " + onMethod.version() + " (default)");
+        System.out.println("method tags    = " + Arrays.toString(onMethod.tags()) + " (default)");
+
+        System.out.println("isAnnotationPresent? " + m.isAnnotationPresent(Info.class));
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Retention visibility (RUNTIME vs CLASS) and @Inherited`,
+                code: `import java.lang.annotation.*;
+import java.util.*;
+
+// Retention visibility (RUNTIME vs CLASS) and @Inherited.
+public class AnnoDemo3 {
+
+    @Retention(RetentionPolicy.RUNTIME) @interface VisibleAtRuntime {}
+    @Retention(RetentionPolicy.CLASS)   @interface NotVisibleAtRuntime {} // default policy
+
+    // @Inherited: subclasses report a class-level annotation of their superclass.
+    @Retention(RetentionPolicy.RUNTIME) @Inherited @interface Marker { String value(); }
+
+    @VisibleAtRuntime
+    @NotVisibleAtRuntime
+    static class Both {}
+
+    @Marker("from-parent")
+    static class Parent {}
+    static class Kid extends Parent {} // inherits @Marker thanks to @Inherited
+
+    public static void main(String[] a) {
+        // Only RUNTIME-retained annotations show up via reflection:
+        System.out.println("Annotations on Both (via reflection):");
+        for (Annotation an : Both.class.getAnnotations()) {
+            System.out.println("  " + an.annotationType().getSimpleName());
+        }
+        System.out.println("  -> NotVisibleAtRuntime (CLASS retention) is absent above.");
+
+        // @Inherited lets a subclass see the parent's class annotation:
+        Marker onKid = Kid.class.getAnnotation(Marker.class);
+        System.out.println("Kid inherits @Marker? " + (onKid != null)
+                + (onKid != null ? " value=" + onKid.value() : ""));
+
+        // @Inherited only applies to class annotations, not to methods/fields.
+        System.out.println("Note: @Inherited affects TYPE annotations only.");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `@Repeatable annotations and their container`,
+                code: `import java.lang.annotation.*;
+import java.util.*;
+
+// @Repeatable annotations and how to read them.
+public class AnnoDemo4 {
+
+    // The container that actually stores the repeats:
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    @interface Roles { Role[] value(); }
+
+    // The repeatable annotation points at its container:
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    @Repeatable(Roles.class)
+    @interface Role { String value(); }
+
+    @Role("admin")
+    @Role("editor")
+    @Role("viewer")
+    static class User {}
+
+    public static void main(String[] a) {
+        // getAnnotationsByType transparently unwraps the container:
+        Role[] roles = User.class.getAnnotationsByType(Role.class);
+        System.out.println("Roles via getAnnotationsByType:");
+        for (Role r : roles) System.out.println("  " + r.value());
+
+        // Asking for the single annotation type returns null; the compiler
+        // wrapped them into the container annotation instead:
+        System.out.println("getAnnotation(Role) = " + User.class.getAnnotation(Role.class));
+        Roles container = User.class.getAnnotation(Roles.class);
+        System.out.println("container holds " + container.value().length + " roles");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Capstone: a reflection-driven @NotNull/@Min/@Size validator`,
+                code: `import java.lang.annotation.*;
+import java.lang.reflect.*;
+import java.util.*;
+
+// CAPSTONE: a tiny bean-validation framework built from a custom RUNTIME
+// annotation plus reflection. This is exactly how Hibernate Validator / JUnit work.
+public class AnnoDemo5 {
+
+    @Retention(RetentionPolicy.RUNTIME) @Target(ElementType.FIELD)
+    @interface NotNull {}
+
+    @Retention(RetentionPolicy.RUNTIME) @Target(ElementType.FIELD)
+    @interface Min { long value(); }
+
+    @Retention(RetentionPolicy.RUNTIME) @Target(ElementType.FIELD)
+    @interface Size { int max(); }
+
+    // A plain data object decorated with constraints:
+    static class SignupForm {
+        @NotNull String username;
+        @Min(18) int age;
+        @Size(max = 3) String pin;
+        SignupForm(String u, int age, String pin) { this.username = u; this.age = age; this.pin = pin; }
+    }
+
+    // The engine: walk declared fields, read constraint annotations, collect errors.
+    static List<String> validate(Object bean) throws IllegalAccessException {
+        List<String> errors = new ArrayList<>();
+        for (Field f : bean.getClass().getDeclaredFields()) {
+            f.setAccessible(true);
+            Object v = f.get(bean);
+
+            if (f.isAnnotationPresent(NotNull.class) && v == null) {
+                errors.add(f.getName() + " must not be null");
+            }
+            Min min = f.getAnnotation(Min.class);
+            if (min != null && ((Number) v).longValue() < min.value()) {
+                errors.add(f.getName() + " must be >= " + min.value() + " (was " + v + ")");
+            }
+            Size size = f.getAnnotation(Size.class);
+            if (size != null && v != null && v.toString().length() > size.max()) {
+                errors.add(f.getName() + " length must be <= " + size.max()
+                        + " (was " + v.toString().length() + ")");
+            }
+        }
+        return errors;
+    }
+
+    public static void main(String[] a) throws Exception {
+        SignupForm ok  = new SignupForm("ada", 30, "123");
+        SignupForm bad = new SignupForm(null, 16, "12345");
+
+        System.out.println("valid form errors:   " + validate(ok));
+        System.out.println("invalid form errors:");
+        for (String e : validate(bad)) System.out.println("  - " + e);
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is an annotation, fundamentally?`,
+                a: `Typed metadata attached to a declaration. It has no behaviour itself; a processor (compiler, build-time annotation processor, or runtime reflection) reads it and acts on it.`
+              },
+              {
+                q: `What are the three retention policies and what does each mean?`,
+                a: `SOURCE: discarded by the compiler (e.g. @Override). CLASS: stored in the .class file but not available at runtime (the default). RUNTIME: retained and visible to reflection.`
+              },
+              {
+                q: `Why must a custom annotation be @Retention(RUNTIME) for a framework to use it?`,
+                a: `Reflection (getAnnotation, isAnnotationPresent) can only see RUNTIME-retained annotations. CLASS (the default) and SOURCE are gone by the time code runs.`
+              },
+              {
+                q: `What does @Target do?`,
+                a: `Restricts which program elements an annotation may be applied to (TYPE, METHOD, FIELD, PARAMETER, CONSTRUCTOR, etc.). Applying it elsewhere is a compile error.`
+              },
+              {
+                q: `What does @Inherited do, and what is its limitation?`,
+                a: `It makes a class-level annotation visible on subclasses via reflection. It applies only to TYPE annotations, not to method or field annotations, and not across interfaces.`
+              },
+              {
+                q: `How do annotation elements and defaults work?`,
+                a: `Elements are declared like no-arg methods with a type; they can specify 'default value'. Allowed types are primitives, String, Class, enums, annotations, and arrays of those.`
+              },
+              {
+                q: `What does @FunctionalInterface guarantee?`,
+                a: `A compile-time check that the interface has exactly one abstract method, so it can be a lambda/method-reference target. It does not change behaviour, only enforces the shape.`
+              },
+              {
+                q: `How does @Repeatable work under the hood?`,
+                a: `You declare a container annotation holding an array of the repeatable type and point @Repeatable at it. The compiler wraps repeats into the container; read them with getAnnotationsByType(), which unwraps automatically.`
+              },
+              {
+                q: `Why does getAnnotation(Role.class) return null when @Role is repeated?`,
+                a: `The compiler stored the repeats inside the container (@Roles), so the single-type lookup finds nothing. Use getAnnotationsByType(Role.class) or read the container directly.`
+              },
+              {
+                q: `Name the built-in annotation used to silence specific compiler warnings.`,
+                a: `@SuppressWarnings("...") with a category such as "unchecked", "deprecation", or "rawtypes", applied to the narrowest element possible.`
+              },
+              {
+                q: `Outline how a reflective validation/DI framework uses annotations.`,
+                a: `Define RUNTIME annotations, then at runtime walk a class's declared fields/methods, check isAnnotationPresent / getAnnotation, read element values, and take action (validate, inject, invoke) accordingly.`
+              },
+              {
+                q: `What is the default retention if you omit @Retention?`,
+                a: `CLASS: the annotation is recorded in the .class file but not retained by the JVM at runtime, so reflection cannot see it.`
+              }
+            ]
+          },
+          {
+            title: `Serialization — Serializable, transient, serialVersionUID, Externalizable & Security`,
+            notes: `## Java serialization: object graphs to bytes
+
+Serialization converts an object graph into a byte stream (\`ObjectOutputStream.writeObject\`) and back (\`ObjectInputStream.readObject\`). \`Serializable\` is a **marker interface** (no methods) — implementing it flips on the JVM's automatic field-by-field encoding.
+
+### What is and isn't written
+
+| Element | Serialized? |
+|---|---|
+| non-static, non-transient instance fields | Yes (recursively; referenced objects must also be Serializable) |
+| \`transient\` fields | No — restored as default (null / 0 / false) |
+| \`static\` fields | No — they belong to the class, not the instance |
+
+### serialVersionUID
+
+A \`private static final long serialVersionUID\` is the class's version stamp in the stream. If a deserialized stream's UID differs from the local class's UID, you get \`InvalidClassException\`. If you omit it, the compiler computes one from the class's shape, so **any** structural change silently breaks old data. **Always declare it explicitly** for classes you serialize.
+
+### Customising the format
+
+- \`private void writeObject/readObject(...)\`: hook the default machinery; usually call \`defaultWriteObject()\`/\`defaultReadObject()\` then add custom bytes (e.g. to persist a transient field).
+- \`writeReplace()\`: substitute a different object (often a compact serialization proxy) into the stream.
+- \`readResolve()\`: replace the freshly deserialized object with a canonical one. **Singletons and non-enum caches need \`readResolve\` or deserialization creates a second instance.** (Enums are serialized by name and are immune.)
+
+### Externalizable vs Serializable
+
+| | Serializable | Externalizable |
+|---|---|---|
+| Field handling | automatic | you write every byte (\`writeExternal\`/\`readExternal\`) |
+| Constructor on read | none called (bytes fill fields) | **public no-arg constructor is called**, then \`readExternal\` |
+| Control / speed | less code | full control, can be faster/smaller, more error-prone |
+
+\`\`\`mermaid
+flowchart LR
+  O[Object] -->|writeObject| S[byte stream]
+  S -->|readObject| O2[reconstructed object]
+  S -. tampered stream .-> X[gadget chain -> RCE]
+\`\`\`
+
+### The deserialization security hole
+
+\`readObject\` can instantiate **any** Serializable type on the classpath and run its \`readObject\`/\`readResolve\` logic **before** you ever see the result. Crafted streams chain these callbacks across library classes ("gadget chains") to achieve arbitrary code execution. This is one of the most exploited classes of Java CVE.
+
+> [!WARNING]
+> NEVER deserialize data from an untrusted source with Java serialization. There is no safe way to "just parse" a hostile \`ObjectInputStream\`; the attack fires during construction, before validation. Mitigations: set an allow-list \`ObjectInputFilter\` (JEP 290), keep gadget libraries off the classpath, and — best of all — avoid Java serialization for external data.
+
+### Why modern systems prefer JSON / protobuf
+
+Java serialization is JVM-only, tightly coupled to class internals (fragile versioning), opaque, and insecure by default. JSON, Protocol Buffers, and Avro are language-neutral, have explicit schemas and evolution rules, are human-inspectable or compact, and do **not** execute arbitrary code on parse — so they are the default for persistence and RPC today.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Round-trip; transient and static fields are skipped`,
+                code: `import java.io.*;
+import java.util.*;
+
+// Basic round-trip with ObjectOutputStream / ObjectInputStream; transient & static.
+public class SerialDemo1 {
+
+    static class Session implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        private String user;
+        private transient String password;      // NOT serialized (transient)
+        private static String appName = "hub";   // NOT serialized (static, belongs to class)
+        private int loginCount;
+
+        Session(String user, String password, int loginCount) {
+            this.user = user; this.password = password; this.loginCount = loginCount;
+        }
+        public String toString() {
+            return "Session[user=" + user + ", password=" + password
+                    + ", appName=" + appName + ", loginCount=" + loginCount + "]";
+        }
+    }
+
+    public static void main(String[] a) throws Exception {
+        Session original = new Session("ada", "s3cr3t", 5);
+        System.out.println("original: " + original);
+
+        // Serialize to an in-memory byte array:
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(bytes)) {
+            oos.writeObject(original);
+        }
+        System.out.println("serialized size = " + bytes.size() + " bytes");
+
+        // Change the static field to prove it is not part of the stream:
+        Session.appName = "changed-after-write";
+
+        // Deserialize:
+        Session restored;
+        try (ObjectInputStream ois = new ObjectInputStream(
+                new ByteArrayInputStream(bytes.toByteArray()))) {
+            restored = (Session) ois.readObject();
+        }
+        System.out.println("restored: " + restored);
+        System.out.println("-> password is null (transient), appName reflects the");
+        System.out.println("   CURRENT class value (static is never in the stream).");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `serialVersionUID mismatch -> InvalidClassException`,
+                code: `import java.io.*;
+import java.util.*;
+
+// serialVersionUID: what breaks when the stream's UID no longer matches the
+// local class (InvalidClassException). We serialize a class, then corrupt the
+// 8 UID bytes in the stream to simulate "the class changed its UID since".
+public class SerialDemo2 {
+
+    static class Config implements Serializable {
+        private static final long serialVersionUID = 100L;
+        String setting = "hello";
+        public String toString() { return "Config[" + setting + "]"; }
+    }
+
+    // Find the big-endian 8-byte encoding of 100 in the stream and flip it to 200.
+    static byte[] corruptUid(byte[] stream) {
+        byte[] target = longBytes(100L);
+        byte[] replacement = longBytes(200L);
+        for (int i = 0; i + 8 <= stream.length; i++) {
+            boolean match = true;
+            for (int j = 0; j < 8; j++) if (stream[i + j] != target[j]) { match = false; break; }
+            if (match) {
+                byte[] out = stream.clone();
+                System.arraycopy(replacement, 0, out, i, 8);
+                return out;
+            }
+        }
+        throw new IllegalStateException("UID bytes not found");
+    }
+
+    static byte[] longBytes(long v) {
+        byte[] b = new byte[8];
+        for (int i = 7; i >= 0; i--) { b[i] = (byte) (v & 0xFF); v >>= 8; }
+        return b;
+    }
+
+    public static void main(String[] a) throws Exception {
+        // Normal round-trip works when UIDs match:
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(bytes)) {
+            oos.writeObject(new Config());
+        }
+        try (ObjectInputStream ois = new ObjectInputStream(
+                new ByteArrayInputStream(bytes.toByteArray()))) {
+            System.out.println("matching UID -> read " + ois.readObject());
+        }
+
+        // Now the stream claims UID=200 but the local Config is UID=100:
+        byte[] tampered = corruptUid(bytes.toByteArray());
+        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(tampered))) {
+            Object o = ois.readObject();
+            System.out.println("unexpectedly read: " + o);
+        } catch (InvalidClassException ex) {
+            System.out.println("InvalidClassException as expected:");
+            System.out.println("  " + ex.getMessage());
+        }
+        System.out.println("Lesson: a changed serialVersionUID (or an incompatible field");
+        System.out.println("change under an auto-generated UID) makes old streams unreadable.");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Custom writeObject/readObject for a transient field`,
+                code: `import java.io.*;
+import java.util.*;
+
+// Custom writeObject/readObject: encrypt-on-write a transient field.
+public class SerialDemo3 {
+
+    static class Credential implements Serializable {
+        private static final long serialVersionUID = 1L;
+        private String user;
+        private transient char[] secret; // transient: skipped by default machinery
+
+        Credential(String user, char[] secret) { this.user = user; this.secret = secret; }
+
+        // Called by ObjectOutputStream via reflection. defaultWriteObject() handles
+        // the normal (non-transient) fields; then we add our own custom bytes.
+        private void writeObject(ObjectOutputStream out) throws IOException {
+            out.defaultWriteObject();               // writes 'user'
+            char[] s = secret == null ? new char[0] : secret;
+            byte[] obfuscated = new byte[s.length];
+            for (int i = 0; i < s.length; i++) obfuscated[i] = (byte) (s[i] ^ 0x5A); // toy "cipher"
+            out.writeInt(obfuscated.length);
+            out.write(obfuscated);
+        }
+
+        private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+            in.defaultReadObject();                 // restores 'user'
+            int n = in.readInt();
+            byte[] obfuscated = new byte[n];
+            in.readFully(obfuscated);
+            secret = new char[n];
+            for (int i = 0; i < n; i++) secret[i] = (char) (obfuscated[i] ^ 0x5A); // reverse
+        }
+
+        public String toString() { return "Credential[user=" + user + ", secret=" + new String(secret) + "]"; }
+    }
+
+    public static void main(String[] a) throws Exception {
+        Credential c = new Credential("ada", "hunter2".toCharArray());
+        System.out.println("before: " + c);
+
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(b)) { oos.writeObject(c); }
+
+        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(b.toByteArray()))) {
+            Credential back = (Credential) ois.readObject();
+            System.out.println("after:  " + back);
+            System.out.println("secret survived a transient field via custom writeObject/readObject.");
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `writeReplace / readResolve (singleton + serialization proxy)`,
+                code: `import java.io.*;
+
+// readResolve: keeping a Serializable singleton a true singleton across deserialization.
+public class SerialDemo4 {
+
+    static final class Registry implements Serializable {
+        private static final long serialVersionUID = 1L;
+        static final Registry INSTANCE = new Registry();
+        private int items = 0;
+        private Registry() {}
+        void add() { items++; }
+        int size() { return items; }
+
+        // Without readResolve, deserialization creates a SECOND object, breaking
+        // the singleton guarantee. readResolve swaps in the canonical instance.
+        private Object readResolve() { return INSTANCE; }
+    }
+
+    // A class using writeReplace to serialize a compact proxy instead of itself.
+    static final class Temperature implements Serializable {
+        private static final long serialVersionUID = 1L;
+        private final double celsius;
+        Temperature(double celsius) { this.celsius = celsius; }
+        public String toString() { return celsius + "C"; }
+
+        private Object writeReplace() { return new Proxy(celsius); }
+
+        private static final class Proxy implements Serializable {
+            private static final long serialVersionUID = 1L;
+            private final double c;
+            Proxy(double c) { this.c = c; }
+            private Object readResolve() { return new Temperature(c); }
+        }
+    }
+
+    static byte[] write(Object o) throws IOException {
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(b)) { oos.writeObject(o); }
+        return b.toByteArray();
+    }
+    static Object read(byte[] b) throws Exception {
+        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(b))) {
+            return ois.readObject();
+        }
+    }
+
+    public static void main(String[] a) throws Exception {
+        Registry.INSTANCE.add();
+        Registry.INSTANCE.add();
+        Registry restored = (Registry) read(write(Registry.INSTANCE));
+        System.out.println("same singleton instance after round-trip? "
+                + (restored == Registry.INSTANCE));
+        System.out.println("size preserved = " + restored.size());
+
+        Temperature t = new Temperature(21.5);
+        Temperature back = (Temperature) read(write(t));
+        System.out.println("writeReplace/readResolve proxy round-trip: " + back);
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Externalizable and hardening reads with ObjectInputFilter`,
+                code: `import java.io.*;
+
+// Externalizable (full manual control) and an ObjectInputFilter to harden reads.
+public class SerialDemo5 {
+
+    // Externalizable: YOU write and read every byte. No automatic field handling,
+    // and a public no-arg constructor is REQUIRED (called before readExternal).
+    static class Point implements Externalizable {
+        private int x, y;
+        public Point() { System.out.println("  [no-arg ctor called during deserialize]"); }
+        public Point(int x, int y) { this.x = x; this.y = y; }
+
+        @Override public void writeExternal(ObjectOutput out) throws IOException {
+            out.writeInt(x); out.writeInt(y); // we choose the exact wire format
+        }
+        @Override public void readExternal(ObjectInput in) throws IOException {
+            x = in.readInt(); y = in.readInt();
+        }
+        public String toString() { return "Point(" + x + "," + y + ")"; }
+    }
+
+    static byte[] write(Object o) throws IOException {
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(b)) { oos.writeObject(o); }
+        return b.toByteArray();
+    }
+
+    public static void main(String[] a) throws Exception {
+        byte[] bytes = write(new Point(3, 4));
+
+        // 1) Externalizable round-trip:
+        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
+            System.out.println("Externalizable read: " + ois.readObject());
+        }
+
+        // 2) Harden a stream with an allow-list ObjectInputFilter. Anything not
+        //    matching the pattern is REJECTED before the object is constructed.
+        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
+            ois.setObjectInputFilter(ObjectInputFilter.Config.createFilter(
+                    "SerialDemo5$Point;java.base/*;!*"));
+            System.out.println("filtered read (allowed): " + ois.readObject());
+        }
+
+        // 3) Same bytes, but a filter that rejects Point -> InvalidClassException.
+        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
+            ois.setObjectInputFilter(ObjectInputFilter.Config.createFilter("!*")); // reject everything
+            ois.readObject();
+            System.out.println("should not reach here");
+        } catch (InvalidClassException ex) {
+            System.out.println("filter rejected the class as expected: " + ex.getMessage());
+        }
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What kind of interface is Serializable?`,
+                a: `A marker interface with no methods. Implementing it signals the JVM to enable automatic field-by-field serialization for that class.`
+              },
+              {
+                q: `Which fields are NOT serialized by default?`,
+                a: `transient fields (restored to defaults) and static fields (they belong to the class, not the instance). Everything else non-static and non-transient is written recursively.`
+              },
+              {
+                q: `What is serialVersionUID and what breaks when it mismatches?`,
+                a: `A long version stamp for the class embedded in the stream. If the stream's UID differs from the local class's UID, readObject throws InvalidClassException. Omitting it lets the compiler derive one from class shape, so any change breaks old streams.`
+              },
+              {
+                q: `Why should you always declare serialVersionUID explicitly?`,
+                a: `So you control compatibility. With an auto-generated UID, adding a field or method can change it and make previously serialized data unreadable; an explicit constant lets compatible changes still deserialize.`
+              },
+              {
+                q: `What are writeObject/readObject used for?`,
+                a: `Private hook methods the streams call reflectively to customize serialization, e.g. defaultWriteObject() then writing extra bytes to persist a transient field or to encrypt sensitive data.`
+              },
+              {
+                q: `Why do serializable singletons need readResolve()?`,
+                a: `Deserialization creates a brand-new instance, breaking the single-instance guarantee. readResolve() returns the canonical INSTANCE so the deserialized object is replaced by it. Enums are immune because they serialize by name.`
+              },
+              {
+                q: `What does writeReplace() do?`,
+                a: `Lets an object substitute a different object (often a compact serialization proxy) to be written to the stream; that proxy's readResolve() reconstructs the real object on read.`
+              },
+              {
+                q: `Serializable vs Externalizable?`,
+                a: `Serializable handles fields automatically and calls no constructor on read. Externalizable makes you write/read every byte (writeExternal/readExternal), requires a public no-arg constructor that is invoked before readExternal, and offers full control at more risk.`
+              },
+              {
+                q: `What is the Java deserialization vulnerability?`,
+                a: `readObject can instantiate any Serializable class on the classpath and run its readObject/readResolve before you inspect the result. Attackers chain these callbacks ('gadget chains') in crafted streams to achieve remote code execution.`
+              },
+              {
+                q: `How do you mitigate deserialization attacks?`,
+                a: `Do not deserialize untrusted data at all; if unavoidable, apply an allow-list ObjectInputFilter (JEP 290), keep known gadget libraries off the classpath, and prefer schema-based formats like JSON or protobuf.`
+              },
+              {
+                q: `Why do modern systems prefer JSON/protobuf over Java serialization?`,
+                a: `They are language-neutral, have explicit schemas with defined evolution rules, are compact or inspectable, decouple from class internals (less fragile versioning), and do not execute code on parse (far safer).`
+              },
+              {
+                q: `During Externalizable deserialization, what happens before readExternal is called?`,
+                a: `The public no-arg constructor runs to create the instance, then readExternal populates it. This differs from Serializable, where no constructor of the class runs.`
+              }
+            ]
+          }
+        ]
       }
     ]
   },
