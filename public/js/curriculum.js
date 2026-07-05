@@ -22247,6 +22247,834 @@ public class TimingDemo {
                 a: `Parallel splits the reduction across chunks and combines partials, so a non-associative accumulator or wrong identity yields different (wrong) results than sequential. Prove associativity before parallelizing.`
               }
             ]
+          },
+          {
+            title: `Built-in Functional Interfaces -- Supplier, Consumer, Function, Predicate & the Whole Toolkit`,
+            notes: `## Built-in Functional Interfaces: the \`java.util.function\` Toolkit
+
+A *functional interface* is any interface with exactly **one abstract method** (a "SAM" -- Single Abstract Method). A lambda or method reference is just a concise way to create an **instance** of such an interface. The JDK ships a catalog of ~43 of them in \`java.util.function\` so you rarely need to declare your own.
+
+### The core shapes
+
+| Interface | Abstract method | Arity | Returns | Typical use |
+|---|---|---|---|---|
+| \`Supplier<T>\` | \`T get()\` | 0 | value | lazy factory, \`Stream.generate\`, \`Optional.orElseGet\` |
+| \`Consumer<T>\` | \`void accept(T)\` | 1 | nothing | side effects, \`forEach\` |
+| \`BiConsumer<T,U>\` | \`void accept(T,U)\` | 2 | nothing | \`Map.forEach\` |
+| \`Function<T,R>\` | \`R apply(T)\` | 1 | value | \`map\`, transforms |
+| \`BiFunction<T,U,R>\` | \`R apply(T,U)\` | 2 | value | \`Map.merge\`, combine two inputs |
+| \`Predicate<T>\` | \`boolean test(T)\` | 1 | boolean | \`filter\`, \`removeIf\` |
+| \`BiPredicate<T,U>\` | \`boolean test(T,U)\` | 2 | boolean | two-arg tests |
+| \`UnaryOperator<T>\` | \`T apply(T)\` | 1 | same type | \`List.replaceAll\` |
+| \`BinaryOperator<T>\` | \`T apply(T,T)\` | 2 | same type | \`reduce\`, \`Map.merge\` |
+
+\`UnaryOperator<T>\` extends \`Function<T,T>\` and \`BinaryOperator<T>\` extends \`BiFunction<T,T,T>\` -- they are just the "same in, same out" special cases with a shorter name.
+
+### Primitive specializations -- and why they exist
+
+Generics cannot hold primitives, so \`Function<Integer,Integer>\` **autoboxes** every value into an \`Integer\` object. In hot loops that is real garbage-collector pressure. The primitive specializations work directly on \`int\`/\`long\`/\`double\` and box nothing.
+
+| Generic | Primitive variant | Method |
+|---|---|---|
+| \`Supplier<Integer>\` | \`IntSupplier\` | \`int getAsInt()\` |
+| \`Function<Integer,R>\` | \`IntFunction<R>\` | \`R apply(int)\` |
+| \`Function<T,Integer>\` | \`ToIntFunction<T>\` | \`int applyAsInt(T)\` |
+| \`Predicate<Integer>\` | \`IntPredicate\` | \`boolean test(int)\` |
+| \`UnaryOperator<Integer>\` | \`IntUnaryOperator\` | \`int applyAsInt(int)\` |
+| \`BinaryOperator<Integer>\` | \`IntBinaryOperator\` | \`int applyAsInt(int,int)\` |
+
+Parallel \`Long*\` and \`Double*\` families exist. \`Stream.mapToInt\` returns an \`IntStream\` precisely so downstream operations stay unboxed.
+
+> [!TIP]
+> Reach for a primitive specialization whenever a stream stage handles a numeric key -- \`mapToInt\`, \`comparingInt\`, \`ToIntFunction\` -- to skip a boxing allocation per element.
+
+### Default methods: composing behavior
+
+These interfaces carry \`default\` methods so you can build pipelines without extra classes:
+
+- \`Function\`: \`f.andThen(g)\` runs \`f\` then \`g\`; \`f.compose(g)\` runs \`g\` then \`f\`.
+- \`Predicate\`: \`and\`, \`or\`, \`negate\`, plus static \`isEqual\`.
+- \`Consumer\`: \`andThen\` chains two side effects on the same input.
+
+\`\`\`mermaid
+flowchart LR
+  A["input x"] --> B["compose: g(x) first"]
+  B --> C["then f"]
+  C --> D["result"]
+  A2["input x"] --> E["andThen: f(x) first"]
+  E --> F["then g"]
+  F --> G["result"]
+\`\`\`
+
+> [!NOTE]
+> \`andThen\` and \`compose\` are mirror images. \`f.andThen(g).apply(x)\` equals \`g(f(x))\`; \`f.compose(g).apply(x)\` equals \`f(g(x))\`. Read \`andThen\` left-to-right, \`compose\` right-to-left.
+
+### A lambda IS an instance
+
+There is no special "lambda type." \`() -> "hi"\` typed as \`Supplier<String>\` produces an object where \`instanceof Supplier\` is \`true\`. Anonymous classes, lambdas, static/instance/constructor method references, and hand-written classes are all interchangeable ways to supply that single method.`,
+            code: [
+              {
+                lang: `java`,
+                title: `The four core interfaces (and a lambda IS an instance)`,
+                code: `import java.util.function.*;
+
+public class S1D1 {
+    // A method reference target: matches Function<String,Integer>
+    static int lengthOf(String s) { return s.length(); }
+
+    public static void main(String[] a) {
+        // Supplier<T>: () -> T. No input, produces a value (lazy factory).
+        Supplier<String> greeting = () -> "hello";
+        System.out.println("Supplier: " + greeting.get());
+
+        // Consumer<T>: T -> void. Takes a value, returns nothing (side effect).
+        Consumer<String> printer = s -> System.out.println("Consumer: " + s);
+        printer.accept("side-effect");
+
+        // Function<T,R>: T -> R. Transforms input to output.
+        Function<String, Integer> len = s -> s.length();
+        System.out.println("Function: " + len.apply("abcd"));
+
+        // The SAME Function type, backed by a method reference instead of a lambda.
+        Function<String, Integer> len2 = S1D1::lengthOf;
+        System.out.println("Function (method ref): " + len2.apply("abcd"));
+
+        // Predicate<T>: T -> boolean. A boolean test.
+        Predicate<String> isEmpty = String::isEmpty;
+        System.out.println("Predicate: " + isEmpty.test(""));
+
+        // Proof that a lambda IS an instance of the interface.
+        System.out.println("greeting instanceof Supplier: " + (greeting instanceof Supplier));
+        System.out.println("printer instanceof Consumer: " + (printer instanceof Consumer));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Bi* variants, UnaryOperator & BinaryOperator`,
+                code: `import java.util.function.*;
+import java.util.*;
+
+public class S1D2 {
+    public static void main(String[] a) {
+        // BiConsumer<T,U>: (T,U) -> void. Classic use: Map.forEach.
+        BiConsumer<String, Integer> entry =
+            (k, v) -> System.out.println("BiConsumer: " + k + "=" + v);
+        Map<String, Integer> stock = new LinkedHashMap<>();
+        stock.put("pens", 12);
+        stock.put("pads", 7);
+        stock.forEach(entry);
+
+        // BiFunction<T,U,R>: (T,U) -> R.
+        BiFunction<Integer, Integer, Integer> add = (x, y) -> x + y;
+        System.out.println("BiFunction: " + add.apply(3, 4));
+
+        // BiPredicate<T,U>: (T,U) -> boolean.
+        BiPredicate<String, Integer> longerThan = (s, n) -> s.length() > n;
+        System.out.println("BiPredicate: " + longerThan.test("interview", 4));
+
+        // UnaryOperator<T> extends Function<T,T>: input and output are the SAME type.
+        UnaryOperator<String> shout = s -> s.toUpperCase();
+        System.out.println("UnaryOperator: " + shout.apply("loud"));
+
+        // BinaryOperator<T> extends BiFunction<T,T,T>: two same-typed args, same-typed result.
+        BinaryOperator<Integer> max = (x, y) -> x >= y ? x : y;
+        System.out.println("BinaryOperator: " + max.apply(9, 4));
+
+        // BinaryOperator convenience factories: minBy / maxBy take a Comparator.
+        BinaryOperator<String> longest = BinaryOperator.maxBy(Comparator.comparingInt(String::length));
+        System.out.println("BinaryOperator.maxBy: " + longest.apply("cat", "hippo"));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Primitive specializations avoid autoboxing`,
+                code: `import java.util.function.*;
+import java.util.stream.*;
+
+public class S1D3 {
+    public static void main(String[] a) {
+        // Primitive specializations exist to avoid autoboxing (no Integer objects created).
+
+        // IntSupplier: () -> int   (vs Supplier<Integer> which boxes).
+        IntSupplier roll = () -> 4;
+        System.out.println("IntSupplier: " + roll.getAsInt());
+
+        // IntFunction<R>: int -> R.
+        IntFunction<String> label = n -> "row-" + n;
+        System.out.println("IntFunction: " + label.apply(7));
+
+        // ToIntFunction<T>: T -> int (used by mapToInt, comparingInt).
+        ToIntFunction<String> len = String::length;
+        System.out.println("ToIntFunction: " + len.applyAsInt("hello"));
+
+        // IntPredicate: int -> boolean.
+        IntPredicate isEven = n -> n % 2 == 0;
+        System.out.println("IntPredicate: " + isEven.test(10));
+
+        // IntUnaryOperator: int -> int.
+        IntUnaryOperator square = n -> n * n;
+        System.out.println("IntUnaryOperator: " + square.applyAsInt(6));
+
+        // IntBinaryOperator: (int,int) -> int (used by IntStream.reduce).
+        IntBinaryOperator sum = (x, y) -> x + y;
+        System.out.println("IntBinaryOperator: " + sum.applyAsInt(3, 5));
+
+        // In a stream, mapToInt returns an IntStream of primitives -- no boxing.
+        int total = Stream.of("a", "bb", "ccc")
+                          .mapToInt(String::length) // ToIntFunction
+                          .sum();
+        System.out.println("Stream mapToInt sum: " + total);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Composition: andThen / compose / and / or / negate`,
+                code: `import java.util.function.*;
+
+public class S1D4 {
+    public static void main(String[] a) {
+        // Function.andThen: apply THIS first, then the argument.
+        Function<Integer, Integer> plus1 = x -> x + 1;
+        Function<Integer, Integer> times2 = x -> x * 2;
+        System.out.println("andThen (plus1 then times2): " + plus1.andThen(times2).apply(3)); // (3+1)*2 = 8
+
+        // Function.compose: apply the ARGUMENT first, then THIS.
+        System.out.println("compose (times2 then plus1): " + plus1.compose(times2).apply(3)); // (3*2)+1 = 7
+
+        // Predicate composition: and / or / negate.
+        Predicate<Integer> positive = n -> n > 0;
+        Predicate<Integer> even = n -> n % 2 == 0;
+        System.out.println("and: " + positive.and(even).test(4));   // true
+        System.out.println("or: " + positive.or(even).test(-2));    // true
+        System.out.println("negate: " + positive.negate().test(-5)); // true
+
+        // Predicate.isEqual: static factory for an equals-based predicate.
+        System.out.println("isEqual: " + Predicate.isEqual("x").test("x")); // true
+
+        // Consumer.andThen: run both consumers in order on the same input.
+        StringBuilder log = new StringBuilder();
+        Consumer<String> a1 = s -> log.append("[").append(s).append("]");
+        Consumer<String> a2 = s -> log.append("(").append(s.length()).append(")");
+        a1.andThen(a2).accept("hi");
+        System.out.println("Consumer.andThen: " + log);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Four ways to build the same Supplier`,
+                code: `import java.util.function.*;
+import java.util.*;
+
+public class S1D5 {
+    static String makeGreeting() { return "made by static method ref"; }
+
+    public static void main(String[] a) {
+        // Four ways to obtain the SAME Supplier<String> type.
+
+        // 1) Anonymous class -- the "old" form a lambda desugars toward.
+        Supplier<String> s1 = new Supplier<String>() {
+            public String get() { return "anonymous class"; }
+        };
+
+        // 2) Lambda expression.
+        Supplier<String> s2 = () -> "lambda";
+
+        // 3) Static method reference (Class::staticMethod).
+        Supplier<String> s3 = S1D5::makeGreeting;
+
+        // 4) Bound instance method reference (instance::method).
+        String captured = "bound instance method ref";
+        Supplier<String> s4 = captured::toString;
+
+        for (Supplier<String> s : List.of(s1, s2, s3, s4)) {
+            System.out.println(s.get() + " -> is a Supplier? " + (s instanceof Supplier));
+        }
+
+        // Unbound instance method ref: String::length is a Function<String,Integer>.
+        Function<String, Integer> len = String::length;
+        System.out.println("String::length on \\"abc\\" = " + len.apply("abc"));
+
+        // Constructor reference: ArrayList::new is a Supplier<List<String>>.
+        Supplier<List<String>> newList = ArrayList::new;
+        List<String> fresh = newList.get();
+        fresh.add("built via constructor ref");
+        System.out.println(fresh);
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What makes an interface a "functional interface"?`,
+                a: `It has exactly one abstract method (a SAM). Default and static methods do not count. This lets a lambda or method reference serve as an instance of it. The optional @FunctionalInterface annotation asks the compiler to enforce the single-abstract-method rule.`
+              },
+              {
+                q: `Give the abstract-method signature and arity for Supplier, Consumer, Function, and Predicate.`,
+                a: `Supplier<T>: T get() -- arity 0. Consumer<T>: void accept(T) -- arity 1. Function<T,R>: R apply(T) -- arity 1. Predicate<T>: boolean test(T) -- arity 1.`
+              },
+              {
+                q: `How do UnaryOperator<T> and BinaryOperator<T> relate to Function and BiFunction?`,
+                a: `UnaryOperator<T> extends Function<T,T> (input and output are the same type). BinaryOperator<T> extends BiFunction<T,T,T> (two same-typed args, same-typed result). They are shorthand for the same-in/same-out cases.`
+              },
+              {
+                q: `Why do primitive specializations like IntFunction and ToIntFunction exist?`,
+                a: `Generics cannot hold primitives, so Function<Integer,Integer> autoboxes every value into an Integer object, creating GC pressure in hot paths. The primitive variants operate directly on int/long/double and allocate nothing.`
+              },
+              {
+                q: `What is the difference between ToIntFunction<T> and IntFunction<R>?`,
+                a: `ToIntFunction<T> is T -> int (int applyAsInt(T)); it produces a primitive int from an object, used by mapToInt and comparingInt. IntFunction<R> is int -> R (R apply(int)); it consumes a primitive int and produces an object.`
+              },
+              {
+                q: `Contrast Function.andThen with Function.compose.`,
+                a: `f.andThen(g).apply(x) equals g(f(x)) -- run f first (left to right). f.compose(g).apply(x) equals f(g(x)) -- run g first (right to left). They are mirror images.`
+              },
+              {
+                q: `Which default/static methods let you combine Predicates?`,
+                a: `Instance defaults and(), or(), negate(); plus the static factory Predicate.isEqual(target) which builds a predicate testing Objects.equals against target.`
+              },
+              {
+                q: `What does Consumer.andThen do?`,
+                a: `It returns a Consumer that runs the first consumer, then the second, both on the SAME input value -- chaining two side effects in order.`
+              },
+              {
+                q: `Is a lambda a distinct type in Java?`,
+                a: `No. A lambda has no type of its own; it is an instance of whatever functional interface the context (the 'target type') requires. () -> "hi" is a Supplier<String> in one place and could satisfy any other zero-arg SAM elsewhere. instanceof Supplier returns true for it.`
+              },
+              {
+                q: `Name four ways to create an instance of a functional interface.`,
+                a: `Anonymous class, lambda expression, method reference (static Class::m, bound instance obj::m, unbound Type::m, constructor Type::new), and a normal named class implementing the interface. All are interchangeable.`
+              },
+              {
+                q: `Which functional interface fits Map.forEach and what is its signature?`,
+                a: `BiConsumer<K,V>, whose SAM is void accept(K,V). Map.forEach passes each key and value to it.`
+              }
+            ]
+          },
+          {
+            title: `Runnable, Callable & Comparator as Functional Interfaces -- Threads, Tasks & Ordering`,
+            notes: `## Runnable, Callable & Comparator -- Functional Interfaces Beyond \`java.util.function\`
+
+Not every functional interface lives in \`java.util.function\`. Three of the most important predate it and are used throughout concurrency and collections.
+
+### Runnable vs Callable
+
+| | \`Runnable\` | \`Callable<V>\` |
+|---|---|---|
+| SAM | \`void run()\` | \`V call()\` |
+| Returns a value? | No | Yes (\`V\`) |
+| Checked exceptions? | **No** -- cannot throw checked | **Yes** -- declares \`throws Exception\` |
+| Submitted via | \`Thread\`, \`ExecutorService.execute\`, \`submit\` | \`ExecutorService.submit\`, \`invokeAll\` |
+| Result handle | none (fire-and-forget) | \`Future<V>\` |
+| Package | \`java.lang\` | \`java.util.concurrent\` |
+
+Because \`Callable\` can both return a value and throw checked exceptions, it is the right choice for a unit of work that computes something or does I/O. \`Runnable\` is for pure side effects.
+
+\`\`\`mermaid
+flowchart LR
+  R["Runnable\\nrun() -> void"] --> EX["execute()\\nfire and forget"]
+  C["Callable V\\ncall() -> V"] --> SUB["submit()"]
+  SUB --> FUT["Future V"]
+  FUT --> GET["future.get()\\nblocks for result"]
+\`\`\`
+
+> [!WARNING]
+> A lambda passed to \`Thread\`/\`execute\` binds to \`Runnable\`, so it must not throw checked exceptions. If your task does I/O, target \`Callable\` via \`submit\` -- or the compiler will reject the checked throw.
+
+> [!TIP]
+> Keep concurrency demos deterministic: submit \`Callable\`s, read results with \`future.get()\` (which blocks until done), then \`shutdown()\` and \`awaitTermination(...)\`. Never rely on \`Thread.sleep\` for ordering.
+
+### Comparator as a functional interface
+
+\`Comparator<T>\` has one abstract method, \`int compare(T,T)\`, so it too is a functional interface -- and it carries a rich set of static and default factory methods:
+
+| Factory / method | What it builds |
+|---|---|
+| \`comparing(keyExtractor)\` | compare by an extracted \`Comparable\` key |
+| \`comparingInt/Long/Double\` | key comparators without boxing |
+| \`thenComparing(...)\` | tie-breaker applied when the primary compares equal |
+| \`reversed()\` | flips the whole comparator |
+| \`naturalOrder()\` / \`reverseOrder()\` | order any \`Comparable\` type |
+| \`nullsFirst(cmp)\` / \`nullsLast(cmp)\` | null-safe wrappers |
+
+\`thenComparing\` is what makes stable, multi-level sorts readable -- "by department, then by salary descending" is one fluent expression. \`nullsFirst\`/\`nullsLast\` wrap another comparator so a \`null\` element (or \`null\` key) sorts to a chosen end instead of throwing \`NullPointerException\`.
+
+> [!NOTE]
+> \`reversed()\` flips **every** level of a chained comparator, not just the last \`thenComparing\`. To reverse only one key, call \`.reversed()\` on that key's sub-comparator, e.g. \`comparingDouble(Employee::salary).reversed()\`.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Runnable with Thread and ExecutorService.execute`,
+                code: `import java.util.concurrent.*;
+
+public class S2D1 {
+    public static void main(String[] a) throws InterruptedException {
+        // Runnable: () -> void, throws no checked exceptions. Its SAM is run().
+        Runnable task = () -> System.out.println("Runnable ran on: " + Thread.currentThread().getName());
+
+        // 1) A Runnable can drive a raw Thread.
+        Thread t = new Thread(task, "worker-thread");
+        t.start();
+        t.join(); // deterministic: wait for it to finish before continuing.
+
+        // 2) A Runnable can be handed to ExecutorService.execute (fire-and-forget, no result).
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        pool.execute(() -> System.out.println("execute() Runnable, no return value"));
+
+        // Orderly shutdown + await so the program ends deterministically.
+        pool.shutdown();
+        pool.awaitTermination(5, TimeUnit.SECONDS);
+        System.out.println("done");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Callable + Future.get() and invokeAll (deterministic)`,
+                code: `import java.util.concurrent.*;
+import java.util.*;
+
+public class S2D2 {
+    public static void main(String[] a) throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+
+        // Callable<V>: () -> V, and MAY throw checked exceptions. Its SAM is call().
+        Callable<Integer> compute = () -> {
+            // A checked exception here would be fine -- Callable declares "throws Exception".
+            int sum = 0;
+            for (int i = 1; i <= 10; i++) sum += i;
+            return sum;
+        };
+
+        // submit(Callable) returns a Future<V>; future.get() blocks for the result.
+        Future<Integer> f = pool.submit(compute);
+        System.out.println("Callable result via Future.get(): " + f.get()); // 55
+
+        // invokeAll runs a batch and returns Futures in the SAME order -> deterministic output.
+        List<Callable<String>> tasks = List.of(
+            () -> "task-A",
+            () -> "task-B",
+            () -> "task-C"
+        );
+        List<Future<String>> results = pool.invokeAll(tasks);
+        for (Future<String> r : results) {
+            System.out.println("invokeAll -> " + r.get());
+        }
+
+        pool.shutdown();
+        pool.awaitTermination(5, TimeUnit.SECONDS);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Comparator.comparing / thenComparing / reversed / comparingInt`,
+                code: `import java.util.*;
+
+public class S2D3 {
+    record Person(String name, int age) {}
+
+    public static void main(String[] a) {
+        List<Person> people = new ArrayList<>(List.of(
+            new Person("Alice", 30),
+            new Person("Bob", 30),
+            new Person("Cara", 25),
+            new Person("Dan", 40)
+        ));
+
+        // Comparator.comparing extracts a Comparable key (here the age).
+        // thenComparing breaks ties (here by name). This is a stable, multi-level sort.
+        Comparator<Person> byAgeThenName =
+            Comparator.comparing(Person::age).thenComparing(Person::name);
+
+        List<Person> sorted = new ArrayList<>(people);
+        sorted.sort(byAgeThenName);
+        System.out.println("age asc, then name asc:");
+        sorted.forEach(p -> System.out.println("  " + p));
+
+        // reversed() flips the WHOLE comparator (both levels).
+        List<Person> rev = new ArrayList<>(people);
+        rev.sort(byAgeThenName.reversed());
+        System.out.println("reversed:");
+        rev.forEach(p -> System.out.println("  " + p));
+
+        // comparingInt avoids boxing the int key.
+        List<Person> byAge = new ArrayList<>(people);
+        byAge.sort(Comparator.comparingInt(Person::age));
+        System.out.println("comparingInt(age): " + byAge);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `naturalOrder, reverseOrder, nullsFirst / nullsLast`,
+                code: `import java.util.*;
+
+public class S2D4 {
+    public static void main(String[] a) {
+        // naturalOrder / reverseOrder: comparators for any Comparable type.
+        List<String> words = new ArrayList<>(List.of("pear", "apple", "kiwi"));
+        words.sort(Comparator.naturalOrder());
+        System.out.println("naturalOrder: " + words);
+        words.sort(Comparator.reverseOrder());
+        System.out.println("reverseOrder: " + words);
+
+        // nullsFirst / nullsLast: wrap a comparator so nulls do not throw NPE.
+        List<String> withNulls = new ArrayList<>(Arrays.asList("banana", null, "apple", null, "cherry"));
+        withNulls.sort(Comparator.nullsFirst(Comparator.naturalOrder()));
+        System.out.println("nullsFirst: " + withNulls);
+        withNulls.sort(Comparator.nullsLast(Comparator.naturalOrder()));
+        System.out.println("nullsLast: " + withNulls);
+
+        // Combine: sort a list of records where a field may be null.
+        record Task(String name, Integer priority) {}
+        List<Task> tasks = new ArrayList<>(List.of(
+            new Task("deploy", 2),
+            new Task("triage", null),
+            new Task("review", 1)
+        ));
+        // Keys with null priority go last; non-nulls ascending.
+        tasks.sort(Comparator.comparing(Task::priority, Comparator.nullsLast(Comparator.naturalOrder())));
+        System.out.println("null-safe key sort: " + tasks);
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Compare Runnable and Callable on return value and checked exceptions.`,
+                a: `Runnable: void run(), returns nothing, cannot throw checked exceptions. Callable<V>: V call(), returns a value of type V and declares throws Exception so it CAN throw checked exceptions.`
+              },
+              {
+                q: `How do you get the result of a Callable submitted to an ExecutorService?`,
+                a: `submit(Callable) returns a Future<V>. Call future.get(), which blocks until the task completes and returns V (or rethrows the task's exception wrapped in ExecutionException).`
+              },
+              {
+                q: `What is the difference between ExecutorService.execute and submit?`,
+                a: `execute(Runnable) is fire-and-forget: void, no handle. submit accepts a Runnable OR a Callable and returns a Future you can use to wait for completion, fetch a result, or cancel.`
+              },
+              {
+                q: `Why does a lambda passed to new Thread(...) reject a checked exception?`,
+                a: `The target type is Runnable, whose run() declares no checked exceptions. A checked throw would violate the SAM signature, so it must be caught inside or the work must target Callable via submit instead.`
+              },
+              {
+                q: `How do you make an executor-based demo produce deterministic output?`,
+                a: `Use future.get() (or invokeAll, which returns Futures in submission order) to read results in order, then shutdown() and awaitTermination(...). Do not rely on Thread.sleep or scheduling for ordering.`
+              },
+              {
+                q: `Is Comparator a functional interface? What is its SAM?`,
+                a: `Yes. Its single abstract method is int compare(T o1, T o2). It also has many default and static helper methods, but only one abstract method.`
+              },
+              {
+                q: `What does Comparator.thenComparing do?`,
+                a: `It supplies a tie-breaker: when the primary comparator returns 0 (equal), the next comparator decides. This builds stable multi-level orderings like 'by dept, then by salary'.`
+              },
+              {
+                q: `What is the effect of calling reversed() on a chained comparator?`,
+                a: `It flips EVERY level of the chain, not just the last thenComparing. To reverse only one key, call reversed() on that key's sub-comparator, e.g. comparingDouble(Employee::salary).reversed().thenComparing(name).`
+              },
+              {
+                q: `When do you need nullsFirst / nullsLast?`,
+                a: `When the list contains null elements, or a comparison key may be null. They wrap another comparator so nulls sort to the chosen end instead of causing a NullPointerException. Example: comparing(Task::priority, nullsLast(naturalOrder())).`
+              },
+              {
+                q: `Difference between Comparator.comparing and Comparator.comparingInt?`,
+                a: `comparing(keyExtractor) extracts a Comparable key (boxes primitives). comparingInt/comparingLong/comparingDouble take a To*Function and compare primitive keys without boxing -- prefer them for numeric keys.`
+              },
+              {
+                q: `What do Comparator.naturalOrder and reverseOrder return?`,
+                a: `naturalOrder() returns a Comparator that orders any Comparable type by its compareTo; reverseOrder() returns the inverse. Useful as the base of nullsFirst/nullsLast wrappers or for sorting simple lists.`
+              }
+            ]
+          },
+          {
+            title: `Comparable vs Comparator + Using Every Functional Interface in Lambdas & Streams`,
+            notes: `## Comparable vs Comparator -- and Driving Streams with Every Interface
+
+### Two ways to define order
+
+| | \`Comparable<T>\` | \`Comparator<T>\` |
+|---|---|---|
+| Method | \`int compareTo(T)\` | \`int compare(T,T)\` |
+| Location | **inside** the class being ordered | **outside**, a separate object |
+| How many orderings | exactly one ("natural order") | as many as you want |
+| Used by | \`Collections.sort(list)\`, \`TreeSet\`, \`sort(null)\` | \`list.sort(cmp)\`, \`stream.sorted(cmp)\`, \`min/max\` |
+| Change requires | editing the class | none -- pass a different comparator |
+
+Rule of thumb: implement \`Comparable\` when the type has ONE obvious, intrinsic order (version numbers, money, dates). Reach for \`Comparator\` for everything else -- alternate sorts, sorts you cannot edit the class for, or context-specific ordering. A \`Comparator\` argument always **overrides** natural order.
+
+> [!TIP]
+> All three sign contracts return an \`int\`: negative if "this before that," zero if equal, positive if "this after that." Implement them with \`Integer.compare\` / \`Double.compare\` rather than subtraction (\`a - b\` overflows for large values).
+
+### Every functional interface, one stream story
+
+The big demo below runs an "employee analytics" pipeline where each functional interface drives one stream operation:
+
+\`\`\`mermaid
+flowchart TD
+  S["Supplier -> Stream.generate (bonuses)"]
+  F["Predicate -> filter (Eng only)"]
+  M["Function -> map (to label)"]
+  U["UnaryOperator -> map (upper case)"]
+  C["Consumer -> forEach (print)"]
+  T["ToIntFunction -> mapToInt (salaries)"]
+  B["BinaryOperator -> reduce (sum)"]
+  O["Comparator -> sorted / max"]
+  COL["Collectors -> groupingBy / joining"]
+  S --> F --> M --> U --> C
+  T --> B
+  O --> COL
+\`\`\`
+
+| Stream op | Functional interface it accepts |
+|---|---|
+| \`filter\` | \`Predicate<T>\` |
+| \`map\` | \`Function<T,R>\` (or \`UnaryOperator<T>\`) |
+| \`mapToInt\` | \`ToIntFunction<T>\` |
+| \`forEach\` / \`peek\` | \`Consumer<T>\` |
+| \`reduce\` | \`BinaryOperator<T>\` |
+| \`sorted\` / \`min\` / \`max\` | \`Comparator<T>\` |
+| \`generate\` | \`Supplier<T>\` |
+
+> [!NOTE]
+> \`peek\` takes a \`Consumer\` and is intended for debugging/observation mid-pipeline; it is not a substitute for \`map\`. Use \`forEach\` as the terminal side-effect sink.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Comparable: one natural ordering baked into the class`,
+                code: `import java.util.*;
+
+public class S3D1 {
+    // Comparable<T>: the class defines ITS OWN natural ordering via compareTo.
+    // Here Version sorts by major, then minor. There is exactly ONE natural order.
+    static final class Version implements Comparable<Version> {
+        final int major, minor;
+        Version(int major, int minor) { this.major = major; this.minor = minor; }
+
+        @Override
+        public int compareTo(Version o) {
+            int c = Integer.compare(this.major, o.major);
+            return c != 0 ? c : Integer.compare(this.minor, o.minor);
+        }
+        @Override
+        public String toString() { return major + "." + minor; }
+    }
+
+    public static void main(String[] a) {
+        List<Version> versions = new ArrayList<>(List.of(
+            new Version(2, 0), new Version(1, 5), new Version(2, 1), new Version(1, 0)
+        ));
+
+        // Collections.sort / List.sort with no comparator uses the NATURAL ordering.
+        Collections.sort(versions);
+        System.out.println("natural order: " + versions);
+
+        // TreeSet and Collections.min/max also rely on Comparable.
+        System.out.println("min: " + Collections.min(versions));
+        System.out.println("max: " + Collections.max(versions));
+
+        // A Comparator can OVERRIDE natural order without touching the class.
+        versions.sort(Comparator.reverseOrder());
+        System.out.println("comparator override (desc): " + versions);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Comparator: many external orderings over the same type`,
+                code: `import java.util.*;
+
+public class S3D2 {
+    // The class has a natural order (by id) but callers often need OTHER orders.
+    record Employee(int id, String name, String dept, double salary) implements Comparable<Employee> {
+        @Override
+        public int compareTo(Employee o) { return Integer.compare(this.id, o.id); }
+    }
+
+    public static void main(String[] a) {
+        List<Employee> emps = new ArrayList<>(List.of(
+            new Employee(3, "Cara", "Eng", 95000),
+            new Employee(1, "Alice", "Eng", 120000),
+            new Employee(2, "Bob", "Sales", 80000),
+            new Employee(4, "Dan", "Sales", 80000)
+        ));
+
+        // Natural order (Comparable): by id.
+        emps.sort(null); // null comparator => natural ordering
+        System.out.println("by id (natural): " + idsOf(emps));
+
+        // External Comparator #1: by salary descending, then name ascending.
+        emps.sort(Comparator.comparingDouble(Employee::salary).reversed()
+                            .thenComparing(Employee::name));
+        System.out.println("by salary desc, name asc: " + namesOf(emps));
+
+        // External Comparator #2: group-friendly order by dept, then salary.
+        emps.sort(Comparator.comparing(Employee::dept)
+                            .thenComparing(Comparator.comparingDouble(Employee::salary).reversed()));
+        System.out.println("by dept, salary desc: " + namesOf(emps));
+    }
+
+    static List<Integer> idsOf(List<Employee> es) {
+        List<Integer> r = new ArrayList<>();
+        for (Employee e : es) r.add(e.id());
+        return r;
+    }
+    static List<String> namesOf(List<Employee> es) {
+        List<String> r = new ArrayList<>();
+        for (Employee e : es) r.add(e.name());
+        return r;
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Employee analytics: every functional interface driving a stream op`,
+                code: `import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
+
+public class S3D3 {
+    record Employee(String name, String dept, int salary) {}
+
+    public static void main(String[] a) {
+        // Supplier drives Stream.generate: an infinite source we bound with limit().
+        // A tiny deterministic pseudo-random via a mutable holder (no timing dependence).
+        int[] seed = { 1 };
+        Supplier<Integer> nextBonus = () -> {
+            seed[0] = (seed[0] * 1103515245 + 12345) & 0x7fffffff;
+            return 1000 + seed[0] % 5000; // deterministic sequence
+        };
+        List<Integer> bonuses = Stream.generate(nextBonus).limit(3).collect(Collectors.toList());
+        System.out.println("Supplier via generate: " + bonuses);
+
+        List<Employee> staff = List.of(
+            new Employee("Alice", "Eng", 120000),
+            new Employee("Bob", "Sales", 80000),
+            new Employee("Cara", "Eng", 95000),
+            new Employee("Dan", "Sales", 70000),
+            new Employee("Eve", "Eng", 105000)
+        );
+
+        // Predicate via filter: keep Engineering only.
+        Predicate<Employee> isEng = e -> e.dept().equals("Eng");
+
+        // Function via map: project to a display string.
+        Function<Employee, String> label = e -> e.name() + "($" + e.salary() + ")";
+
+        // UnaryOperator via map: normalize names to upper case (String -> String).
+        UnaryOperator<String> upper = String::toUpperCase;
+
+        // Consumer via forEach (peek is also a Consumer used mid-pipeline).
+        System.out.println("Predicate+Function+UnaryOperator+Consumer:");
+        staff.stream()
+             .filter(isEng)                              // Predicate
+             .map(label)                                 // Function
+             .map(upper)                                 // UnaryOperator
+             .forEach(s -> System.out.println("  " + s)); // Consumer
+
+        // ToIntFunction via mapToInt + BinaryOperator via reduce.
+        ToIntFunction<Employee> salaryOf = Employee::salary;
+        int totalEng = staff.stream()
+                            .filter(isEng)
+                            .mapToInt(salaryOf)          // ToIntFunction -> IntStream (no boxing)
+                            .sum();
+        System.out.println("Total Eng salary (mapToInt.sum): " + totalEng);
+
+        BinaryOperator<Integer> add = Integer::sum;
+        int totalAll = staff.stream()
+                            .map(Employee::salary)
+                            .reduce(0, add);             // BinaryOperator via reduce
+        System.out.println("Total all salary (reduce): " + totalAll);
+
+        // Comparator via max / sorted.
+        Comparator<Employee> bySalary = Comparator.comparingInt(Employee::salary);
+        Optional<Employee> topPaid = staff.stream().max(bySalary);
+        System.out.println("Highest paid (max): " + topPaid.map(Employee::name).orElse("none"));
+
+        System.out.println("Sorted by salary desc (sorted+Comparator):");
+        staff.stream()
+             .sorted(bySalary.reversed())
+             .forEach(e -> System.out.println("  " + e.name() + " " + e.salary()));
+
+        // Collectors: group by dept, averaging salary; and joining names.
+        Map<String, Double> avgByDept = staff.stream()
+            .collect(Collectors.groupingBy(Employee::dept,
+                     Collectors.averagingInt(Employee::salary)));
+        System.out.println("Avg salary by dept: " + new TreeMap<>(avgByDept));
+
+        String roster = staff.stream()
+            .map(Employee::name)
+            .collect(Collectors.joining(", ", "[", "]"));
+        System.out.println("Roster (joining): " + roster);
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Comparable vs Comparator: where does each live and how many orderings does each give?`,
+                a: `Comparable<T> is implemented INSIDE the class (int compareTo(T)) and defines exactly one natural ordering. Comparator<T> is a separate external object (int compare(T,T)) and you can define as many orderings as you like.`
+              },
+              {
+                q: `When should a class implement Comparable, and when do you reach for a Comparator?`,
+                a: `Implement Comparable when the type has one obvious intrinsic order (versions, money, dates). Use a Comparator for alternate sorts, for classes you cannot edit, or for context-specific ordering. A passed Comparator overrides natural order.`
+              },
+              {
+                q: `What do compareTo / compare return?`,
+                a: `An int: negative if 'this'/first sorts before the other, zero if equal, positive if after. Implement with Integer.compare / Double.compare, not subtraction, to avoid integer overflow.`
+              },
+              {
+                q: `Which methods use natural ordering (Comparable) with no comparator?`,
+                a: `Collections.sort(list), list.sort(null), Collections.min/max, and TreeSet/TreeMap without an explicit comparator all rely on the elements' Comparable.compareTo.`
+              },
+              {
+                q: `Which functional interface does Stream.filter accept, and Stream.map?`,
+                a: `filter accepts a Predicate<T> (T -> boolean). map accepts a Function<T,R> (T -> R); if the result type equals the input type you may use a UnaryOperator<T>.`
+              },
+              {
+                q: `Which functional interface drives Stream.reduce with an identity?`,
+                a: `BinaryOperator<T>: reduce(identity, accumulator) folds two same-typed values into one, e.g. reduce(0, Integer::sum) to total a stream of ints.`
+              },
+              {
+                q: `How does Supplier participate in the Streams API?`,
+                a: `Stream.generate(Supplier<T>) builds an infinite stream by repeatedly calling get(); bound it with limit(n). Supplier also backs Optional.orElseGet and lazy defaults.`
+              },
+              {
+                q: `What functional interface does mapToInt take and why prefer it?`,
+                a: `It takes a ToIntFunction<T> (T -> int) and yields an IntStream of primitives, avoiding boxing and enabling numeric terminal ops like sum(), average(), and summaryStatistics().`
+              },
+              {
+                q: `peek vs forEach -- what interface do they take and how do they differ?`,
+                a: `Both take a Consumer<T>. forEach is a terminal side-effect sink. peek is an intermediate operation meant for observing/debugging elements as they flow; it is not a replacement for map and may be skipped by some optimizations.`
+              },
+              {
+                q: `Which Comparator-accepting stream operations find extremes?`,
+                a: `stream.min(comparator) and stream.max(comparator) return an Optional<T>; stream.sorted(comparator) orders the whole stream. All three consume a Comparator<T>.`
+              },
+              {
+                q: `How would you compute average salary per department in one stream?`,
+                a: `Use collect(Collectors.groupingBy(Employee::dept, Collectors.averagingInt(Employee::salary))), which returns a Map<String,Double> keyed by department.`
+              },
+              {
+                q: `How do you join a stream of names into a bracketed, comma-separated string?`,
+                a: `stream.map(Employee::name).collect(Collectors.joining(", ", "[", "]")) -- the three args are delimiter, prefix, and suffix.`
+              }
+            ]
           }
         ]
       },

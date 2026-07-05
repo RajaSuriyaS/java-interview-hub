@@ -471,6 +471,30 @@ const INTERVIEW_QUESTIONS = {
     {
       "q": "Why does ArrayList parallelize better than LinkedList, and what role does the Spliterator play?",
       "a": "Parallel streams split work via a Spliterator, and an ArrayList's array-backed Spliterator can cleanly halve its index range with known size, producing balanced, cache-friendly chunks. A LinkedList can only be traversed by following pointers, so it can't split evenly or cheaply and gives poor, unbalanced parallelism plus cache misses. This is why the source data structure, not just the operation, determines whether going parallel pays off, and why arrays and ArrayList are the friendliest sources."
+    },
+    {
+      "q": "Name the core java.util.function interfaces and their single abstract method signatures.",
+      "a": "Supplier<T> has T get() -- no input, produces a value. Consumer<T> has void accept(T) -- takes a value, returns nothing (side effect). Function<T,R> has R apply(T) -- transforms T into R. Predicate<T> has boolean test(T) -- a boolean-valued Function. UnaryOperator<T> is Function<T,T> and BinaryOperator<T> is BiFunction<T,T,T>, both narrowing input and output to the same type. The Bi- variants (BiFunction, BiConsumer, BiPredicate) take two arguments. A lambda or method reference is simply an instance of whichever of these the target type is."
+    },
+    {
+      "q": "Why do primitive specializations like IntFunction, ToIntFunction and IntPredicate exist?",
+      "a": "To avoid autoboxing. Function<Integer,Integer> boxes every int into an Integer object on the way in and out, which allocates and hurts cache locality in hot loops. IntUnaryOperator, ToIntFunction<T>, IntPredicate, IntSupplier and friends operate on primitive int/long/double directly, so streams like IntStream.map or mapToInt stay unboxed end to end. Interviewers like this because it shows you understand the cost model behind the tidy generic API, and why IntStream exists alongside Stream<Integer>."
+    },
+    {
+      "q": "What is the difference between Runnable and Callable, and when do you pick each?",
+      "a": "Runnable.run() takes no argument, returns void, and cannot throw checked exceptions -- it is fire-and-forget, used by Thread and ExecutorService.execute. Callable<V>.call() returns a value V and is allowed to throw checked exceptions -- you submit it to an ExecutorService and get back a Future<V> whose get() returns the result or rethrows the task's exception wrapped in ExecutionException. Pick Callable when the task computes a result you need to collect or when it can fail in a checked way; pick Runnable for pure side-effect work."
+    },
+    {
+      "q": "Comparable vs Comparator -- what is the distinction and when do you reach for each?",
+      "a": "Comparable<T> defines a type's single natural ordering via int compareTo(T), baked into the class itself (String alphabetical, Integer numeric); it is what TreeSet, Collections.sort with no comparator, and sorted() use by default. Comparator<T> is an external, separate object defining int compare(a,b), so you can have many orderings for the same type and order types you don't own or can't modify. Use Comparable for the one obvious ordering; use Comparator when you need alternative or multi-key orderings, e.g. Comparator.comparing(Employee::dept).thenComparing(Employee::salary)."
+    },
+    {
+      "q": "How do you build a multi-key sort with Comparator, and how do you handle nulls and reversing?",
+      "a": "Compose factory methods: Comparator.comparing(Employee::getDept).thenComparing(Employee::getSalary) sorts by department then salary. Add .reversed() to flip the whole ordering, or reverse one key with Comparator.comparing(Employee::getSalary, Comparator.reverseOrder()). Use comparingInt/comparingDouble to avoid boxing on primitive keys. For nullable fields wrap with Comparator.nullsFirst(...) or nullsLast(...) so nulls sort predictably instead of throwing NullPointerException. All of these return a Comparator you can pass straight to list.sort(...), stream.sorted(...), or min/max."
+    },
+    {
+      "q": "How do Function.andThen/compose and Predicate.and/or/negate let you build behavior from small pieces?",
+      "a": "These default methods return a new composed instance without mutating the originals. f.andThen(g) applies f then g (g(f(x))), while f.compose(g) applies g first (f(g(x))). Predicate exposes p.and(q), p.or(q) and p.negate() with short-circuit semantics, so you can assemble a filter like isActive.and(isSenior.or(isManager)) from named, testable predicates. Consumer.andThen(c2) chains side effects in order. This is function composition in Java: it keeps each piece small and reusable and reads declaratively at the call site."
     }
   ],
   "2.4": [
