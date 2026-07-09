@@ -15,6 +15,662 @@ const CURRICULUM = [
     modules: [
       {
         id: `0.1`,
+        title: `How Java Runs — JDK, JRE, JVM & Your First Program`,
+        hours: 3,
+        sections: [
+          {
+            title: `What Is Java, and What Actually Happens When You Run a Program`,
+            notes: `## What is a programming language?
+
+A **programming language** is a set of rules for writing instructions that a
+computer can eventually carry out. You write those instructions as plain text
+in a file. A computer's processor, though, only understands **machine code**:
+raw numbers for a specific chip. Something has to translate your text into
+something the machine can execute. There are two classic ways to do that.
+
+### Compiled vs interpreted
+
+- **Compiled languages** (like C): a program called a *compiler* translates
+  your whole source file ahead of time into machine code for one specific
+  operating system and CPU. It runs fast, but the result only works on that
+  kind of machine.
+- **Interpreted languages** (like classic Python): a program called an
+  *interpreter* reads your source line by line and does what each line says,
+  every time you run it. This is flexible and portable, but usually slower.
+
+### Java's hybrid model
+
+Java sits in the middle, and that is the key idea of this whole module. Java is
+**compiled** to an intermediate form and then that form is **interpreted (and
+later optimized) at runtime**. Here is the pipeline:
+
+1. You write **source code** in a file ending in \`.java\` (for example
+   \`Hello1.java\`).
+2. The Java compiler, \`javac\`, translates it into **bytecode**, stored in a
+   \`.class\` file. Bytecode is not machine code for any real CPU. It is a
+   compact instruction set for an imaginary computer.
+3. That imaginary computer is the **JVM** (Java Virtual Machine). When you run
+   the program, the JVM reads the bytecode and executes it on your real
+   machine.
+
+\`\`\`mermaid
+flowchart LR
+    A["Hello1.java<br/>(source code)"] -->|javac| B["Hello1.class<br/>(bytecode)"]
+    B -->|java| C["JVM<br/>(runs bytecode)"]
+    C --> D["Program output<br/>on your screen"]
+\`\`\`
+
+### Write once, run anywhere
+
+Because your program is compiled to *bytecode* instead of to Windows or Mac or
+Linux machine code, the same \`.class\` file runs on any of them. The trick:
+there is a **different JVM built for each operating system**, and every JVM
+understands the same bytecode. You ship one set of \`.class\` files; each user's
+JVM does the final translation to their machine. That is what people mean by
+Java's slogan **"write once, run anywhere."**
+
+Think of bytecode as a universal language, and each JVM as a local translator
+that already lives on that computer.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `The classic first program`,
+                code: `public class Hello1 {
+    public static void main(String[] a) {
+        System.out.println("Hello, World!");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Printing variables`,
+                code: `public class Greeting2 {
+    public static void main(String[] a) {
+        String name = "Ada";
+        int year = 1843;
+        System.out.println("Hello, " + name + "!");
+        System.out.println("You are learning Java in a class from year " + year + ".");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `A tiny loop`,
+                code: `public class CountUp3 {
+    public static void main(String[] a) {
+        for (int i = 1; i <= 5; i++) {
+            System.out.println("Count: " + i);
+        }
+        System.out.println("Done counting.");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Narrating the source-to-run pipeline`,
+                code: `public class Pipeline4 {
+    public static void main(String[] a) {
+        System.out.println("Step 1: You write source code in Pipeline4.java");
+        System.out.println("Step 2: javac turns it into Pipeline4.class (bytecode)");
+        System.out.println("Step 3: The JVM reads the bytecode and runs it");
+        System.out.println("Result: this text appears on your screen!");
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is a programming language, in one sentence?`,
+                a: `A set of rules for writing text instructions that a computer can be made to carry out.`
+              },
+              {
+                q: `What is machine code?`,
+                a: `The raw numeric instructions a specific CPU understands directly. Human-written source code must be translated into it (or into something a runtime can execute).`
+              },
+              {
+                q: `How does a compiled language like C run?`,
+                a: `A compiler translates the whole source file ahead of time into machine code for one specific OS and CPU, and that machine code is run directly.`
+              },
+              {
+                q: `How does a purely interpreted language run?`,
+                a: `An interpreter reads the source and carries out each line every time the program runs, without producing a separate machine-code file.`
+              },
+              {
+                q: `What are the three stages of Java's pipeline?`,
+                a: `Source (.java) -> javac compiles it to bytecode (.class) -> the JVM executes the bytecode.`
+              },
+              {
+                q: `What is bytecode?`,
+                a: `A compact, portable instruction set produced by javac. It is not machine code for any real CPU; it is meant for the JVM to execute.`
+              },
+              {
+                q: `What does javac do?`,
+                a: `It is the Java compiler: it turns a .java source file into a .class file containing bytecode.`
+              },
+              {
+                q: `What does 'write once, run anywhere' mean?`,
+                a: `The same compiled bytecode runs on any operating system, because there is a JVM built for each OS and they all understand the same bytecode.`
+              },
+              {
+                q: `Why can one .class file run on Windows, Mac, and Linux?`,
+                a: `Because it contains bytecode, not OS-specific machine code. Each platform has its own JVM that translates that shared bytecode to the local machine.`
+              },
+              {
+                q: `Is Java compiled or interpreted?`,
+                a: `Both, in a hybrid way: it is compiled ahead of time to bytecode, and that bytecode is then interpreted (and later optimized) by the JVM at runtime.`
+              }
+            ]
+          },
+          {
+            title: `JDK vs JRE vs JVM — Who Does What`,
+            notes: `You will constantly see three initials thrown around: **JVM**, **JRE**, and
+**JDK**. They are nested, like boxes inside boxes. Here is who does what.
+
+### The three pieces
+
+- **JVM (Java Virtual Machine)** - the engine. It loads your \`.class\` files and
+  *executes the bytecode* on your real machine. It is the "imaginary computer"
+  from the last section, made real as a program.
+- **JRE (Java Runtime Environment)** - the JVM **plus** the standard library
+  (ready-made classes like \`String\`, \`ArrayList\`, \`System\`, and thousands
+  more). The JRE is everything needed to **run** an already-built Java app.
+- **JDK (Java Development Kit)** - the JRE **plus** the developer **tools** you
+  need to **build** apps: \`javac\` (compiler), \`jar\` (packager), \`javadoc\`
+  (documentation generator), \`javap\` (bytecode viewer), and more.
+
+### Table
+
+| Piece | Contains | Purpose | You use it to |
+| ----- | -------- | ------- | ------------- |
+| JVM   | The execution engine | Runs bytecode | (used internally) |
+| JRE   | JVM + standard libraries | Run Java apps | Run programs |
+| JDK   | JRE + tools (javac, jar, javadoc...) | Build Java apps | Develop programs |
+
+### One-line mental model
+
+**JDK is for building, JRE is for running, and the JVM is the engine inside
+both that actually executes your code.** Nesting: JDK contains a JRE, and a JRE
+contains a JVM.
+
+### Which one do I install?
+
+To *write* Java, install the **JDK**. It gives you \`javac\` to compile and
+\`java\` to run, and it includes everything the JRE and JVM provide. (These days a
+plain JRE is rarely shipped separately, so installing a JDK is the normal path
+for everyone.)
+
+### A quick word on versions
+
+Java releases a new version every six months, but a few are **LTS**
+(Long-Term Support) releases that stay supported for years, so companies
+standardize on them. The ones you will hear about most are **Java 8, 11, 17,
+and 21**. This module targets **Java 21**. Newer LTS versions add features but
+the fundamentals in this module stay the same.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `Ask the JVM about itself`,
+                code: `public class WhichJvm5 {
+    public static void main(String[] a) {
+        String version = System.getProperty("java.version");
+        String vendor = System.getProperty("java.vendor");
+        System.out.println("This program is running on a JVM.");
+        System.out.println("Java version: " + version);
+        System.out.println("Provided by: " + vendor);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Build vs run, narrated`,
+                code: `public class BuildVsRun6 {
+    public static void main(String[] a) {
+        System.out.println("The JDK gave me javac, which BUILT this class.");
+        System.out.println("The JRE (JVM + libraries) is now RUNNING this class.");
+        System.out.println("The JVM is the engine executing the bytecode.");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Using a class from the standard library`,
+                code: `import java.util.ArrayList;
+
+public class LibraryUse7 {
+    public static void main(String[] a) {
+        ArrayList<String> tools = new ArrayList<>();
+        tools.add("javac");
+        tools.add("java");
+        tools.add("jar");
+        System.out.println("ArrayList comes from the standard library the JRE ships.");
+        System.out.println("JDK tools I might use: " + tools);
+        System.out.println("Number of tools listed: " + tools.size());
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does JVM stand for, and what does it do?`,
+                a: `Java Virtual Machine. It loads .class files and executes the bytecode on your real machine.`
+              },
+              {
+                q: `What does JRE stand for, and what is in it?`,
+                a: `Java Runtime Environment. It is the JVM plus the standard class libraries: everything needed to RUN a Java app.`
+              },
+              {
+                q: `What does JDK stand for, and what is in it?`,
+                a: `Java Development Kit. It is the JRE plus developer tools like javac, jar, and javadoc: everything needed to BUILD a Java app.`
+              },
+              {
+                q: `How are the JVM, JRE, and JDK related?`,
+                a: `They nest: the JDK contains a JRE, and the JRE contains a JVM.`
+              },
+              {
+                q: `Which of the three do you install to develop Java?`,
+                a: `The JDK. It includes the compiler (javac) and the runtime, so you can both build and run programs.`
+              },
+              {
+                q: `What is javac?`,
+                a: `The Java compiler, a JDK tool that turns .java source into .class bytecode.`
+              },
+              {
+                q: `Name two JDK tools besides javac.`,
+                a: `Any two of: jar (packages classes into a .jar), javadoc (generates documentation), javap (shows bytecode).`
+              },
+              {
+                q: `What is the one-line mental model for JDK vs JRE vs JVM?`,
+                a: `JDK is for building, JRE is for running, and the JVM is the engine inside both that executes your code.`
+              },
+              {
+                q: `What does LTS mean for a Java version?`,
+                a: `Long-Term Support: a release that stays supported for years, so it is the version companies tend to standardize on.`
+              },
+              {
+                q: `Name a few common LTS Java versions.`,
+                a: `Java 8, 11, 17, and 21.`
+              },
+              {
+                q: `If someone gives you compiled .class files but you cannot build code, what do you minimally need?`,
+                a: `A JRE (JVM plus libraries) is enough to run them; you only need the full JDK to compile source.`
+              }
+            ]
+          },
+          {
+            title: `Your First Program — Anatomy of Hello World`,
+            notes: `Time to write, compile, and run a real program and understand **every token**
+in it. Here is the classic starting point:
+
+\`\`\`java
+public class FirstProgram8 {
+    public static void main(String[] args) {
+        System.out.println("My first program ran successfully.");
+    }
+}
+\`\`\`
+
+### Compile it and run it
+
+Save that as \`FirstProgram8.java\`, then in a terminal:
+
+\`\`\`bash
+javac FirstProgram8.java   # compile: produces FirstProgram8.class
+java FirstProgram8         # run: note NO .class and NO .java on this line
+\`\`\`
+
+You should see \`My first program ran successfully.\` printed. If you get
+\`error: class ... is public, should be declared in a file named ...\`, your file
+name does not match the class name - see below.
+
+### Every token, explained
+
+- **\`public\`** - an *access modifier*. \`public\` means this class (and the
+  \`main\` method) can be seen and used from anywhere, including by the JVM's
+  launcher.
+- **\`class FirstProgram8\`** - declares a **class** named \`FirstProgram8\`. In
+  Java, all code lives inside a class. A class is a named container for code.
+- **\`static\`** - means \`main\` belongs to the class itself, not to any object
+  you create. The JVM can call it *without first constructing an object*, which
+  matters because at startup no objects exist yet.
+- **\`void\`** - the *return type*. \`void\` means \`main\` hands nothing back when it
+  finishes.
+- **\`main\`** - the special method name the JVM looks for. This is the
+  **entry point**: execution starts here.
+- **\`(String[] args)\`** - the *parameters*. \`args\` is an array of \`String\`
+  values holding any words you typed on the command line after the class name.
+  You can name it anything, but \`args\` is the convention.
+- **\`System.out.println(...)\`** - \`System\` is a built-in class; \`out\` is its
+  standard-output stream; \`println\` is a method that **pr**ints a **l**i**n**e
+  of text and then moves to the next line.
+- **\`{ }\` and \`;\`** - curly braces group a block of code; the semicolon ends a
+  single statement.
+
+### The entry-point contract
+
+To be launchable, the JVM requires a method with **exactly** this shape:
+\`public static void main(String[] args)\`. If any piece is missing or spelled
+differently, you get an error like \`Main method not found\`. Memorize this line.
+
+### Why the file name must match the public class
+
+Java requires that a \`public\` class live in a file with the **same name** plus
+\`.java\`. So \`public class FirstProgram8\` must be in \`FirstProgram8.java\`. This
+lets the compiler and JVM find a class by its name alone.
+
+### Packages and the classpath (gently)
+
+- A **package** is a folder-like namespace that groups related classes, written
+  at the top of a file like \`package com.example.tools;\`. It keeps names from
+  colliding across big projects. Our tiny examples skip it and live in the
+  **default package** (no \`package\` line).
+- The **classpath** is simply the list of places the JVM searches to find
+  \`.class\` files. When you run \`java FirstProgram8\` from the folder that
+  contains \`FirstProgram8.class\`, the classpath is that current folder, so it is
+  found. Later you can point the classpath elsewhere with the \`-cp\` option.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `Hello world, fully dissected`,
+                code: `public class FirstProgram8 {
+    public static void main(String[] args) {
+        // This is the entry point: the JVM calls main first.
+        System.out.println("My first program ran successfully.");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Reading command-line arguments (String[] args)`,
+                code: `public class Greeter9 {
+    public static void main(String[] args) {
+        // args holds words typed after the class name on the command line.
+        if (args.length >= 1) {
+            System.out.println("Hello, " + args[0] + "!");
+        } else {
+            System.out.println("Hello there! (Tip: pass your name as an argument.)");
+        }
+        System.out.println("You passed " + args.length + " argument(s).");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Declaring and printing variables`,
+                code: `public class Variables10 {
+    public static void main(String[] args) {
+        int apples = 3;
+        int oranges = 5;
+        int total = apples + oranges;
+        double price = 0.50;
+        System.out.println("Apples: " + apples);
+        System.out.println("Oranges: " + oranges);
+        System.out.println("Total fruit: " + total);
+        System.out.println("Cost at " + price + " each: " + (total * price));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `The default package and the classpath`,
+                code: `public class PackagedHello11 {
+    public static void main(String[] args) {
+        // With no 'package' line, this class lives in the default package.
+        // The JVM found it on the classpath (here, the current folder).
+        String fullName = PackagedHello11.class.getName();
+        System.out.println("My class name is: " + fullName);
+        System.out.println("I was loaded from the classpath and then run.");
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the exact signature of the Java entry point?`,
+                a: `public static void main(String[] args)`
+              },
+              {
+                q: `In 'public class Greeter9', what does 'class' introduce?`,
+                a: `A class: a named container that holds your code. In Java, all code lives inside a class.`
+              },
+              {
+                q: `Why must main be static?`,
+                a: `So the JVM can call it without first creating an object. At startup no objects exist yet, and static means it belongs to the class itself.`
+              },
+              {
+                q: `What does 'void' mean in the main signature?`,
+                a: `It is the return type: void means main returns no value when it finishes.`
+              },
+              {
+                q: `What does 'public' mean on the class and on main?`,
+                a: `It is an access modifier meaning the class or method is visible from anywhere, including to the JVM launcher that starts your program.`
+              },
+              {
+                q: `What is String[] args?`,
+                a: `An array of Strings holding the command-line arguments: the words typed after the class name when you run the program.`
+              },
+              {
+                q: `What does System.out.println do?`,
+                a: `It prints a line of text to standard output (the console) and then moves to the next line.`
+              },
+              {
+                q: `Why must the file be named FirstProgram8.java for 'public class FirstProgram8'?`,
+                a: `Java requires a public class to live in a file with the same name plus .java, so tools can find a class by its name.`
+              },
+              {
+                q: `What commands compile and then run FirstProgram8?`,
+                a: `javac FirstProgram8.java to compile, then java FirstProgram8 to run (no .java or .class on the run line).`
+              },
+              {
+                q: `What is a package?`,
+                a: `A folder-like namespace declared at the top of a file (for example package com.example;) that groups related classes and prevents name clashes.`
+              },
+              {
+                q: `What is the classpath?`,
+                a: `The list of locations the JVM searches to find .class files. Running java from the folder containing the class puts that folder on the classpath.`
+              }
+            ]
+          },
+          {
+            title: `From Source to Running — Bytecode, the Main Method & the Runtime`,
+            notes: `Let's connect the whole chain: from the text you type to a running program, and
+peek (gently) at what the JVM does under the hood.
+
+### What does bytecode look like?
+
+You never write bytecode by hand, but you can look at it. After compiling
+\`AddTwo12.java\`, run:
+
+\`\`\`bash
+javac AddTwo12.java
+javap -c AddTwo12
+\`\`\`
+
+\`javap -c\` disassembles the \`.class\` file and shows the bytecode instructions.
+For \`int sum = x + y;\` you will see something like:
+
+\`\`\`text
+bipush 7      // push the number 7
+istore_1      // store it in local variable 1 (x)
+bipush 8      // push the number 8
+istore_2      // store it in local variable 2 (y)
+iload_1       // load x
+iload_2       // load y
+iadd          // add the two -> result on the stack
+istore_3      // store the result in local variable 3 (sum)
+\`\`\`
+
+Each line is one tiny, simple step. Bytecode is just a long list of little
+instructions like these. You do not need to memorize them: the point is that
+your readable Java becomes a stream of small operations the JVM knows how to do.
+
+### What the JVM does when it starts (high level)
+
+When you run \`java AddTwo12\`, the JVM roughly:
+
+1. **Starts up** and prepares its runtime.
+2. **Loads classes** - it finds \`AddTwo12.class\` on the classpath, reads the
+   bytecode, and verifies it is well-formed and safe. This is done by the
+   **class loader**. Classes are loaded as they are first needed.
+3. **Finds \`main\`** in your class and **starts executing** its bytecode, one
+   instruction at a time (optimizing hot code as it goes).
+4. When \`main\` returns, the program **ends**.
+
+That is enough for now; the deep details of loading, verification, and
+optimization come later.
+
+### Stack vs heap (a one-paragraph teaser)
+
+While your program runs, the JVM keeps memory in two main areas. The **stack**
+holds each method's **local variables** and bookkeeping for method calls; it
+grows and shrinks quickly as methods start and finish. The **heap** holds
+**objects** you create with \`new\` (like a \`String\` or an \`ArrayList\`); those
+live until nothing refers to them anymore, at which point the garbage collector
+can reclaim them. A local variable on the stack often just holds a *reference*
+that points to an object living on the heap. That is the whole idea for now.
+
+### Console input and output
+
+- **Output**: \`System.out.println(x)\` prints \`x\` and a newline;
+  \`System.out.print(x)\` prints without the newline.
+- **Input**: to read what a user types, wrap the standard input stream in a
+  \`Scanner\`: \`Scanner in = new Scanner(System.in);\` then call \`in.nextLine()\`
+  for a line of text or \`in.nextInt()\` for a whole number. Close it with
+  \`in.close()\` when done.
+
+### Where to go next
+
+You now have the mental model: source -> \`javac\` -> bytecode -> the JVM loads
+and runs it, with locals on the stack and objects on the heap. That is plenty to
+start writing real programs.
+
+> **Coming later - the advanced "JVM Internals & Runtime" phase.** This module
+> stayed deliberately at the surface. In the advanced phase you will go deep on
+> how the JVM actually works: the class-loading and verification process in
+> detail, the Java Memory Model, garbage-collection algorithms, and the JIT
+> (Just-In-Time) compiler that turns hot bytecode into native machine code for
+> speed. Come back to it once these basics feel comfortable.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `Simple arithmetic (peek at it with javap -c)`,
+                code: `public class AddTwo12 {
+    public static void main(String[] args) {
+        int x = 7;
+        int y = 8;
+        int sum = x + y;
+        // Behind the scenes this becomes a few bytecode instructions.
+        // Try: javap -c AddTwo12  to see them after compiling.
+        System.out.println(x + " + " + y + " = " + sum);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `A local on the stack, an object on the heap`,
+                code: `public class StackHeap13 {
+    public static void main(String[] args) {
+        int count = 42;                 // a local: lives on the stack
+        String label = new String("hi"); // the String object: lives on the heap
+        System.out.println("Local number (stack): " + count);
+        System.out.println("Object contents (heap): " + label);
+        System.out.println("The variable 'label' on the stack points to the heap object.");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Reading console input with Scanner`,
+                code: `import java.util.Scanner;
+
+public class ReadName14 {
+    public static void main(String[] args) {
+        Scanner in = new Scanner(System.in);
+        System.out.print("What is your name? ");
+        String name = in.nextLine();
+        System.out.println("Nice to meet you, " + name + "!");
+        in.close();
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `What the JVM does at startup, narrated`,
+                code: `public class RuntimeStart15 {
+    public static void main(String[] args) {
+        System.out.println("1. The JVM started up.");
+        System.out.println("2. It loaded the RuntimeStart15 class from the .class file.");
+        System.out.println("3. It found main and began executing these lines.");
+        System.out.println("4. When main returns, the program ends.");
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How can you see the bytecode inside a .class file?`,
+                a: `Run javap -c on the compiled class (for example javap -c AddTwo12). It disassembles the bytecode into readable instructions.`
+              },
+              {
+                q: `Roughly, what is bytecode made of?`,
+                a: `A long list of small, simple instructions (like push a number, add, store) that the JVM executes one at a time.`
+              },
+              {
+                q: `What is the class loader's job?`,
+                a: `It finds a class's .class file on the classpath, reads its bytecode, and verifies it is well-formed and safe before the JVM runs it.`
+              },
+              {
+                q: `What are the high-level steps the JVM takes to run a program?`,
+                a: `Start up, load and verify the needed classes, find main, execute its bytecode instruction by instruction, and end when main returns.`
+              },
+              {
+                q: `What lives on the stack?`,
+                a: `Each method's local variables and its call bookkeeping. The stack grows and shrinks as methods start and finish.`
+              },
+              {
+                q: `What lives on the heap?`,
+                a: `Objects created with new (like Strings and ArrayLists). They live until nothing references them, then the garbage collector can reclaim them.`
+              },
+              {
+                q: `How does a stack variable relate to a heap object?`,
+                a: `The local variable on the stack often holds a reference that points to the actual object stored on the heap.`
+              },
+              {
+                q: `How do you read a line of text a user types?`,
+                a: `Create a Scanner over System.in (Scanner in = new Scanner(System.in);) and call in.nextLine().`
+              },
+              {
+                q: `What is the difference between System.out.print and System.out.println?`,
+                a: `println prints the text and then a newline; print prints the text without moving to the next line.`
+              },
+              {
+                q: `What is the JIT compiler, briefly?`,
+                a: `The Just-In-Time compiler translates frequently run (hot) bytecode into native machine code at runtime for speed. Its details belong to the advanced JVM phase.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.2`,
         title: `Variables, Data Types & Operators`,
         hours: 3,
         sections: [
@@ -1064,7 +1720,7 @@ Common methods:
         ]
       },
       {
-        id: `0.2`,
+        id: `0.3`,
         title: `Control Flow — Loops, Conditionals & Switch`,
         hours: 3,
         sections: [
@@ -2286,7 +2942,7 @@ public class BreakContinueDemo {
         ]
       },
       {
-        id: `0.3`,
+        id: `0.4`,
         title: `OOP I — Classes, Objects, Constructors`,
         hours: 4,
         sections: [
@@ -3635,7 +4291,7 @@ public class StaticDemo {
         ]
       },
       {
-        id: `0.4`,
+        id: `0.5`,
         title: `OOP II — Inheritance, Polymorphism, Interfaces`,
         hours: 4,
         sections: [
@@ -5048,7 +5704,7 @@ public class PolymorphismDemo {
         ]
       },
       {
-        id: `0.5`,
+        id: `0.6`,
         title: `OOP III — Encapsulation, Abstraction, Enums`,
         hours: 3,
         sections: [
@@ -5268,7 +5924,7 @@ class RecordDemo {
             title: `Abstract Classes vs Interfaces — The Real Distinction`,
             notes: `## Abstract Classes vs Interfaces — The Real Distinction
 
-You saw abstract classes and interfaces individually in Module 0.4. Here we go deeper on **when to choose which** — a favourite senior interview question.
+You saw abstract classes and interfaces individually in Module 0.5. Here we go deeper on **when to choose which** — a favourite senior interview question.
 
 ### Quick Recall
 
@@ -5889,7 +6545,7 @@ class ResultDemo {
         ]
       },
       {
-        id: `0.6`,
+        id: `0.7`,
         title: `Strings, StringBuilder & String Pool`,
         hours: 3,
         sections: [
@@ -6671,7 +7327,7 @@ public class StringPatterns {
         ]
       },
       {
-        id: `0.7`,
+        id: `0.8`,
         title: `Exception Handling & Custom Exceptions`,
         hours: 4,
         sections: [
@@ -7849,7 +8505,7 @@ Inside a single JVM, exceptions are idiomatic. Across a **network/library bounda
         ]
       },
       {
-        id: `0.8`,
+        id: `0.9`,
         title: `Generics — Wildcards, Bounded Types, PECS`,
         hours: 3,
         sections: [
@@ -8725,7 +9381,790 @@ public class GenericStack<E> {
         ]
       },
       {
-        id: `0.9`,
+        id: `0.10`,
+        title: `Efficiency & Big-O -- Measuring Speed From Zero`,
+        hours: 3,
+        sections: [
+          {
+            title: `Why Efficiency Matters -- Counting Steps, Not Seconds`,
+            notes: `## Two programs, same job, very different lives
+
+Imagine two programs that both answer the same question. On a tiny input you cannot tell them apart -- both finish instantly. But feed them a *big* input and one returns in a blink while the other seems to freeze forever. Same computer, same problem, wildly different behaviour. **Efficiency** is the study of *why* that happens and how to predict it before you hit the wall.
+
+### Why not just time it with a stopwatch?
+
+Your first instinct might be "just measure the seconds." But wall-clock seconds are a trap:
+
+- A fast laptop and an old phone give different seconds for the *same* code.
+- Background apps, the JVM warming up, and caching all wobble the number.
+- Seconds tell you about *today's* input on *this* machine, not about what happens when the input grows 100x.
+
+So instead we count **steps** (basic operations): how many times the important work happens. Counting steps is **hardware-independent** -- it describes the algorithm itself, not the machine it ran on. If program A does 1,000 steps and program B does 1,000,000 steps for the same input, B is in trouble no matter how fast your CPU is.
+
+### A concrete example: summing an array
+
+To add up every number in an array of size \`n\`, you touch each element once. That is \`n\` steps. Double the array and you double the work -- a straight-line, **linear** relationship.
+
+Now put a loop inside a loop (a **nested loop**), for example comparing every element with every other element. For each of the \`n\` outer passes you do \`n\` inner passes, giving \`n * n\` steps. Double the input here and the work goes up **four times**. This is **quadratic** growth.
+
+### See it in real numbers
+
+The demos below keep a counter and print exactly how many times the inner statement runs for \`n = 10, 100, 1000\`.
+
+- Linear: the counter reads 10, 100, 1000 -- it tracks \`n\`.
+- Quadratic: the counter reads 100, 10000, 1000000 -- it tracks \`n * n\`.
+
+When \`n\` grows 10x, the linear counter grows 10x but the quadratic counter grows 100x. That gap is the whole ballgame, and it is why we count steps instead of staring at a stopwatch.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Linear: summing an array is n steps`,
+                code: `public class GrowthLinear1 {
+    public static void main(String[] a) {
+        int[] sizes = {10, 100, 1000};
+        for (int n : sizes) {
+            int[] data = new int[n];
+            for (int i = 0; i < n; i++) data[i] = i + 1;
+
+            long steps = 0;
+            long sum = 0;
+            for (int i = 0; i < n; i++) {
+                sum = sum + data[i];
+                steps++;                 // count one "add" per element
+            }
+            System.out.println("n=" + n + "  sum=" + sum + "  inner-steps=" + steps);
+        }
+        System.out.println("Steps grow in step with n: this is LINEAR, O(n).");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Quadratic: a nested loop is n*n steps`,
+                code: `public class GrowthQuad2 {
+    public static void main(String[] a) {
+        int[] sizes = {10, 100, 1000};
+        for (int n : sizes) {
+            long steps = 0;
+            // A nested loop: for every i, we walk every j.
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    steps++;             // count one step for each pair (i, j)
+                }
+            }
+            System.out.println("n=" + n + "  inner-steps=" + steps + "  (n*n=" + ((long) n * n) + ")");
+        }
+        System.out.println("Steps grow like n*n: this is QUADRATIC, O(n^2).");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Side by side: linear vs quadratic counters`,
+                code: `public class GrowthCompare3 {
+    static long linearSteps(int n) {
+        long steps = 0;
+        for (int i = 0; i < n; i++) steps++;
+        return steps;
+    }
+    static long quadraticSteps(int n) {
+        long steps = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                steps++;
+        return steps;
+    }
+    public static void main(String[] a) {
+        System.out.printf("%-8s %-14s %-16s %-10s%n", "n", "linear O(n)", "quadratic O(n^2)", "ratio");
+        int[] sizes = {10, 100, 1000};
+        for (int n : sizes) {
+            long lin = linearSteps(n);
+            long quad = quadraticSteps(n);
+            System.out.printf("%-8d %-14d %-16d %-10d%n", n, lin, quad, quad / lin);
+        }
+        System.out.println("When n grows 10x, linear grows 10x but quadratic grows 100x.");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why do we count operations (steps) instead of wall-clock seconds?`,
+                a: `Seconds depend on the hardware, background load, and JVM warm-up. Counting steps describes the algorithm itself, so it is hardware-independent and predicts what happens as the input grows.`
+              },
+              {
+                q: `What does 'n' mean when we talk about efficiency?`,
+                a: `n is the size of the input -- for example the number of elements in an array or list. We describe cost as a function of n.`
+              },
+              {
+                q: `How many steps does summing an array of size n take?`,
+                a: `About n steps: you touch each element once. This is linear growth.`
+              },
+              {
+                q: `How many steps does a nested loop over n items (a loop inside a loop) take?`,
+                a: `About n * n steps: for each of the n outer passes you do n inner passes. This is quadratic growth.`
+              },
+              {
+                q: `If linear work is 1000 steps at n=1000, what does it become at n=10000?`,
+                a: `About 10000 steps. Linear cost grows in step with n, so 10x the input means 10x the work.`
+              },
+              {
+                q: `If quadratic work is 1,000,000 steps at n=1000, what does it become at n=10000?`,
+                a: `About 100,000,000 steps. Quadratic cost grows like n*n, so 10x the input means 100x the work.`
+              },
+              {
+                q: `Why is wall-clock timing a poor way to compare two algorithms?`,
+                a: `It measures one input on one machine at one moment. A faster CPU can hide a bad algorithm on small inputs, but the bad algorithm still explodes as n grows.`
+              },
+              {
+                q: `What is 'linear' growth in plain words?`,
+                a: `The work grows in a straight line with the input: double the input, double the work.`
+              },
+              {
+                q: `What is 'quadratic' growth in plain words?`,
+                a: `The work grows like the square of the input: double the input, four times the work.`
+              },
+              {
+                q: `Two programs finish instantly on tiny inputs. Does that mean they are equally efficient?`,
+                a: `No. Small inputs hide the difference. The gap only shows up as the input grows, which is exactly what step-counting predicts.`
+              },
+              {
+                q: `In the counting demos, why does the inner counter matter more than the outer one?`,
+                a: `The inner statement is where the real work multiplies. In a nested loop the inner body runs n*n times, which dominates the total cost.`
+              }
+            ]
+          },
+          {
+            title: `Big-O Notation -- Naming the Growth Rate`,
+            notes: `## Big-O: a name for the growth rate
+
+In Section 1 we counted steps and saw two shapes of growth: linear (\`n\`) and quadratic (\`n * n\`). **Big-O notation** is just a compact, standard way to name that shape. We write things like \`O(n)\` or \`O(n^2)\`, read aloud as "oh of n" and "oh of n squared."
+
+Big-O describes an **upper bound on how the cost grows** as \`n\` gets large. It answers "when the input gets big, how fast does the work climb?" -- not "exactly how many nanoseconds does this take?"
+
+### Drop constants and lower-order terms
+
+Here is the rule that surprises beginners: inside Big-O we throw away constant factors and smaller terms.
+
+- \`O(2n + 5)\` is just \`O(n)\`.
+- \`O(n^2 + 3n + 10)\` is just \`O(n^2)\`.
+
+Why? Because Big-O cares about the *shape* of growth for large \`n\`, not the fine print. The \`+5\` stops mattering once \`n\` is huge, and the difference between \`n\` and \`2n\` is a constant multiplier that does not change the shape of the curve. In the \`O(2n+5)\` demo you can watch \`steps / n\` settle toward the constant 2 as \`n\` grows -- proof that the \`+5\` fades and only the \`n\` shape remains.
+
+Keep only the **biggest** term, and drop its constant. That surviving term is the Big-O.
+
+### The common classes
+
+| class | name | at n = 1,000,000 does roughly | everyday analogy / example |
+| --- | --- | --- | --- |
+| \`O(1)\` | constant | 1 step | grabbing item 5 from a shelf by its label |
+| \`O(log n)\` | logarithmic | about 20 steps | finding a word in a dictionary by halving |
+| \`O(n)\` | linear | 1,000,000 steps | reading every page of a book once |
+| \`O(n log n)\` | linearithmic | about 20,000,000 steps | a good sort (merge/heap) |
+| \`O(n^2)\` | quadratic | 1,000,000,000,000 steps | shaking hands with everyone in the room |
+| \`O(2^n)\` | exponential | astronomically large | trying every on/off combination |
+
+### A feel for the curves
+
+\`\`\`
+cost
+ ^                                       2^n   n^2
+ |                                        |    /
+ |                                        |   /
+ |                                       /|  /        n log n
+ |                                      / | /        /
+ |                                     /  |/       /          n
+ |                                    /   /      /         /
+ |                                   /  / |    /       /
+ |                                  / /   |  /     /          log n
+ |                                //      |/   /       ______------  O(1)
+ +------------------------------------------------------------------> n
+\`\`\`
+
+As \`n\` grows to the right, \`O(1)\` and \`O(log n)\` stay almost flat, \`O(n)\` rises steadily, and \`O(n^2)\` and \`O(2^n)\` shoot up off the chart. Remember: **Big-O is about how cost GROWS, not exact speed.** An \`O(n)\` algorithm with a big constant can lose to an \`O(n^2)\` one on small inputs -- but give \`n\` room to grow and the better class always wins.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Growth of each class in real numbers`,
+                code: `public class GrowthClasses1 {
+    static long log2(long n) {
+        long c = 0;
+        while (n > 1) { n = n / 2; c++; }
+        return c;   // number of halvings ~ log2(n)
+    }
+    public static void main(String[] a) {
+        long[] sizes = {1, 8, 64, 1024};
+        System.out.printf("%-8s %-8s %-8s %-12s %-14s%n",
+                "n", "O(1)", "log n", "n", "n log n");
+        System.out.printf("%-42s%n", "----------------------------------------");
+        for (long n : sizes) {
+            long lg = log2(n);
+            System.out.printf("%-8d %-8d %-8d %-12d %-14d%n",
+                    n, 1, lg, n, n * Math.max(lg, 1));
+        }
+        System.out.println();
+        System.out.printf("%-8s %-14s %-20s%n", "n", "n^2", "2^n");
+        for (long n : new long[]{1, 4, 8, 16}) {
+            System.out.printf("%-8d %-14d %-20d%n", n, n * n, (long) Math.pow(2, n));
+        }
+        System.out.println("Notice how 2^n explodes while log n barely moves.");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Why O(2n+5) collapses to O(n)`,
+                code: `public class DropConstants2 {
+    // Cost model: this method does 2*n + 5 "steps".
+    static long stepsFor(int n) {
+        long steps = 0;
+        for (int i = 0; i < n; i++) { steps++; steps++; }   // 2n
+        steps += 5;                                          // + 5 setup steps
+        return steps;
+    }
+    public static void main(String[] a) {
+        System.out.printf("%-10s %-14s %-18s%n", "n", "2n+5 steps", "steps / n");
+        for (int n : new int[]{10, 100, 1000, 100000}) {
+            long s = stepsFor(n);
+            System.out.printf("%-10d %-14d %-18.4f%n", n, s, (double) s / n);
+        }
+        System.out.println("As n grows, steps/n approaches 2 (a constant),");
+        System.out.println("so 2n+5 behaves like n. We write it as O(n).");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `The common classes as a printed table`,
+                code: `public class ClassTable3 {
+    public static void main(String[] a) {
+        String[][] rows = {
+            {"O(1)",      "constant",    "1 step",            "look up array[5]"},
+            {"O(log n)",  "logarithmic", "about 20 steps",    "binary search"},
+            {"O(n)",      "linear",      "1,000,000 steps",   "scan a list once"},
+            {"O(n log n)","linearithmic","about 20,000,000",  "good sorting"},
+            {"O(n^2)",    "quadratic",   "1,000,000,000,000", "compare all pairs"},
+            {"O(2^n)",    "exponential", "astronomically big","try all subsets"},
+        };
+        System.out.printf("%-12s %-13s %-22s %-22s%n",
+                "class", "name", "n=1,000,000 does ~", "example");
+        System.out.println("---------------------------------------------------------------------------");
+        for (String[] r : rows) {
+            System.out.printf("%-12s %-13s %-22s %-22s%n", r[0], r[1], r[2], r[3]);
+        }
+        System.out.println("Big-O is about how cost GROWS with n, not exact speed.");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does Big-O notation describe?`,
+                a: `An upper bound on how an algorithm's cost grows as the input size n gets large. It names the shape of the growth, not an exact time.`
+              },
+              {
+                q: `Why is O(2n + 5) the same as O(n)?`,
+                a: `Big-O drops constant factors (the 2) and lower-order terms (the +5). For large n only the n shape matters, so 2n+5 grows like n.`
+              },
+              {
+                q: `Why is O(n^2 + 3n + 10) the same as O(n^2)?`,
+                a: `You keep only the biggest term and drop its constant. As n grows, n^2 dwarfs 3n and 10, so the whole thing grows like n^2.`
+              },
+              {
+                q: `What does O(1) (constant) mean?`,
+                a: `The cost does not depend on n at all -- it takes the same number of steps whether the input is tiny or huge, like grabbing array[5].`
+              },
+              {
+                q: `What does O(log n) (logarithmic) mean, in plain words?`,
+                a: `The cost grows very slowly because each step throws away half of what is left. A million items needs only about 20 steps; a billion about 30.`
+              },
+              {
+                q: `What does O(n) (linear) mean?`,
+                a: `The cost grows in step with n: process a million items, do about a million steps, like reading every page of a book once.`
+              },
+              {
+                q: `What does O(n log n) (linearithmic) mean and where do you see it?`,
+                a: `Cost grows a bit faster than linear -- n times a small log n factor. It is the cost of good general-purpose sorting.`
+              },
+              {
+                q: `What does O(n^2) (quadratic) mean, with an analogy?`,
+                a: `Cost grows like the square of n, as when everyone in a room shakes hands with everyone else. At a million items that is a trillion steps.`
+              },
+              {
+                q: `What does O(2^n) (exponential) mean and why is it dangerous?`,
+                a: `Cost roughly doubles every time n increases by 1, like trying every on/off combination. It becomes astronomically large very quickly, even for small n.`
+              },
+              {
+                q: `Order these from best to worst for large n: O(n^2), O(1), O(n), O(log n).`,
+                a: `O(1), then O(log n), then O(n), then O(n^2). Constant is best, quadratic is worst of these.`
+              },
+              {
+                q: `Is a lower Big-O class always faster than a higher one?`,
+                a: `Not for small inputs -- constants and overhead can dominate. Big-O tells you which wins as n grows large, not which is faster on tiny inputs.`
+              },
+              {
+                q: `In one sentence, what is Big-O really measuring?`,
+                a: `How the cost GROWS as the input grows, not the exact number of seconds or steps.`
+              }
+            ]
+          },
+          {
+            title: `Reading Code and Finding Its Big-O`,
+            notes: `## Reading code and finding its Big-O
+
+Once you can read a piece of code and name its Big-O, you can predict how it will behave before you ever run it. Here are the practical rules, then worked examples.
+
+### The rules
+
+1. **A loop from 0 to n that does constant work each pass is \`O(n)\`.** One pass per element.
+2. **Sequential statements add -- then keep only the biggest.** If you do an \`O(n)\` loop and then a separate \`O(n^2)\` loop, the total is \`O(n + n^2)\` which simplifies to \`O(n^2)\`. Drop all but the largest term.
+3. **Nested loops multiply.** An \`O(n)\` loop inside another \`O(n)\` loop is \`O(n * n)\` = \`O(n^2)\`.
+4. **Halving the work each step is \`O(log n)\`.** If a loop cuts the remaining range in half every pass (like binary search), it finishes in about \`log2(n)\` steps.
+
+### Algorithm choice beats micro-optimization
+
+The classic example: *does this array contain a duplicate?*
+
+- **Nested approach:** compare every pair. That is \`O(n^2)\` time. It uses only a couple of variables, so \`O(1)\` extra space.
+- **HashSet approach:** walk once, remembering what you have seen. Each \`add\`/lookup is about \`O(1)\`, so the whole thing is \`O(n)\` time. But it stores up to \`n\` elements, so it uses \`O(n)\` extra **space**.
+
+The demo runs both on the same data and prints their step counts; they always agree on the answer, but the \`O(n)\` version does dramatically fewer steps as \`n\` grows. Choosing a better algorithm ("use a HashSet") beats any amount of tweaking the inner loop of the slow one. That is the single most valuable lesson in this whole module.
+
+### Space complexity: the other axis
+
+Big-O is not only about time. **Space complexity** measures the **extra memory** an algorithm needs as a function of \`n\` -- not counting the input itself.
+
+- The nested duplicate check uses \`O(1)\` extra space (a few variables).
+- The HashSet duplicate check uses \`O(n)\` extra space (it may store every element).
+
+That is a **time/space trade-off**: the HashSet version buys faster time by spending more memory. Real engineering is choosing where you want to pay.
+
+### Best, worst, and average case
+
+The exact number of steps can depend on the *particular* input, not just its size.
+
+- **Best case:** the luckiest input (target is the very first element -> \`O(1)\`).
+- **Worst case:** the unluckiest input (target missing, so you scan everything -> \`O(n)\`).
+- **Average case:** the typical input.
+
+We usually quote the **worst case**, because it is the guarantee -- the promise that the code will never be slower than that, no matter what input arrives.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Single loop -> O(n)`,
+                code: `public class SingleLoop1 {
+    // Rule: a loop from 0..n that does constant work each pass is O(n).
+    static long countMax(int[] data) {
+        long steps = 0;
+        int max = Integer.MIN_VALUE;
+        for (int i = 0; i < data.length; i++) {
+            if (data[i] > max) max = data[i];
+            steps++;
+        }
+        System.out.println("max=" + max + "  steps=" + steps);
+        return steps;
+    }
+    public static void main(String[] a) {
+        for (int n : new int[]{10, 100, 1000}) {
+            int[] data = new int[n];
+            for (int i = 0; i < n; i++) data[i] = (i * 7) % n;
+            System.out.print("n=" + n + "  ");
+            countMax(data);
+        }
+        System.out.println("steps == n  ->  O(n).");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Nested loops multiply -> O(n^2)`,
+                code: `public class NestedLoop2 {
+    // Rule: nested loops multiply. Outer n times, inner n times -> n*n.
+    static long countPairs(int n) {
+        long steps = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                steps++;
+        return steps;
+    }
+    public static void main(String[] a) {
+        for (int n : new int[]{10, 100, 1000}) {
+            long s = countPairs(n);
+            System.out.println("n=" + n + "  steps=" + s + "  n*n=" + ((long) n * n)
+                    + "  match=" + (s == (long) n * n));
+        }
+        System.out.println("Outer loop x inner loop = n*n  ->  O(n^2).");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Duplicates two ways: O(n^2) vs O(n), and O(n) space`,
+                code: `import java.util.HashSet;
+import java.util.Set;
+
+public class DupCheck3 {
+    // Approach A: compare every pair. O(n^2) time, O(1) extra space.
+    static boolean hasDupNested(int[] data, long[] stepsOut) {
+        long steps = 0;
+        for (int i = 0; i < data.length; i++) {
+            for (int j = i + 1; j < data.length; j++) {
+                steps++;
+                if (data[i] == data[j]) { stepsOut[0] = steps; return true; }
+            }
+        }
+        stepsOut[0] = steps;
+        return false;
+    }
+
+    // Approach B: remember what we have seen. O(n) time, O(n) extra space.
+    static boolean hasDupSet(int[] data, long[] stepsOut) {
+        long steps = 0;
+        Set<Integer> seen = new HashSet<>();
+        for (int x : data) {
+            steps++;
+            if (!seen.add(x)) { stepsOut[0] = steps; return true; }
+        }
+        stepsOut[0] = steps;
+        return false;
+    }
+
+    public static void main(String[] a) {
+        for (int n : new int[]{100, 1000, 4000}) {
+            int[] data = new int[n];
+            for (int i = 0; i < n; i++) data[i] = i;   // all distinct: worst case
+
+            long[] s1 = new long[1];
+            long[] s2 = new long[1];
+            boolean r1 = hasDupNested(data, s1);
+            boolean r2 = hasDupSet(data, s2);
+
+            System.out.println("n=" + n
+                    + "  nested: result=" + r1 + " steps=" + s1[0]
+                    + "  |  set: result=" + r2 + " steps=" + s2[0]
+                    + "  |  agree=" + (r1 == r2));
+        }
+        System.out.println("Both give the same answer, but O(n) beats O(n^2) as n grows.");
+        System.out.println("The O(n) version pays O(n) extra SPACE for the HashSet.");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Best case vs worst case in a linear search`,
+                code: `public class BestWorst4 {
+    // Linear search: how many elements do we touch before we find target?
+    static long search(int[] data, int target) {
+        long steps = 0;
+        for (int i = 0; i < data.length; i++) {
+            steps++;
+            if (data[i] == target) return steps;
+        }
+        return steps;   // not found: touched everything
+    }
+    public static void main(String[] a) {
+        int n = 1000;
+        int[] data = new int[n];
+        for (int i = 0; i < n; i++) data[i] = i;
+
+        System.out.println("best case  (target at front, value 0):   steps=" + search(data, 0));
+        System.out.println("worst case (target at end,  value 999):  steps=" + search(data, 999));
+        System.out.println("worst case (missing, value -1):          steps=" + search(data, -1));
+        System.out.println();
+        System.out.println("Best case is O(1), worst case is O(n).");
+        System.out.println("We usually quote WORST case, because it is the guarantee.");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the Big-O of a single loop from 0 to n that does constant work each pass?`,
+                a: `O(n). One constant-cost pass per element gives n steps.`
+              },
+              {
+                q: `How do you combine the costs of two sequential (back-to-back) loops?`,
+                a: `You add them and then keep only the biggest term. O(n) followed by O(n^2) is O(n + n^2) = O(n^2).`
+              },
+              {
+                q: `What is the Big-O of two nested loops, each running n times?`,
+                a: `O(n^2). Nested loops multiply: n outer passes times n inner passes.`
+              },
+              {
+                q: `What growth rate does 'halving the remaining work each step' give?`,
+                a: `O(log n). Cutting the range in half each pass finishes in about log2(n) steps.`
+              },
+              {
+                q: `Checking for duplicates by comparing every pair: what is its time complexity?`,
+                a: `O(n^2) time. For each element you compare against the others. It uses only O(1) extra space.`
+              },
+              {
+                q: `Checking for duplicates with a HashSet: what are its time and space complexities?`,
+                a: `O(n) time (about O(1) per add/lookup, done n times) and O(n) extra space to store what has been seen.`
+              },
+              {
+                q: `What key lesson does the two-way duplicate check teach?`,
+                a: `Choosing a better algorithm (O(n) with a HashSet) beats micro-optimizing a worse one (O(n^2) nested loop). Algorithm choice dominates.`
+              },
+              {
+                q: `What is space complexity?`,
+                a: `A Big-O measure of the EXTRA memory an algorithm uses as a function of n, not counting the input itself.`
+              },
+              {
+                q: `What is a time/space trade-off? Give the duplicate-check example.`,
+                a: `Spending more memory to save time (or vice versa). The HashSet duplicate check spends O(n) extra space to cut time from O(n^2) to O(n).`
+              },
+              {
+                q: `Define best case, worst case, and average case.`,
+                a: `Best case is the luckiest input (fewest steps), worst case is the unluckiest (most steps), and average case is the typical input.`
+              },
+              {
+                q: `Why do we usually quote the worst case?`,
+                a: `Because it is the guarantee: the code will never be slower than its worst case, no matter which input arrives.`
+              },
+              {
+                q: `For linear search of n items, what are the best-case and worst-case Big-O?`,
+                a: `Best case O(1) (target is first), worst case O(n) (target is last or missing, so you scan everything).`
+              }
+            ]
+          },
+          {
+            title: `Big-O in Everyday Java -- Loops, Recursion & Data-Structure Choice`,
+            notes: `## Big-O in everyday Java
+
+Now let us apply everything to code you will actually write. The Big-O of your program often comes down to which pattern or data structure you reached for.
+
+### String building: += is a trap
+
+Building a String by repeated \`+=\` in a loop looks harmless, but each \`+=\` creates a brand-new String and copies all the characters so far. Growing to length \`n\` copies about \`1 + 2 + ... + n\` characters, which is \`O(n^2)\`. A \`StringBuilder\` appends in place, so it is \`O(n)\`. The demo counts the character copies and shows the \`n^2\` blow-up next to the linear \`StringBuilder\`.
+
+Rule of thumb: **never build a big String with \`+=\` in a loop -- use \`StringBuilder\`.**
+
+### Membership tests: ArrayList vs HashSet
+
+- \`ArrayList.contains(x)\` scans from the front until it finds \`x\` or runs out: \`O(n)\` per call.
+- \`HashSet.contains(x)\` jumps straight to a bucket by hash: about \`O(1)\` per call.
+
+If you do many membership tests, an \`ArrayList\` turns your program into an \`O(n^2)\`-ish crawl while a \`HashSet\` keeps it fast. The timing demo makes the gap obvious.
+
+### Binary search: O(log n) on sorted data
+
+If an array is **sorted**, you do not have to scan it. Look at the middle; if your target is smaller, throw away the right half, else throw away the left half. Each step halves what remains, so you finish in about \`log2(n)\` steps -- \`O(log n)\`. A billion sorted elements needs only about 30 steps. (The catch: the data must already be sorted.)
+
+### Recursion: naive Fibonacci is O(2^n)
+
+Recursion can hide an exponential cost. Naive Fibonacci computes \`fib(n) = fib(n-1) + fib(n-2)\` and recomputes the same values over and over. The number of calls roughly **doubles** each time \`n\` grows by 1 -- \`O(2^n)\`. Watch the call counter explode in the demo (\`fib(35)\` makes tens of millions of calls).
+
+The fix is **memoization**: remember each answer the first time you compute it, so each \`n\` is computed once. That turns the cost into \`O(n)\`. Same answer, astronomically fewer calls -- a perfect illustration that Big-O class, not raw CPU speed, decides whether your program finishes.
+
+### Where this goes next
+
+Every collection you will meet has its own Big-O for its common operations -- \`get\`, \`add\`, \`contains\`, \`remove\`. In the upcoming **Collections** module those costs are laid out in a table per type (ArrayList, LinkedList, HashMap, TreeMap, and friends). Now that you understand *why* an operation is \`O(1)\` or \`O(n)\` or \`O(log n)\`, that table will read like plain English instead of magic.`,
+            code: [
+              {
+                lang: `java`,
+                title: `String += O(n^2) vs StringBuilder O(n)`,
+                code: `public class StringCost1 {
+    // Each += builds a whole new String by copying all characters so far.
+    // Growing to length n copies about 1+2+...+n characters = O(n^2).
+    static long concatSteps(int n) {
+        long copies = 0;
+        String s = "";
+        for (int i = 0; i < n; i++) {
+            copies += s.length();   // cost of copying existing chars into the new String
+            s = s + "x";
+        }
+        return copies;
+    }
+    // StringBuilder appends in place: about n character-writes = O(n).
+    static long builderSteps(int n) {
+        long writes = 0;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            writes++;               // one append
+            sb.append("x");
+        }
+        return writes;
+    }
+    public static void main(String[] a) {
+        System.out.printf("%-8s %-18s %-14s%n", "n", "concat copies", "builder writes");
+        for (int n : new int[]{100, 1000, 4000}) {
+            System.out.printf("%-8d %-18d %-14d%n", n, concatSteps(n), builderSteps(n));
+        }
+        System.out.println("String += in a loop is O(n^2); StringBuilder is O(n).");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `ArrayList.contains O(n) vs HashSet.contains O(1)`,
+                code: `import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+public class ListVsSet2 {
+    public static void main(String[] a) {
+        int n = 200000;
+        List<Integer> list = new ArrayList<>();
+        Set<Integer> set = new HashSet<>();
+        for (int i = 0; i < n; i++) { list.add(i); set.add(i); }
+
+        int lookups = 20000;
+        // ArrayList.contains scans from the front: O(n) each call.
+        long t1 = System.nanoTime();
+        for (int i = 0; i < lookups; i++) list.contains(-1);   // missing -> full scan
+        long listMs = (System.nanoTime() - t1) / 1_000_000;
+
+        // HashSet.contains jumps by hash: O(1) each call.
+        long t2 = System.nanoTime();
+        for (int i = 0; i < lookups; i++) set.contains(-1);
+        long setMs = (System.nanoTime() - t2) / 1_000_000;
+
+        System.out.println("n=" + n + ", lookups=" + lookups);
+        System.out.println("ArrayList.contains  O(n)  took ~ " + listMs + " ms");
+        System.out.println("HashSet.contains    O(1)  took ~ " + setMs + " ms");
+        System.out.println("Same task, very different growth: pick the right structure.");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Binary search on sorted data -> O(log n)`,
+                code: `import java.util.Arrays;
+
+public class BinarySearch3 {
+    // Each step halves the range that is left -> O(log n).
+    static long binarySearch(int[] sorted, int target, long[] stepsOut) {
+        long steps = 0;
+        int lo = 0, hi = sorted.length - 1;
+        while (lo <= hi) {
+            steps++;
+            int mid = (lo + hi) >>> 1;
+            if (sorted[mid] == target) { stepsOut[0] = steps; return mid; }
+            if (sorted[mid] < target) lo = mid + 1;
+            else hi = mid - 1;
+        }
+        stepsOut[0] = steps;
+        return -1;
+    }
+    public static void main(String[] a) {
+        System.out.printf("%-12s %-12s %-16s%n", "n", "steps used", "n itself");
+        for (int n : new int[]{1000, 1_000_000, 1_000_000_000}) {
+            int[] sorted = new int[Math.min(n, 1000)];   // small backing array is fine
+            for (int i = 0; i < sorted.length; i++) sorted[i] = i;
+            long[] steps = new long[1];
+            binarySearch(sorted, sorted.length - 1, steps);   // search worst spot
+            // For the point, also show pure log math for the huge n:
+            long logSteps = (long) Math.ceil(Math.log(n) / Math.log(2));
+            System.out.printf("%-12d %-12d %-16d%n", n, logSteps, n);
+        }
+        System.out.println("A billion elements needs only about 30 steps: O(log n).");
+        int[] proof = {2, 5, 8, 12, 20, 33, 41};
+        long[] s = new long[1];
+        System.out.println("Demo find 33 -> index " + binarySearch(proof, 33, s)
+                + " in " + s[0] + " steps (Arrays.toString=" + Arrays.toString(proof) + ")");
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Naive Fibonacci O(2^n) vs memoized O(n)`,
+                code: `import java.util.HashMap;
+import java.util.Map;
+
+public class FibCost4 {
+    static long naiveCalls = 0;
+    // Naive recursion recomputes the same values again and again: O(2^n).
+    static long fibNaive(int n) {
+        naiveCalls++;
+        if (n < 2) return n;
+        return fibNaive(n - 1) + fibNaive(n - 2);
+    }
+
+    static long memoCalls = 0;
+    // Memoized: each n is computed once and cached: O(n).
+    static long fibMemo(int n, Map<Integer, Long> cache) {
+        memoCalls++;
+        if (n < 2) return n;
+        Long hit = cache.get(n);
+        if (hit != null) return hit;
+        long r = fibMemo(n - 1, cache) + fibMemo(n - 2, cache);
+        cache.put(n, r);
+        return r;
+    }
+
+    public static void main(String[] a) {
+        System.out.printf("%-6s %-14s %-16s %-14s%n", "n", "fib(n)", "naive calls", "memo calls");
+        for (int n : new int[]{10, 20, 30, 35}) {
+            naiveCalls = 0;
+            memoCalls = 0;
+            long v1 = fibNaive(n);
+            long v2 = fibMemo(n, new HashMap<>());
+            System.out.printf("%-6d %-14d %-16d %-14d%n", n, v1, naiveCalls, memoCalls);
+            if (v1 != v2) System.out.println("MISMATCH!");
+        }
+        System.out.println("Naive calls roughly double each time n grows by 1: O(2^n).");
+        System.out.println("Memoized calls grow like n: O(n). Same answer, huge difference.");
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is building a String with += in a loop O(n^2)?`,
+                a: `Each += makes a new String and copies all characters accumulated so far. Growing to length n copies about 1+2+...+n characters, which is O(n^2).`
+              },
+              {
+                q: `What is the Big-O of building a String with StringBuilder in a loop, and why?`,
+                a: `O(n). StringBuilder appends in place instead of recopying everything, so it does about one write per character.`
+              },
+              {
+                q: `What is the time complexity of ArrayList.contains(x)?`,
+                a: `O(n). It scans from the front until it finds x or reaches the end.`
+              },
+              {
+                q: `What is the time complexity of HashSet.contains(x)?`,
+                a: `About O(1). It jumps to a bucket by hash instead of scanning.`
+              },
+              {
+                q: `You do many membership checks on a big collection. ArrayList or HashSet, and why?`,
+                a: `HashSet. Its O(1) contains keeps the program fast; ArrayList's O(n) contains makes repeated checks roughly O(n^2).`
+              },
+              {
+                q: `What is the Big-O of binary search and what does each step do?`,
+                a: `O(log n). Each step looks at the middle of the remaining range and discards half of it.`
+              },
+              {
+                q: `What is the one requirement for binary search to work?`,
+                a: `The data must already be sorted. Binary search relies on discarding a half based on order.`
+              },
+              {
+                q: `About how many steps does binary search need for a billion sorted items?`,
+                a: `About 30 steps, because log2(1,000,000,000) is roughly 30. That is the power of O(log n).`
+              },
+              {
+                q: `Why is naive recursive Fibonacci O(2^n)?`,
+                a: `fib(n) calls fib(n-1) and fib(n-2), recomputing the same values repeatedly. The number of calls roughly doubles each time n increases by 1.`
+              },
+              {
+                q: `What is memoization and what does it do to Fibonacci's cost?`,
+                a: `Caching each answer the first time it is computed so each n is computed once. It turns naive Fibonacci from O(2^n) into O(n).`
+              },
+              {
+                q: `What does the Fibonacci call-count explosion demonstrate about Big-O?`,
+                a: `That the Big-O class, not raw CPU speed, decides whether a program finishes. O(2^n) becomes impossible long before a faster chip could save it.`
+              },
+              {
+                q: `How does this module connect to the upcoming Collections module?`,
+                a: `Collections lists the Big-O of each type's operations (get, add, contains, remove). Understanding WHY those are O(1)/O(n)/O(log n) makes that table easy to read.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `0.11`,
         title: `Collections Deep Dive — List, Set, Map, Queue`,
         hours: 4,
         sections: [
@@ -9177,6 +10616,539 @@ public class SetEqualsHashCode {
               {
                 q: `What does TreeSet.floor(e) return?`,
                 a: `The greatest element in the set that is less than or equal to e. Returns null if no such element exists. Counterpart: ceiling(e) returns the smallest element >= e. lower(e) is strictly less than e; higher(e) is strictly greater. All O(log n).`
+              }
+            ]
+          },
+          {
+            title: `How Hashing Works — From a Hash Function to HashMap Internals`,
+            notes: `## How Hashing Works — From a Hash Function to HashMap Internals
+
+Before you learn \`HashMap\`, you need the idea underneath it: **hashing**. This is the one place to understand it end to end. Everything here powers \`HashMap\`, \`HashSet\`, and friends.
+
+### The problem: finding one item in a huge pile
+
+Suppose you have a million names and you want to know: *is "Priya" in here?*
+
+- **Linear scan** — check element 0, then 1, then 2, ... until you find it or hit the end. On average you touch half the collection; worst case, all of it. That is **O(n)**. For a million items that is potentially a million comparisons per lookup.
+- **Hashing** lets you jump *almost directly* to where "Priya" would be, touching only a tiny handful of items. That is **O(1) on average** — constant time, no matter how big the collection gets.
+
+The trick: instead of searching *for* the item, we **compute where it must live** from the item itself.
+
+### Step 1 — a hash function turns a key into a number
+
+A **hash function** takes a key (a \`String\`, an object, anything) and returns an \`int\` called a **hash code**. In Java, every object has one, via \`Object.hashCode()\`:
+
+\`\`\`java
+"apple".hashCode(); // 93029210
+\`\`\`
+
+A **good** hash function is:
+
+- **Deterministic** — the same key always produces the same hash code (within one run). Without this you could never find anything again.
+- **Uniform** — different keys spread evenly across the number range, so items don't clump together.
+- **Fast** — it runs on every put and get, so it must be cheap.
+
+### Step 2 — from hash code to bucket
+
+A hash code is a big number (up to ~2 billion). We can't have 2 billion slots. So we keep a small array of slots called **buckets** and map the hash into it.
+
+When the array length (the **capacity**) is a power of two, Java uses a bitwise **and** with \`capacity - 1\`, which keeps only the low bits — the same result as \`hash % capacity\` but faster:
+
+\`\`\`
+index = hash & (capacity - 1)
+\`\`\`
+
+Concrete example, capacity = 16 so the mask is \`capacity - 1 = 15\` (binary \`1111\`):
+
+| key    | hashCode() | low 4 bits | bucket |
+|--------|-----------:|-----------:|-------:|
+| lemon  |  102857459 |       0011 |      3 |
+| melon  |  103780019 |       0011 |      3 |
+| kiwi   |    3292336 |       0000 |      0 |
+
+Notice \`lemon\` and \`melon\` both land in bucket 3. That is a **collision**.
+
+### Step 3 — collisions and how they're resolved
+
+A **collision** is when two different keys map to the same bucket. They are unavoidable: infinitely many keys, finitely many buckets (the pigeonhole principle).
+
+Two classic strategies:
+
+- **Separate chaining** — each bucket holds a small list; colliding keys are appended to that list. To look up a key, you find its bucket, then scan only that short list. **Java's HashMap uses chaining.**
+- **Open addressing** — on a collision, probe for the next free slot in the array itself (no side lists). It exists and is used elsewhere, but Java's \`HashMap\` does not use it.
+
+Because a chain is scanned linearly, a *very long* chain would make lookups slow. So since Java 8, when a single bucket's chain grows past a threshold (**8 nodes**, and total capacity is at least 64), \`HashMap\` **treeifies** that bucket — it converts the linked list into a **red-black tree**. That caps the worst case for one bucket at **O(log n)** instead of O(n). If the bucket later shrinks (to 6), it untreeifies back to a list.
+
+\`\`\`mermaid
+flowchart LR
+    K["key: 'melon'"] --> H["hashCode()<br/>103780019"]
+    H --> M["index = hash & (capacity - 1)<br/>= 3"]
+    M --> B
+
+    subgraph B["bucket array (capacity 16)"]
+      b0["[0]"]
+      b3["[3]"]
+      bx["[...]"]
+    end
+
+    b3 --> C1["lemon"] --> C2["melon"] --> C3["... chain"]
+    C3 -. "chain length >= 8 (and capacity >= 64)" .-> T["treeify: red-black tree, O(log n)"]
+\`\`\`
+
+### Step 4 — load factor and resizing
+
+If we keep adding keys to a fixed array, chains get longer and lookups slow down. To prevent that, a hash table watches how full it is.
+
+- **Load factor** = size / capacity. Java's default is **0.75**.
+- The **threshold** is \`capacity * loadFactor\`. When \`size\` exceeds it, \`HashMap\` **resizes**: capacity **doubles**, a new bucket array is allocated, and **every existing key is rehashed** into the bigger array.
+
+Doubling keeps the load factor below 0.75, which keeps chains short — that is what preserves near-**O(1)** lookups as the map grows. Resizing itself is O(n), but it happens rarely (only when you cross a threshold), so its cost spread over all the insertions is small — an **amortized** cost. 0.75 is the default tradeoff: lower wastes memory, higher lengthens chains.
+
+### Step 5 — the equals()/hashCode() contract (beginner view)
+
+For a hash table to find your key again, two methods must agree. The core rule:
+
+> **If \`a.equals(b)\` is true, then \`a.hashCode()\` must equal \`b.hashCode()\`.**
+
+Why it matters: \`get\` first uses \`hashCode()\` to pick the bucket, then uses \`equals()\` to find the exact entry in that bucket. If a class overrides \`equals\` but **not** \`hashCode\`, two "equal" objects can produce **different** hash codes, sending them to **different buckets** — so \`get\` looks in the wrong bucket and returns \`null\`. Your entry is effectively **lost** even though it is still in the map.
+
+The same disaster happens if you **mutate a key after inserting it** in a way that changes its hash code: the map filed it under the old bucket, but now recomputes a new one and looks in the wrong place. **Rule of thumb: use immutable objects as keys.**
+
+(The reverse is *not* required: unequal objects *may* share a hash code — that's just a collision, and it's fine. The full, deep contract, including symmetry/transitivity/consistency, is covered in the later Core / Collections-contract module.)
+
+### Step 6 — why O(1) is "average, not guaranteed"
+
+- **Good hash + low load factor** — keys spread evenly, chains are ~1 long, lookups are **O(1)** average.
+- **Bad or adversarial hash** — e.g. a \`hashCode()\` that returns a constant sends *every* key into *one* bucket. The map still works (equals disambiguates), but it degrades to one long chain: **O(n)**. Treeify softens even this to **O(log n)** per bucket.
+
+So O(1) is the *expected* cost with a decent hash function and sensible load, not a mathematical guarantee. Give the table a good \`hashCode()\` and it stays fast.
+
+### Mental model to carry into HashMap
+
+1. \`hashCode()\` turns a key into a number.
+2. \`index = hash & (capacity - 1)\` turns that number into a bucket.
+3. Collisions chain inside a bucket (and treeify if a chain gets long).
+4. Crossing \`capacity * 0.75\` doubles capacity and rehashes.
+5. \`equals\` + \`hashCode\` must agree, or entries get lost.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `Build a tiny hash table from scratch (buckets + chaining)`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Demo 1: a tiny hash table built from scratch so you SEE the mechanism.
+// An array of buckets; each bucket is a list of key/value entries.
+public class TinyHashTableDemo {
+
+    // One key/value pair stored inside a bucket.
+    static class Entry {
+        final String key;
+        String value;
+        Entry(String key, String value) { this.key = key; this.value = value; }
+    }
+
+    // A hash table with fixed capacity (no resizing here, to keep it simple).
+    static class TinyMap {
+        final int capacity;
+        final List<List<Entry>> buckets;
+
+        TinyMap(int capacity) {
+            this.capacity = capacity;
+            this.buckets = new ArrayList<>();
+            for (int i = 0; i < capacity; i++) {
+                buckets.add(new ArrayList<>()); // separate chaining: a list per bucket
+            }
+        }
+
+        // Turn a key into a bucket index. capacity is a power of two, so
+        // (hash & (capacity - 1)) keeps only the low bits == same as modulo.
+        int bucketIndexFor(String key) {
+            int hash = key.hashCode();
+            return hash & (capacity - 1);
+        }
+
+        void put(String key, String value) {
+            int index = bucketIndexFor(key);
+            List<Entry> bucket = buckets.get(index);
+            for (Entry e : bucket) {
+                if (e.key.equals(key)) { // key already present: update in place
+                    e.value = value;
+                    System.out.println("put  '" + key + "' -> bucket " + index + " (updated existing)");
+                    return;
+                }
+            }
+            bucket.add(new Entry(key, value)); // new key: append to the chain
+            System.out.println("put  '" + key + "' -> bucket " + index
+                    + " (chain length now " + bucket.size() + ")");
+        }
+
+        String get(String key) {
+            int index = bucketIndexFor(key);
+            List<Entry> bucket = buckets.get(index);
+            for (Entry e : bucket) {          // scan only THIS bucket, not the whole map
+                if (e.key.equals(key)) return e.value;
+            }
+            return null;
+        }
+    }
+
+    public static void main(String[] args) {
+        TinyMap map = new TinyMap(8); // 8 buckets
+
+        map.put("apple", "red");
+        map.put("banana", "yellow");
+        map.put("grape", "purple");
+        map.put("lemon", "yellow");
+        map.put("cherry", "red");
+        map.put("apple", "green"); // same key -> updates, no new chain node
+
+        System.out.println();
+        System.out.println("get('grape')  = " + map.get("grape"));
+        System.out.println("get('apple')  = " + map.get("apple"));
+        System.out.println("get('mango')  = " + map.get("mango") + "  (not present)");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `hashCode() and hash & (capacity - 1) picking a bucket`,
+                code: `// Demo 2: show String.hashCode() and how (hash & (capacity - 1)) picks a bucket.
+public class HashToBucketDemo {
+
+    public static void main(String[] args) {
+        int capacity = 16; // like a fresh HashMap; a power of two
+
+        String[] keys = { "apple", "banana", "grape", "lemon", "cherry", "kiwi", "melon" };
+
+        System.out.println("capacity = " + capacity + "  (mask = capacity - 1 = " + (capacity - 1) + ")");
+        System.out.println();
+        System.out.printf("%-8s %14s %14s %8s%n", "key", "hashCode()", "hash(unsigned)", "bucket");
+
+        for (String key : keys) {
+            int hash = key.hashCode();
+            int index = hash & (capacity - 1);   // keep only the low 4 bits
+            // (hash & 0xffffffffL) just prints the same bits as an unsigned value
+            System.out.printf("%-8s %14d %14d %8d%n",
+                    key, hash, (hash & 0xffffffffL), index);
+        }
+
+        System.out.println();
+        // Why a power-of-two capacity matters: the mask is all 1s in the low bits.
+        System.out.println("mask in binary = " + Integer.toBinaryString(capacity - 1)
+                + "  -> index is just the low bits of the hash");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `The equals/hashCode trap: a broken key loses entries`,
+                code: `import java.util.HashMap;
+import java.util.Map;
+
+// Demo 3: the equals/hashCode trap.
+// A key class WITHOUT equals/hashCode fails as a HashMap key;
+// WITH them, it works.
+public class EqualsHashCodeTrapDemo {
+
+    // BROKEN key: no equals/hashCode override.
+    // Two "equal" points are different objects, so they get Object's identity
+    // hashCode and identity equals -> HashMap cannot find the entry.
+    static class BrokenPoint {
+        final int x, y;
+        BrokenPoint(int x, int y) { this.x = x; this.y = y; }
+    }
+
+    // GOOD key: overrides both, consistently.
+    static final class GoodPoint {
+        final int x, y;
+        GoodPoint(int x, int y) { this.x = x; this.y = y; }
+
+        @Override public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof GoodPoint)) return false;
+            GoodPoint g = (GoodPoint) o;
+            return x == g.x && y == g.y;
+        }
+        @Override public int hashCode() {
+            int result = 17;
+            result = 31 * result + x;
+            result = 31 * result + y;
+            return result;
+        }
+    }
+
+    public static void main(String[] args) {
+        Map<BrokenPoint, String> broken = new HashMap<>();
+        broken.put(new BrokenPoint(1, 2), "hello");
+        String r1 = broken.get(new BrokenPoint(1, 2)); // logically the same key
+        System.out.println("BROKEN key (no equals/hashCode):");
+        System.out.println("  get(new BrokenPoint(1,2)) = " + r1 + "   <-- LOST the entry");
+
+        Map<GoodPoint, String> good = new HashMap<>();
+        good.put(new GoodPoint(1, 2), "hello");
+        String r2 = good.get(new GoodPoint(1, 2));
+        System.out.println("GOOD key (overrides equals/hashCode):");
+        System.out.println("  get(new GoodPoint(1,2))   = " + r2 + "     <-- found it");
+
+        System.out.println();
+        System.out.println("Two equal GoodPoints share a hashCode? "
+                + (new GoodPoint(1, 2).hashCode() == new GoodPoint(1, 2).hashCode()));
+        System.out.println("Two equal BrokenPoints share a hashCode? "
+                + (new BrokenPoint(1, 2).hashCode() == new BrokenPoint(1, 2).hashCode())
+                + "  (identity hash differs per object)");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Spread vs collisions: a bucket-occupancy histogram`,
+                code: `// Demo 4: spread vs collisions. Same keys, two different bucket counts.
+// Prints an occupancy histogram so load factor / spread becomes tangible.
+public class BucketSpreadDemo {
+
+    static void histogram(int capacity, String[] keys) {
+        int[] counts = new int[capacity];
+        for (String key : keys) {
+            int index = key.hashCode() & (capacity - 1);
+            counts[index]++;
+        }
+
+        int used = 0, maxChain = 0, collisions = 0;
+        for (int c : counts) {
+            if (c > 0) used++;
+            if (c > maxChain) maxChain = c;
+            if (c > 1) collisions += (c - 1); // extra items beyond the first in a bucket
+        }
+
+        System.out.println("capacity = " + capacity + ", keys = " + keys.length
+                + ", load factor = " + String.format("%.2f", (double) keys.length / capacity));
+        for (int i = 0; i < capacity; i++) {
+            StringBuilder bar = new StringBuilder();
+            for (int j = 0; j < counts[i]; j++) bar.append('#');
+            System.out.printf("  bucket %2d | %-8s %d%n", i, bar.toString(), counts[i]);
+        }
+        System.out.println("  buckets used = " + used + "/" + capacity
+                + ", longest chain = " + maxChain + ", collisions = " + collisions);
+        System.out.println();
+    }
+
+    public static void main(String[] args) {
+        String[] keys = { "alpha", "bravo", "charlie", "delta", "echo",
+                          "foxtrot", "golf", "hotel", "india", "juliet" };
+
+        System.out.println("Same 10 keys, cramped into few buckets (high load factor):");
+        histogram(4, keys);
+
+        System.out.println("Same 10 keys, spread across more buckets (lower load factor):");
+        histogram(16, keys);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Why O(1) is average: a bad hashCode forces one long chain`,
+                code: `import java.util.HashMap;
+import java.util.Map;
+
+// Demo 5: why O(1) is "average, not guaranteed".
+// A key whose hashCode() always returns the same constant forces EVERY key
+// into ONE bucket -> the map degrades toward a single long chain (O(n) per op).
+// A normal key spreads out and stays near O(1). The map still WORKS in both
+// cases (equals disambiguates) -- it's just slower with a bad hash.
+public class BadHashCollisionDemo {
+
+    // Adversarial key: correct equals, but a constant hashCode.
+    static final class BadKey {
+        final int id;
+        BadKey(int id) { this.id = id; }
+        @Override public boolean equals(Object o) {
+            return (o instanceof BadKey) && ((BadKey) o).id == id;
+        }
+        @Override public int hashCode() { return 42; } // every key collides!
+    }
+
+    // Well-behaved key: spreads across buckets.
+    static final class GoodKey {
+        final int id;
+        GoodKey(int id) { this.id = id; }
+        @Override public boolean equals(Object o) {
+            return (o instanceof GoodKey) && ((GoodKey) o).id == id;
+        }
+        @Override public int hashCode() { return Integer.hashCode(id); }
+    }
+
+    public static void main(String[] args) {
+        int capacity = 16;
+        int n = 12;
+
+        int[] badBuckets = new int[capacity];
+        int[] goodBuckets = new int[capacity];
+        for (int i = 0; i < n; i++) {
+            badBuckets[new BadKey(i).hashCode() & (capacity - 1)]++;
+            goodBuckets[new GoodKey(i).hashCode() & (capacity - 1)]++;
+        }
+
+        System.out.println("Bad hashCode (constant 42) -> all " + n + " keys in ONE bucket:");
+        printOccupancy(badBuckets);
+        System.out.println("Good hashCode -> keys spread across buckets:");
+        printOccupancy(goodBuckets);
+
+        // Both still function correctly as HashMap keys.
+        Map<BadKey, Integer> badMap = new HashMap<>();
+        for (int i = 0; i < n; i++) badMap.put(new BadKey(i), i);
+        System.out.println("badMap still correct? get(BadKey(7)) = " + badMap.get(new BadKey(7)));
+        System.out.println();
+        System.out.println("Takeaway: good hash + low load factor -> O(1) average.");
+        System.out.println("Adversarial/bad hash -> long chain, O(n); Java HashMap treeifies");
+        System.out.println("a bucket into a red-black tree at length >= 8 to cap it at O(log n).");
+    }
+
+    static void printOccupancy(int[] counts) {
+        for (int i = 0; i < counts.length; i++) {
+            if (counts[i] == 0) continue;
+            StringBuilder bar = new StringBuilder();
+            for (int j = 0; j < counts[i]; j++) bar.append('#');
+            System.out.printf("  bucket %2d | %-14s %d%n", i, bar.toString(), counts[i]);
+        }
+        System.out.println();
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Load factor and resizing: capacity doubles and rehashes`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Demo 6: load factor and resizing (rehashing).
+// When size exceeds capacity * loadFactor, capacity DOUBLES and every key is
+// re-placed (rehashed) into the bigger array. This keeps chains short so
+// lookups stay near O(1). Resizing is occasional, so its cost is amortized.
+public class ResizeRehashDemo {
+
+    static class ResizingMap {
+        int capacity;
+        final double loadFactor = 0.75;
+        int size = 0;
+        List<List<String>> buckets;
+
+        ResizingMap(int capacity) {
+            this.capacity = capacity;
+            this.buckets = freshBuckets(capacity);
+        }
+
+        static List<List<String>> freshBuckets(int cap) {
+            List<List<String>> b = new ArrayList<>();
+            for (int i = 0; i < cap; i++) b.add(new ArrayList<>());
+            return b;
+        }
+
+        int indexFor(String key, int cap) { return key.hashCode() & (cap - 1); }
+
+        void put(String key) {
+            List<String> bucket = buckets.get(indexFor(key, capacity));
+            if (!bucket.contains(key)) { bucket.add(key); size++; }
+            // threshold = capacity * loadFactor
+            if (size > capacity * loadFactor) resize();
+        }
+
+        void resize() {
+            int oldCap = capacity;
+            int newCap = capacity * 2;
+            List<List<String>> newBuckets = freshBuckets(newCap);
+            for (List<String> bucket : buckets) {
+                for (String key : bucket) {
+                    newBuckets.get(indexFor(key, newCap)).add(key); // rehash into new array
+                }
+            }
+            this.capacity = newCap;
+            this.buckets = newBuckets;
+            System.out.println("  RESIZE: capacity " + oldCap + " -> " + newCap
+                    + " (size=" + size + " exceeded threshold " + (int)(oldCap * loadFactor) + ")");
+        }
+    }
+
+    public static void main(String[] args) {
+        ResizingMap map = new ResizingMap(4); // start tiny so we see resizes
+
+        String[] keys = { "a", "b", "c", "d", "e", "f", "g", "h", "i", "j" };
+        for (String k : keys) {
+            map.put(k);
+            System.out.println("put '" + k + "' -> size=" + map.size + ", capacity=" + map.capacity);
+        }
+
+        System.out.println();
+        System.out.println("Final capacity = " + map.capacity + " for " + map.size + " keys"
+                + " (load = " + String.format("%.2f", (double) map.size / map.capacity) + ").");
+        System.out.println("Doubling keeps load factor under 0.75, so chains stay short.");
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What problem does hashing solve?`,
+                a: `Finding an item without scanning the whole collection. A linear scan is O(n); hashing computes WHERE an item must live so a lookup touches only a few items, giving O(1) average time regardless of size.`
+              },
+              {
+                q: `What is a hash function / hash code?`,
+                a: `A hash function turns a key into an int called a hash code. In Java every object has one via Object.hashCode(), e.g. "apple".hashCode() == 93029210.`
+              },
+              {
+                q: `What are the properties of a good hash function?`,
+                a: `Deterministic (same key -> same code every time), uniform (keys spread evenly to avoid clumping), and fast (it runs on every put and get).`
+              },
+              {
+                q: `How is a big hash code mapped to a small bucket array?`,
+                a: `index = hash & (capacity - 1) when capacity is a power of two (keeps the low bits, equivalent to hash % capacity but faster). Otherwise a modulo is used.`
+              },
+              {
+                q: `What is a bucket?`,
+                a: `One slot in the hash table's backing array. A key's bucket is chosen from its hash code. Each bucket holds the entries whose hashes map to that index.`
+              },
+              {
+                q: `What is a collision?`,
+                a: `When two different keys map to the same bucket. Collisions are unavoidable (infinitely many keys, finitely many buckets) and are expected, not an error.`
+              },
+              {
+                q: `How does Java's HashMap resolve collisions?`,
+                a: `Separate chaining: each bucket holds a short list of entries; a lookup scans only that bucket's list. (Open addressing, probing for the next free slot, is an alternative Java does not use.)`
+              },
+              {
+                q: `What is treeification and when does it happen?`,
+                a: `When one bucket's chain grows to >= 8 nodes (and capacity is >= 64), HashMap converts that bucket's linked list into a red-black tree, capping the bucket's worst case at O(log n) instead of O(n).`
+              },
+              {
+                q: `What is the load factor?`,
+                a: `size / capacity. Java's default is 0.75. The resize threshold is capacity * loadFactor; keeping load below it keeps chains short and lookups near O(1).`
+              },
+              {
+                q: `What happens on a resize, and why is its cost amortized?`,
+                a: `When size exceeds capacity * 0.75, capacity doubles and every key is rehashed into the new, larger array. Resizing is O(n) but happens rarely, so spread over all inserts the per-operation cost stays small (amortized O(1)).`
+              },
+              {
+                q: `Why must equal objects have equal hash codes?`,
+                a: `get() first picks a bucket by hashCode(), then finds the entry by equals(). If equal objects had different hash codes they'd land in different buckets, so get() would search the wrong bucket and return null -- the entry is effectively lost.`
+              },
+              {
+                q: `What breaks if you override equals() but not hashCode()?`,
+                a: `Two logically-equal objects get different (identity) hash codes, so they map to different buckets. Putting with one and getting with the other returns null. Always override both together.`
+              },
+              {
+                q: `Why can mutating a key after insertion lose it in a HashMap?`,
+                a: `The map filed the entry under the bucket for the old hash. If the mutation changes the key's hashCode, a later lookup computes a new bucket and searches the wrong place. Prefer immutable keys.`
+              },
+              {
+                q: `When is HashMap O(n) instead of O(1)?`,
+                a: `With a bad or adversarial hashCode (e.g. a constant) that forces all keys into one bucket, forming one long chain. It still works via equals but is slow; treeify mitigates this to O(log n) per bucket.`
               }
             ]
           },
@@ -10227,7 +12199,7 @@ public class ListIntersection {
         ]
       },
       {
-        id: `0.10`,
+        id: `0.12`,
         title: `Java 8 — Optional, Date/Time API, Method Refs`,
         hours: 4,
         sections: [
@@ -11254,7 +13226,7 @@ Legacy UTC: " + legacyTs);
         ]
       },
       {
-        id: `0.11`,
+        id: `0.13`,
         title: `File I/O — java.io, NIO2 & Files API`,
         hours: 2,
         sections: [

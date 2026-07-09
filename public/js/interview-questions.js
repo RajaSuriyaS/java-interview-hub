@@ -7,6 +7,40 @@
 const INTERVIEW_QUESTIONS = {
   "0.1": [
     {
+      "q": "What is the difference between the JDK, the JRE and the JVM?",
+      "a": "The JVM (Java Virtual Machine) is the engine that actually executes Java bytecode; there is a different JVM implementation per operating system, which is what makes Java portable. The JRE (Java Runtime Environment) is the JVM plus the standard class libraries needed to RUN a Java application. The JDK (Java Development Kit) is the JRE plus the development tools you need to BUILD applications -- the compiler javac, the jar tool, javadoc, the debugger and so on. To write Java you install a JDK; to only run a finished app you historically needed just a JRE (modern distributions usually ship a full JDK)."
+    },
+    {
+      "q": "What does 'write once, run anywhere' mean and how does Java achieve it?",
+      "a": "You compile your source once into platform-neutral bytecode (.class files), and that same bytecode runs on any machine that has a JVM, without recompiling. Java achieves it by inserting the JVM as a layer between your program and the OS: javac targets the abstract JVM instruction set instead of a specific CPU, and each OS ships its own JVM that translates that bytecode into native instructions at run time. The bytecode is the same everywhere; only the JVM underneath differs."
+    },
+    {
+      "q": "Walk through what happens from a .java file to a running program.",
+      "a": "You write source in a .java file. The compiler javac checks it and produces one .class file per class, containing bytecode. You launch it with `java YourClass`; the JVM starts, its class loader loads the needed .class files, the bytecode verifier checks them for safety, and then the JVM executes your program starting at the main method -- interpreting the bytecode and, for hot code, JIT-compiling it to native machine code for speed."
+    },
+    {
+      "q": "Explain the signature `public static void main(String[] args)` piece by piece.",
+      "a": "It is the entry point the JVM calls to start your program. public means the JVM can call it from outside the class; static means it runs without first creating an object of the class; void means it returns nothing; main is the fixed name the JVM looks for; String[] args is the array of command-line arguments passed to the program. If this exact shape is missing, `java` fails with an error that it cannot find or launch main."
+    },
+    {
+      "q": "Why must a public class's file name match the class name?",
+      "a": "The Java compiler requires that a public top-level class live in a file of the same name (Order in Order.java), so tools and the class loader can locate a class predictably from its name. If they do not match, javac reports an error. Non-public top-level classes do not have this restriction, which is why small demo files sometimes use a package-private class to avoid the filename constraint."
+    },
+    {
+      "q": "What is bytecode, and how is it different from machine code?",
+      "a": "Bytecode is the intermediate instruction set that javac produces -- compact, platform-independent instructions for the abstract JVM, stored in .class files. Machine code is the concrete instruction set of a specific physical CPU. Bytecode is not run directly by the CPU; the JVM interprets it and JIT-compiles the hot parts into real machine code at run time. You can inspect bytecode with `javap -c YourClass`."
+    },
+    {
+      "q": "At a beginner level, what is the difference between the stack and the heap?",
+      "a": "The stack holds each method call's frame -- its local variables and the bookkeeping to return -- and unwinds automatically as methods return. The heap is the shared region where objects created with `new` live; variables on the stack hold references (pointers) to those heap objects. Primitives and references sit on the stack; the actual objects sit on the heap and are cleaned up later by the garbage collector. (The deep mechanics come later in the JVM Internals phase.)"
+    },
+    {
+      "q": "Which Java versions matter, and what is an LTS release?",
+      "a": "LTS (Long-Term Support) releases get extended support and are what companies standardize on: 8, 11, 17 and 21 are the widely-used LTS versions. Non-LTS releases come every six months and are shorter-lived. For interviews, know that 8 introduced lambdas/streams, and 17 and 21 added records, sealed types, pattern matching and virtual threads. Targeting an LTS is the safe default for production."
+    }
+  ],
+  "0.2": [
+    {
       "q": "Java is often described as 'pass-by-value' even for objects. Explain what that actually means and a bug it commonly causes.",
       "a": "Java always copies the value of the argument; for reference types the value being copied is the reference (the pointer), not the object. So a method can mutate the object's fields and the caller sees it, but reassigning the parameter inside the method does not change which object the caller's variable points to. The classic bug is a 'swap(a, b)' method that swaps the local references and has no effect on the caller's variables."
     },
@@ -31,7 +65,7 @@ const INTERVIEW_QUESTIONS = {
       "a": "char is an unsigned 16-bit UTF-16 code unit, so it participates in arithmetic and 'A' + 1 yields 66. The trap is that characters outside the Basic Multilingual Plane (emoji, many CJK extensions) are encoded as surrogate pairs spanning two chars, so str.length() and charAt() count code units, not code points. For correct counting or iteration use codePointCount, codePoints(), or String methods that are code-point aware."
     }
   ],
-  "0.2": [
+  "0.3": [
     {
       "q": "Compare a traditional switch statement with a switch expression (Java 14+). When would you reach for the new form?",
       "a": "The old switch is a statement with fall-through by default, requires break, and cannot produce a value directly, which makes accidental fall-through a classic bug source. The arrow switch expression (case X -> ...) has no fall-through, can yield a value to assign, and the compiler enforces exhaustiveness when switching over an enum or sealed type. Reach for the expression form whenever you are mapping an input to a value, because it is both safer and more concise."
@@ -57,7 +91,7 @@ const INTERVIEW_QUESTIONS = {
       "a": "Fall-through lets multiple case labels share a body, which is useful for grouping — for instance MONDAY, TUESDAY, ... all falling into a 'weekday' branch. The danger is accidental fall-through from a forgotten break, which silently executes the next case; static analyzers and -Xlint flag it. The Java 14 arrow form removes fall-through entirely and supports comma-separated labels (case MONDAY, TUESDAY ->), giving the grouping benefit without the footgun."
     }
   ],
-  "0.3": [
+  "0.4": [
     {
       "q": "Walk through the exact order of initialization when 'new SubClass()' runs, including static and instance initializers.",
       "a": "On first use the class is loaded and its static fields and static initializer blocks run once, parent before child. Then for each instantiation: the constructor implicitly calls super() first, then the instance field initializers and instance initializer blocks run top-to-bottom, then the rest of the constructor body. So a parent constructor can observe a child field that has not yet been initialized — a real trap when a parent constructor calls an overridden method."
@@ -83,7 +117,7 @@ const INTERVIEW_QUESTIONS = {
       "a": "A shallow copy duplicates the top-level object but shares references to nested mutable objects, so mutating a nested list affects both copies; a deep copy recursively clones the nested objects so they are fully independent. A copy constructor must deep-copy any mutable fields (lists, dates, arrays) or it silently produces aliasing bugs. In practice I prefer copy constructors or static 'copyOf' factories over Cloneable, since clone() is broken by design (no constructor call, shallow by default, awkward checked exception)."
     }
   ],
-  "0.4": [
+  "0.5": [
     {
       "q": "Compare composition and inheritance. Why is 'favor composition over inheritance' such a strong rule?",
       "a": "Inheritance creates a tight, compile-time 'is-a' coupling where the subclass depends on the superclass's implementation details, so a superclass change can silently break subclasses (the fragile base class problem). Composition delegates to a contained object via 'has-a', which is more flexible, swappable at runtime, and keeps encapsulation intact. The rule exists because deep inheritance hierarchies become rigid and hard to evolve; inheritance is appropriate only for genuine, stable is-a relationships, and even then often behind an interface."
@@ -109,7 +143,7 @@ const INTERVIEW_QUESTIONS = {
       "a": "LSP says a subtype must be usable anywhere its supertype is expected without breaking the program's correctness — overrides shouldn't strengthen preconditions or weaken postconditions. The textbook violation is Square extends Rectangle: setting width independently of height breaks invariants callers of Rectangle rely on. Another common one is an override that throws UnsupportedOperationException (e.g., an immutable List's add), which technically satisfies the type but violates the behavioral contract callers expect."
     }
   ],
-  "0.5": [
+  "0.6": [
     {
       "q": "Encapsulation is more than private fields. What does proper encapsulation actually protect, and how do getters leak it?",
       "a": "Encapsulation protects class invariants by ensuring all state changes go through controlled paths, so the object can never be observed in an invalid state. A getter that returns a reference to an internal mutable collection or array leaks that protection — the caller can mutate it directly and bypass validation. The fix is to return an unmodifiable view (Collections.unmodifiableList), a defensive copy, or an immutable type, depending on the cost and copy semantics you need."
@@ -135,7 +169,7 @@ const INTERVIEW_QUESTIONS = {
       "a": "The discipline is to default to the most restrictive modifier and widen only when needed, because every public or protected member becomes a contract you must support. package-private is underused but excellent for collaborating classes that shouldn't expose internals to the world. protected is the subtle one: it's part of the inheritance contract, so a protected field becomes a commitment to every future subclass author and ties your hands when refactoring — prefer protected methods over protected fields."
     }
   ],
-  "0.6": [
+  "0.7": [
     {
       "q": "Explain the String pool (string interning) and when intern() actually helps versus hurts.",
       "a": "String literals are interned into a pool so identical literals share one instance, which is why \"a\" == \"a\" is true but new String(\"a\") == \"a\" is false. intern() lets you canonicalize runtime-built strings into the pool, which can save memory when you have massive numbers of duplicate strings (e.g., parsed tokens). But interning has CPU cost and historically lived in PermGen/now the heap-resident pool; over-interning long-lived unique strings just bloats the pool, so it's a targeted optimization, not a default."
@@ -161,7 +195,7 @@ const INTERVIEW_QUESTIONS = {
       "a": "In old JDKs (pre-7u6) substring() shared the parent's backing char array, so keeping a tiny substring pinned a huge string in memory; modern substring copies, so that specific leak is gone but copying has its own cost. The current pitfall is splitting or interning huge inputs at scale, which inflates the heap and string pool. For very large text, prefer streaming/CharSequence views, process in chunks, and avoid interning attacker-controlled strings, which can exhaust the pool."
     }
   ],
-  "0.7": [
+  "0.8": [
     {
       "q": "Explain checked versus unchecked exceptions and the modern argument for preferring unchecked in many designs.",
       "a": "Checked exceptions (subclasses of Exception, not RuntimeException) must be declared or handled and are meant for recoverable conditions; unchecked (RuntimeException) signal programming errors or unrecoverable states and need no declaration. Many modern frameworks (Spring) favor unchecked exceptions because checked exceptions force boilerplate, leak across abstraction layers, and don't compose with lambdas/streams (functional interfaces don't declare them). The trade-off is checked exceptions document recoverable failures at compile time, which is genuinely valuable for true business-recoverable cases like IO."
@@ -187,7 +221,7 @@ const INTERVIEW_QUESTIONS = {
       "a": "A suppressed exception is a secondary exception attached to a primary one rather than masking it, accessible via Throwable.getSuppressed(). The common source is try-with-resources: if the try body throws and then a resource's close() also throws, the close() exception is suppressed so the original is propagated. Knowing this matters in production debugging, because the real root cause is the primary exception and the suppressed array often shows cleanup failures that would otherwise look like the cause."
     }
   ],
-  "0.8": [
+  "0.9": [
     {
       "q": "Explain PECS (Producer Extends, Consumer Super) with a concrete example of choosing the right wildcard.",
       "a": "Use <? extends T> when a structure produces T values you only read (you can get a T out but can't add, since the exact subtype is unknown), and <? super T> when it consumes T values you write into (you can add a T but reads come back as Object). Collections.copy(dest, src) is the canonical example: src is <? extends T> (producer) and dest is <? super T> (consumer). Getting this right maximizes API flexibility — callers can pass List<Integer> where List<? extends Number> is expected."
@@ -213,7 +247,41 @@ const INTERVIEW_QUESTIONS = {
       "a": "It's a self-referential bound expressing 'T must be comparable to its own type', which is how Collections.max and sorting APIs guarantee elements can be ordered against each other rather than against arbitrary objects. The same pattern powers the self-typed builder idiom (<T extends Builder<T>>) so fluent methods return the concrete subtype. It looks circular but is a standard way to make generic APIs both type-safe and ergonomic; the cost is the declaration gets verbose and intimidating to readers."
     }
   ],
-  "0.9": [
+  "0.10": [
+    {
+      "q": "What does Big-O notation actually describe?",
+      "a": "It describes how the cost of an algorithm -- usually time, sometimes memory -- GROWS as the input size n grows, ignoring constant factors and lower-order terms. It answers 'if I make the input much bigger, how much more work is done?' rather than 'how many milliseconds does it take'. That makes it hardware-independent: O(n) means the work grows in proportion to n, O(n^2) means it grows with the square of n, regardless of the machine."
+    },
+    {
+      "q": "Why do we drop constants and lower-order terms, so O(2n + 5) becomes O(n)?",
+      "a": "Big-O captures the growth trend at large n, where the dominant term swamps everything else and constant multipliers do not change the shape of the curve. For big n, 2n + 5 grows essentially like n, so we call it O(n). Constants and small terms matter for real wall-clock tuning, but for comparing how algorithms SCALE they are noise, so we drop them to focus on the order of growth."
+    },
+    {
+      "q": "Which is faster for large n: O(n) or O(n^2), and why?",
+      "a": "O(n) is far faster at scale. If you make the input 1000x bigger, an O(n) algorithm does about 1000x the work, while an O(n^2) algorithm does about 1,000,000x the work. So a nested-loop O(n^2) solution that looks fine on 100 items can be unusable on a million, and switching to an O(n) approach (often by using the right data structure, like a HashSet) beats any amount of micro-optimizing the slow one."
+    },
+    {
+      "q": "How do you find the Big-O of a piece of code by reading it?",
+      "a": "Use three rules: sequential blocks add and you keep only the biggest term; nested loops multiply their counts (a loop of n inside a loop of n is n*n = O(n^2)); and a process that halves the remaining work each step is O(log n). A single loop from 0 to n is O(n). So a loop after another loop is still O(n), but a loop inside a loop is O(n^2). Then simplify by dropping constants."
+    },
+    {
+      "q": "What is the difference between time complexity and space complexity?",
+      "a": "Time complexity measures how the number of operations grows with n; space complexity measures how much EXTRA memory the algorithm needs as a function of n (not counting the input itself). They can trade off: the duplicate-detection trick that uses a HashSet turns an O(n^2)-time, O(1)-space nested scan into an O(n)-time solution that costs O(n) extra space. Interviewers often ask you to state both."
+    },
+    {
+      "q": "Why do we usually quote the worst case, and what are best/average cases?",
+      "a": "Best, average and worst case describe the cost on the luckiest, typical, and unluckiest inputs. We usually quote the worst case because it is the guarantee -- it bounds how bad things can get regardless of input, which matters for reliability and tail latency. Average case is useful too: for example HashMap.get is O(1) on average but O(n) in a pathological worst case (many collisions), which is why the average and worst can differ and both are worth knowing."
+    },
+    {
+      "q": "Why is building a String in a loop with + considered O(n^2)?",
+      "a": "Strings are immutable, so each `s = s + x` inside a loop creates a whole new String by copying all the characters accumulated so far. Copying a growing prefix on every one of n iterations sums to on the order of n^2 character copies. Using a StringBuilder appends into a mutable buffer that grows amortized O(1) per append, making the whole loop O(n). This is a classic example of how data-structure choice changes the complexity class."
+    },
+    {
+      "q": "Give an example where choosing the right data structure changes the Big-O.",
+      "a": "Checking membership: `ArrayList.contains` scans the list, so doing it inside a loop is O(n^2); switching to a `HashSet`, whose contains is O(1) average, makes the same task O(n). Likewise, searching an unsorted array is O(n) but binary search on a SORTED array is O(log n). The algorithm's complexity often comes down to which structure you store the data in, not how tightly you write the loop."
+    }
+  ],
+  "0.11": [
     {
       "q": "Compare ArrayList and LinkedList honestly. Why is LinkedList almost never the right choice in practice?",
       "a": "ArrayList is a contiguous array: O(1) random access and cache-friendly iteration, with amortized O(1) appends and O(n) middle inserts/removes due to shifting. LinkedList offers O(1) insert/remove only if you already hold the node, but indexing is O(n) and every element is a separately allocated node, killing cache locality and inflating memory. In real workloads ArrayList's locality usually wins even for inserts, so LinkedList is rarely justified — its main legitimate use is as a Deque/queue, where ArrayDeque is typically still faster."
@@ -237,9 +305,25 @@ const INTERVIEW_QUESTIONS = {
     {
       "q": "Compare ArrayDeque, Stack, and the various queue choices. What should you actually use for a stack or queue today?",
       "a": "Use ArrayDeque for both stacks and queues: it's array-backed, faster than LinkedList, and unlike the legacy Stack class (which extends Vector and is synchronized and slow) it isn't burdened by Vector's design. Prefer the Deque methods (push/pop/offer/poll) which return/insert without throwing on empty, over add/remove which throw. For producer-consumer concurrency reach for BlockingQueue implementations (ArrayBlockingQueue, LinkedBlockingQueue), and for priority ordering use PriorityQueue, remembering it isn't thread-safe and iteration order isn't sorted."
+    },
+    {
+      "q": "How does a HashMap find a value in O(1) on average instead of scanning every entry?",
+      "a": "It runs the key through hashCode() to get a number, then maps that number to a bucket index (roughly hash modulo capacity, implemented as hash & (capacity - 1)). It goes straight to that one bucket and only checks the few keys living there, comparing with equals(). Because it jumps directly to a bucket instead of scanning all n entries, average lookup is O(1). It degrades toward O(n) only if most keys pile into the same bucket."
+    },
+    {
+      "q": "What is a hash collision and how does Java's HashMap resolve it?",
+      "a": "A collision is when two different keys map to the same bucket index. HashMap resolves it with separate chaining: each bucket holds a small list of entries, and get/put walk that list using equals() to find the exact key. If a single bucket's chain grows long (8+ entries) and the table is large enough, HashMap treeifies that bucket into a red-black tree so its worst case is O(log n) instead of O(n). Open addressing is an alternative collision strategy that some other hash tables use."
+    },
+    {
+      "q": "What is the load factor, and what happens when a HashMap exceeds it?",
+      "a": "The load factor (default 0.75) is the fullness threshold: when the number of entries exceeds capacity * loadFactor, the HashMap resizes -- it doubles the bucket array and rehashes every entry into the new, larger array. Keeping the table under ~75% full keeps chains short so lookups stay near O(1). Resizing is expensive but happens rarely, so its cost is amortized across many inserts; 0.75 is the standard time/space compromise."
+    },
+    {
+      "q": "Why must equal objects have equal hash codes, and what breaks if they don't?",
+      "a": "The contract is: if a.equals(b) then a.hashCode() == b.hashCode(). A HashMap first uses the hash code to pick a bucket, then equals() within it. If two equal keys produce different hash codes, they can land in different buckets, so after putting with one you may fail to get with the other -- the map appears to 'lose' the entry. That is why whenever you override equals() you must also override hashCode(), and why you must never mutate a field used in hashCode() after using the object as a key."
     }
   ],
-  "0.10": [
+  "0.12": [
     {
       "q": "What is Optional actually for, and what are the anti-patterns interviewers want you to avoid?",
       "a": "Optional is a deliberate API signal that a return value may be absent, pushing callers to handle the empty case instead of risking an NPE — it's best used as a method return type. The anti-patterns are: using it as a field or method parameter (adds overhead and another null state, since Optional itself can be null), calling get() without checking (just a disguised NPE), and using Optional for collections (return an empty list instead). Prefer map/flatMap/orElseGet/ifPresent over isPresent()+get(), and use orElseGet over orElse when the default is expensive to build."
@@ -265,7 +349,7 @@ const INTERVIEW_QUESTIONS = {
       "a": "SimpleDateFormat is mutable and not thread-safe, yet developers routinely cached one in a static field and shared it across threads, producing intermittent parse corruption and wrong dates under load — a notorious heisenbug. The java.time replacement, DateTimeFormatter, is immutable and thread-safe, so a single instance can be shared as a constant safely. It also has predefined ISO formatters and a clearer pattern/builder API, removing both the concurrency hazard and much of the old format-string ambiguity."
     }
   ],
-  "0.11": [
+  "0.13": [
     {
       "q": "Compare the old java.io streams with NIO.2 (java.nio.file). When do you still reach for streams?",
       "a": "java.io is a blocking, stream-oriented API (InputStream/Reader and their buffered wrappers) that's fine for straightforward sequential reading and writing. NIO.2 (Java 7) adds the Path/Files API with far richer operations: atomic moves, symbolic links, file attributes, directory walking, and clearer exceptions, and it's the modern default for filesystem work. You still use streams for the actual byte/char transfer and for arbitrary sources (sockets, in-memory), but you'd use Files.newInputStream/Files.lines and Path rather than raw FileInputStream and File."
