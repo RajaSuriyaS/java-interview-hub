@@ -693,6 +693,40 @@ const INTERVIEW_QUESTIONS = {
       "a": "Externalizable gives you full manual control of the wire format via writeExternal/readExternal -- useful for compactness or speed, but you write every field yourself and it needs a public no-arg constructor. writeReplace lets an object substitute a different object (often a compact 'serialization proxy') into the stream, and readResolve lets a class replace the freshly deserialized object with a canonical one -- essential for singletons and enums so deserialization does not silently create a second instance and break `==` identity. The serialization-proxy pattern (a small static nested class with writeReplace + readResolve) is the robust way to keep invariants and immutability across deserialization."
     }
   ],
+  "2.8": [
+    {
+      "q": "Which Java releases are the Long-Term-Support (LTS) versions, and why does it matter?",
+      "a": "The LTS releases are Java 8, 11, 17, 21 and 25. They receive extended support (security patches and updates for years), so companies standardize production systems on them rather than on the six-month feature releases in between. When someone says 'we're on Java 17' they almost always mean an LTS; interviewers expect you to target an LTS by default and to know that 8, 11, 17, 21, 25 are the checkpoints."
+    },
+    {
+      "q": "What is the Java release cadence since Java 9?",
+      "a": "Since Java 9 (2017), a new feature release ships every six months (March and September), with an LTS roughly every two years. That is why version numbers climb fast -- Java 21 in 2023, 25 in 2025. Non-LTS releases are short-lived stepping stones where features incubate; LTS releases consolidate the stable ones for long-term production use."
+    },
+    {
+      "q": "Which version is considered the 'game changer', and what did it introduce?",
+      "a": "Java 8 (2014). It introduced lambda expressions, the Stream API, functional interfaces, Optional, method references, default methods on interfaces, and the modern Date/Time API (java.time). It brought functional-style programming to Java and remained the most widely deployed version for years, which is why so much existing code and so many interview questions center on it."
+    },
+    {
+      "q": "What was the single biggest release before Java 8, and what did it add?",
+      "a": "Java 5 (2004, codename 'Tiger'). It added generics, annotations, enums, the enhanced for-each loop, autoboxing/unboxing, varargs, static imports, and the java.util.concurrent utilities. Most of the type-safety and language features developers now take for granted arrived in Java 5."
+    },
+    {
+      "q": "What is a 'preview' (or 'incubator') feature, and why do features like records or virtual threads appear across several versions?",
+      "a": "A preview feature ships fully implemented but behind the --enable-preview flag so the community can try it and give feedback before it becomes permanent; an incubator module is the same idea for new APIs. Because the language team iterates before committing forever, a feature is often previewed for one or more releases and then made 'final'. For example records were previewed in 14, final in 16; virtual threads were previewed in 19/20 and final in 21."
+    },
+    {
+      "q": "Name a headline feature introduced in Java 7, 9, 11, 17 and 21 respectively.",
+      "a": "Java 7: try-with-resources (and the diamond operator, NIO.2, Fork/Join). Java 9: the module system (JPMS) and JShell. Java 11 (LTS): the standardized HTTP Client API and new String methods. Java 17 (LTS): sealed classes (final) and strong encapsulation. Java 21 (LTS): virtual threads (final), pattern matching for switch (final), record patterns and sequenced collections."
+    },
+    {
+      "q": "When did records, sealed classes, and virtual threads become final?",
+      "a": "Records were previewed in Java 14 and became final in Java 16. Sealed classes were previewed in 15 and became final in Java 17. Virtual threads (Project Loom) were previewed in 19 and 20 and became final in Java 21. Knowing the 'final in' version matters because you can only rely on the feature without --enable-preview from that release onward."
+    },
+    {
+      "q": "What did the Module System (JPMS) in Java 9 aim to solve?",
+      "a": "It introduced modules (module-info.java) that explicitly declare what packages they export and what other modules they require, giving strong encapsulation and a reliable dependency graph. The goals were to break up the monolithic JDK (so runtimes can be smaller via jlink), replace the fragile classpath with a verified module path, and hide internal JDK APIs. It is powerful but adoption in application code has been modest; most teams still ship on the classpath."
+    }
+  ],
   "3.1": [
     {
       "q": "Walk me through constructor vs setter vs field injection and which you'd use in production.",

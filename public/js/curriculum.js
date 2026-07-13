@@ -29803,6 +29803,527 @@ public class SerialDemo5 {
             ]
           }
         ]
+      },
+      {
+        id: `2.8`,
+        title: `The Evolution of Java — Version History (1.0 to 26+)`,
+        hours: 2,
+        sections: [
+          {
+            title: `Foundation (1996-2004) — Building the Core Language`,
+            notes: `## Foundation (1996-2004) — Building the Core Language
+
+Java began as a portable, object-oriented language with one promise: **write once, run anywhere**. Your source compiles to platform-neutral **bytecode**, and the **JVM** runs that bytecode on any operating system. These early releases built the language and libraries that everything since rests on.
+
+\`\`\`mermaid
+timeline
+    title Foundation Era of Java
+    1996 : Java 1.0 : JVM, bytecode, applets
+    1997 : Java 1.1 : Inner classes, JDBC, RMI, reflection
+    1998 : Java 1.2 : Collections Framework, Swing, JIT
+    2000 : Java 1.3 : HotSpot JVM
+    2002 : Java 1.4 : NIO, assert, regex
+    2004 : Java 5 : Generics, annotations, enums
+\`\`\`
+
+| Version | Year | Headline features (one line each) |
+|---------|------|-----------------------------------|
+| **1.0** | 1996 | First official release: the JVM and bytecode let code run anywhere; applets ran Java inside browsers; basic class libraries shipped. |
+| **1.1** | 1997 | Inner classes (a class defined inside another); JDBC for database access; RMI for calling methods on remote objects; reflection to inspect types at runtime; JavaBeans component model. |
+| **1.2** "Java 2" | 1998 | The Collections Framework (List/Set/Map) standardized data structures; Swing gave a rich GUI toolkit; the JIT compiler sped up execution by compiling hot bytecode to native code. |
+| **1.3** | 2000 | The HotSpot JVM brought adaptive optimization; RMI over IIOP for CORBA interop; JNDI naming/directory access; the Java Sound API. |
+| **1.4** | 2002 | NIO (java.nio) added non-blocking I/O; the assert keyword for sanity checks; regular expressions; a logging API; built-in XML/XSLT; exception chaining to preserve root causes. |
+
+### Java 5 (2004, "Tiger") — the biggest pre-8 release
+Java 5 modernized the language itself. It is covered in depth in the next section, but note here that it introduced **generics**, **annotations**, and **enums** among others — the largest single leap before Java 8.
+
+> **Key idea:** the JVM is the reason Java is portable — your \`.java\` compiles to \`.class\` bytecode, and any JVM on any OS can run it.`,
+            code: [],
+            flashcards: [
+              {
+                q: `What does the JVM do, and why does it make Java portable?`,
+                a: `The JVM executes platform-neutral bytecode (.class files); any JVM on any OS runs the same bytecode, giving Java its 'write once, run anywhere' portability.`
+              },
+              {
+                q: `In what year was Java 1.0 released?`,
+                a: `1996.`
+              },
+              {
+                q: `Which version introduced the Collections Framework (List/Set/Map)?`,
+                a: `Java 1.2 ("Java 2") in 1998, which also added Swing and a JIT compiler.`
+              },
+              {
+                q: `What did Java 1.1 (1997) add?`,
+                a: `Inner classes, JDBC (database access), RMI (remote method invocation), reflection, and JavaBeans.`
+              },
+              {
+                q: `Which version introduced NIO, the assert keyword, and regular expressions?`,
+                a: `Java 1.4 (2002); it also added a logging API, XML/XSLT support, and exception chaining.`
+              },
+              {
+                q: `What is bytecode?`,
+                a: `The platform-neutral intermediate instruction set that Java source compiles to; the JVM interprets or JIT-compiles it to native code at runtime.`
+              },
+              {
+                q: `Which JVM debuted in Java 1.3 (2000)?`,
+                a: `The HotSpot JVM, which brought adaptive runtime optimization.`
+              },
+              {
+                q: `What is a JIT compiler and when did it arrive in the mainline?`,
+                a: `The Just-In-Time compiler compiles frequently executed ("hot") bytecode to native machine code for speed; it shipped with Java 1.2 (1998).`
+              },
+              {
+                q: `What were applets?`,
+                a: `Small Java programs, introduced in Java 1.0, that ran inside a web browser; the API is now obsolete and slated for removal.`
+              },
+              {
+                q: `Which release is nicknamed "Tiger" and why is it significant?`,
+                a: `Java 5 (2004); it was the biggest pre-Java-8 release, adding generics, annotations, enums, and more.`
+              },
+              {
+                q: `What is reflection, introduced in Java 1.1?`,
+                a: `The ability to inspect and manipulate classes, methods, and fields at runtime rather than at compile time.`
+              }
+            ]
+          },
+          {
+            title: `Expansion (2004-2011) — Performance, Tools & Productivity`,
+            notes: `## Expansion (2004-2011) — Performance, Tools & Productivity
+
+This era made Java both **more expressive** (Java 5 reworked the language) and **more productive** (Java 7 removed boilerplate), while Java 6 focused on raw speed and integration.
+
+| Version | Year | Headline features (one line each) |
+|---------|------|-----------------------------------|
+| **Java 5** "Tiger" | 2004 | **Generics** (type-safe collections like \`List<String>\`); **annotations** (metadata such as \`@Override\`); **enums** (fixed sets of constants); the **enhanced for-each** loop; **autoboxing/unboxing** (auto convert \`int\` <-> \`Integer\`); **varargs** (\`String...\`); **static imports**; and **java.util.concurrent** (thread pools, concurrent collections, locks). This is the largest pre-8 release. |
+| **Java 6** | 2006 | Broad performance improvements across the JVM; the Scripting API (JSR 223) to run scripting languages; a Compiler API to invoke javac programmatically; built-in web services; JDBC 4. |
+| **Java 7** | 2011 | **try-with-resources** (auto-closes resources); the **diamond operator** \`<>\` (infers generic type); **strings in switch**; **NIO.2** (java.nio.file, modern file API); the **Fork/Join framework** (parallel divide-and-conquer); **multi-catch** (\`catch (A | B e)\`); and **underscores in numeric literals** (\`1_000_000\`). |
+
+### Why Java 5 mattered so much
+Generics eliminated unchecked casts, enums replaced fragile \`int\` constants, and \`java.util.concurrent\` gave production-grade concurrency tools instead of hand-rolled \`synchronized\` blocks. These changes shaped how idiomatic Java is written to this day.
+
+> **Java 7's theme was productivity:** try-with-resources and multi-catch removed piles of error-prone boilerplate around resource cleanup and exception handling.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Behavior as data: anonymous class -> lambda -> method reference (Java 5 vs 8)`,
+                code: `import java.util.*;
+
+public class ComparatorEvolution {
+    public static void main(String[] args) {
+        List<String> a = new ArrayList<>(List.of("banana", "fig", "apple", "kiwi"));
+        List<String> b = new ArrayList<>(a);
+        List<String> c = new ArrayList<>(a);
+
+        // Pre-Java-8: anonymous Comparator class
+        a.sort(new Comparator<String>() {
+            @Override
+            public int compare(String s1, String s2) {
+                return Integer.compare(s1.length(), s2.length());
+            }
+        });
+
+        // Java 8: lambda expression
+        b.sort((s1, s2) -> Integer.compare(s1.length(), s2.length()));
+
+        // Java 8: method reference via Comparator.comparingInt
+        c.sort(Comparator.comparingInt(String::length));
+
+        System.out.println("anonymous class: " + a);
+        System.out.println("lambda         : " + b);
+        System.out.println("method ref     : " + c);
+        System.out.println("all equal      : " + (a.equals(b) && b.equals(c)));
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Which version introduced generics, and what problem did they solve?`,
+                a: `Java 5 (2004); generics add compile-time type safety to collections (e.g. List<String>), removing unchecked casts.`
+              },
+              {
+                q: `Name five features introduced in Java 5.`,
+                a: `Generics, annotations, enums, the enhanced for-each loop, autoboxing/unboxing, varargs, static imports, and java.util.concurrent (any five).`
+              },
+              {
+                q: `What is autoboxing?`,
+                a: `The automatic conversion between primitives and their wrapper types, e.g. int to Integer and back, introduced in Java 5.`
+              },
+              {
+                q: `What package of concurrency utilities did Java 5 add?`,
+                a: `java.util.concurrent — thread pools (ExecutorService), concurrent collections, locks, and atomics.`
+              },
+              {
+                q: `Which version added try-with-resources and the diamond operator?`,
+                a: `Java 7 (2011).`
+              },
+              {
+                q: `What does the diamond operator (<>) do?`,
+                a: `It lets the compiler infer the generic type arguments on the right side, e.g. Map<String,List<Integer>> m = new HashMap<>();, introduced in Java 7.`
+              },
+              {
+                q: `What is multi-catch and when did it arrive?`,
+                a: `Catching several exception types in one clause, catch (IOException | SQLException e), introduced in Java 7.`
+              },
+              {
+                q: `What did Java 6 (2006) focus on?`,
+                a: `Broad performance improvements, plus the Scripting API (JSR 223), a Compiler API, built-in web services, and JDBC 4.`
+              },
+              {
+                q: `What is the Fork/Join framework?`,
+                a: `A Java 7 framework for parallel divide-and-conquer work, splitting tasks across a work-stealing thread pool.`
+              },
+              {
+                q: `What does try-with-resources do?`,
+                a: `It automatically closes resources that implement AutoCloseable at the end of the block, removing manual finally-close boilerplate (Java 7).`
+              },
+              {
+                q: `What are varargs?`,
+                a: `Variable-length argument lists declared with '...', e.g. String... args, letting a method accept any number of arguments (Java 5).`
+              }
+            ]
+          },
+          {
+            title: `Modernization (2011-2018) — Functional Java & the Module System`,
+            notes: `## Modernization (2011-2018) — Functional Java & the Module System
+
+Java 8 was a **game changer**: it brought functional-style programming (lambdas and streams) to a language that had been strictly object-oriented, and it remained the most widely deployed version for years. Java 9-11 then reshaped how Java is packaged and shipped.
+
+| Version | Year | Headline features (one line each) |
+|---------|------|-----------------------------------|
+| **Java 8** | 2014 | **Lambda expressions** (functions as values); the **Stream API** (declarative data pipelines); **functional interfaces** (single-abstract-method types); **Optional** (a container to avoid null); the new **Date/Time API** (java.time); **default methods** on interfaces; and **method references** (\`String::length\`). Most widely used version for years. |
+| **Java 9** | 2017 | The **Module System** (JPMS / Project Jigsaw) for strong encapsulation of packages; **JShell**, the interactive REPL; **collection factory methods** (\`List.of\`, \`Map.of\`); **private interface methods**; and the reactive **Flow API**. |
+| **Java 10** | 2018 | **Local-variable type inference** with \`var\`; application class-data sharing (faster startup); G1 garbage-collector improvements. |
+| **Java 11** (LTS) | 2018 | The standardized **HTTP Client API**; new **String methods** (\`strip\`, \`repeat\`, \`lines\`, \`isBlank\`); **running a single .java file** directly with \`java Foo.java\`; Flight Recorder open-sourced; TLS 1.3; and removal of the old Java EE and CORBA modules. |
+
+### The release-cadence shift
+Java 9 (2017) began the **six-month release cadence**: a new feature release every 6 months, with a **Long-Term-Support (LTS)** release roughly every 2 years. That is why version numbers jump so quickly from here on — Java 8 (2014) to Java 11 (2018) to Java 17 (2021) and beyond.
+
+> **LTS note:** Java 8 and Java 11 are both LTS releases — production systems standardized on them for years.`,
+            code: [
+              {
+                lang: `java`,
+                title: `From loops to streams: sum of even squares, imperative vs Stream API (Java 8)`,
+                code: `import java.util.List;
+
+public class LoopsToStreams {
+    public static void main(String[] args) {
+        List<Integer> nums = List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+
+        // Pre-Java-8: imperative loop
+        int imperative = 0;
+        for (int n : nums) {
+            if (n % 2 == 0) {
+                imperative += n * n;
+            }
+        }
+
+        // Java 8: Stream API pipeline
+        int streamed = nums.stream()
+                .filter(n -> n % 2 == 0)
+                .mapToInt(n -> n * n)
+                .sum();
+
+        System.out.println("imperative sum of even squares: " + imperative);
+        System.out.println("stream     sum of even squares: " + streamed);
+        System.out.println("equal: " + (imperative == streamed));
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `var + text block + enhanced switch in one demo (Java 10 / 15 / 14, all final in 21)`,
+                code: `public class ModernSyntaxDemo {
+    public static void main(String[] args) {
+        // Java 10: local-variable type inference with var.
+        var languages = new String[] {"java", "kotlin", "scala"};
+
+        // Java 15: text block (multi-line string, no escaping).
+        var report = """
+                Language Report
+                ===============
+                Total: %d languages
+                """.formatted(languages.length);
+        System.out.print(report);
+
+        for (var lang : languages) {
+            // Java 14: switch expression with arrow labels returning a value.
+            var kind = switch (lang) {
+                case "java" -> "the classic";
+                case "kotlin", "scala" -> "a JVM cousin";
+                default -> "unknown";
+            };
+            System.out.println(lang + " -> " + kind);
+        }
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Which version introduced lambda expressions and the Stream API?`,
+                a: `Java 8 (2014).`
+              },
+              {
+                q: `Why is Java 8 called a game changer?`,
+                a: `It brought functional-style programming (lambdas, streams, method references) to Java and was the most widely used version for years.`
+              },
+              {
+                q: `What is Optional and which version added it?`,
+                a: `A container object introduced in Java 8 that may or may not hold a value, used to model absence explicitly instead of returning null.`
+              },
+              {
+                q: `What did Java 9 add?`,
+                a: `The Module System (JPMS / Project Jigsaw), JShell (the REPL), collection factory methods (List.of/Map.of), private interface methods, and the reactive Flow API.`
+              },
+              {
+                q: `What is a default method?`,
+                a: `A method with a body declared on an interface (Java 8), letting interfaces gain new methods without breaking existing implementations.`
+              },
+              {
+                q: `Which version introduced the var keyword for local variables?`,
+                a: `Java 10 (2018) — local-variable type inference; the compiler infers the type from the initializer.`
+              },
+              {
+                q: `What are the LTS releases in this era, and what is Java 11 known for?`,
+                a: `Java 8 and Java 11 are LTS; Java 11 (2018) added the standardized HTTP Client API, new String methods, and single-file source execution.`
+              },
+              {
+                q: `When did the six-month release cadence begin?`,
+                a: `With Java 9 in 2017: a feature release every 6 months and an LTS roughly every 2 years.`
+              },
+              {
+                q: `What is a functional interface?`,
+                a: `An interface with exactly one abstract method (e.g. Runnable, Comparator), which can be implemented by a lambda expression (Java 8).`
+              },
+              {
+                q: `What new date/time library did Java 8 introduce?`,
+                a: `The java.time API (LocalDate, LocalDateTime, Instant, Duration), replacing the flawed java.util.Date and Calendar.`
+              },
+              {
+                q: `What is JShell?`,
+                a: `Java's interactive REPL (read-eval-print loop), introduced in Java 9, for evaluating snippets without writing a full class.`
+              },
+              {
+                q: `What can you do with 'java Foo.java' since Java 11?`,
+                a: `Run a single source file directly without a separate compile step, useful for scripts and quick experiments.`
+              }
+            ]
+          },
+          {
+            title: `Acceleration (2019-2026+) — The Six-Month Cadence & Modern Java`,
+            notes: `## Acceleration (2019-2026+) — The Six-Month Cadence & Modern Java
+
+Under the six-month cadence, features often arrive as **previews** first and become **final** a few releases later. That is why records, sealed classes, pattern matching, and virtual threads each appear across several versions before "going final".
+
+\`\`\`mermaid
+timeline
+    title Acceleration Era: previews maturing into final features
+    2019 : Java 12-13 : Switch expressions and text blocks (preview)
+    2020 : Java 14-15 : Records and sealed classes (preview) : Switch expr and text blocks (final)
+    2021 : Java 16-17 LTS : Records final : Sealed classes final : Pattern matching for instanceof final
+    2023 : Java 21 LTS : Virtual threads final : Record patterns final : Pattern matching for switch final
+    2025 : Java 25 LTS : Compact source files and scoped values final
+    2026 : Java 26 roadmap : Not finalized
+\`\`\`
+
+### Java 12-17
+| Version | Year | Headline features (one line each) |
+|---------|------|-----------------------------------|
+| **12** | 2019 | Switch expressions (preview); Shenandoah GC (experimental); microbenchmark and constants improvements. |
+| **13** | 2019 | Text blocks (preview); dynamic CDS archives; ZGC improvements. |
+| **14** | 2020 | Switch expressions (final); records (preview); pattern matching for instanceof (preview); helpful NullPointerExceptions. |
+| **15** | 2020 | Text blocks (final); sealed classes (preview); hidden classes; ZGC and Shenandoah production-ready. |
+| **16** | 2021 | Records (final); pattern matching for instanceof (final); strong encapsulation of JDK internals; Vector API (incubator). |
+| **17** (LTS) | 2021 | Sealed classes (final); pattern matching for switch (preview); enhanced pseudo-random generators; strong encapsulation by default. |
+
+### Java 18-21
+| Version | Year | Headline features (one line each) |
+|---------|------|-----------------------------------|
+| **18** | 2022 | UTF-8 as the default charset; a simple built-in web server (\`jwebserver\`); code snippets in Javadoc. |
+| **19** | 2022 | Virtual threads (preview); structured concurrency (incubator); record patterns (preview); pattern matching for switch (preview); Foreign Function & Memory API (preview). |
+| **20** | 2023 | Second previews of virtual threads, record patterns, and pattern matching for switch; scoped values (incubator). |
+| **21** (LTS) | 2023 | **Virtual threads (final)**; record patterns (final); pattern matching for switch (final); sequenced collections (\`getFirst\`/\`getLast\`); string templates (preview); generational ZGC. |
+
+### Java 22-26
+| Version | Year | Headline features (one line each) |
+|---------|------|-----------------------------------|
+| **22** | 2024 | Foreign Function & Memory API (final); unnamed variables and patterns (\`_\`); statements before \`super(...)\`; stream gatherers (preview). |
+| **23** | 2024 | Markdown in Javadoc; primitive types in patterns (preview); stream gatherers (second preview); implicitly declared classes and instance main methods (preview). |
+| **24** | 2025 | JVM and performance enhancements; ahead-of-time class loading; continued language refinements and previews. |
+| **25** (LTS) | 2025 | Compact source files and instance main methods (final — a simpler entry point for beginners); scoped values (final); module import declarations; flexible constructor bodies (final); PEM encoding (preview). |
+| **26** | 2026 | **ROADMAP / not finalized.** Expected items include removing the legacy Applet API, HTTP/3 support, and continued structured-concurrency previews. Treat as forward-looking. |
+
+### LTS summary — what production standardizes on
+The **Long-Term-Support (LTS) releases are Java 8, 11, 17, 21, and 25.** These get years of updates, so production systems standardize on them; the versions in between are six-month **feature releases** that carry new capabilities forward but receive updates only until the next release.
+
+| LTS | Year | Signature capability |
+|-----|------|----------------------|
+| Java 8 | 2014 | Lambdas and streams |
+| Java 11 | 2018 | Standard HTTP Client, module system maturity |
+| Java 17 | 2021 | Sealed classes, records, strong encapsulation |
+| Java 21 | 2023 | Virtual threads, pattern matching for switch |
+| Java 25 | 2025 | Compact source files, scoped values |
+
+### What "preview" and "incubator" mean
+A **preview** feature is a complete language/JVM feature shipped behind the \`--enable-preview\` flag so the community can try it and give feedback before it becomes permanent (**final**). **Incubator** modules are new APIs shipped the same way for feedback. This is exactly why records, sealed classes, pattern matching, and virtual threads each showed up as previews across several releases before going final.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Records: auto equals/hashCode/toString vs the old verbose class (Java 16, final in 21)`,
+                code: `import java.util.Objects;
+
+public class RecordsDemo {
+
+    // Java 16+: a record generates constructor, accessors, equals, hashCode, toString.
+    record Point(int x, int y) {}
+
+    // The old verbose equivalent (pre-record boilerplate).
+    static final class OldPoint {
+        private final int x;
+        private final int y;
+        OldPoint(int x, int y) { this.x = x; this.y = y; }
+        int x() { return x; }
+        int y() { return y; }
+        @Override public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof OldPoint p)) return false;
+            return x == p.x && y == p.y;
+        }
+        @Override public int hashCode() { return Objects.hash(x, y); }
+        @Override public String toString() { return "OldPoint[x=" + x + ", y=" + y + "]"; }
+    }
+
+    public static void main(String[] args) {
+        Point p1 = new Point(3, 4);
+        Point p2 = new Point(3, 4);
+        OldPoint o1 = new OldPoint(3, 4);
+        OldPoint o2 = new OldPoint(3, 4);
+
+        System.out.println("record toString : " + p1);
+        System.out.println("record equals   : " + p1.equals(p2));
+        System.out.println("record accessor : x=" + p1.x() + " y=" + p1.y());
+        System.out.println("oldclass equals : " + o1.equals(o2));
+        System.out.println("same hashCode   : " + (p1.hashCode() == p2.hashCode()));
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Sealed interface + pattern-matching switch computing area (Java 21 final)`,
+                code: `public class SealedShapes {
+
+    // Java 17+ sealed interface: only the permitted types can implement Shape.
+    sealed interface Shape permits Circle, Rectangle, Triangle {}
+    record Circle(double radius) implements Shape {}
+    record Rectangle(double width, double height) implements Shape {}
+    record Triangle(double base, double height) implements Shape {}
+
+    // Java 21: pattern-matching switch over the sealed hierarchy (no default needed).
+    static double area(Shape s) {
+        return switch (s) {
+            case Circle c -> Math.PI * c.radius() * c.radius();
+            case Rectangle r -> r.width() * r.height();
+            case Triangle t -> 0.5 * t.base() * t.height();
+        };
+    }
+
+    public static void main(String[] args) {
+        Shape[] shapes = {
+            new Circle(2.0),
+            new Rectangle(3.0, 4.0),
+            new Triangle(6.0, 5.0)
+        };
+        for (Shape s : shapes) {
+            System.out.printf("%-24s area = %.3f%n", s, area(s));
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Virtual threads: 10,000 lightweight tasks on one executor (Java 21 final)`,
+                code: `import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class VirtualThreadsDemo {
+    public static void main(String[] args) throws InterruptedException {
+        var completed = new AtomicInteger();
+        int taskCount = 10_000;
+
+        // Java 21: one lightweight virtual thread per task.
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < taskCount; i++) {
+                executor.submit(() -> {
+                    try {
+                        Thread.sleep(10); // simulate blocking I/O cheaply
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    completed.incrementAndGet();
+                });
+            }
+        } // close() waits for all tasks to finish
+
+        System.out.println("virtual thread tasks completed: " + completed.get());
+        System.out.println("all done: " + (completed.get() == taskCount));
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What are ALL the LTS (Long-Term-Support) releases of Java?`,
+                a: `Java 8, 11, 17, 21, and 25 — these are what production systems standardize on; versions in between are six-month feature releases.`
+              },
+              {
+                q: `When did records go final?`,
+                a: `Java 16 (2021); they were first previewed in Java 14 (2020).`
+              },
+              {
+                q: `When did virtual threads go final, and what are they?`,
+                a: `Java 21 (2023). Virtual threads are lightweight JVM-managed threads that make blocking code scale to millions of concurrent tasks cheaply.`
+              },
+              {
+                q: `What is a preview feature?`,
+                a: `A complete feature shipped behind the --enable-preview flag to gather community feedback before becoming permanent (final); it may change between releases.`
+              },
+              {
+                q: `Why do features like records and virtual threads appear across several versions?`,
+                a: `They ship as previews first, are refined over one or more releases based on feedback, then go final — so the same feature name recurs before it is permanent.`
+              },
+              {
+                q: `When did pattern matching for switch and record patterns go final?`,
+                a: `Java 21 (2023).`
+              },
+              {
+                q: `Which version made sealed classes final?`,
+                a: `Java 17 (2021), an LTS release; sealed classes were previewed in Java 15.`
+              },
+              {
+                q: `What did Java 21 add besides virtual threads?`,
+                a: `Record patterns (final), pattern matching for switch (final), sequenced collections (getFirst/getLast), string templates (preview), and generational ZGC.`
+              },
+              {
+                q: `What is the status of Java 26?`,
+                a: `Roadmap / not finalized (2026); expected items include removing the legacy Applet API, HTTP/3 support, and continued structured-concurrency previews.`
+              },
+              {
+                q: `Which LTS release is Java 25 and what did it add?`,
+                a: `Java 25 (2025, LTS): compact source files and instance main methods (final), scoped values (final), module import declarations, and flexible constructor bodies (final).`
+              },
+              {
+                q: `What are sequenced collections?`,
+                a: `A Java 21 interface family adding a defined encounter order with getFirst/getLast/reversed across List, Set, and Map types.`
+              },
+              {
+                q: `What is an incubator module?`,
+                a: `A new API shipped behind a flag (like a preview but for libraries rather than language syntax) so developers can try it and give feedback before it is finalized.`
+              }
+            ]
+          }
+        ]
       }
     ]
   },
