@@ -89,6 +89,14 @@ const INTERVIEW_QUESTIONS = {
     {
       "q": "Why does fall-through exist in switch at all, and how do you exploit it deliberately versus accidentally?",
       "a": "Fall-through lets multiple case labels share a body, which is useful for grouping — for instance MONDAY, TUESDAY, ... all falling into a 'weekday' branch. The danger is accidental fall-through from a forgotten break, which silently executes the next case; static analyzers and -Xlint flag it. The Java 14 arrow form removes fall-through entirely and supports comma-separated labels (case MONDAY, TUESDAY ->), giving the grouping benefit without the footgun."
+    },
+    {
+      "q": "What is the difference between an array's length and a String's length in Java?",
+      "a": "An array exposes its size as a public final field, `arr.length` (no parentheses), fixed at creation time. A String exposes its size as a method, `s.length()` (with parentheses). Mixing them up -- writing arr.length() or s.length -- is a common beginner compile error. Also note arrays are fixed-size: you cannot grow arr.length; you allocate a new, larger array (or use ArrayList) instead."
+    },
+    {
+      "q": "How do you correctly compare the contents of two arrays, and why doesn't == work?",
+      "a": "Use Arrays.equals(a, b) for one-dimensional arrays (or Arrays.deepEquals for nested arrays). The == operator and the default Object.equals compare references -- whether the two variables point to the SAME array object -- not their contents, so two different arrays with identical elements are '!=' and equals() returns false. Arrays.equals walks the elements and compares them pairwise, which is what you almost always want."
     }
   ],
   "0.4": [

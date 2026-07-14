@@ -2945,6 +2945,364 @@ public class BreakContinueDemo {
                 a: `Two nested loops each running n times is O(n²). This is why nested loops are avoided for large data sets. Algorithms like bubble sort (nested loops) are O(n²) — too slow for millions of elements.`
               }
             ]
+          },
+          {
+            title: `Arrays — Storing Many Values in a Fixed-Size Sequence`,
+            notes: `# Arrays — Storing Many Values in a Fixed-Size Sequence
+
+You already know how to make a single variable like \`int score = 90;\`. But what if you have 100 scores? Declaring \`score1\`, \`score2\`, ... \`score100\` is madness. An **array** is the fix: one name that holds *many* values of the *same type*, laid out in a row and reached by a number called an **index**.
+
+Key idea: an array has a **fixed size**. You choose how many slots when you create it, and that size never changes. (When you need a list that grows, you reach for \`ArrayList\` — teased at the end.)
+
+## The mental picture
+
+An array is a numbered row of boxes. Indexing starts at **0**, so an array of length 5 has valid indices \`0, 1, 2, 3, 4\`:
+
+\`\`\`
+ index:   0     1     2     3     4
+        +-----+-----+-----+-----+-----+
+scores  |  90 |  80 |  70 |  60 |  50 |
+        +-----+-----+-----+-----+-----+
+                                    ^
+                    last valid index = length - 1 = 4
+\`\`\`
+
+\`\`\`mermaid
+flowchart LR
+    A["scores[0]<br/>90"] --> B["scores[1]<br/>80"] --> C["scores[2]<br/>70"] --> D["scores[3]<br/>60"] --> E["scores[4]<br/>50"]
+\`\`\`
+
+## Declaring and creating
+
+Two common ways:
+
+\`\`\`java
+// 1) Size-only: makes 5 slots, each set to the DEFAULT value (0 for int).
+int[] scores = new int[5];
+
+// 2) Literal: values listed, size inferred (here, 3).
+int[] more = {90, 80, 70};
+\`\`\`
+
+Default values when you use \`new\`: numeric types get \`0\` (\`0.0\` for \`double\`), \`boolean\` gets \`false\`, and **object arrays** (like \`String[]\`) get \`null\`.
+
+Arrays are **objects living on the heap**. The variable \`scores\` holds a *reference* (an arrow) to that object, not the values themselves. This matters later for \`==\`.
+
+## Reading, writing, and \`.length\`
+
+\`\`\`java
+scores[0] = 90;              // write to slot 0
+int first = scores[0];       // read slot 0
+int n = scores.length;       // how many slots (a FIELD, no parentheses)
+\`\`\`
+
+Watch this trap: an array uses **\`.length\`** (a field, no parentheses). A \`String\` uses **\`.length()\`** (a method, with parentheses). Same word, different punctuation.
+
+## Staying in bounds
+
+Valid indices run \`0\` to \`length - 1\`. Touch anything outside — like \`scores[5]\` on a length-5 array, or \`scores[-1]\` — and Java throws an **\`ArrayIndexOutOfBoundsException\`** at runtime. To avoid it, always loop with \`i < a.length\` (strictly less-than), never \`i <= a.length\`. That extra step is the classic **off-by-one** bug.
+
+## Iterating: two styles
+
+\`\`\`java
+// Classic for: you HAVE the index i, so you can read AND write.
+for (int i = 0; i < a.length; i++) {
+    a[i] = a[i] * 2;   // works: writing back through the index
+}
+
+// Enhanced for-each: cleaner when you only need to READ each value.
+for (int value : a) {
+    System.out.println(value);
+}
+\`\`\`
+
+Use **for-each** when you just want to visit every element in order. Use the **classic for** when you need the index — for example to change elements, to skip some, or to walk two arrays together. Note: assigning to the loop variable in a for-each over primitives (\`value = 0;\`) does **not** change the array; \`value\` is only a copy.
+
+## Multidimensional arrays
+
+A 2D array is really an **array of arrays**. \`new int[3][4]\` is 3 rows, each row a 4-element array:
+
+\`\`\`java
+int[][] grid = new int[3][4];
+grid[1][2] = 7;                       // row 1, column 2
+int rowLen = grid[0].length;          // 4
+\`\`\`
+
+Because each row is its own array, rows can have **different lengths** — a *jagged* array. You iterate with nested loops, the outer over rows, the inner over \`grid[r].length\` columns.
+
+## Primitives vs objects in arrays
+
+\`int[]\` stores the numbers directly. \`String[]\` stores *references*, and a fresh one is full of **\`null\`** until you assign real objects. Reading a slot that is still \`null\` and calling a method on it gives a \`NullPointerException\`, so fill before you use.
+
+## The \`java.util.Arrays\` toolbox
+
+\`import java.util.Arrays;\` unlocks handy static helpers:
+
+| Method | What it does |
+| --- | --- |
+| \`Arrays.toString(a)\` | Readable text like \`[10, 20, 30]\` (plain \`a\` prints gibberish) |
+| \`Arrays.sort(a)\` | Sorts ascending, in place |
+| \`Arrays.fill(a, v)\` | Sets every slot to \`v\` |
+| \`Arrays.copyOf(a, n)\` | New array of length \`n\` (truncates or pads with defaults) |
+| \`Arrays.equals(a, b)\` | \`true\` if same length and same contents |
+| \`Arrays.binarySearch(a, key)\` | Index of \`key\` — **array must be sorted first** |
+
+## Comparing arrays: the big gotcha
+
+\`\`\`java
+int[] a = {1, 2, 3};
+int[] b = {1, 2, 3};
+a == b               // false — two different objects (compares references)
+Arrays.equals(a, b)  // true  — compares contents
+\`\`\`
+
+\`==\` on arrays asks "are these the *same object*?", not "do they hold the *same values*?". To compare contents, always use \`Arrays.equals\`.
+
+## Array vs ArrayList (a quick teaser)
+
+An array is **fixed-size and low-level** — fast, simple, but you must know the size up front and can't grow it. When you need a collection that **grows and shrinks**, Java offers \`ArrayList\`:
+
+\`\`\`java
+import java.util.ArrayList;
+ArrayList<Integer> list = new ArrayList<>();
+list.add(90);          // grows automatically
+int x = list.get(0);   // method calls, not [] brackets
+\`\`\`
+
+Just get oriented for now — \`ArrayList\` and friends get the full treatment in the **Collections** module.
+
+## Pitfalls checklist
+
+- **Off-by-one:** loop with \`i < a.length\`, not \`i <= a.length\`.
+- **\`==\` vs contents:** use \`Arrays.equals(a, b)\` to compare values.
+- **\`.length\` vs \`.length()\`:** field for arrays, method for \`String\`.
+- **Defaults:** \`new int[3]\` is \`{0,0,0}\`; \`new String[3]\` is \`{null,null,null}\`.
+- **Fixed size:** you cannot append to an array — make a bigger one (\`Arrays.copyOf\`) or use \`ArrayList\`.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `1. Create, fill, read, and print an int array`,
+                code: `import java.util.Arrays;
+
+public class ArrayBasicsDemo {
+    public static void main(String[] args) {
+        // Create an int array of size 5. All slots default to 0.
+        int[] scores = new int[5];
+        System.out.println("Fresh array (defaults): " + Arrays.toString(scores));
+
+        // Write values by index. Indexing starts at 0.
+        scores[0] = 90;
+        scores[1] = 80;
+        scores[2] = 70;
+        scores[3] = 60;
+        scores[4] = 50;
+
+        // Read a single value.
+        System.out.println("First score scores[0] = " + scores[0]);
+        System.out.println("Array length = " + scores.length);
+
+        // Print every element with a classic for loop.
+        System.out.print("All scores: ");
+        for (int i = 0; i < scores.length; i++) {
+            System.out.print(scores[i] + " ");
+        }
+        System.out.println();
+
+        // Literal initialization: size is inferred from the list.
+        int[] quick = {5, 10, 15};
+        System.out.println("Literal array: " + Arrays.toString(quick));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `2. Iterate for real: sum, average, and max`,
+                code: `public class ArrayStatsDemo {
+    public static void main(String[] args) {
+        int[] nums = {42, 7, 19, 88, 23, 55};
+
+        // Sum and average using a for-each loop (no index needed).
+        int sum = 0;
+        for (int n : nums) {
+            sum = sum + n;
+        }
+        double average = (double) sum / nums.length;
+
+        // Find the maximum with a classic for loop.
+        int max = nums[0];
+        for (int i = 1; i < nums.length; i++) {
+            if (nums[i] > max) {
+                max = nums[i];
+            }
+        }
+
+        System.out.println("Sum     = " + sum);
+        System.out.println("Average = " + average);
+        System.out.println("Max     = " + max);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `3. 2D array: a multiplication table (plus a jagged array)`,
+                code: `public class Grid2DDemo {
+    public static void main(String[] args) {
+        int rows = 3;
+        int cols = 4;
+
+        // A 2D array is an array of arrays: 3 rows, each with 4 columns.
+        int[][] grid = new int[rows][cols];
+
+        // Fill it as a multiplication table.
+        for (int r = 0; r < grid.length; r++) {
+            for (int c = 0; c < grid[r].length; c++) {
+                grid[r][c] = (r + 1) * (c + 1);
+            }
+        }
+
+        // Print row by row.
+        for (int r = 0; r < grid.length; r++) {
+            for (int c = 0; c < grid[r].length; c++) {
+                System.out.print(grid[r][c] + "\\t");
+            }
+            System.out.println();
+        }
+
+        // Jagged array: rows of different lengths.
+        int[][] jagged = new int[3][];
+        jagged[0] = new int[]{1};
+        jagged[1] = new int[]{1, 2};
+        jagged[2] = new int[]{1, 2, 3};
+        System.out.println("Jagged row lengths: "
+            + jagged[0].length + ", "
+            + jagged[1].length + ", "
+            + jagged[2].length);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `4. The java.util.Arrays toolbox tour`,
+                code: `import java.util.Arrays;
+
+public class ArraysUtilDemo {
+    public static void main(String[] args) {
+        int[] data = {50, 20, 40, 10, 30};
+        System.out.println("Original : " + Arrays.toString(data));
+
+        // Sort ascending, in place.
+        Arrays.sort(data);
+        System.out.println("Sorted   : " + Arrays.toString(data));
+
+        // binarySearch requires a SORTED array; returns the index.
+        int idx = Arrays.binarySearch(data, 40);
+        System.out.println("Index of 40 = " + idx);
+
+        // copyOf makes a new array of a given length (padding with 0).
+        int[] bigger = Arrays.copyOf(data, 7);
+        System.out.println("copyOf(7): " + Arrays.toString(bigger));
+
+        // fill sets every slot to one value.
+        int[] filled = new int[4];
+        Arrays.fill(filled, 9);
+        System.out.println("Filled   : " + Arrays.toString(filled));
+
+        // equals compares CONTENTS element by element.
+        int[] a = {1, 2, 3};
+        int[] b = {1, 2, 3};
+        System.out.println("a == b            : " + (a == b));
+        System.out.println("Arrays.equals(a,b): " + Arrays.equals(a, b));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `5. Bounds error caught + object arrays start as null`,
+                code: `import java.util.Arrays;
+
+public class BoundsAndObjectsDemo {
+    public static void main(String[] args) {
+        int[] a = {10, 20, 30};
+
+        // Valid indices are 0..a.length-1, here 0..2.
+        // Touching index 3 throws ArrayIndexOutOfBoundsException.
+        try {
+            System.out.println("Reading a[3]...");
+            System.out.println(a[3]);
+        } catch (ArrayIndexOutOfBoundsException e) {
+            System.out.println("Caught out-of-bounds: " + e.getMessage());
+        }
+
+        // An array of objects starts full of nulls, not zeros.
+        String[] names = new String[3];
+        System.out.println("Fresh String array: " + Arrays.toString(names));
+        names[0] = "Ada";
+        names[1] = "Alan";
+        System.out.println("After filling two : " + Arrays.toString(names));
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is an array?`,
+                a: `A fixed-size, indexed sequence of values that are all the same type, stored together and reached by a numeric index. It replaces having many separate variables like score1, score2, score3.`
+              },
+              {
+                q: `How do you create an int array of 5 zeros, and how do you create one from listed values?`,
+                a: `Size-only: int[] a = new int[5]; (all slots default to 0). Literal: int[] a = {90, 80, 70}; (size inferred from the list).`
+              },
+              {
+                q: `How do you get the number of elements in an array?`,
+                a: `Use the .length FIELD (no parentheses): a.length. For an array of length 5 it returns 5, and valid indices are 0 to 4.`
+              },
+              {
+                q: `What is the difference between array.length and String.length()?`,
+                a: `An array uses .length -- a field, no parentheses. A String uses .length() -- a method, with parentheses. Same word, different punctuation.`
+              },
+              {
+                q: `Why does array indexing start at 0, and what is the last valid index?`,
+                a: `Java arrays are zero-based, so the first element is a[0]. The last valid index is a.length - 1.`
+              },
+              {
+                q: `What is an ArrayIndexOutOfBoundsException and how do you avoid it?`,
+                a: `A runtime error thrown when you use an index outside 0..length-1 (for example a[5] on a length-5 array, or a negative index). Avoid it by looping with i < a.length (strictly less-than), never i <= a.length.`
+              },
+              {
+                q: `When should you use a for-each loop versus a classic indexed for loop over an array?`,
+                a: `Use for-each (for (int x : a)) when you only need to READ each element in order -- it is cleaner but has no index. Use a classic for (int i = 0; i < a.length; i++) when you need the index: to write elements back, skip some, or count. Assigning to a for-each variable over primitives does NOT change the array.`
+              },
+              {
+                q: `How do you correctly compare the CONTENTS of two arrays?`,
+                a: `Use Arrays.equals(a, b). Do NOT use a == b -- that compares references (whether they are the same object), so two arrays with identical contents give false.`
+              },
+              {
+                q: `What is a 2D array in Java, and how is a jagged array possible?`,
+                a: `A 2D array is an array of arrays, e.g. new int[3][4] is 3 rows each holding a 4-element array. Access with grid[r][c]. Because each row is its own array, rows can have different lengths -- that is a jagged array.`
+              },
+              {
+                q: `What default values do new arrays hold for primitives versus objects?`,
+                a: `Numeric primitives default to 0 (0.0 for double), boolean to false. Object arrays like String[] default to null, so you must assign real objects before using them.`
+              },
+              {
+                q: `What does Arrays.binarySearch require before you call it?`,
+                a: `The array must already be SORTED (e.g. call Arrays.sort first). On a sorted array it returns the index of the key; on an unsorted array the result is undefined.`
+              },
+              {
+                q: `Name three handy java.util.Arrays helper methods and what they do.`,
+                a: `Arrays.toString(a) makes readable text like [10, 20, 30]; Arrays.sort(a) sorts ascending in place; Arrays.fill(a, v) sets every slot to v; Arrays.copyOf(a, n) makes a new length-n array; Arrays.equals(a, b) compares contents.`
+              },
+              {
+                q: `What is the key difference between an array and an ArrayList?`,
+                a: `An array is fixed-size and low-level: you set its length at creation and cannot grow it, and you use [] brackets. An ArrayList grows and shrinks dynamically and uses methods like add and get. Use arrays for a known fixed count; use ArrayList when the size changes.`
+              }
+            ]
           }
         ]
       },
