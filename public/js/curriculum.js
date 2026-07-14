@@ -72893,5 +72893,4387 @@ public class ChoosingPatternsDemo {
         ]
       }
     ]
+  },
+  {
+    id: `p13`,
+    title: `Practice Programs — Master Every Pattern`,
+    icon: `dumbbell`,
+    blurb: `Hands-on coding practice: every classic problem solved multiple ways, from the basic idea to the optimal trick, with commented, runnable code you can execute right here.`,
+    modules: [
+      {
+        id: `13.1`,
+        title: `Strings — Practice Programs`,
+        hours: 4,
+        sections: [
+          {
+            title: `Reverse a String [Easy]`,
+            notes: `## Reverse a String
+
+Return the input string with its characters in reverse order. Strings are immutable in Java, so every approach produces a NEW string.
+
+Example: \`hello\` -> \`olleh\`
+
+### Approaches
+- **Char-array swap (two-pointer):** copy to \`char[]\`, swap the ends, walk inward until the pointers meet. In-place on the array, O(1) extra work.
+- **StringBuilder.reverse:** the idiomatic built-in; one call, surrogate-aware.
+- **Recursion:** \`reverse(rest) + firstChar\` — peel the head, reverse the tail, append the head last.
+- **Stack (Deque):** push every char, pop them out; LIFO gives reverse order.
+- **Streams:** walk indices from the end with \`IntStream\` and collect.
+
+### Complexity
+| Approach | Time | Space | Notes |
+| --- | --- | --- | --- |
+| Char-array swap | O(n) | O(n) | O(1) extra beyond the mandatory copy |
+| StringBuilder.reverse | O(n) | O(n) | shortest correct code |
+| Recursion | O(n^2) | O(n) | substring copies + stack depth; can overflow |
+| Stack (Deque) | O(n) | O(n) | makes LIFO intuition explicit |
+| Streams | O(n) | O(n) | declarative, more overhead |
+
+### Which to use
+Reach for \`new StringBuilder(s).reverse().toString()\` in real code. In an interview asking you to "do it manually," the char-array two-pointer swap is the expected answer: O(n) time, O(1) extra space.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — char-array two-pointer swap`,
+                code: `// Approach 1 (basic/optimal): in-place two-pointer char-array swap.
+// Idea: a String is immutable, so we copy it into a char[] and swap the
+// characters at the two ends, walking the pointers inward until they meet.
+// Invariant: after k swaps, the outermost k chars on each side are final.
+// Time: O(n) — each char is touched once. Space: O(n) for the char[]
+// (unavoidable because String is immutable; the SWAP itself is O(1) extra).
+public class ReverseSwap {
+    static String reverse(String s) {
+        char[] c = s.toCharArray();   // mutable working copy
+        int i = 0, j = c.length - 1;  // left and right pointers
+        while (i < j) {               // stop when they cross/meet (middle is fixed)
+            char t = c[i];            // classic 3-step swap
+            c[i] = c[j];
+            c[j] = t;
+            i++;                      // move both pointers toward the center
+            j--;
+        }
+        return new String(c);
+    }
+
+    public static void main(String[] a) {
+        String in = "hello";
+        System.out.println(in + " -> " + reverse(in));  // hello -> olleh
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — StringBuilder.reverse`,
+                code: `// Approach 2 (idiomatic one-liner): use the JDK's built-in StringBuilder.reverse().
+// This is what you write in real code — short, correct, well-tested.
+// StringBuilder is a mutable sequence of chars; reverse() flips it in place,
+// then toString() materialises the result.
+// Time: O(n). Space: O(n) for the builder's internal char[].
+// Caveat worth mentioning in an interview: reverse() works on UTF-16 code
+// UNITS, but it is surrogate-aware (it keeps surrogate pairs together), so
+// it handles most emoji/supplementary characters correctly.
+public class ReverseStringBuilder {
+    static String reverse(String s) {
+        return new StringBuilder(s).reverse().toString();
+    }
+
+    public static void main(String[] a) {
+        String in = "hello";
+        System.out.println(in + " -> " + reverse(in));  // hello -> olleh
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — recursion`,
+                code: `// Approach 3 (recursion): reverse(s) = reverse(rest of s) + first char.
+// Peel off the first character, reverse everything after it, then append the
+// peeled char at the END. The recursion "unwinds" the string back-to-front.
+// Base case: empty or single-char string is its own reverse.
+// Time: O(n^2) in Java because each substring(1) copies the tail, and there
+// are n levels — so this is a teaching approach, not the one for huge input.
+// Space: O(n) call-stack depth (risk of StackOverflowError for very long input).
+public class ReverseRecursion {
+    static String reverse(String s) {
+        if (s.length() <= 1) return s;              // base case
+        return reverse(s.substring(1)) + s.charAt(0); // reverse tail, then prepend-first-as-last
+    }
+
+    public static void main(String[] a) {
+        String in = "hello";
+        System.out.println(in + " -> " + reverse(in));  // hello -> olleh
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 4 — stack (ArrayDeque)`,
+                code: `// Approach 4 (stack / Deque): push every char, then pop them out.
+// A stack is Last-In-First-Out, so popping yields the chars in reverse order.
+// This makes the "reverse == LIFO" intuition explicit and is handy when you
+// are already streaming characters and want to reverse them.
+// We use ArrayDeque (the recommended stack in modern Java; faster than the
+// legacy Stack class and not synchronized).
+// Time: O(n) push + O(n) pop = O(n). Space: O(n) for the deque.
+import java.util.ArrayDeque;
+import java.util.Deque;
+
+public class ReverseStack {
+    static String reverse(String s) {
+        Deque<Character> stack = new ArrayDeque<>();
+        for (char c : s.toCharArray()) stack.push(c);   // push all chars
+        StringBuilder sb = new StringBuilder(s.length());
+        while (!stack.isEmpty()) sb.append(stack.pop()); // pop = reverse order
+        return sb.toString();
+    }
+
+    public static void main(String[] a) {
+        String in = "hello";
+        System.out.println(in + " -> " + reverse(in));  // hello -> olleh
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 5 — streams (IntStream)`,
+                code: `// Approach 5 (streams / functional): walk indices from the end to the start.
+// IntStream generates positions n-1, n-2, ..., 0; we map each to its char and
+// collect into a StringBuilder. This is a declarative way to express the same
+// reversal — useful to show fluency with the Streams API in an interview.
+// Time: O(n). Space: O(n). (More overhead than the char-swap; pick swap or the
+// built-in reverse() for performance, streams for readability/pipeline fit.)
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+public class ReverseStreams {
+    static String reverse(String s) {
+        return IntStream.rangeClosed(1, s.length())        // 1..n
+                .mapToObj(i -> s.charAt(s.length() - i))   // i-th char from the end
+                .map(String::valueOf)
+                .collect(Collectors.joining());
+    }
+
+    public static void main(String[] a) {
+        String in = "hello";
+        System.out.println(in + " -> " + reverse(in));  // hello -> olleh
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why cannot you reverse a Java String truly in place?`,
+                a: `String is immutable; its backing array cannot be mutated. You must copy into a char[] or StringBuilder, so O(n) space is unavoidable.`
+              },
+              {
+                q: `Best time complexity to reverse a string?`,
+                a: `O(n) — every character must be moved at least once (char-array swap or StringBuilder.reverse).`
+              },
+              {
+                q: `Which reverse approach risks StackOverflowError on huge input?`,
+                a: `The recursion approach — it uses O(n) call-stack depth (and O(n^2) time due to substring copies).`
+              },
+              {
+                q: `Why does pushing chars on a stack and popping them reverse the string?`,
+                a: `A stack is LIFO: the last char pushed is the first popped, so popping yields characters in reverse order.`
+              },
+              {
+                q: `Is StringBuilder.reverse safe for emoji / supplementary characters?`,
+                a: `Yes — it is surrogate-aware and keeps surrogate pairs together rather than splitting them.`
+              }
+            ]
+          },
+          {
+            title: `Check Palindrome [Easy]`,
+            notes: `## Check Palindrome
+
+Decide whether a string reads the same forwards and backwards.
+
+Example: \`racecar\` -> \`true\`, \`hello\` -> \`false\`
+
+### Approaches
+- **Two-pointer:** compare the outer pair, move inward; the first mismatch means "not a palindrome." O(1) space and short-circuits.
+- **Reverse-and-equals:** build the reverse and test \`s.equals(reverse)\`. Simplest to write.
+- **Recursion:** check the outer pair, then recurse on the inner window (passing indices to avoid substring copies).
+- **Streams:** \`IntStream.range(0, n/2).allMatch(i -> s.charAt(i) == s.charAt(n-1-i))\` — checks each mirror pair, short-circuiting.
+
+### Complexity
+| Approach | Time | Space | Notes |
+| --- | --- | --- | --- |
+| Two-pointer | O(n) | O(1) | best; short-circuits on first mismatch |
+| Reverse-and-equals | O(n) | O(n) | extra reversed copy |
+| Recursion (index) | O(n) | O(n) | O(n) call-stack depth |
+| Streams allMatch | O(n) | O(1) | declarative, short-circuits |
+
+### Which to use
+The two-pointer scan is the interview favorite: O(n) time, O(1) extra space, and it stops at the first mismatch.
+
+\`\`\`mermaid
+flowchart LR
+    A["i=0, j=n-1"] --> B{"s[i] == s[j] ?"}
+    B -- no --> F["return false"]
+    B -- yes --> C["i++, j--"]
+    C --> D{"i < j ?"}
+    D -- yes --> B
+    D -- no --> E["return true"]
+\`\`\``,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — two-pointer`,
+                code: `// Approach 1 (optimal): two-pointer scan from both ends.
+// A palindrome reads the same forwards and backwards. Compare the outermost
+// pair, move inward, and the moment a pair differs it is NOT a palindrome.
+// Invariant: if the first k outer pairs matched, the string is palindromic
+// "so far". If pointers cross without a mismatch, it is a palindrome.
+// Time: O(n), and it SHORT-CIRCUITS on the first mismatch (best case O(1)).
+// Space: O(1) — no extra copy, we index the original string directly.
+public class PalindromeTwoPointer {
+    static boolean isPalindrome(String s) {
+        int i = 0, j = s.length() - 1;
+        while (i < j) {
+            if (s.charAt(i) != s.charAt(j)) return false; // mismatch -> done
+            i++;
+            j--;
+        }
+        return true; // pointers met/crossed with no mismatch
+    }
+
+    public static void main(String[] a) {
+        for (String in : new String[]{"racecar", "hello"}) {
+            System.out.println(in + " -> " + isPalindrome(in));
+        }
+        // racecar -> true, hello -> false
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — reverse and equals`,
+                code: `// Approach 2 (simplest to write): reverse the string and compare for equality.
+// If s equals its own reverse, it is a palindrome. Very readable; the go-to
+// when you are not worried about the extra allocation.
+// Time: O(n) to build the reverse + O(n) to compare = O(n).
+// Space: O(n) for the reversed copy (this is the cost vs. two-pointer's O(1)).
+public class PalindromeReverse {
+    static boolean isPalindrome(String s) {
+        String rev = new StringBuilder(s).reverse().toString();
+        return s.equals(rev);   // value equality, char-by-char
+    }
+
+    public static void main(String[] a) {
+        for (String in : new String[]{"racecar", "hello"}) {
+            System.out.println(in + " -> " + isPalindrome(in));
+        }
+        // racecar -> true, hello -> false
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — recursion (index window)`,
+                code: `// Approach 3 (recursion): check outer pair, then recurse on the inner substring.
+// isPal(s) is true when first==last AND the middle is itself a palindrome.
+// Base case: 0 or 1 characters left -> trivially a palindrome.
+// Time: O(n^2) here because charAt-based substring(i, j) copies the middle at
+// each level; a helper that passes indices instead would be O(n) — shown via
+// the index parameters below to KEEP it O(n) and O(n) stack.
+// Space: O(n) recursion depth.
+public class PalindromeRecursion {
+    // helper carries the two pointers so we never copy substrings -> O(n)
+    static boolean isPalindrome(String s, int i, int j) {
+        if (i >= j) return true;                       // base: met/crossed
+        if (s.charAt(i) != s.charAt(j)) return false;  // outer pair mismatch
+        return isPalindrome(s, i + 1, j - 1);          // recurse on inner window
+    }
+
+    static boolean isPalindrome(String s) {
+        return isPalindrome(s, 0, s.length() - 1);
+    }
+
+    public static void main(String[] a) {
+        for (String in : new String[]{"racecar", "hello"}) {
+            System.out.println(in + " -> " + isPalindrome(in));
+        }
+        // racecar -> true, hello -> false
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 4 — streams allMatch`,
+                code: `// Approach 4 (streams / functional): test half the indices declaratively.
+// For every index i in the first half, char at i must equal its mirror at
+// (n-1-i). IntStream.allMatch short-circuits on the first false, just like the
+// two-pointer loop, so it is O(n) time and O(1) extra space.
+// This showcases expressing an "all pairs match" predicate functionally.
+import java.util.stream.IntStream;
+
+public class PalindromeStreams {
+    static boolean isPalindrome(String s) {
+        int n = s.length();
+        return IntStream.range(0, n / 2)                       // first half only
+                .allMatch(i -> s.charAt(i) == s.charAt(n - 1 - i)); // i vs mirror
+    }
+
+    public static void main(String[] a) {
+        for (String in : new String[]{"racecar", "hello"}) {
+            System.out.println(in + " -> " + isPalindrome(in));
+        }
+        // racecar -> true, hello -> false
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why does the two-pointer palindrome check use O(1) space?`,
+                a: `It indexes the original string directly with two integer pointers; no reversed copy or extra collection is allocated.`
+              },
+              {
+                q: `How many pairs must the two-pointer approach actually compare?`,
+                a: `At most n/2 — once the pointers meet in the middle every pair has been checked.`
+              },
+              {
+                q: `What lets the two-pointer and allMatch versions be fast on non-palindromes?`,
+                a: `They short-circuit: they return false at the very first mismatched pair instead of scanning the whole string.`
+              },
+              {
+                q: `Why pass indices into the recursive palindrome helper instead of substrings?`,
+                a: `substring() copies characters (O(n) each call, O(n^2) total). Passing i and j keeps it O(n) time.`
+              }
+            ]
+          },
+          {
+            title: `Valid Anagram [Easy]`,
+            notes: `## Valid Anagram
+
+Two strings are anagrams if one is a rearrangement of the other — same letters, same counts.
+
+Example: \`listen\` and \`silent\` -> \`true\`; \`hello\` and \`world\` -> \`false\`
+
+### Approaches
+- **Sort both + compare:** sort each string's characters into canonical order and test equality. Simplest.
+- **Frequency int[26]:** one table; \`++\` for string A, \`--\` for string B; anagram iff every bucket ends at 0. Optimal for lowercase a-z.
+- **HashMap<Character,Integer>:** same +1/-1 idea but for arbitrary Unicode characters.
+
+Always fast-reject when the lengths differ.
+
+### Complexity
+| Approach | Time | Space | Notes |
+| --- | --- | --- | --- |
+| Sort both | O(n log n) | O(n) | clearest; sort dominates |
+| int[26] counts | O(n) | O(1) | optimal for a-z, fixed table |
+| HashMap counts | O(n) | O(k) | k distinct chars; any charset |
+
+### Which to use
+For a known small alphabet (lowercase a-z) the \`int[26]\` counting array is the optimal answer: O(n) time, O(1) space. Use the HashMap when the character set is large or Unicode.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — sort both and compare`,
+                code: `// Approach 1 (simplest): sort both strings, then compare.
+// Two strings are anagrams iff they contain the same letters with the same
+// counts. Sorting both puts their characters in a canonical order, so equal
+// sorted forms means anagram. Length check first is a fast reject.
+// Time: O(n log n) dominated by the sort. Space: O(n) for the char arrays.
+// Great when clarity matters more than squeezing out the last bit of speed.
+import java.util.Arrays;
+
+public class AnagramSort {
+    static boolean isAnagram(String a, String b) {
+        if (a.length() != b.length()) return false; // different length -> impossible
+        char[] x = a.toCharArray();
+        char[] y = b.toCharArray();
+        Arrays.sort(x);   // canonical order
+        Arrays.sort(y);
+        return Arrays.equals(x, y); // same sorted letters?
+    }
+
+    public static void main(String[] a) {
+        System.out.println("listen vs silent -> " + isAnagram("listen", "silent")); // true
+        System.out.println("hello vs world  -> " + isAnagram("hello", "world"));   // false
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — frequency int[26]`,
+                code: `// Approach 2 (optimal for lowercase a-z): a single int[26] frequency table.
+// Increment the count for each char of A, decrement for each char of B. If the
+// two are anagrams, every bucket returns to zero. One array, one pass each.
+// Time: O(n). Space: O(1) — the table is a fixed 26 ints regardless of input.
+// This is the interview-preferred answer when the alphabet is small/known.
+public class AnagramCountArray {
+    static boolean isAnagram(String a, String b) {
+        if (a.length() != b.length()) return false;
+        int[] freq = new int[26];               // 'a'..'z'
+        for (int i = 0; i < a.length(); i++) {
+            freq[a.charAt(i) - 'a']++;           // A adds
+            freq[b.charAt(i) - 'a']--;           // B removes
+        }
+        for (int f : freq) if (f != 0) return false; // any imbalance -> not anagram
+        return true;
+    }
+
+    public static void main(String[] a) {
+        System.out.println("listen vs silent -> " + isAnagram("listen", "silent")); // true
+        System.out.println("hello vs world  -> " + isAnagram("hello", "world"));   // false
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — HashMap counts (Unicode)`,
+                code: `// Approach 3 (general Unicode): HashMap<Character,Integer> counts.
+// Same +1/-1 idea as the int[26], but a HashMap handles ANY characters
+// (uppercase, digits, Unicode letters), not just lowercase a-z. Use this when
+// the character set is large or unknown.
+// getOrDefault keeps the update concise. We reject as soon as a count goes
+// negative or, at the end, if any nonzero entry remains.
+// Time: O(n) average (hash ops are O(1) amortised). Space: O(k) for k distinct chars.
+import java.util.HashMap;
+import java.util.Map;
+
+public class AnagramHashMap {
+    static boolean isAnagram(String a, String b) {
+        if (a.length() != b.length()) return false;
+        Map<Character, Integer> count = new HashMap<>();
+        for (char c : a.toCharArray()) count.merge(c, 1, Integer::sum);  // A adds
+        for (char c : b.toCharArray()) count.merge(c, -1, Integer::sum); // B removes
+        // anagram iff no character has a leftover nonzero balance
+        for (int v : count.values()) if (v != 0) return false;
+        return true;
+    }
+
+    public static void main(String[] a) {
+        System.out.println("listen vs silent -> " + isAnagram("listen", "silent")); // true
+        System.out.println("Dormitory vs DirtyRoom -> " + isAnagram("Dormitory", "DirtyRoom")); // false (case matters)
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Fastest way to check two strings are anagrams for lowercase a-z?`,
+                a: `A single int[26] frequency table: increment for one string, decrement for the other, then verify all buckets are 0. O(n) time, O(1) space.`
+              },
+              {
+                q: `What is the first, cheapest anagram check?`,
+                a: `Compare lengths — if they differ the strings cannot be anagrams, so return false immediately.`
+              },
+              {
+                q: `Why prefer a HashMap over int[26] for anagrams sometimes?`,
+                a: `int[26] only covers lowercase a-z. A HashMap<Character,Integer> handles uppercase, digits, and full Unicode.`
+              },
+              {
+                q: `What is the time complexity of the sort-based anagram check and why?`,
+                a: `O(n log n) — it is dominated by sorting both strings; the final equality compare is only O(n).`
+              }
+            ]
+          },
+          {
+            title: `Compare Two Strings [Easy to Advanced]`,
+            notes: `## Compare Two Strings
+
+"Compare" can mean two different questions, and interviewers probe whether you know the difference:
+1. **Are they equal?** (a boolean) -> \`equals\` / \`equalsIgnoreCase\`.
+2. **Which comes first?** (an ordering) -> \`compareTo\` / a \`Comparator\`.
+
+Example: \`apple\` vs \`apply\` -> equal? \`false\`; order? \`apple\` comes BEFORE \`apply\`.
+
+### The == trap
+Never use \`==\` to compare string CONTENT. \`==\` tests reference identity (same object on the heap); \`new String("Java") == "Java"\` is \`false\` even though the text matches. Use \`equals\` for value equality.
+
+### Lexicographic ordering (what compareTo does)
+Walk both strings in lockstep. At the first position where they differ, the one with the smaller UTF-16 char code is "less." If no difference is found, the SHORTER string is "less." That is exactly dictionary order, except capital letters (codes 65-90) sort BEFORE lowercase (97-122), so \`Zebra\` sorts before \`apple\`.
+
+**What \`compareTo\` returns:** negative -> this sorts before the argument; zero -> equal; positive -> this sorts after. The magnitude is the char-code difference at the first mismatch, or the length difference if one string is a prefix of the other. So \`"apple".compareTo("apply")\` is \`'e' - 'y' = -20\`.
+
+### Approaches
+- **equals / equalsIgnoreCase:** boolean sameness, optionally case-folded. Use when you only care "same or not."
+- **char-by-char via toCharArray():** the manual mechanics of lexicographic ordering — first mismatch decides, else length difference. This IS what compareTo does inside.
+- **compareTo (Comparable):** String's single built-in "natural order" (case-sensitive dictionary order). Drives \`Collections.sort\`, \`TreeMap\`, etc.
+- **custom Comparator:** define ANY other order (here: by length, then alphabetically) without modifying the class. Powers \`list.sort(cmp)\` and \`stream.sorted(cmp)\`.
+- **StringBuilder-based:** builders inherit Object.equals (reference-based) so \`sb1.equals(sb2)\` is false for equal text — convert with \`toString()\`, or use \`StringBuilder.compareTo\` (content-based, Java 11+).
+
+### Complexity
+| Approach | Time | Space | Notes |
+| --- | --- | --- | --- |
+| equals / equalsIgnoreCase | O(n) | O(1) | boolean only, no ordering |
+| char-by-char loop | O(min(n,m)) | O(n) | two char[] copies |
+| compareTo (natural) | O(min(n,m)) | O(1) | case-sensitive dictionary order |
+| custom Comparator | O(min(n,m)) | O(1) | any bespoke ordering |
+| StringBuilder compare | O(min(n,m)) | O(1) | beware equals is reference-based |
+
+### Which to use
+- Testing sameness: \`equals\` (or \`equalsIgnoreCase\` to fold case). Never \`==\`.
+- Sorting / ordering by the natural dictionary order: \`compareTo\`.
+- A different sort rule (length, reverse, locale, multi-key): a \`Comparator\`.
+
+\`\`\`mermaid
+flowchart TD
+    Q["Comparing two strings"] --> A{"Need equality or order?"}
+    A -- "equality" --> E["equals / equalsIgnoreCase (never ==)"]
+    A -- "order" --> B{"Natural dictionary order?"}
+    B -- yes --> C["compareTo (Comparable)"]
+    B -- "custom rule" --> D["Comparator (by length, reverse, ...)"]
+\`\`\``,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — equals / equalsIgnoreCase (and the == trap)`,
+                code: `// Approach 1 (equality only): equals() and equalsIgnoreCase().
+// Use these when the ONLY question is "are these two strings the same text?"
+// They return a boolean — NOT an ordering. They do NOT tell you which string
+// comes first alphabetically.
+//
+// Critical interview point: NEVER compare strings with == for content. == tests
+// REFERENCE identity (same object on the heap), which is true only by accident
+// (e.g. interned literals). equals() tests VALUE (char-by-char) equality.
+//
+// equalsIgnoreCase() folds case, so "Java".equalsIgnoreCase("java") is true.
+// Time: O(n). Space: O(1).
+public class CompareEquals {
+    public static void main(String[] a) {
+        String s1 = "Java";
+        String s2 = "java";
+        String s3 = new String("Java"); // distinct object, same characters
+
+        System.out.println("s1.equals(s2)            = " + s1.equals(s2));            // false (case differs)
+        System.out.println("s1.equalsIgnoreCase(s2)  = " + s1.equalsIgnoreCase(s2));  // true
+        System.out.println("s1.equals(s3)            = " + s1.equals(s3));            // true (same chars)
+        System.out.println("s1 == s3 (reference!)    = " + (s1 == s3));               // false (different objects)
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — char-by-char via toCharArray()`,
+                code: `// Approach 2 (manual, "under the hood"): char-by-char via toCharArray().
+// This is exactly what String.compareTo does internally. It reveals the
+// mechanics of LEXICOGRAPHIC ordering: walk both strings in lockstep; at the
+// first differing position, the string with the smaller char code is "less".
+// The returned int is the DIFFERENCE of the two char codes at that position;
+// if no difference is found, the shorter string is "less", so we return the
+// LENGTH difference.
+// Time: O(min(n, m)). Space: O(n + m) for the two char arrays.
+public class CompareCharArray {
+    // returns <0 if a<b, 0 if equal, >0 if a>b (same contract as compareTo)
+    static int compare(String a, String b) {
+        char[] x = a.toCharArray();
+        char[] y = b.toCharArray();
+        int min = Math.min(x.length, y.length);
+        for (int i = 0; i < min; i++) {
+            if (x[i] != y[i]) {
+                return x[i] - y[i];   // first mismatch decides the order (code-point diff)
+            }
+        }
+        return x.length - y.length;   // one is a prefix of the other -> shorter is smaller
+    }
+
+    static String sign(int c) { return c < 0 ? "< (a before b)" : c > 0 ? "> (a after b)" : "== (equal)"; }
+
+    public static void main(String[] a) {
+        System.out.println("apple vs apply  -> " + sign(compare("apple", "apply")));  // 'e'-'y' < 0
+        System.out.println("cat   vs catalog-> " + sign(compare("cat", "catalog")));  // prefix -> length diff < 0
+        System.out.println("dog   vs dog    -> " + sign(compare("dog", "dog")));      // == 0
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — compareTo (Comparable natural order)`,
+                code: `// Approach 3 (natural order): String.compareTo, from the Comparable interface.
+// String implements Comparable<String>, so it has a single "natural ordering"
+// = case-sensitive LEXICOGRAPHIC (dictionary) order based on UTF-16 code units.
+//
+// What compareTo RETURNS (memorise this):
+//   negative  -> this string sorts BEFORE the argument
+//   zero      -> the strings are equal (equivalent to equals for String)
+//   positive  -> this string sorts AFTER the argument
+// The magnitude is the char-code difference at the first mismatch, or the
+// length difference if one is a prefix of the other.
+//
+// Because uppercase letters (65..90) have SMALLER codes than lowercase
+// (97..122), "Zebra" compareTo "apple" is NEGATIVE — capital Z before small a.
+// Use compareToIgnoreCase() for case-insensitive dictionary order.
+// Time: O(min(n, m)). Space: O(1).
+public class CompareCompareTo {
+    static String sign(int c) { return c < 0 ? "before" : c > 0 ? "after" : "equal"; }
+
+    public static void main(String[] a) {
+        System.out.println("apple vs banana : " + sign("apple".compareTo("banana"))); // before ('a'<'b')
+        System.out.println("Zebra vs apple  : " + sign("Zebra".compareTo("apple")));  // before ('Z'=90 < 'a'=97)
+        System.out.println("Zebra vs apple (ignore case): "
+                + sign("Zebra".compareToIgnoreCase("apple")));                          // after  ('z' after 'a')
+        System.out.println("raw compareTo apple vs apply = " + "apple".compareTo("apply")); // 'e'-'y' = -20
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 4 — custom Comparator (length then alpha)`,
+                code: `// Approach 4 (custom ordering): a Comparator for a rule that is NOT the natural
+// order. Comparable gives ONE built-in order; a Comparator lets you define
+// MANY external orders without touching the class. Here: sort by LENGTH first,
+// then lexicographically to break ties.
+//
+// Comparator.comparingInt(...).thenComparing(...) composes the rule cleanly.
+// Same return-sign contract as compareTo: negative/zero/positive.
+// This is exactly how you power list.sort(...) / streams .sorted(...) with a
+// bespoke ordering. Time per compare: O(min(n, m)). Space: O(1).
+import java.util.Arrays;
+import java.util.Comparator;
+
+public class CompareComparator {
+    public static void main(String[] a) {
+        // by length, then dictionary order for equal lengths
+        Comparator<String> byLenThenAlpha =
+                Comparator.comparingInt(String::length)
+                          .thenComparing(Comparator.naturalOrder());
+
+        System.out.println("kiwi vs fig : " + byLenThenAlpha.compare("kiwi", "fig")); // >0 (4 > 3)
+        System.out.println("fig  vs kiwi: " + byLenThenAlpha.compare("fig", "kiwi")); // <0 (3 < 4)
+        System.out.println("pear vs plum: " + byLenThenAlpha.compare("pear", "plum")); // same len -> alpha, <0
+
+        String[] fruits = {"banana", "fig", "kiwi", "apple", "plum", "pear"};
+        Arrays.sort(fruits, byLenThenAlpha);   // apply the custom order
+        System.out.println("sorted: " + Arrays.toString(fruits));
+        // [fig, kiwi, pear, plum, apple, banana]
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 5 — StringBuilder-based comparison`,
+                code: `// Approach 5 (StringBuilder-based): compare using a mutable builder.
+// StringBuilder does NOT override equals()/compareTo() (it inherits Object's
+// reference-based ones), so two DIFFERENT builders with the same text are NOT
+// equal via .equals(). This is a classic gotcha. To compare CONTENT you must
+// either call toString() first, or use the JDK's compareTo on the builder,
+// which since Java 11 CharSequence/StringBuilder DOES provide a content-based
+// compareTo(StringBuilder). We show both the trap and the correct paths.
+public class CompareStringBuilder {
+    public static void main(String[] a) {
+        StringBuilder sb1 = new StringBuilder("hello");
+        StringBuilder sb2 = new StringBuilder("hello");
+        StringBuilder sb3 = new StringBuilder("world");
+
+        // TRAP: builder.equals compares references, not text -> false!
+        System.out.println("sb1.equals(sb2) [reference]      = " + sb1.equals(sb2)); // false
+
+        // FIX 1: convert to String, then compare content.
+        System.out.println("sb1.toString().equals(sb2 str)   = "
+                + sb1.toString().equals(sb2.toString()));                            // true
+
+        // FIX 2: StringBuilder.compareTo compares content lexicographically (Java 11+).
+        System.out.println("sb1.compareTo(sb2) [content]     = " + sb1.compareTo(sb2)); // 0 (equal)
+        System.out.println("sb1.compareTo(sb3) [content]     = " + sb1.compareTo(sb3)); // <0 (hello before world)
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Difference between == and equals for Strings?`,
+                a: `== compares references (is it the same object?); equals compares content char-by-char. Always use equals for text; == can be false for equal strings created separately.`
+              },
+              {
+                q: `What does String.compareTo return, and what do the signs mean?`,
+                a: `An int: negative means this string sorts before the argument, zero means equal, positive means after. The magnitude is the char-code difference at the first mismatch (or the length difference).`
+              },
+              {
+                q: `Why does "Zebra".compareTo("apple") return a negative number?`,
+                a: `Lexicographic order uses char codes; capital Z is 90, lowercase a is 97, so Z < a and Zebra sorts before apple. Use compareToIgnoreCase for case-insensitive order.`
+              },
+              {
+                q: `Comparable vs Comparator?`,
+                a: `Comparable defines a type\\u2019s single natural order via compareTo (String = dictionary order). Comparator is an external object defining any alternative order, passed to sort() without changing the class.`
+              },
+              {
+                q: `Why is sb1.equals(sb2) false when both StringBuilders hold "hello"?`,
+                a: `StringBuilder does not override Object.equals, so it compares references, not content. Use sb1.toString().equals(sb2.toString()) or StringBuilder.compareTo (content-based, Java 11+).`
+              },
+              {
+                q: `What does "apple".compareTo("apply") evaluate to numerically?`,
+                a: `'e' - 'y' = 101 - 121 = -20, so apple sorts before apply.`
+              }
+            ]
+          },
+          {
+            title: `First Non-Repeating Character [Medium]`,
+            notes: `## First Non-Repeating Character
+
+Return the first character that appears exactly once, scanning left to right.
+
+Example: \`swiss\` -> \`w\`; \`aabbcc\` -> none.
+
+### Approaches
+- **LinkedHashMap count:** pass 1 tallies counts; because LinkedHashMap keeps insertion order, iterating it in pass 2 visits characters in first-appearance order, so the first count==1 is the answer.
+- **int[256] frequency + second pass:** pass 1 counts by char code; pass 2 re-scans the ORIGINAL string and returns the first char whose count is 1 (scanning the string, not the table, preserves position). Optimal for ASCII.
+- **indexOf == lastIndexOf trick:** a char is unique when its first and last index match; concise but each call is an O(n) scan.
+
+### Complexity
+| Approach | Time | Space | Notes |
+| --- | --- | --- | --- |
+| LinkedHashMap | O(n) | O(k) | order-preserving, any charset |
+| int[256] + rescan | O(n) | O(1) | optimal for ASCII |
+| indexOf / lastIndexOf | O(n^2) | O(1) | short and elegant, but slow |
+
+### Which to use
+For ASCII input the \`int[256]\` counter with a second pass over the original string is optimal: O(n) time, O(1) space. Use the LinkedHashMap when you also want the natural first-seen ordering for arbitrary characters.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — LinkedHashMap counts`,
+                code: `// Approach 1 (clean, order-preserving): LinkedHashMap of char -> count.
+// Pass 1: tally every character's frequency. A LinkedHashMap remembers
+// INSERTION order, so when we iterate in pass 2 we naturally visit characters
+// in the order they first appeared — the first one with count == 1 is the answer.
+// Time: O(n) (two passes). Space: O(k) for k distinct chars.
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public class FirstUniqueLinkedHashMap {
+    static char firstUnique(String s) {
+        Map<Character, Integer> count = new LinkedHashMap<>();
+        for (char c : s.toCharArray()) count.merge(c, 1, Integer::sum); // pass 1: counts
+        for (Map.Entry<Character, Integer> e : count.entrySet())        // pass 2: first-seen order
+            if (e.getValue() == 1) return e.getKey();
+        return '_'; // sentinel: no unique character exists
+    }
+
+    public static void main(String[] a) {
+        System.out.println("swiss    -> " + firstUnique("swiss"));    // w
+        System.out.println("aabbcc   -> " + firstUnique("aabbcc"));   // _ (none)
+        System.out.println("leetcode -> " + firstUnique("leetcode")); // l
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — int[256] frequency + second pass`,
+                code: `// Approach 2 (optimal, fixed alphabet): int[256] frequency + second pass.
+// Pass 1: count occurrences indexed directly by the char's numeric value
+// (works for the full extended-ASCII range 0..255). Pass 2: re-scan the
+// ORIGINAL string left to right and return the first char whose count is 1 —
+// scanning the string (not the table) guarantees we get the first by POSITION.
+// Time: O(n). Space: O(1) — the 256-int table is constant regardless of input.
+// Fastest option when the character set is bounded (ASCII).
+public class FirstUniqueCountArray {
+    static char firstUnique(String s) {
+        int[] freq = new int[256];
+        for (int i = 0; i < s.length(); i++) freq[s.charAt(i)]++;  // pass 1: tally
+        for (int i = 0; i < s.length(); i++)                       // pass 2: original order
+            if (freq[s.charAt(i)] == 1) return s.charAt(i);
+        return '_'; // none unique
+    }
+
+    public static void main(String[] a) {
+        System.out.println("swiss    -> " + firstUnique("swiss"));    // w
+        System.out.println("aabbcc   -> " + firstUnique("aabbcc"));   // _ (none)
+        System.out.println("leetcode -> " + firstUnique("leetcode")); // l
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — indexOf == lastIndexOf trick`,
+                code: `// Approach 3 (concise trick): indexOf == lastIndexOf.
+// A character is UNIQUE exactly when its first occurrence equals its last
+// occurrence — i.e. it appears once. Scan positions left to right and return
+// the first char for which indexOf(c) == lastIndexOf(c).
+// Elegant and short, but note the hidden cost: each indexOf/lastIndexOf is an
+// O(n) scan, done for up to n positions.
+// Time: O(n^2) worst case. Space: O(1). Prefer the array/map versions for big input.
+public class FirstUniqueIndexOf {
+    static char firstUnique(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (s.indexOf(c) == s.lastIndexOf(c)) return c; // appears exactly once
+        }
+        return '_';
+    }
+
+    public static void main(String[] a) {
+        System.out.println("swiss    -> " + firstUnique("swiss"));    // w
+        System.out.println("aabbcc   -> " + firstUnique("aabbcc"));   // _ (none)
+        System.out.println("leetcode -> " + firstUnique("leetcode")); // l
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why use a LinkedHashMap rather than a plain HashMap here?`,
+                a: `LinkedHashMap preserves insertion order, so iterating it visits characters in first-appearance order and the first count==1 is the correct "first" unique char. A HashMap has no order guarantee.`
+              },
+              {
+                q: `In the int[256] approach, why does the SECOND pass scan the original string, not the array?`,
+                a: `Only the original string knows positional order. Scanning it left to right and checking count==1 guarantees you return the first-by-position unique character.`
+              },
+              {
+                q: `How does indexOf(c) == lastIndexOf(c) detect a unique character?`,
+                a: `If a character occurs once, its first and last index are the same; if it repeats, lastIndexOf is greater than indexOf.`
+              },
+              {
+                q: `Why is the indexOf/lastIndexOf approach O(n^2)?`,
+                a: `Each indexOf and lastIndexOf is an O(n) scan, and it is called for up to n positions.`
+              }
+            ]
+          },
+          {
+            title: `Character / Word Frequency Count [Easy]`,
+            notes: `## Character / Word Frequency Count
+
+Count how many times each character (or word) occurs.
+
+Example: chars of \`banana\` -> \`{a=3, b=1, n=2}\`; words of \`the cat the dog the\` -> \`{the=3, cat=1, dog=1}\`.
+
+### Approaches
+- **HashMap accumulation:** \`map.merge(key, 1, Integer::sum)\` is the idiomatic increment-or-insert. Works for any characters or words.
+- **Streams groupingBy(counting):** \`Collectors.groupingBy(w -> w, counting())\` groups equal items and tallies each group — reads like the problem statement, shown here for WORD frequency.
+- **int[26] / int[] for chars:** map each letter with \`c - 'a'\`; no boxing or hashing, the leanest option for a fixed alphabet.
+
+### Complexity
+| Approach | Time | Space | Notes |
+| --- | --- | --- | --- |
+| HashMap merge | O(n) | O(k) | general, any key type |
+| Streams groupingBy | O(n) | O(k) | declarative group-and-count |
+| int[26] array | O(n) | O(1) | fastest for a-z, no boxing |
+
+### Which to use
+For counting the 26 lowercase letters an \`int[26]\` is fastest and uses O(1) space. For words or arbitrary keys, a HashMap (or \`groupingBy\` in a stream pipeline) is the clean, general choice.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — HashMap accumulation (chars)`,
+                code: `// Approach 1 (general): count characters with a HashMap<Character,Integer>.
+// merge(c, 1, Integer::sum) is the idiomatic "increment or insert" — if c is
+// absent it stores 1, otherwise it adds 1 to the existing count. Works for any
+// character (Unicode), not just a-z.
+// Time: O(n) average. Space: O(k) for k distinct characters.
+import java.util.HashMap;
+import java.util.Map;
+
+public class CharFreqHashMap {
+    static Map<Character, Integer> frequency(String s) {
+        Map<Character, Integer> freq = new HashMap<>();
+        for (char c : s.toCharArray()) freq.merge(c, 1, Integer::sum); // increment-or-insert
+        return freq;
+    }
+
+    public static void main(String[] a) {
+        System.out.println("banana -> " + frequency("banana")); // {a=3, b=1, n=2}
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — streams groupingBy + counting (words)`,
+                code: `// Approach 2 (streams): WORD frequency via Collectors.groupingBy + counting.
+// Split the sentence on whitespace, stream the words, group identical words
+// together and count each group. This is the canonical "group and tally"
+// Streams pattern and reads almost like the problem statement.
+// Time: O(n) over the input length. Space: O(k) for k distinct words.
+import java.util.Arrays;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+public class WordFreqStreams {
+    static Map<String, Long> wordFrequency(String sentence) {
+        return Arrays.stream(sentence.toLowerCase().split("\\\\s+"))       // words
+                .collect(Collectors.groupingBy(w -> w, Collectors.counting())); // group + count
+    }
+
+    public static void main(String[] a) {
+        String text = "the cat the dog the bird cat";
+        System.out.println(wordFrequency(text)); // {bird=1, cat=2, the=3, dog=1} (order may vary)
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — int[26] frequency array (chars)`,
+                code: `// Approach 3 (optimal for a-z): a plain int[26] frequency table.
+// Map each lowercase letter to an index with c - 'a' and count. No boxing, no
+// hashing — the fastest and most memory-lean option when the alphabet is the
+// 26 lowercase letters. Print only nonzero buckets.
+// Time: O(n). Space: O(1) — the 26-int table is constant.
+public class CharFreqIntArray {
+    static int[] frequency(String s) {
+        int[] freq = new int[26];
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= 'a' && c <= 'z') freq[c - 'a']++; // direct index by letter
+        }
+        return freq;
+    }
+
+    public static void main(String[] a) {
+        int[] f = frequency("banana");
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < 26; i++)
+            if (f[i] > 0) out.append((char) ('a' + i)).append('=').append(f[i]).append(' ');
+        System.out.println("banana -> " + out.toString().trim()); // a=3 b=1 n=2
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does map.merge(c, 1, Integer::sum) do?`,
+                a: `Increment-or-insert: if c is absent it stores 1, otherwise it adds 1 to the existing count. The idiomatic one-liner for frequency maps.`
+              },
+              {
+                q: `Which collector counts occurrences per group in a stream?`,
+                a: `Collectors.groupingBy(classifier, Collectors.counting()) — it groups by the classifier and returns a Map of group -> Long count.`
+              },
+              {
+                q: `Why is int[26] the fastest character-frequency counter?`,
+                a: `It indexes directly with c - \\u0027a\\u0027, avoiding hashing and Integer boxing, and uses a fixed O(1) amount of memory.`
+              },
+              {
+                q: `How do you count words instead of characters?`,
+                a: `Split on whitespace (split("\\\\s+")), then count the resulting words with a HashMap or groupingBy(counting()).`
+              }
+            ]
+          },
+          {
+            title: `Remove Duplicate Characters [Medium]`,
+            notes: `## Remove Duplicate Characters
+
+Keep only the first occurrence of each character, dropping later repeats, preserving order.
+
+Example: \`programming\` -> \`progamin\`; \`aabbcc\` -> \`abc\`
+
+### Approaches
+- **LinkedHashSet:** a Set rejects duplicates and the Linked variant keeps insertion order, so adding each char then iterating rebuilds the deduped string in order.
+- **boolean[256] seen array:** mark each char code the first time you see it; append only unseen chars. Optimal for ASCII.
+- **Streams distinct:** \`s.chars().distinct()\` drops repeats keeping encounter order, then map back to chars and join.
+- **StringBuilder.indexOf:** append a char only if the builder does not already contain it; no extra collection, but each membership check is O(k).
+
+### Complexity
+| Approach | Time | Space | Notes |
+| --- | --- | --- | --- |
+| LinkedHashSet | O(n) | O(k) | cleanest, order-preserving |
+| boolean[256] seen | O(n) | O(1) | optimal for ASCII |
+| Streams distinct | O(n) | O(k) | declarative pipeline |
+| StringBuilder.indexOf | O(n^2) | O(k) | no Set, but scan per char |
+
+### Which to use
+For ASCII input the \`boolean[256]\` seen-array is optimal: O(n) time, O(1) space. When you want the shortest clear code for any charset, \`LinkedHashSet\` is the idiomatic choice.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — LinkedHashSet (order-preserving)`,
+                code: `// Approach 1 (cleanest, order-preserving): LinkedHashSet.
+// A Set rejects duplicates; the LinkedHashSet variant also remembers INSERTION
+// order, so adding each char in turn keeps the first occurrence and silently
+// drops later repeats. Iterating the set rebuilds the deduped string in the
+// original order.
+// Time: O(n) average. Space: O(k) for k distinct chars.
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+public class DedupLinkedHashSet {
+    static String removeDuplicates(String s) {
+        Set<Character> seen = new LinkedHashSet<>();
+        for (char c : s.toCharArray()) seen.add(c);       // duplicates ignored, order kept
+        StringBuilder sb = new StringBuilder(seen.size());
+        for (char c : seen) sb.append(c);
+        return sb.toString();
+    }
+
+    public static void main(String[] a) {
+        System.out.println("programming -> " + removeDuplicates("programming")); // progamin
+        System.out.println("aabbcc      -> " + removeDuplicates("aabbcc"));      // abc
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — boolean[256] seen array`,
+                code: `// Approach 2 (optimal, ASCII): a boolean[256] "seen" flag array.
+// For each char, check its flag: if unseen, append it and mark seen; if already
+// seen, skip. No hashing or boxing — the fastest and leanest approach when the
+// character set fits in extended ASCII (0..255).
+// Time: O(n). Space: O(1) — the 256-boolean table is constant.
+public class DedupSeenArray {
+    static String removeDuplicates(String s) {
+        boolean[] seen = new boolean[256];
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!seen[c]) {        // first time we meet this char
+                seen[c] = true;    // remember it
+                sb.append(c);      // keep it
+            }                      // else: duplicate -> drop
+        }
+        return sb.toString();
+    }
+
+    public static void main(String[] a) {
+        System.out.println("programming -> " + removeDuplicates("programming")); // progamin
+        System.out.println("aabbcc      -> " + removeDuplicates("aabbcc"));      // abc
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — streams distinct()`,
+                code: `// Approach 3 (streams): chars().distinct() pipeline.
+// s.chars() yields an IntStream of char codes; distinct() keeps the first
+// occurrence of each and drops the rest (preserving encounter order); we map
+// each code back to a character and join. Declarative one-liner-ish version.
+// Time: O(n). Space: O(k) for distinct() plus the output buffer.
+import java.util.stream.Collectors;
+
+public class DedupStreams {
+    static String removeDuplicates(String s) {
+        return s.chars()                       // IntStream of char codes
+                .distinct()                    // drop repeats, keep first-seen order
+                .mapToObj(c -> String.valueOf((char) c))
+                .collect(Collectors.joining());
+    }
+
+    public static void main(String[] a) {
+        System.out.println("programming -> " + removeDuplicates("programming")); // progamin
+        System.out.println("aabbcc      -> " + removeDuplicates("aabbcc"));      // abc
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 4 — StringBuilder.indexOf`,
+                code: `// Approach 4 (no extra collection): StringBuilder.indexOf as the membership test.
+// Build the result incrementally; before appending a char, ask whether the
+// builder ALREADY contains it (sb.indexOf(String) returns -1 if absent). Only
+// append new characters. Uses no Set/array — handy when you want a single
+// object, but each indexOf scan is O(k).
+// Time: O(n*k) ~ O(n^2) worst case. Space: O(k) for the result only.
+public class DedupStringBuilder {
+    static String removeDuplicates(String s) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            String c = String.valueOf(s.charAt(i));
+            if (sb.indexOf(c) < 0) sb.append(c); // append only if not already present
+        }
+        return sb.toString();
+    }
+
+    public static void main(String[] a) {
+        System.out.println("programming -> " + removeDuplicates("programming")); // progamin
+        System.out.println("aabbcc      -> " + removeDuplicates("aabbcc"));      // abc
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why LinkedHashSet instead of HashSet for removing duplicates?`,
+                a: `Both drop duplicates, but LinkedHashSet preserves insertion order so the result keeps the original first-occurrence ordering; HashSet does not guarantee order.`
+              },
+              {
+                q: `Optimal time and space to dedup an ASCII string?`,
+                a: `O(n) time, O(1) space using a boolean[256] seen-array — one pass, appending only characters not yet marked.`
+              },
+              {
+                q: `Which stream operation removes duplicate characters while preserving order?`,
+                a: `s.chars().distinct() — distinct() keeps the first occurrence in encounter order and drops the rest.`
+              },
+              {
+                q: `Why is the StringBuilder.indexOf dedup approach O(n^2)?`,
+                a: `For each character it scans the growing builder (O(k)) to test membership, giving O(n*k) ~ O(n^2) overall.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `13.2`,
+        title: `Arrays — Practice Programs`,
+        hours: 4,
+        sections: [
+          {
+            title: `Reverse an Array [Easy]`,
+            notes: `## Reverse an Array
+Reverse the order of elements so the first becomes last and vice versa.
+Example: \`[1, 2, 3, 4, 5]\` -> \`[5, 4, 3, 2, 1]\`.
+
+### Approaches
+- Two-pointer swap: swap the ends and move both pointers inward until they meet. In place, O(1) space.
+- Build new array: copy source back-to-front into a fresh array. Does not mutate input.
+- Collections.reverse: box to a \`List<Integer>\` and call the library method.
+- Recursion: swap the ends, then recurse on the middle. The call stack replaces the loop.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Two-pointer swap | O(n) | O(1) | n/2 swaps, in place |
+| New array | O(n) | O(n) | keeps input unchanged |
+| Collections.reverse | O(n) | O(n) | needs boxed Integers |
+| Recursion | O(n) | O(n) | n/2 stack frames |
+
+### Which to use
+Two-pointer swap is the interview default: O(n) time, O(1) space, in place. Reach for \`Collections.reverse\` only when you already hold a \`List\`.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Two-pointer swap (in place)`,
+                code: `import java.util.Arrays;
+
+// Approach 1 (basic/optimal): two-pointer swap IN PLACE.
+// Idea: put one pointer at the left end, one at the right end, swap them,
+// then move both toward the middle. When they meet, the array is reversed.
+// Invariant: after k swaps, the outermost k elements on each side are final.
+// Time O(n) (n/2 swaps), Space O(1) (no extra array).
+public class ReverseTwoPointer {
+    static void reverse(int[] a) {
+        int i = 0, j = a.length - 1;   // left and right pointers
+        while (i < j) {                // stop when they cross/meet
+            int tmp = a[i];            // classic 3-step swap
+            a[i] = a[j];
+            a[j] = tmp;
+            i++;                       // move inward from both ends
+            j--;
+        }
+    }
+
+    public static void main(String[] args) {
+        int[] a = {1, 2, 3, 4, 5};
+        reverse(a);
+        System.out.println(Arrays.toString(a)); // [5, 4, 3, 2, 1]
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Build a new array backwards`,
+                code: `import java.util.Arrays;
+
+// Approach 2: build a NEW array, copying from the back of the source to the
+// front of the destination. Simple to reason about; does not mutate input.
+// Time O(n), Space O(n) for the extra array.
+public class ReverseNewArray {
+    static int[] reverse(int[] a) {
+        int n = a.length;
+        int[] out = new int[n];
+        for (int i = 0; i < n; i++) {
+            // last source element goes to index 0, and so on.
+            out[i] = a[n - 1 - i];
+        }
+        return out;
+    }
+
+    public static void main(String[] args) {
+        int[] a = {1, 2, 3, 4, 5};
+        System.out.println(Arrays.toString(reverse(a))); // [5, 4, 3, 2, 1]
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — Collections.reverse on a List`,
+                code: `import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+// Approach 3: box into a List and use the library method Collections.reverse.
+// Least code; the idiomatic choice when you already hold a List<Integer>.
+// Note: for a primitive int[] you must box to Integer first (autoboxing cost).
+// Time O(n), Space O(n) for the List of boxed Integers.
+public class ReverseCollections {
+    public static void main(String[] args) {
+        int[] a = {1, 2, 3, 4, 5};
+
+        // Box primitives into a List<Integer>.
+        List<Integer> list = new ArrayList<>();
+        for (int x : a) list.add(x);
+
+        Collections.reverse(list);      // in-place reverse of the List
+
+        System.out.println(list);       // [5, 4, 3, 2, 1]
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 4 — Recursion`,
+                code: `import java.util.Arrays;
+
+// Approach 4: recursion. Same two-pointer idea, but the "loop" is the call
+// stack: swap the ends, then recurse on the shrunken middle.
+// Base case: i >= j means 0 or 1 element left, nothing to do.
+// Time O(n), Space O(n) call-stack depth (n/2 frames) -- NOT O(1).
+public class ReverseRecursion {
+    static void reverse(int[] a, int i, int j) {
+        if (i >= j) return;            // base case: pointers met/crossed
+        int tmp = a[i];                // swap the current ends
+        a[i] = a[j];
+        a[j] = tmp;
+        reverse(a, i + 1, j - 1);      // recurse inward
+    }
+
+    public static void main(String[] args) {
+        int[] a = {1, 2, 3, 4, 5};
+        reverse(a, 0, a.length - 1);
+        System.out.println(Arrays.toString(a)); // [5, 4, 3, 2, 1]
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the time and space cost of the two-pointer reverse?`,
+                a: `O(n) time (n/2 swaps) and O(1) space because it swaps in place.`
+              },
+              {
+                q: `Why does the two-pointer loop stop at i < j instead of i <= j?`,
+                a: `When i == j they point at the same middle element, which needs no swap; continuing would swap already-fixed elements back.`
+              },
+              {
+                q: `What hidden cost does Collections.reverse add for an int[]?`,
+                a: `You must box each int into an Integer (autoboxing) and store them in a List, so it is O(n) extra space.`
+              },
+              {
+                q: `Why is recursive reverse not O(1) space?`,
+                a: `It uses ~n/2 stack frames, so it is O(n) auxiliary space and can overflow the stack for huge arrays.`
+              }
+            ]
+          },
+          {
+            title: `Find Max and Min [Easy]`,
+            notes: `## Find Max and Min
+Return the largest and smallest values in an array.
+Example: \`[7, 2, 9, -3, 5]\` -> max \`9\`, min \`-3\`.
+
+### Approaches
+- Linear scan: seed both from element 0, compare each remaining element once. ~2(n-1) comparisons.
+- Sort then ends: after sorting, min is first and max is last. Wasteful but trivial.
+- Streams: \`IntStream.max()\` / \`min()\` return an \`OptionalInt\`; readable one-liners.
+- Tournament (divide-and-conquer in pairs): compare elements two at a time so only ~3n/2 comparisons are needed for BOTH extremes.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Linear scan | O(n) | O(1) | ~2n comparisons |
+| Sort + ends | O(n log n) | O(1) | overkill, mutates/copies |
+| Streams | O(n) | O(1) | cleanest to read |
+| Tournament (pairs) | O(n) | O(1) | ~3n/2 comparisons, optimal count |
+
+### Which to use
+A single linear scan is the standard answer. Mention the pairwise tournament when the interviewer asks to minimize the number of COMPARISONS (3n/2 vs 2n).`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Single-pass linear scan`,
+                code: `// Approach 1 (basic): single-pass linear scan.
+// Seed max and min with the first element, then compare every other element
+// once, updating the running max/min. This does ~2(n-1) comparisons.
+// Time O(n), Space O(1).
+public class MaxMinLinear {
+    public static void main(String[] args) {
+        int[] a = {7, 2, 9, -3, 5, 9, 1};
+
+        int max = a[0], min = a[0];    // seed with element 0 (array assumed non-empty)
+        for (int i = 1; i < a.length; i++) {
+            if (a[i] > max) max = a[i];   // first comparison
+            else if (a[i] < min) min = a[i]; // else-if: if it beat max it can't be the new min
+        }
+
+        System.out.println("max=" + max + " min=" + min); // max=9 min=-3
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Arrays.sort then read the ends`,
+                code: `import java.util.Arrays;
+
+// Approach 2: sort, then the min is the first element and the max is the last.
+// Trivial to write but wasteful -- sorting is O(n log n) just to read two ends,
+// and it mutates (or requires copying) the array. Shown for contrast.
+// Time O(n log n), Space O(1) extra (in-place dual-pivot quicksort).
+public class MaxMinSort {
+    public static void main(String[] args) {
+        int[] a = {7, 2, 9, -3, 5, 9, 1};
+
+        Arrays.sort(a);                 // ascending
+        int min = a[0];                 // smallest at the front
+        int max = a[a.length - 1];      // largest at the back
+
+        System.out.println("max=" + max + " min=" + min); // max=9 min=-3
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — Streams (IntStream max/min)`,
+                code: `import java.util.Arrays;
+import java.util.stream.IntStream;
+
+// Approach 3: streams. IntStream exposes max()/min() returning OptionalInt.
+// Cleanest to read; internally still a linear scan. getAsInt() unwraps the
+// Optional (throws if the stream is empty, so guard empties in real code).
+// Time O(n), Space O(1). Two terminal ops = two passes here.
+public class MaxMinStreams {
+    public static void main(String[] args) {
+        int[] a = {7, 2, 9, -3, 5, 9, 1};
+
+        int max = Arrays.stream(a).max().getAsInt();
+        int min = Arrays.stream(a).min().getAsInt();
+
+        // One-pass alternative: IntSummaryStatistics gathers both at once.
+        IntStream.of(a).summaryStatistics(); // (available if you want getMax()/getMin())
+
+        System.out.println("max=" + max + " min=" + min); // max=9 min=-3
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 4 — Tournament in pairs (~3n/2 comparisons)`,
+                code: `// Approach 4 (advanced): find BOTH max and min in ~3n/2 comparisons instead
+// of ~2n, by processing elements in PAIRS.
+// Key trick: for each pair, first compare the two elements to EACH OTHER (1
+// comparison), then the smaller can only challenge min and the larger can only
+// challenge max (2 more comparisons). That is 3 comparisons per 2 elements,
+// i.e. 3n/2 total -- versus 2 comparisons per element (2n) in the naive scan.
+// Time O(n), Space O(1).
+public class MaxMinTournament {
+    public static void main(String[] args) {
+        int[] a = {7, 2, 9, -3, 5, 9, 1};
+        int n = a.length;
+
+        int max, min, start;
+        if (n % 2 == 0) {               // even count: seed from the first pair
+            if (a[0] > a[1]) { max = a[0]; min = a[1]; }
+            else { max = a[1]; min = a[0]; }
+            start = 2;
+        } else {                        // odd count: seed both from element 0
+            max = min = a[0];
+            start = 1;
+        }
+
+        // Walk the rest two at a time.
+        for (int i = start; i < n - 1; i += 2) {
+            int lo, hi;
+            if (a[i] > a[i + 1]) { hi = a[i]; lo = a[i + 1]; } // 1 comparison
+            else { hi = a[i + 1]; lo = a[i]; }
+            if (hi > max) max = hi;     // larger of the pair only fights max
+            if (lo < min) min = lo;     // smaller of the pair only fights min
+        }
+
+        System.out.println("max=" + max + " min=" + min); // max=9 min=-3
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How many comparisons does the naive linear scan use to find both max and min?`,
+                a: `About 2(n-1) — up to two comparisons per element.`
+              },
+              {
+                q: `How does the pairwise tournament cut comparisons to ~3n/2?`,
+                a: `For each pair it compares the two to each other (1), then the larger only against max and the smaller only against min (2), i.e. 3 comparisons per 2 elements.`
+              },
+              {
+                q: `Why is sorting a poor way to get max and min?`,
+                a: `It costs O(n log n) just to read two endpoints, versus O(n) for a scan, and it mutates or copies the array.`
+              },
+              {
+                q: `What does IntStream.max() return and why?`,
+                a: `An OptionalInt, because the stream could be empty; you call getAsInt() to unwrap it.`
+              }
+            ]
+          },
+          {
+            title: `Second Largest Element [Easy/Medium]`,
+            notes: `## Second Largest Element
+Find the second largest DISTINCT value (duplicates of the maximum do not count).
+Example: \`[10, 5, 10, 8, 3, 9]\` -> \`9\` (10 is largest; 9 is the runner-up).
+
+### Approaches
+- One pass, top-two: track \`first\` and \`second\`; when a value beats \`first\`, the old \`first\` slides into \`second\`. A \`x < first\` guard keeps duplicate maxima out.
+- Sort + scan: sort ascending, then scan from the right for the first value different from the max.
+- TreeSet: insert all; the set is sorted and deduplicated, so \`lower(last())\` is the answer.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| One pass top-two | O(n) | O(1) | optimal |
+| Sort + scan | O(n log n) | O(1) | simple, handles dup max |
+| TreeSet | O(n log n) | O(n) | very readable |
+
+### Which to use
+The single-pass top-two tracker is optimal (O(n) time, O(1) space) and demonstrates careful duplicate handling — the interviewer's favorite here.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Single pass tracking top two`,
+                code: `// Approach 1 (optimal): single pass tracking the top TWO distinct values.
+// Keep \`first\` (largest so far) and \`second\` (largest strictly below first).
+// For each x:
+//   - if x > first: second inherits the old first, then first = x
+//   - else if x < first AND x > second: x is a new runner-up
+// The \`x < first\` guard makes duplicates of the max NOT count as second.
+// Time O(n), Space O(1).
+public class SecondLargestOnePass {
+    public static void main(String[] args) {
+        int[] a = {10, 5, 10, 8, 3, 9};
+
+        int first = Integer.MIN_VALUE;   // largest
+        int second = Integer.MIN_VALUE;  // second largest (distinct)
+        for (int x : a) {
+            if (x > first) {
+                second = first;          // old max slides down to second
+                first = x;
+            } else if (x < first && x > second) {
+                second = x;              // strictly between second and first
+            }
+        }
+
+        System.out.println("secondLargest=" + second); // 9
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Sort then scan for a distinct value`,
+                code: `import java.util.Arrays;
+
+// Approach 2: sort ascending, then scan from the RIGHT for the first value
+// that differs from the maximum -- that is the second-largest DISTINCT value.
+// Scanning (not just taking a[n-2]) correctly handles duplicate maxima.
+// Time O(n log n) for the sort, Space O(1) extra.
+public class SecondLargestSort {
+    public static void main(String[] args) {
+        int[] a = {10, 5, 10, 8, 3, 9};
+
+        Arrays.sort(a);                 // [3, 5, 8, 9, 10, 10]
+        int n = a.length;
+        int max = a[n - 1];
+        int second = Integer.MIN_VALUE; // sentinel if no distinct runner-up exists
+        for (int i = n - 2; i >= 0; i--) {
+            if (a[i] != max) { second = a[i]; break; } // first value below the max
+        }
+
+        System.out.println("secondLargest=" + second); // 9
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — TreeSet (sorted + deduplicated)`,
+                code: `import java.util.TreeSet;
+
+// Approach 3: a TreeSet keeps elements SORTED and DEDUPLICATED automatically.
+// After inserting everything, the largest is last() and we can navigate to the
+// next-lower distinct value with lower(last()). Very readable; extra memory.
+// Time O(n log n) (n inserts into a balanced tree), Space O(n).
+public class SecondLargestTreeSet {
+    public static void main(String[] args) {
+        int[] a = {10, 5, 10, 8, 3, 9};
+
+        TreeSet<Integer> set = new TreeSet<>();
+        for (int x : a) set.add(x);     // duplicates collapse automatically
+
+        Integer largest = set.last();           // greatest element
+        Integer second = set.lower(largest);    // greatest strictly less than it
+
+        System.out.println("secondLargest=" + second); // 9
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why does the one-pass solution need the guard x < first before updating second?`,
+                a: `Without it, a duplicate equal to the maximum would be recorded as the second largest, but the second largest must be strictly smaller.`
+              },
+              {
+                q: `When a new value exceeds first, what happens to the old first?`,
+                a: `It slides down to become the new second before first is overwritten.`
+              },
+              {
+                q: `How does a TreeSet make the second largest trivial?`,
+                a: `A TreeSet stays sorted and drops duplicates, so last() is the max and lower(last()) is the next-smaller distinct value.`
+              },
+              {
+                q: `Why scan from the right after sorting instead of just taking a[n-2]?`,
+                a: `a[n-2] may equal the max when the maximum is duplicated; scanning finds the first value that differs from the max.`
+              }
+            ]
+          },
+          {
+            title: `Find the Missing Number (1..n) [Medium]`,
+            notes: `## Find the Missing Number (1..n)
+An array holds n-1 of the numbers 1..n with exactly one missing. Find it.
+Example: \`[1, 2, 6, 3, 5]\` over 1..6 -> \`4\`.
+
+### Approaches
+- Sum formula: expected sum is \`n(n+1)/2\` (Gauss); subtract the actual sum to get the gap. Cast to \`long\` before multiplying so \`n*(n+1)\` cannot overflow int.
+- XOR trick: XOR all of 1..n and all array values. Each present number cancels (\`x ^ x == 0\`), leaving only the missing one. No addition means NO overflow risk.
+- Seen array: mark \`seen[v]\`; the one index in 1..n never marked is missing. O(n) space.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Sum formula | O(n) | O(1) | watch int overflow -> use long |
+| XOR | O(n) | O(1) | overflow-proof, elegant |
+| Seen array | O(n) | O(n) | no arithmetic tricks |
+
+### Which to use
+XOR is the crowd-pleaser: O(n) time, O(1) space, and immune to overflow. The sum formula is equally fast but you must call out the \`long\` cast to be safe.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Sum formula n(n+1)/2 (overflow-safe)`,
+                code: `// Approach 1: sum formula. The numbers 1..n sum to n(n+1)/2 (Gauss). Subtract
+// the actual sum of the array (which is missing one value) to get the gap.
+// Overflow note: for large n, n*(n+1) can overflow int. Use long for the
+// running/expected sums to stay overflow-safe. Here n is small but we still
+// use long to model the safe habit.
+// Time O(n), Space O(1).
+public class MissingSum {
+    public static void main(String[] args) {
+        // Full set is 1..6; the value 4 is missing.
+        int[] a = {1, 2, 6, 3, 5};
+        int n = a.length + 1;           // array holds n-1 of the n numbers
+
+        long expected = (long) n * (n + 1) / 2; // cast to long BEFORE multiplying
+        long actual = 0;
+        for (int x : a) actual += x;
+
+        long missing = expected - actual;
+        System.out.println("missing=" + missing); // 4
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — XOR of indices and values`,
+                code: `// Approach 2: XOR trick -- overflow-proof and elegant.
+// Property: x ^ x == 0 and x ^ 0 == x, and XOR is commutative/associative.
+// XOR together ALL indices 1..n AND all array values. Every present number
+// appears once from 1..n and once from the array, so it cancels to 0. The one
+// number that never appears in the array survives -> that is the missing value.
+// No addition means NO OVERFLOW risk, unlike the sum method.
+// Time O(n), Space O(1).
+public class MissingXor {
+    public static void main(String[] args) {
+        int[] a = {1, 2, 6, 3, 5};      // missing 4 out of 1..6
+        int n = a.length + 1;
+
+        int x = 0;
+        for (int i = 1; i <= n; i++) x ^= i; // XOR of the full range 1..n
+        for (int v : a) x ^= v;              // XOR of what is actually present
+
+        System.out.println("missing=" + x); // 4
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — Boolean seen array`,
+                code: `// Approach 3: boolean "seen" array. Mark seen[v]=true for each value, then the
+// one index in 1..n never marked is the missing number. Uses O(n) extra space
+// but avoids any arithmetic/overflow concerns and generalizes if values are
+// bounded but not a perfect 1..n run.
+// Time O(n), Space O(n).
+public class MissingSeen {
+    public static void main(String[] args) {
+        int[] a = {1, 2, 6, 3, 5};
+        int n = a.length + 1;
+
+        boolean[] seen = new boolean[n + 1]; // indices 0..n; we use 1..n
+        for (int v : a) seen[v] = true;
+
+        int missing = -1;
+        for (int i = 1; i <= n; i++) {
+            if (!seen[i]) { missing = i; break; } // first unmarked slot
+        }
+
+        System.out.println("missing=" + missing); // 4
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the overflow risk in the sum-formula method and the fix?`,
+                a: `n*(n+1) can overflow int for large n; cast to long before multiplying (and accumulate the actual sum in a long).`
+              },
+              {
+                q: `Why does XORing 1..n with all array values leave the missing number?`,
+                a: `Every present value appears twice (once in the range, once in the array) and cancels since x ^ x == 0; the missing value appears only once and survives.`
+              },
+              {
+                q: `Which properties of XOR make the trick work?`,
+                a: `x ^ x == 0, x ^ 0 == x, and XOR is commutative and associative so order does not matter.`
+              },
+              {
+                q: `What is the trade-off of the boolean seen array?`,
+                a: `It uses O(n) extra space but avoids any arithmetic/overflow concerns and is easy to reason about.`
+              }
+            ]
+          },
+          {
+            title: `Two Sum (return indices) [Medium]`,
+            notes: `## Two Sum (return indices)
+Return the indices of the two numbers that add up to a target (exactly one solution, no reuse).
+Example: \`[2, 7, 11, 15]\`, target \`9\` -> \`[0, 1]\`.
+
+### Approaches
+- Brute force: test every pair (i, j > i). Simple, no memory, but O(n^2).
+- HashMap one-pass: store value -> index; for each x check whether \`target - x\` was already seen. O(n).
+- Two-pointer on a sorted copy: move inward based on whether the sum is too small or too big. Sorting loses the ORIGINAL indices, so it returns values, not input positions.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Brute force | O(n^2) | O(1) | fine for tiny inputs |
+| HashMap one-pass | O(n) | O(n) | optimal for indices |
+| Two-pointer (sorted) | O(n log n) | O(n) | loses original indices |
+
+### Which to use
+The one-pass HashMap is the expected optimal answer when you must return INDICES. The two-pointer trick is great for a pre-sorted array or when only the values matter.
+
+\`\`\`mermaid
+flowchart TD
+  S["target = 9, seen = {}"] --> A["i=0, x=2, need=7, 7 not in seen -> put 2->0"]
+  A --> B["i=1, x=7, need=2, 2 IS in seen at index 0"]
+  B --> R["return [0, 1]"]
+\`\`\``,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Brute force O(n^2)`,
+                code: `import java.util.Arrays;
+
+// Approach 1 (brute force): try every pair (i, j) with j > i and check whether
+// a[i] + a[j] equals the target. Simple, no extra memory, but quadratic.
+// Time O(n^2), Space O(1).
+public class TwoSumBrute {
+    static int[] twoSum(int[] a, int target) {
+        for (int i = 0; i < a.length; i++) {
+            for (int j = i + 1; j < a.length; j++) {   // j starts after i -> no reuse, no dup pairs
+                if (a[i] + a[j] == target) return new int[]{i, j};
+            }
+        }
+        return new int[]{-1, -1};       // not found
+    }
+
+    public static void main(String[] args) {
+        int[] a = {2, 7, 11, 15};
+        System.out.println(Arrays.toString(twoSum(a, 9))); // [0, 1]
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — HashMap one-pass O(n)`,
+                code: `import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+
+// Approach 2 (optimal): one-pass HashMap of value -> index.
+// For each element x we need (target - x). If that complement was ALREADY seen,
+// we have our answer. Otherwise remember x for future elements. Because we check
+// before inserting, we never pair an element with itself.
+// Time O(n) average (O(1) map ops), Space O(n) for the map.
+public class TwoSumHashMap {
+    static int[] twoSum(int[] a, int target) {
+        Map<Integer, Integer> seen = new HashMap<>(); // value -> its index
+        for (int i = 0; i < a.length; i++) {
+            int need = target - a[i];       // the complement that completes the sum
+            if (seen.containsKey(need)) {
+                return new int[]{seen.get(need), i}; // earlier index first
+            }
+            seen.put(a[i], i);              // record current for later lookups
+        }
+        return new int[]{-1, -1};
+    }
+
+    public static void main(String[] args) {
+        int[] a = {2, 7, 11, 15};
+        System.out.println(Arrays.toString(twoSum(a, 9))); // [0, 1]
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — Two-pointer on a sorted copy`,
+                code: `import java.util.Arrays;
+
+// Approach 3: two-pointer on a SORTED copy.
+// After sorting, move a left pointer up and a right pointer down:
+//   sum too small -> advance left (need a bigger value)
+//   sum too big   -> retreat right (need a smaller value)
+//   sum == target -> found.
+// CAVEAT: sorting destroys the original positions, so the indices returned are
+// into the SORTED array, not the input. Use this only when values (not the
+// original indices) are what you need. To keep O(1) extra space you could sort
+// in place, but then you lose the input order entirely.
+// Time O(n log n) (the sort dominates), Space O(n) for the copy.
+public class TwoSumTwoPointer {
+    static int[] twoSumValues(int[] input, int target) {
+        int[] a = input.clone();        // copy so we don't clobber the caller's array
+        Arrays.sort(a);
+        int lo = 0, hi = a.length - 1;
+        while (lo < hi) {
+            int sum = a[lo] + a[hi];
+            if (sum == target) return new int[]{a[lo], a[hi]}; // return VALUES, not indices
+            if (sum < target) lo++;     // too small: grow the sum
+            else hi--;                  // too big: shrink the sum
+        }
+        return new int[]{};
+    }
+
+    public static void main(String[] args) {
+        int[] a = {15, 2, 11, 7};
+        System.out.println(Arrays.toString(twoSumValues(a, 9))); // [2, 7]
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the best time complexity for Two Sum returning indices, and how?`,
+                a: `O(n) with a one-pass HashMap of value -> index, checking for the complement target - x before inserting.`
+              },
+              {
+                q: `In the HashMap approach, why check the complement before inserting the current element?`,
+                a: `To avoid pairing an element with itself; you only match against elements seen earlier.`
+              },
+              {
+                q: `Why can the two-pointer approach not return the original indices?`,
+                a: `Sorting rearranges the elements, so positions no longer correspond to the input; it can only return the values (or indices into the sorted copy).`
+              },
+              {
+                q: `When is the two-pointer version preferable to the HashMap?`,
+                a: `When the array is already sorted or only the values are needed, since it avoids the O(n) hash-map memory.`
+              }
+            ]
+          },
+          {
+            title: `Move Zeroes to End (keep order) [Medium]`,
+            notes: `## Move Zeroes to End (keep order)
+Move every 0 to the end while keeping the relative order of the non-zero elements.
+Example: \`[0, 1, 0, 3, 12]\` -> \`[1, 3, 12, 0, 0]\`.
+
+### Approaches
+- Two-pointer write index: a write pointer \`w\` marks where the next non-zero goes; copy non-zeros forward in order, then fill the tail with zeros. Stable, in place.
+- Swap-based two-pointer: same boundary idea but SWAP the non-zero into place, so a known zero moves back — minimizes writes.
+- Count-and-fill: copy non-zeros into a fresh array; Java zero-initializes the remaining slots for free. O(n) space.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Two-pointer write | O(n) | O(1) | stable, in place |
+| Swap-based | O(n) | O(1) | fewest writes, stable |
+| Count-and-fill | O(n) | O(n) | simplest to explain |
+
+### Which to use
+The in-place two-pointer write index is the standard optimal answer: O(n) time, O(1) space, and it preserves order. The swap variant is the same idea when you want to minimize writes.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Two-pointer write index (stable)`,
+                code: `import java.util.Arrays;
+
+// Approach 1 (optimal, stable): two-pointer write index.
+// \`w\` marks where the next NON-zero should land. Scan with \`r\`; whenever a[r]
+// is non-zero, copy it to a[w] and bump w. Non-zeros keep their relative order
+// (stable). After the scan, fill positions w..end with zeros.
+// Time O(n), Space O(1).
+public class MoveZeroesTwoPointer {
+    static void moveZeroes(int[] a) {
+        int w = 0;                      // next slot for a non-zero
+        for (int r = 0; r < a.length; r++) {
+            if (a[r] != 0) a[w++] = a[r]; // pack non-zeros to the front, in order
+        }
+        while (w < a.length) a[w++] = 0;  // remaining slots become zeros
+    }
+
+    public static void main(String[] args) {
+        int[] a = {0, 1, 0, 3, 12};
+        moveZeroes(a);
+        System.out.println(Arrays.toString(a)); // [1, 3, 12, 0, 0]
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Swap-based two-pointer (fewest writes)`,
+                code: `import java.util.Arrays;
+
+// Approach 2: swap-based two-pointer -- same idea but SWAP instead of overwrite,
+// so it does the minimum number of writes (each non-zero is swapped forward only
+// when it is actually ahead of the write index). Still stable and in place.
+// Time O(n), Space O(1).
+public class MoveZeroesSwap {
+    static void moveZeroes(int[] a) {
+        int w = 0;                      // boundary: everything before w is a placed non-zero
+        for (int r = 0; r < a.length; r++) {
+            if (a[r] != 0) {
+                if (r != w) {           // avoid a pointless self-swap
+                    int tmp = a[w];     // a[w] is a known zero at this point
+                    a[w] = a[r];
+                    a[r] = tmp;         // the zero moves back to r
+                }
+                w++;
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        int[] a = {0, 1, 0, 3, 12};
+        moveZeroes(a);
+        System.out.println(Arrays.toString(a)); // [1, 3, 12, 0, 0]
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — Count-and-fill into a new array`,
+                code: `import java.util.Arrays;
+
+// Approach 3: count-and-fill (into a result array).
+// First copy all non-zeros in order into a fresh array (its write index also
+// counts how many non-zeros there were); the tail stays default-0 automatically
+// because Java zero-initializes new int arrays. Clear to explain; O(n) space.
+// Time O(n), Space O(n).
+public class MoveZeroesCountFill {
+    static int[] moveZeroes(int[] a) {
+        int[] out = new int[a.length];  // all zeros by default
+        int w = 0;
+        for (int x : a) {
+            if (x != 0) out[w++] = x;   // place non-zeros; trailing slots remain 0
+        }
+        return out;
+    }
+
+    public static void main(String[] args) {
+        int[] a = {0, 1, 0, 3, 12};
+        System.out.println(Arrays.toString(moveZeroes(a))); // [1, 3, 12, 0, 0]
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What does "stable" mean for Move Zeroes and why does it matter?`,
+                a: `The non-zero elements keep their original relative order; the problem requires it, so you cannot simply swap zeros to the front arbitrarily.`
+              },
+              {
+                q: `What does the write pointer w represent in the two-pointer solution?`,
+                a: `The index where the next non-zero element should be placed; everything before w is already-packed non-zeros.`
+              },
+              {
+                q: `How does the swap-based variant minimize writes?`,
+                a: `It skips a self-swap when r == w, so each non-zero is moved only when it is actually ahead of the write index.`
+              },
+              {
+                q: `Why does count-and-fill not need to explicitly write the trailing zeros?`,
+                a: `Java zero-initializes a newly allocated int array, so slots left untouched after the non-zeros are already 0.`
+              }
+            ]
+          },
+          {
+            title: `Maximum Subarray Sum — Kadane's Algorithm [Medium]`,
+            notes: `## Maximum Subarray Sum (Kadane's Algorithm)
+Find the largest sum of any contiguous subarray.
+Example: \`[-2, 1, -3, 4, -1, 2, 1, -5, 4]\` -> \`6\` (from \`[4, -1, 2, 1]\`).
+
+### Approaches
+- Brute force: for every start i, extend a running sum over j and track the best. O(n^2).
+- Kadane (with indices): keep \`cur\` = best sum of a subarray ENDING here = \`max(a[i], cur + a[i])\`. If the running sum turns negative it can only hurt what follows, so it resets. Track a separate global best plus start/end.
+- Kadane (minimal): the whiteboard form using \`Math.max\`, when only the sum is asked.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Brute force | O(n^2) | O(1) | try every subarray |
+| Kadane | O(n) | O(1) | one pass, optimal |
+
+### Which to use
+Kadane is the optimal answer: one pass, O(1) space. The key idea to say out loud is the reset — drop a running sum the moment it goes negative, because a negative prefix only drags down anything you append after it.
+
+\`\`\`mermaid
+flowchart LR
+  A["i: a[i]"] --> B["cur = max(a[i], cur + a[i])"]
+  B --> C{"cur < 0?"}
+  C -->|yes| D["reset starts here next step"]
+  C -->|no| E["keep extending"]
+  B --> F["best = max(best, cur)"]
+\`\`\`
+
+Trace on \`[-2, 1, -3, 4, -1, 2, 1, -5, 4]\`:
+
+| i | a[i] | cur = max(a[i], cur+a[i]) | best |
+|---|---|---|---|
+| 0 | -2 | -2 | -2 |
+| 1 | 1 | 1 (reset) | 1 |
+| 2 | -3 | -2 | 1 |
+| 3 | 4 | 4 (reset) | 4 |
+| 4 | -1 | 3 | 4 |
+| 5 | 2 | 5 | 5 |
+| 6 | 1 | 6 | 6 |
+| 7 | -5 | 1 | 6 |
+| 8 | 4 | 5 | 6 |`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Brute force O(n^2)`,
+                code: `// Approach 1 (brute force): try every subarray [i..j], maintain a running sum
+// as j extends, and track the best. Extending the inner sum (instead of a third
+// loop to re-add) keeps this at O(n^2) rather than O(n^3).
+// Time O(n^2), Space O(1).
+public class MaxSubBrute {
+    public static void main(String[] args) {
+        int[] a = {-2, 1, -3, 4, -1, 2, 1, -5, 4};
+
+        int best = Integer.MIN_VALUE;
+        for (int i = 0; i < a.length; i++) {
+            int sum = 0;
+            for (int j = i; j < a.length; j++) {
+                sum += a[j];            // sum of a[i..j]
+                if (sum > best) best = sum;
+            }
+        }
+
+        System.out.println("maxSubarraySum=" + best); // 6  (from subarray [4,-1,2,1])
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Kadane O(n) with index tracking`,
+                code: `// Approach 2 (optimal): Kadane's algorithm, one pass.
+// Core insight: the best subarray ENDING at index i is either a[i] alone, or
+// a[i] appended to the best subarray ending at i-1 -- whichever is larger. So:
+//     cur = max(a[i], cur + a[i])
+// If the running sum \`cur\` ever goes negative it can only HURT what follows, so
+// we "reset" by starting fresh at a[i] (that is exactly what the max picks).
+// Track the global best separately. We also record start/end indices.
+// Time O(n), Space O(1).
+public class MaxSubKadane {
+    public static void main(String[] args) {
+        int[] a = {-2, 1, -3, 4, -1, 2, 1, -5, 4};
+
+        int cur = a[0], best = a[0];    // best sum ending here, and best overall
+        int tempStart = 0, start = 0, end = 0; // for reconstructing the subarray
+        for (int i = 1; i < a.length; i++) {
+            if (a[i] > cur + a[i]) {    // extending would be worse than restarting
+                cur = a[i];
+                tempStart = i;          // a fresh subarray begins at i
+            } else {
+                cur = cur + a[i];       // extend the current subarray
+            }
+            if (cur > best) {           // new global maximum -> commit the window
+                best = cur;
+                start = tempStart;
+                end = i;
+            }
+        }
+
+        System.out.println("maxSubarraySum=" + best
+            + " subarray=[" + start + ".." + end + "]"); // 6, [3..6]
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — Kadane, minimal form`,
+                code: `// Approach 3: Kadane, minimal form (no index tracking) -- the version to write
+// on a whiteboard when only the SUM is asked for. Same recurrence, less state.
+// \`cur\` = best sum of a subarray ending at the current element; clamp it up
+// from below by a[i] via Math.max, and keep the running global best.
+// Time O(n), Space O(1).
+public class MaxSubKadaneSimple {
+    public static void main(String[] args) {
+        int[] a = {-2, 1, -3, 4, -1, 2, 1, -5, 4};
+
+        int cur = a[0], best = a[0];
+        for (int i = 1; i < a.length; i++) {
+            cur = Math.max(a[i], cur + a[i]); // restart at a[i], or extend
+            best = Math.max(best, cur);       // remember the best seen
+        }
+
+        System.out.println("maxSubarraySum=" + best); // 6
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the core recurrence in Kadane's algorithm?`,
+                a: `cur = max(a[i], cur + a[i]) — the best subarray ending at i is either a[i] alone or a[i] appended to the best ending at i-1.`
+              },
+              {
+                q: `Why does Kadane reset the running sum when it goes negative?`,
+                a: `A negative running prefix can only reduce the sum of anything appended after it, so starting fresh at the current element is never worse.`
+              },
+              {
+                q: `What is the time and space complexity of Kadane vs brute force?`,
+                a: `Kadane is O(n) time, O(1) space; brute force is O(n^2) time, O(1) space.`
+              },
+              {
+                q: `Why initialize cur and best to a[0] rather than 0?`,
+                a: `The subarray must be non-empty; seeding with 0 would return 0 for an all-negative array instead of the largest (least negative) element.`
+              },
+              {
+                q: `How do you recover the actual subarray, not just its sum?`,
+                a: `Track a tentative start index when you reset, and commit start/end whenever cur becomes a new global best.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `13.3`,
+        title: `Numbers & Math — Practice Programs`,
+        hours: 4,
+        sections: [
+          {
+            title: `Prime Number Check [Easy]`,
+            notes: `## Prime Number Check
+A prime is an integer > 1 divisible only by 1 and itself. Determine whether a given n is prime, or list every prime up to a bound N.
+
+Example: 29 -> prime, 15 -> not prime.
+
+### Approaches
+- **Trial division to n-1:** test every d in [2, n-1]; if any divides n, it is composite. Correct but O(n).
+- **Trial division to sqrt(n):** a factor larger than sqrt(n) must pair with one smaller, so testing up to sqrt(n) suffices.
+- **6k +/- 1:** after ruling out 2 and 3, every prime has the form 6k-1 or 6k+1, so step by 6 and test only two residues -> ~3x fewer checks.
+- **Sieve of Eratosthenes:** to get ALL primes up to N, mark multiples of each prime as composite; survivors are prime.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|----------|------|-------|-------|
+| Trial to n-1 | O(n) | O(1) | baseline, wasteful |
+| Trial to sqrt(n) | O(sqrt(n)) | O(1) | standard single check |
+| 6k +/- 1 | O(sqrt(n)) | O(1) | same order, fewer ops |
+| Sieve | O(N log log N) | O(N) | all primes up to N |
+
+### Which to use
+For a single number, use the sqrt(n) check (or 6k +/- 1 to shave constant factors). Use the sieve only when you need many primes or repeated queries up to a fixed bound N; its O(N) memory is wasted for a one-off test.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Trial division to n-1`,
+                code: `// Approach 1 — Trial division up to n-1 (brute force, the baseline).
+// Idea: n is prime if NO integer in [2, n-1] divides it evenly.
+// We simply test every candidate divisor. Correct but wasteful.
+// Time: O(n) divisions. Space: O(1).
+public class PrimeTrialDivision {
+
+    // Returns true when n is a prime number.
+    static boolean isPrime(int n) {
+        if (n < 2) return false;            // 0, 1 and negatives are not prime by definition.
+        // Test every possible factor from 2 up to n-1.
+        for (int d = 2; d < n; d++) {
+            if (n % d == 0) return false;   // Found a divisor -> composite, stop early.
+        }
+        return true;                        // No divisor found -> prime.
+    }
+
+    public static void main(String[] a) {
+        int[] samples = {1, 2, 7, 15, 29, 100, 97};
+        for (int n : samples) {
+            System.out.println(n + " -> " + (isPrime(n) ? "prime" : "not prime"));
+        }
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Trial division to sqrt(n)`,
+                code: `// Approach 2 — Trial division up to sqrt(n) (the standard optimization).
+// Key insight: if n = p * q, then at least one of p, q is <= sqrt(n).
+// So if no divisor exists in [2, sqrt(n)], none exists at all.
+// Time: O(sqrt(n)). Space: O(1). This is the usual interview answer.
+public class PrimeSqrt {
+
+    static boolean isPrime(int n) {
+        if (n < 2) return false;
+        // Loop while d*d <= n. Using d*d avoids a floating-point Math.sqrt call
+        // (and its rounding pitfalls). Cast to long guards against int overflow
+        // of d*d for large n.
+        for (int d = 2; (long) d * d <= n; d++) {
+            if (n % d == 0) return false;
+        }
+        return true;
+    }
+
+    public static void main(String[] a) {
+        int[] samples = {1, 2, 7, 15, 29, 100, 97};
+        for (int n : samples) {
+            System.out.println(n + " -> " + (isPrime(n) ? "prime" : "not prime"));
+        }
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — 6k +/- 1 optimization`,
+                code: `// Approach 3 — 6k +/- 1 optimization (fewer candidates than sqrt version).
+// Every prime > 3 is of the form 6k-1 or 6k+1: all other residues mod 6
+// are divisible by 2 or 3. So after handling 2 and 3, we only test divisors
+// 5, 7, 11, 13, ... skipping multiples of 2 and 3 (step of 6).
+// Time: O(sqrt(n)) but ~3x fewer modulo operations than plain sqrt. Space: O(1).
+public class Prime6k {
+
+    static boolean isPrime(int n) {
+        if (n < 2) return false;
+        if (n < 4) return true;            // 2 and 3 are prime.
+        if (n % 2 == 0 || n % 3 == 0) return false; // drop even and multiples of 3.
+        // Test 6k-1 and 6k+1 pairs: i = 5, 11, 17, ... and i+2 = 7, 13, 19, ...
+        for (int i = 5; (long) i * i <= n; i += 6) {
+            if (n % i == 0 || n % (i + 2) == 0) return false;
+        }
+        return true;
+    }
+
+    public static void main(String[] a) {
+        int[] samples = {1, 2, 7, 15, 29, 100, 97, 7919};
+        for (int n : samples) {
+            System.out.println(n + " -> " + (isPrime(n) ? "prime" : "not prime"));
+        }
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 4 — Sieve of Eratosthenes`,
+                code: `// Approach 4 — Sieve of Eratosthenes (all primes up to N at once).
+// Idea: assume every number is prime, then repeatedly cross out the multiples
+// of each prime found. Whatever survives is prime.
+// Time: O(N log log N). Space: O(N) for the boolean table.
+// Use the sieve when you need MANY primes / repeated queries up to a bound;
+// use a single sqrt(n) check when you only test one number.
+import java.util.ArrayList;
+import java.util.List;
+
+public class SieveEratosthenes {
+
+    static List<Integer> primesUpTo(int n) {
+        boolean[] composite = new boolean[n + 1]; // false = still assumed prime.
+        List<Integer> primes = new ArrayList<>();
+        for (int p = 2; p <= n; p++) {
+            if (!composite[p]) {              // p survived -> it is prime.
+                primes.add(p);
+                // Start crossing out at p*p: smaller multiples (2p, 3p...) were
+                // already crossed out by smaller primes. Use long to avoid overflow.
+                for (long m = (long) p * p; m <= n; m += p) {
+                    composite[(int) m] = true;
+                }
+            }
+        }
+        return primes;
+    }
+
+    public static void main(String[] a) {
+        int n = 50;
+        System.out.println("Primes up to " + n + ": " + primesUpTo(n));
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is it enough to test divisors only up to sqrt(n)?`,
+                a: `If n = p*q then at least one of p, q is <= sqrt(n). So if no divisor exists in [2, sqrt(n)], none exists at all.`
+              },
+              {
+                q: `What is the time complexity of the standard single-number primality check?`,
+                a: `O(sqrt(n)) using trial division up to sqrt(n).`
+              },
+              {
+                q: `When should you use a Sieve of Eratosthenes instead of a single sqrt(n) check?`,
+                a: `When you need all primes up to N or many repeated queries. The sieve costs O(N) memory, wasteful for testing just one number.`
+              },
+              {
+                q: `Why does the 6k +/- 1 optimization work?`,
+                a: `Every integer is 6k+r for r in 0..5. r=0,2,4 are even and r=3 is divisible by 3, so any prime > 3 must be 6k-1 or 6k+1.`
+              },
+              {
+                q: `What is the time complexity of the Sieve of Eratosthenes?`,
+                a: `O(N log log N) time and O(N) space.`
+              }
+            ]
+          },
+          {
+            title: `Factorial [Easy]`,
+            notes: `## Factorial
+n! is the product 1*2*3*...*n, with 0! = 1 by definition. Compute n! for a given n.
+
+Example: 5! = 120.
+
+### Approaches
+- **Iterative:** multiply 1..n into an accumulator with a loop.
+- **Recursive:** n! = n * (n-1)! with base case 0! = 1! = 1; mirrors the definition but uses O(n) stack.
+- **BigInteger:** long overflows past 20!, so use arbitrary-precision BigInteger for large n.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|----------|------|-------|-------|
+| Iterative (long) | O(n) | O(1) | correct only up to 20! |
+| Recursive (long) | O(n) | O(n) | stack frames; overflow past 20! |
+| BigInteger | O(n) big-num mults | O(digits) | no overflow, any n |
+
+### Which to use
+Iterative long for n <= 20; BigInteger the moment n can exceed 20 (21! already overflows signed 64-bit and silently wraps to a wrong value).`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Iterative loop`,
+                code: `// Approach 1 — Iterative factorial with a loop (the simplest correct version).
+// n! = 1 * 2 * 3 * ... * n, and 0! = 1 by definition.
+// We multiply into an accumulator. Uses long, which is safe only up to 20!.
+// Time: O(n). Space: O(1).
+public class FactorialIterative {
+
+    static long factorial(int n) {
+        long result = 1;                 // 0! = 1 is the loop's starting value.
+        for (int i = 2; i <= n; i++) {   // start at 2 (multiplying by 1 is a no-op).
+            result *= i;                 // accumulate the running product.
+        }
+        return result;
+    }
+
+    public static void main(String[] a) {
+        for (int n : new int[]{0, 1, 5, 10, 20}) {
+            System.out.println(n + "! = " + factorial(n));
+        }
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Recursion`,
+                code: `// Approach 2 — Recursive factorial (definition translated directly to code).
+// Recurrence: n! = n * (n-1)!, with base case 0! = 1! = 1.
+// Elegant, but each call adds a stack frame, so deep n risks StackOverflow.
+// Time: O(n). Space: O(n) call stack.
+public class FactorialRecursive {
+
+    static long factorial(int n) {
+        if (n <= 1) return 1;                 // base case: 0! and 1! are 1.
+        return n * factorial(n - 1);          // recursive step: n * (n-1)!.
+    }
+
+    public static void main(String[] a) {
+        for (int n : new int[]{0, 1, 5, 10, 20}) {
+            System.out.println(n + "! = " + factorial(n));
+        }
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — BigInteger (no overflow)`,
+                code: `// Approach 3 — BigInteger factorial (arbitrary precision, no overflow).
+// Why: long is 64-bit, so it overflows past 20! (21! > Long.MAX_VALUE and
+// silently wraps to a WRONG value). BigInteger grows as large as memory allows,
+// so it is the correct tool for large n like 25! or 100!.
+// Time: O(n) multiplications (each on growing big numbers). Space: O(digits).
+import java.math.BigInteger;
+
+public class FactorialBigInteger {
+
+    static BigInteger factorial(int n) {
+        BigInteger result = BigInteger.ONE;          // 0! = 1.
+        for (int i = 2; i <= n; i++) {
+            result = result.multiply(BigInteger.valueOf(i)); // immutable: reassign.
+        }
+        return result;
+    }
+
+    public static void main(String[] a) {
+        // 21! demonstrates overflow: long would wrap, BigInteger stays correct.
+        long wrong = 1;
+        for (int i = 2; i <= 21; i++) wrong *= i;    // overflows silently.
+        System.out.println("21! via long (WRONG, overflowed): " + wrong);
+        System.out.println("21! via BigInteger (correct):     " + factorial(21));
+        System.out.println("25! = " + factorial(25));
+        System.out.println("50! = " + factorial(50));
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is 0! and why?`,
+                a: `0! = 1 by definition (the empty product), which also makes the recurrence n! = n*(n-1)! work at n=1.`
+              },
+              {
+                q: `Past which n does a long-based factorial overflow?`,
+                a: `Past 20!. 20! fits in a signed long, but 21! exceeds Long.MAX_VALUE and wraps to a wrong (often negative) value.`
+              },
+              {
+                q: `How do you compute large factorials correctly in Java?`,
+                a: `Use java.math.BigInteger, which is arbitrary precision and grows as large as memory allows.`
+              },
+              {
+                q: `What is the risk of the recursive factorial for very large n?`,
+                a: `Each call adds a stack frame, so deep recursion can throw StackOverflowError; the iterative version uses O(1) stack.`
+              }
+            ]
+          },
+          {
+            title: `Fibonacci [Medium]`,
+            notes: `## Fibonacci
+F(0)=0, F(1)=1, F(n)=F(n-1)+F(n-2). Compute the nth Fibonacci number.
+
+Example: F(10) = 55.
+
+### Approaches
+- **Naive recursion:** translate the recurrence directly; recomputes subproblems, giving O(2^n) calls.
+- **Memoized (top-down):** cache each F(n) the first time it is computed -> O(n).
+- **Iterative bottom-up:** build up keeping only the last two values -> O(n) time, O(1) space (the interview-optimal one).
+- **Streams:** functional Stream.iterate over pairs [a, b] -> [b, a+b].
+
+### Complexity
+| Approach | Time | Space | Notes |
+|----------|------|-------|-------|
+| Naive recursion | O(2^n) | O(n) | exponential, recomputes |
+| Memoized | O(n) | O(n) | cache + stack |
+| Iterative | O(n) | O(1) | best in practice |
+| Streams | O(n) | O(1) | declarative |
+
+### Which to use
+Iterative bottom-up: O(n) time and O(1) space, no stack risk. Memoization is the go-to when the recursion is more complex and you want to keep the top-down shape.
+
+The naive call tree branches twice per node, so its size roughly doubles with each extra level -- that is the exponential blowup:
+
+\`\`\`mermaid
+graph TD
+  F5["F(5)"] --> F4["F(4)"]
+  F5 --> F3a["F(3)"]
+  F4 --> F3b["F(3)"]
+  F4 --> F2a["F(2)"]
+  F3a --> F2b["F(2)"]
+  F3a --> F1a["F(1)"]
+  F3b --> F2c["F(2)"]
+  F3b --> F1b["F(1)"]
+  F2a --> F1c["F(1)"]
+  F2a --> F0a["F(0)"]
+\`\`\`
+
+Note how F(3) and F(2) are each recomputed multiple times -- memoization removes exactly that duplication.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Naive recursion O(2^n)`,
+                code: `// Approach 1 — Naive recursion (exponential, the classic anti-pattern).
+// Recurrence: F(0)=0, F(1)=1, F(n)=F(n-1)+F(n-2).
+// Problem: it recomputes the same subproblems over and over. F(n-2) is
+// evaluated twice, F(n-3) three times, ... giving ~phi^n calls.
+// Time: O(2^n) (really O(phi^n)). Space: O(n) recursion depth.
+public class FibNaive {
+
+    static long fib(int n) {
+        if (n < 2) return n;                  // F(0)=0, F(1)=1.
+        return fib(n - 1) + fib(n - 2);       // two recursive calls -> blowup.
+    }
+
+    public static void main(String[] a) {
+        // Keep n small: n=40 already makes ~331 million calls.
+        for (int n = 0; n <= 10; n++) System.out.print(fib(n) + " ");
+        System.out.println();
+        System.out.println("fib(30) = " + fib(30));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Memoized top-down O(n)`,
+                code: `// Approach 2 — Memoized top-down recursion (O(n) via caching).
+// Same recurrence, but we STORE each computed F(n) the first time and reuse it.
+// This collapses the exponential call tree into n unique subproblems.
+// Time: O(n). Space: O(n) cache + O(n) stack.
+import java.util.HashMap;
+import java.util.Map;
+
+public class FibMemo {
+
+    static Map<Integer, Long> memo = new HashMap<>();
+
+    static long fib(int n) {
+        if (n < 2) return n;
+        Long cached = memo.get(n);
+        if (cached != null) return cached;         // reuse -> no recomputation.
+        long value = fib(n - 1) + fib(n - 2);
+        memo.put(n, value);                        // remember for next time.
+        return value;
+    }
+
+    public static void main(String[] a) {
+        for (int n = 0; n <= 10; n++) System.out.print(fib(n) + " ");
+        System.out.println();
+        System.out.println("fib(50) = " + fib(50)); // instant, unlike the naive one.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — Iterative bottom-up O(1) space`,
+                code: `// Approach 3 — Iterative bottom-up with O(1) space (the interview-optimal one).
+// Build F(n) from the ground up, keeping only the last two values.
+// No recursion stack, no cache array -> constant extra memory.
+// Time: O(n). Space: O(1).
+public class FibIterative {
+
+    static long fib(int n) {
+        if (n < 2) return n;
+        long prev = 0, curr = 1;              // F(0), F(1).
+        for (int i = 2; i <= n; i++) {
+            long next = prev + curr;          // F(i) = F(i-1) + F(i-2).
+            prev = curr;                      // slide the window forward.
+            curr = next;
+        }
+        return curr;
+    }
+
+    public static void main(String[] a) {
+        for (int n = 0; n <= 10; n++) System.out.print(fib(n) + " ");
+        System.out.println();
+        System.out.println("fib(90) = " + fib(90)); // largest that fits in long.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 4 — Stream.iterate (functional)`,
+                code: `// Approach 4 — Functional style with Stream.iterate (declarative, no mutation).
+// We iterate over pairs [a, b] where each step maps [a, b] -> [b, a+b].
+// The first element of each pair walks through the Fibonacci sequence.
+// Time: O(n). Space: O(1) working state (plus stream overhead).
+import java.util.stream.LongStream;
+import java.util.stream.Stream;
+
+public class FibStreams {
+
+    static long fib(int n) {
+        // Seed with the pair (F(0), F(1)) = (0, 1); advance n times.
+        return Stream.iterate(new long[]{0, 1}, p -> new long[]{p[1], p[0] + p[1]})
+                     .limit(n + 1)
+                     .reduce((first, second) -> second) // take the last pair.
+                     .map(p -> p[0])
+                     .orElse(0L);
+    }
+
+    public static void main(String[] a) {
+        // Print the first 11 Fibonacci numbers using the same idea inline.
+        String seq = LongStream.rangeClosed(0, 10)
+                               .mapToObj(n -> Long.toString(fib((int) n)))
+                               .reduce((x, y) -> x + " " + y)
+                               .orElse("");
+        System.out.println(seq);
+        System.out.println("fib(50) = " + fib(50));
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Why is naive recursive Fibonacci exponential?`,
+                a: `Each call spawns two more and the same subproblems are recomputed repeatedly; the call count grows like phi^n (~O(2^n)).`
+              },
+              {
+                q: `How does memoization reduce Fibonacci to O(n)?`,
+                a: `By caching each F(n) on first computation, every subproblem is solved once, collapsing the exponential tree into n unique nodes.`
+              },
+              {
+                q: `What is the space-optimal iterative Fibonacci complexity?`,
+                a: `O(n) time and O(1) space, keeping only the previous two values.`
+              },
+              {
+                q: `What is the largest Fibonacci number that fits in a Java long?`,
+                a: `F(92). F(93) overflows signed 64-bit, so use BigInteger beyond that.`
+              },
+              {
+                q: `Which approach would you pick in an interview and why?`,
+                a: `Iterative bottom-up: linear time, constant space, and no recursion/stack overhead.`
+              }
+            ]
+          },
+          {
+            title: `GCD and LCM [Easy]`,
+            notes: `## GCD and LCM
+GCD(a,b) is the largest integer dividing both; LCM(a,b) is the smallest positive multiple of both. Compute them.
+
+Example: gcd(48,18) = 6, lcm(4,6) = 12.
+
+### Approaches
+- **Euclidean recursive:** gcd(a,b) = gcd(b, a mod b), base case gcd(a,0) = a.
+- **Euclidean iterative:** same recurrence as a while loop, O(1) space.
+- **LCM from GCD:** lcm(a,b) = a/gcd(a,b)*b; divide by gcd FIRST to keep the intermediate product small and avoid overflow.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|----------|------|-------|-------|
+| GCD recursive | O(log(min(a,b))) | O(log) | stack |
+| GCD iterative | O(log(min(a,b))) | O(1) | no stack |
+| LCM via GCD | O(log(min(a,b))) | O(1) | reuses gcd |
+
+### Which to use
+Iterative Euclidean GCD (O(1) space). For LCM, always compute (a / gcd) * b rather than (a * b) / gcd so the multiplication cannot overflow before the divide.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Euclidean recursive`,
+                code: `// Approach 1 — Euclidean algorithm, recursive (the elegant classic).
+// Key fact: gcd(a, b) = gcd(b, a mod b), and gcd(a, 0) = a.
+// Each step replaces the pair with a strictly smaller remainder, so it
+// terminates fast.
+// Time: O(log(min(a,b))). Space: O(log) call stack.
+public class GcdRecursive {
+
+    static int gcd(int a, int b) {
+        if (b == 0) return a;           // base case: gcd(a, 0) = a.
+        return gcd(b, a % b);           // shrink: gcd(a,b) = gcd(b, a mod b).
+    }
+
+    public static void main(String[] a) {
+        System.out.println("gcd(48, 18) = " + gcd(48, 18));
+        System.out.println("gcd(17, 5)  = " + gcd(17, 5));
+        System.out.println("gcd(100, 0) = " + gcd(100, 0));
+        System.out.println("gcd(270, 192) = " + gcd(270, 192));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Euclidean iterative`,
+                code: `// Approach 2 — Euclidean algorithm, iterative (no recursion, no stack growth).
+// Same recurrence gcd(a,b) = gcd(b, a mod b), unrolled into a while loop.
+// Preferred when you want to avoid recursion overhead / stack limits.
+// Time: O(log(min(a,b))). Space: O(1).
+public class GcdIterative {
+
+    static int gcd(int a, int b) {
+        while (b != 0) {
+            int r = a % b;              // remainder of the current pair.
+            a = b;                      // shift: the old b becomes the new a.
+            b = r;                      // the remainder becomes the new b.
+        }
+        return a;                       // when b hits 0, a holds the gcd.
+    }
+
+    public static void main(String[] a) {
+        System.out.println("gcd(48, 18) = " + gcd(48, 18));
+        System.out.println("gcd(1071, 462) = " + gcd(1071, 462));
+        System.out.println("gcd(13, 13) = " + gcd(13, 13));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — LCM from GCD`,
+                code: `// Approach 3 — LCM built from GCD (the standard relationship).
+// Fact: a * b = gcd(a,b) * lcm(a,b), so lcm(a,b) = a * b / gcd(a,b).
+// IMPORTANT: compute (a / gcd) * b, NOT (a * b) / gcd. Dividing first keeps
+// the intermediate product small and avoids overflowing before the divide.
+// Time: O(log(min(a,b))) for the gcd. Space: O(1).
+public class LcmFromGcd {
+
+    static long gcd(long a, long b) {
+        while (b != 0) { long r = a % b; a = b; b = r; }
+        return a;
+    }
+
+    static long lcm(long a, long b) {
+        if (a == 0 || b == 0) return 0;      // lcm with 0 is defined as 0.
+        // Divide by gcd FIRST, then multiply -> smaller intermediate value.
+        return (a / gcd(a, b)) * b;
+    }
+
+    public static void main(String[] a) {
+        System.out.println("lcm(4, 6)   = " + lcm(4, 6));
+        System.out.println("lcm(21, 6)  = " + lcm(21, 6));
+        System.out.println("lcm(12, 18) = " + lcm(12, 18));
+        // Large inputs where (a*b) would overflow long but /gcd-first survives.
+        System.out.println("lcm(1000000000, 999999999) = " + lcm(1000000000L, 999999999L));
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `State the Euclidean algorithm recurrence for GCD.`,
+                a: `gcd(a, b) = gcd(b, a mod b), with base case gcd(a, 0) = a.`
+              },
+              {
+                q: `What is the time complexity of the Euclidean GCD?`,
+                a: `O(log(min(a, b))) -- the remainder shrinks quickly each step.`
+              },
+              {
+                q: `How is LCM expressed in terms of GCD?`,
+                a: `lcm(a, b) = a * b / gcd(a, b), computed as (a / gcd) * b.`
+              },
+              {
+                q: `Why divide by gcd before multiplying when computing LCM?`,
+                a: `Computing a*b first can overflow; dividing a by gcd first keeps the intermediate value small (bounded by the true lcm).`
+              }
+            ]
+          },
+          {
+            title: `Armstrong Number [Easy]`,
+            notes: `## Armstrong Number
+An Armstrong (narcissistic) number equals the sum of its digits each raised to the power of the digit count. Check whether n is one.
+
+Example: 153 = 1^3 + 5^3 + 3^3 -> Armstrong.
+
+### Approaches
+- **Digit extraction:** count digits d, then peel digits with % 10 and / 10, summing digit^d; compare to n.
+- **Integer power helper:** replace Math.pow (double, can round) with exact integer multiplication.
+- **Stream + range scan:** compute the sum functionally over the digit chars and list all Armstrong numbers in a range.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|----------|------|-------|-------|
+| Digit extraction | O(d) | O(1) | d = digit count |
+| Integer power | O(d log d) | O(1) | exact, no float error |
+| Stream scan | O(d) per n | O(1) | scans a range |
+
+### Which to use
+Digit extraction with an exact integer power. Prefer integer power over Math.pow to avoid floating-point rounding for larger digits/counts.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Digit extraction with Math.pow`,
+                code: `// Approach 1 — General Armstrong check by extracting digits with % and /.
+// An Armstrong (narcissistic) number equals the sum of its own digits each
+// raised to the power of the digit count. Example: 153 = 1^3 + 5^3 + 3^3.
+// Step 1: count the digits. Step 2: sum digit^count. Step 3: compare to n.
+// Time: O(d) where d = number of digits. Space: O(1).
+public class ArmstrongBasic {
+
+    static boolean isArmstrong(int n) {
+        int digits = Integer.toString(n).length(); // number of digits.
+        int sum = 0;
+        int temp = n;
+        while (temp > 0) {
+            int digit = temp % 10;        // pull off the last digit.
+            sum += (int) Math.pow(digit, digits); // add digit^digits.
+            temp /= 10;                   // drop that digit.
+        }
+        return sum == n;
+    }
+
+    public static void main(String[] a) {
+        for (int n : new int[]{153, 370, 371, 407, 100, 9474, 9475}) {
+            System.out.println(n + " -> " + (isArmstrong(n) ? "Armstrong" : "not"));
+        }
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Exact integer power`,
+                code: `// Approach 2 — Same idea but with an integer power helper (no floating point).
+// Math.pow returns a double and can introduce rounding error for big values,
+// so a pure-integer power keeps the arithmetic exact.
+// Time: O(d * log(power)). Space: O(1).
+public class ArmstrongIntPow {
+
+    // Exact integer power: base^exp using repeated multiplication.
+    static int intPow(int base, int exp) {
+        int result = 1;
+        for (int i = 0; i < exp; i++) result *= base;
+        return result;
+    }
+
+    static boolean isArmstrong(int n) {
+        int digits = Integer.toString(n).length();
+        int sum = 0, temp = n;
+        while (temp > 0) {
+            sum += intPow(temp % 10, digits); // exact integer power.
+            temp /= 10;
+        }
+        return sum == n;
+    }
+
+    public static void main(String[] a) {
+        for (int n : new int[]{153, 370, 407, 1634, 8208, 9474, 1234}) {
+            System.out.println(n + " -> " + (isArmstrong(n) ? "Armstrong" : "not"));
+        }
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — Stream + range scan`,
+                code: `// Approach 3 — Stream-based, and scan a whole range for Armstrong numbers.
+// Convert the number to its digit string, map each char to digit^count, sum.
+// Then use an IntStream to list every 3-digit Armstrong number.
+// Time: O(d) per number. Space: O(1) beyond the digit string.
+import java.util.stream.IntStream;
+
+public class ArmstrongStream {
+
+    static boolean isArmstrong(int n) {
+        String s = Integer.toString(n);
+        int count = s.length();
+        // Sum of (each digit)^count using a functional pipeline.
+        int sum = s.chars()                       // stream of char codes.
+                   .map(c -> c - '0')             // char -> digit value.
+                   .map(d -> (int) Math.pow(d, count))
+                   .sum();
+        return sum == n;
+    }
+
+    public static void main(String[] a) {
+        System.out.print("3-digit Armstrong numbers: ");
+        IntStream.rangeClosed(100, 999)
+                 .filter(ArmstrongStream::isArmstrong)
+                 .forEach(n -> System.out.print(n + " "));
+        System.out.println();
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Define an Armstrong number.`,
+                a: `A number equal to the sum of each of its digits raised to the power of the total number of digits, e.g. 153 = 1^3+5^3+3^3.`
+              },
+              {
+                q: `How do you extract the digits of an integer without converting to a string?`,
+                a: `Repeatedly take n % 10 for the last digit and n /= 10 to drop it, until n becomes 0.`
+              },
+              {
+                q: `Why prefer an integer power over Math.pow for this check?`,
+                a: `Math.pow returns a double and can introduce rounding error; exact integer multiplication keeps the comparison correct.`
+              },
+              {
+                q: `How many 3-digit Armstrong numbers are there?`,
+                a: `Four: 153, 370, 371, and 407.`
+              }
+            ]
+          },
+          {
+            title: `Reverse / Palindrome Number [Easy]`,
+            notes: `## Reverse / Palindrome Number
+Reverse the digits of an integer, and test whether a number reads the same forwards and backwards.
+
+Example: reverse(12345) = 54321; 121 -> palindrome, 123 -> not.
+
+### Approaches
+- **Math reverse:** peel digits with % 10 and rebuild via reversed = reversed*10 + digit.
+- **String reverse:** convert to text, StringBuilder.reverse, parse back.
+- **Palindrome by full reverse:** a number is a palindrome iff it equals its reversed value; negatives are never palindromes.
+- **Palindrome by half reverse:** reverse only the second half so the value never exceeds the original -> overflow-proof with plain int.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|----------|------|-------|-------|
+| Math reverse | O(d) | O(1) | watch overflow |
+| String reverse | O(d) | O(d) | readable |
+| Palindrome full | O(d) | O(1) | reverse then compare |
+| Palindrome half | O(d) | O(1) | overflow-proof |
+
+### Which to use
+Math reverse for reversing (use a long accumulator to survive overflow). For palindromes, the half-reverse trick is the cleanest overflow-safe answer.
+
+Overflow note: the reverse of an int can exceed Integer.MAX_VALUE (e.g. reversing 1000000003). Accumulate into a long, or reverse only half the digits, so the intermediate value never overflows.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Reverse via math (%10, *10)`,
+                code: `// Approach 1 — Reverse an integer using pure math (%10 and *10).
+// Peel the last digit with n % 10, then push it onto the reversed number
+// via reversed = reversed * 10 + digit. Repeat until n becomes 0.
+// Handles negatives by preserving the sign.
+// Time: O(d) digits. Space: O(1).
+public class ReverseMath {
+
+    static long reverse(int n) {
+        long reversed = 0;                 // long guards against overflow on push.
+        int sign = n < 0 ? -1 : 1;
+        n = Math.abs(n);
+        while (n != 0) {
+            int digit = n % 10;            // last digit.
+            reversed = reversed * 10 + digit; // shift left, append digit.
+            n /= 10;                       // drop last digit.
+        }
+        return sign * reversed;
+    }
+
+    public static void main(String[] a) {
+        for (int n : new int[]{12345, 100, -678, 7, 0}) {
+            System.out.println(n + " reversed -> " + reverse(n));
+        }
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Reverse via StringBuilder`,
+                code: `// Approach 2 — Reverse an integer via its string representation.
+// Convert to text, reverse the characters with StringBuilder, parse back.
+// Simple and readable; note that parsing a reversed value can overflow int,
+// so we parse into a long to stay safe.
+// Time: O(d). Space: O(d) for the string.
+public class ReverseString {
+
+    static long reverse(int n) {
+        boolean negative = n < 0;
+        String digits = Integer.toString(Math.abs(n));
+        String flipped = new StringBuilder(digits).reverse().toString();
+        long value = Long.parseLong(flipped);     // long: avoids int overflow.
+        return negative ? -value : value;
+    }
+
+    public static void main(String[] a) {
+        for (int n : new int[]{12345, 120, -908, 5}) {
+            System.out.println(n + " reversed -> " + reverse(n));
+        }
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — Palindrome by full reverse`,
+                code: `// Approach 3 — Palindrome number check by comparing to its reverse.
+// A number is a palindrome if it reads the same forwards and backwards, i.e.
+// it equals its own reversed value (121 -> 121 yes; 123 -> 321 no).
+// Negative numbers are not palindromes (the '-' breaks symmetry).
+// Time: O(d). Space: O(1).
+public class PalindromeNumber {
+
+    static boolean isPalindrome(int n) {
+        if (n < 0) return false;                 // -121 reversed is 121- : not equal.
+        int original = n;
+        long reversed = 0;                       // long avoids overflow on the push.
+        while (n != 0) {
+            reversed = reversed * 10 + n % 10;
+            n /= 10;
+        }
+        return reversed == original;             // equal both ways -> palindrome.
+    }
+
+    public static void main(String[] a) {
+        for (int n : new int[]{121, 12321, 123, 10, 0, 7, -121}) {
+            System.out.println(n + " -> " + (isPalindrome(n) ? "palindrome" : "not"));
+        }
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 4 — Palindrome by half reverse (overflow-proof)`,
+                code: `// Approach 4 — Palindrome by reversing only HALF the digits (overflow-proof).
+// Instead of reversing the whole number (which can overflow), build the
+// reverse of the second half and stop once it meets the first half.
+// This never exceeds the original magnitude, so plain int is safe.
+// Time: O(d). Space: O(1).
+public class PalindromeHalf {
+
+    static boolean isPalindrome(int n) {
+        // Negatives, and any number ending in 0 (except 0 itself), can't be one.
+        if (n < 0 || (n % 10 == 0 && n != 0)) return false;
+        int reversedHalf = 0;
+        // Consume digits from the right until the leftover is <= the reversed half.
+        while (n > reversedHalf) {
+            reversedHalf = reversedHalf * 10 + n % 10;
+            n /= 10;
+        }
+        // Even length: n == reversedHalf. Odd length: drop the middle digit
+        // with reversedHalf / 10 and compare.
+        return n == reversedHalf || n == reversedHalf / 10;
+    }
+
+    public static void main(String[] a) {
+        for (int n : new int[]{121, 12321, 1221, 123, 10, 0}) {
+            System.out.println(n + " -> " + (isPalindrome(n) ? "palindrome" : "not"));
+        }
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How do you reverse an integer with pure math?`,
+                a: `Loop: digit = n % 10; reversed = reversed*10 + digit; n /= 10; until n is 0.`
+              },
+              {
+                q: `What overflow risk exists when reversing an int?`,
+                a: `The reversed value can exceed Integer.MAX_VALUE; accumulate in a long or reverse only half the digits.`
+              },
+              {
+                q: `How do you test if a number is a palindrome using its reverse?`,
+                a: `Reverse the number and compare to the original; equal means palindrome. Negative numbers are not palindromes.`
+              },
+              {
+                q: `Why is the half-reverse palindrome method overflow-proof?`,
+                a: `It reverses only the lower half of the digits, so the built value never exceeds the original number and fits in an int.`
+              }
+            ]
+          },
+          {
+            title: `Power(base, exp) — Fast Exponentiation [Medium]`,
+            notes: `## Power(base, exp) — Fast Exponentiation
+Compute base raised to a non-negative integer exponent.
+
+Example: 2^10 = 1024.
+
+### Approaches
+- **Naive loop:** multiply base into a result exp times -> O(exp).
+- **Fast recursive (squaring):** base^exp = (base^(exp/2))^2, times an extra base if exp is odd -> O(log exp).
+- **Fast iterative (binary):** read exp bit by bit, squaring base each step and folding in the result when the current bit is 1 -> O(log exp), O(1) space.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|----------|------|-------|-------|
+| Naive loop | O(exp) | O(1) | simple, slow |
+| Fast recursive | O(log exp) | O(log exp) | stack |
+| Fast iterative | O(log exp) | O(1) | best |
+
+### Which to use
+Fast exponentiation by squaring, O(log exp). The iterative version is preferred (O(1) space, no stack), and it is the standard building block for modular exponentiation.
+
+Each squaring doubles the exponent it represents, so halving exp repeatedly reaches 1 in log2(exp) steps:
+
+\`\`\`mermaid
+graph LR
+  A["base^1"] -->|square| B["base^2"]
+  B -->|square| C["base^4"]
+  C -->|square| D["base^8"]
+  D -->|square| E["base^16"]
+\`\`\`
+
+To build base^13 (13 = 1101 in binary) you multiply the squarings whose bit is set: base^8 * base^4 * base^1.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 — Naive loop O(n)`,
+                code: `// Approach 1 — Naive power by repeated multiplication (the O(n) baseline).
+// base^exp = base * base * ... * base (exp times). Just loop and multiply.
+// Correct and simple, but slow when exp is large.
+// Time: O(exp). Space: O(1).
+public class PowerNaive {
+
+    static long power(long base, int exp) {
+        long result = 1;                    // base^0 = 1.
+        for (int i = 0; i < exp; i++) {
+            result *= base;                 // multiply base in, exp times.
+        }
+        return result;
+    }
+
+    public static void main(String[] a) {
+        System.out.println("2^10 = " + power(2, 10));
+        System.out.println("3^5  = " + power(3, 5));
+        System.out.println("5^0  = " + power(5, 0));
+        System.out.println("2^20 = " + power(2, 20));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 — Fast recursive (squaring)`,
+                code: `// Approach 2 — Fast exponentiation (exponentiation by squaring), recursive.
+// Idea: halve the exponent each step.
+//   base^exp = (base^(exp/2))^2            when exp is even,
+//   base^exp = base * (base^(exp/2))^2     when exp is odd.
+// Because exp is halved every call, only O(log exp) multiplications happen.
+// Time: O(log exp). Space: O(log exp) call stack.
+public class PowerFastRecursive {
+
+    static long power(long base, int exp) {
+        if (exp == 0) return 1;                 // base^0 = 1 (base case).
+        long half = power(base, exp / 2);       // compute base^(exp/2) ONCE.
+        long squared = half * half;             // square it -> base^(2*(exp/2)).
+        if (exp % 2 == 1) return base * squared; // odd exp: multiply one extra base.
+        return squared;                          // even exp: exactly the square.
+    }
+
+    public static void main(String[] a) {
+        System.out.println("2^10 = " + power(2, 10));
+        System.out.println("3^13 = " + power(3, 13));
+        System.out.println("2^40 = " + power(2, 40));
+        System.out.println("7^0  = " + power(7, 0));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 — Fast iterative (binary)`,
+                code: `// Approach 3 — Fast exponentiation, iterative (binary exponentiation).
+// Read the exponent bit by bit. Keep squaring the base; whenever the current
+// lowest bit of exp is 1, fold the current base power into the result.
+// This is the same log-time idea as the recursive version, with O(1) space.
+// Time: O(log exp). Space: O(1).
+public class PowerFastIterative {
+
+    static long power(long base, int exp) {
+        long result = 1;
+        while (exp > 0) {
+            if ((exp & 1) == 1) {          // lowest bit set -> include this power.
+                result *= base;
+            }
+            base *= base;                  // square the base for the next bit.
+            exp >>= 1;                     // drop the processed bit.
+        }
+        return result;
+    }
+
+    public static void main(String[] a) {
+        System.out.println("2^10 = " + power(2, 10));
+        System.out.println("3^13 = " + power(3, 13));
+        System.out.println("2^40 = " + power(2, 40));
+        System.out.println("10^9 = " + power(10, 9));
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the time complexity of fast exponentiation?`,
+                a: `O(log exp), because each step halves the exponent by squaring the base.`
+              },
+              {
+                q: `State the squaring identity used in fast power.`,
+                a: `base^exp = (base^(exp/2))^2 for even exp, and base * (base^(exp/2))^2 for odd exp.`
+              },
+              {
+                q: `How does iterative binary exponentiation use the exponent bits?`,
+                a: `It scans exp bit by bit: square base each step, and when the current lowest bit is 1, multiply base into the result.`
+              },
+              {
+                q: `Why prefer the iterative fast-power over the recursive one?`,
+                a: `Same O(log exp) time but O(1) space with no recursion stack; it is also the standard base for modular exponentiation.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `13.4`,
+        title: `Recursion & Backtracking -- Practice Programs`,
+        hours: 4,
+        sections: [
+          {
+            title: `Recursion Basics -- Factorial & Sum to N [Easy]`,
+            notes: `## Recursion Basics -- Factorial & Sum to N
+
+A gentle intro to recursion. Factorial: n! = n * (n-1)! with 0! = 1. Sum to N: 1+2+...+n. Example: fact(4) -> 24, sum(4) -> 10.
+
+Every recursive method has two ingredients plus a hidden third one:
+- **Base case** -- the smallest input that returns directly, ending the recursion (0! = 1, sum(0) = 0). Without it, recursion never stops (StackOverflowError).
+- **Recursive case** -- solves a slightly smaller subproblem and combines it (n * fact(n-1)).
+- **Call stack** -- each pending call is a stack frame; the machine remembers where to resume. Recursion depth == n here, so the stack uses O(n) memory.
+
+### Approaches
+- **Factorial recursive**: n * fact(n-1); mirrors the math but uses an O(n) call stack.
+- **Factorial iterative**: multiply 2..n in a loop; O(1) extra space, no StackOverflow risk.
+- **Sum recursive**: n + sum(n-1); linear recursion.
+- **Sum iterative / formula**: a loop, or Gauss's closed form n*(n+1)/2 in O(1).
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Factorial recursive | O(n) | O(n) | n stack frames; can overflow for huge n |
+| Factorial iterative | O(n) | O(1) | preferred for large n |
+| Sum recursive | O(n) | O(n) | linear recursion depth |
+| Sum loop | O(n) | O(1) | no stack |
+| Sum formula | O(1) | O(1) | Gauss n*(n+1)/2 -- optimal |
+
+### Which to use
+Iterative for production (no stack limit); recursion to demonstrate understanding. For sum-to-N the O(1) formula wins outright. Use BigInteger for factorial since 21! already overflows long.
+
+\`\`\`mermaid
+flowchart TD
+  A["fact(3)"] --> B["3 * fact(2)"]
+  B --> C["2 * fact(1)"]
+  C --> D["fact(1) = 1 (base case)"]
+  D -->|unwind| C2["2 * 1 = 2"]
+  C2 --> B2["3 * 2 = 6"]
+\`\`\``,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 -- Factorial recursive`,
+                code: `import java.math.BigInteger;
+
+// Approach 1: Factorial by RECURSION.
+// n! = n * (n-1)!  with the base case 0! = 1.
+// Every recursive method needs two parts:
+//   BASE CASE      -> stops the recursion (here n <= 1 returns 1).
+//   RECURSIVE CASE -> shrinks the problem toward the base case (n * fact(n-1)).
+// Each call is pushed on the CALL STACK; when we hit the base case the
+// stack "unwinds" and the multiplications happen on the way back up.
+public class FactorialRecursive {
+
+    // BigInteger so we do not overflow for larger n (20! already exceeds long).
+    static BigInteger fact(int n) {
+        // BASE CASE: 0! and 1! are both 1. This is the floor that ends recursion.
+        if (n <= 1) return BigInteger.ONE;
+        // RECURSIVE CASE: n * fact(n-1). The argument shrinks by 1 each call,
+        // so we are guaranteed to reach the base case (no infinite recursion).
+        return BigInteger.valueOf(n).multiply(fact(n - 1));
+    }
+
+    public static void main(String[] a) {
+        // Call stack for fact(5):
+        // fact(5)=5*fact(4)=5*4*fact(3)=...=5*4*3*2*1 = 120
+        for (int n = 0; n <= 6; n++) {
+            System.out.println(n + "! = " + fact(n));
+        }
+        // Depth of recursion == n. For very large n this risks StackOverflowError,
+        // which is exactly why an iterative version is often preferred.
+        System.out.println("20! = " + fact(20));
+        // Time O(n) (n multiplications), Space O(n) for the call stack.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 -- Factorial iterative`,
+                code: `import java.math.BigInteger;
+
+// Approach 2: Factorial by ITERATION (a loop).
+// Same math (n! = 1*2*3*...*n) but no call stack: we accumulate in a variable.
+// This trades the recursive call stack for O(1) extra space and cannot
+// throw StackOverflowError, so it is the safer choice for large n.
+public class FactorialIterative {
+
+    static BigInteger fact(int n) {
+        BigInteger result = BigInteger.ONE; // acts as our accumulator (== 0! = 1)
+        // Multiply in 2,3,...,n. The loop variable plays the role that the
+        // shrinking recursive argument played in the recursive version.
+        for (int i = 2; i <= n; i++) {
+            result = result.multiply(BigInteger.valueOf(i));
+        }
+        return result;
+    }
+
+    public static void main(String[] a) {
+        for (int n = 0; n <= 6; n++) {
+            System.out.println(n + "! = " + fact(n));
+        }
+        System.out.println("20! = " + fact(20));
+        // Time O(n), Space O(1) (ignoring BigInteger's own growth) -- no stack frames.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 -- Sum to N recursive`,
+                code: `// Approach 3: Sum 1+2+...+n by RECURSION.
+// sum(n) = n + sum(n-1), base case sum(0) = 0.
+// This is "linear recursion": one call reduces the problem by exactly one.
+public class SumToNRecursive {
+
+    static long sum(int n) {
+        // BASE CASE: nothing left to add.
+        if (n == 0) return 0;
+        // RECURSIVE CASE: add n, then defer the rest to a smaller subproblem.
+        return n + sum(n - 1);
+    }
+
+    public static void main(String[] a) {
+        // Trace sum(4): 4 + (3 + (2 + (1 + 0))) = 10
+        for (int n = 0; n <= 6; n++) {
+            System.out.println("sum(1.." + n + ") = " + sum(n));
+        }
+        // Time O(n), Space O(n) call stack. Depth == n, so huge n overflows the stack.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 4 -- Sum to N loop + O(1) formula`,
+                code: `// Approach 4: Sum 1+2+...+n by ITERATION and by the closed-form FORMULA.
+// The loop is O(n); Gauss's formula n*(n+1)/2 is O(1) -- the optimal answer.
+public class SumToNIterative {
+
+    // Loop version: no call stack, constant extra space.
+    static long sumLoop(int n) {
+        long total = 0;
+        for (int i = 1; i <= n; i++) total += i;
+        return total;
+    }
+
+    // Closed form: 1+2+...+n = n*(n+1)/2. One multiply, one add, one shift -> O(1).
+    // (n and n+1 are consecutive, so one of them is even; the division is exact.)
+    static long sumFormula(int n) {
+        return (long) n * (n + 1) / 2;
+    }
+
+    public static void main(String[] a) {
+        for (int n = 0; n <= 6; n++) {
+            System.out.println("n=" + n + " loop=" + sumLoop(n) + " formula=" + sumFormula(n));
+        }
+        // Cross-check the two agree for a bigger value.
+        System.out.println("sum(1..1000000) formula = " + sumFormula(1_000_000));
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What two parts must every recursive method have?`,
+                a: `A base case that returns directly and stops recursion, and a recursive case that reduces the problem toward the base case. Missing/unreachable base case -> infinite recursion -> StackOverflowError.`
+              },
+              {
+                q: `Why can the recursive factorial crash where the iterative one does not?`,
+                a: `Recursion uses O(n) call-stack frames (depth == n). For very large n the JVM stack overflows. The iterative loop uses O(1) extra space and cannot overflow.`
+              },
+              {
+                q: `What is the O(1) way to sum 1..n?`,
+                a: `Gauss's closed form n*(n+1)/2. One of n, n+1 is even so the division is exact.`
+              },
+              {
+                q: `Why use BigInteger for factorial?`,
+                a: `Factorials grow explosively: 21! exceeds the range of a 64-bit long, so long silently overflows. BigInteger holds arbitrary precision.`
+              }
+            ]
+          },
+          {
+            title: `Tower of Hanoi [Medium]`,
+            notes: `## Tower of Hanoi
+
+Move n disks from peg A to peg C using B as spare, never placing a larger disk on a smaller one. Classic recursion. For n=3 the optimal solution is 7 moves.
+
+### Approaches
+- **Recursive move(n, from, to, aux)**: the 3-step idea below; prints and counts each move.
+- **Count only**: the recurrence T(n) = 2*T(n-1) + 1, and its closed form 2^n - 1.
+- **Iterative**: fixed cyclic rule for the smallest disk plus the single other legal move; same optimal sequence without recursion.
+
+The recursive idea in three steps for n disks:
+1. move top **n-1** disks from -> aux (recursive subproblem)
+2. move the **largest** disk from -> to (one real move)
+3. move those **n-1** disks aux -> to (recursive subproblem)
+
+This gives T(n) = 2*T(n-1) + 1, which solves to **T(n) = 2^n - 1** moves -- the provable minimum.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Recursive (print) | O(2^n) | O(n) | 2^n - 1 moves is the required minimum |
+| Count recurrence | O(n) | O(n) | just computes the number |
+| Count formula | O(1) | O(1) | 2^n - 1 directly |
+| Iterative | O(2^n) | O(n) | same move sequence, explicit loop |
+
+### Which to use
+The recursive move() is the interview answer -- it is short and shows you can decompose a problem. Quote 2^n - 1 for the move count. The iterative version is a nice follow-up if asked to remove recursion.
+
+\`\`\`mermaid
+flowchart TD
+  H["Hanoi(n, from, to, aux)"] --> S1["Step 1: move n-1 disks from -> aux"]
+  S1 --> S2["Step 2: move largest disk from -> to"]
+  S2 --> S3["Step 3: move n-1 disks aux -> to"]
+  S1 -.recursion.-> H
+  S3 -.recursion.-> H
+\`\`\``,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 -- Recursive move + count`,
+                code: `// Approach 1: Tower of Hanoi -- the classic RECURSIVE solution.
+// Goal: move n disks from peg 'from' to peg 'to' using 'aux' as spare,
+// never placing a larger disk on a smaller one.
+// KEY INSIGHT (3-step recursive idea):
+//   1. move top n-1 disks  from -> aux   (recursive subproblem)
+//   2. move the largest disk from -> to  (one real move)
+//   3. move those n-1 disks aux  -> to    (recursive subproblem)
+// Total moves obey T(n) = 2*T(n-1) + 1  =>  T(n) = 2^n - 1.
+public class HanoiRecursive {
+
+    static int moveCount = 0; // counts the real single-disk moves
+
+    static void move(int n, char from, char to, char aux) {
+        // BASE CASE: zero disks -> nothing to do. Ends the recursion.
+        if (n == 0) return;
+        // Step 1: relocate the n-1 disks above the biggest onto the spare peg.
+        move(n - 1, from, aux, to);
+        // Step 2: now the biggest disk is free -- move it to its target.
+        moveCount++;
+        System.out.println("Move disk " + n + " from " + from + " -> " + to);
+        // Step 3: put the n-1 disks back on top of the biggest disk.
+        move(n - 1, aux, to, from);
+    }
+
+    public static void main(String[] a) {
+        int n = 3;
+        move(n, 'A', 'C', 'B'); // move n disks from A to C using B
+        System.out.println("Total moves = " + moveCount + " (expected 2^" + n + " - 1 = " + ((1 << n) - 1) + ")");
+        // Time O(2^n) moves (unavoidable -- that many are required),
+        // Space O(n) recursion depth.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 -- Count moves (recurrence + 2^n - 1)`,
+                code: `// Approach 2: Just COUNT the moves without printing them.
+// Two ways, both showing the 2^n - 1 result.
+public class HanoiCount {
+
+    // (a) Recursive recurrence T(n) = 2*T(n-1) + 1, T(0) = 0.
+    static long countRec(int n) {
+        if (n == 0) return 0;
+        return 2 * countRec(n - 1) + 1;
+    }
+
+    // (b) Closed form: solving the recurrence gives exactly 2^n - 1.
+    // Using bit shift 1L<<n == 2^n keeps it O(1).
+    static long countFormula(int n) {
+        return (1L << n) - 1;
+    }
+
+    public static void main(String[] a) {
+        System.out.println(" n | recurrence | 2^n - 1");
+        for (int n = 0; n <= 10; n++) {
+            System.out.printf("%2d | %10d | %d%n", n, countRec(n), countFormula(n));
+        }
+        // Legend says a 64-disk puzzle needs 2^64 - 1 moves. That value overflows
+        // signed long, but 2^64 - 1 is exactly "all 64 bits set" == -1L in two's
+        // complement, which Long.toUnsignedString renders as the true magnitude.
+        // (Note: 1L << 64 would be wrong -- Java masks the shift to 64 % 64 = 0.)
+        System.out.println("64 disks would need 2^64 - 1 = " + Long.toUnsignedString(-1L) + " moves");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 -- Iterative (no recursion)`,
+                code: `import java.util.ArrayDeque;
+import java.util.Deque;
+
+// Approach 3: ITERATIVE Tower of Hanoi (no recursion).
+// The elegant standard trick: make the smallest disk move in a fixed cyclic
+// direction every ODD move, and on every EVEN move make the only other
+// legal move (between the two pegs NOT holding the smallest disk).
+// For n disks this produces the same optimal 2^n - 1 move sequence.
+public class HanoiIterative {
+
+    static int moveCount = 0;
+
+    // Perform (and print) the single legal move between two pegs, then report it.
+    static void legalMoveBetween(Deque<Integer> p, char pName, Deque<Integer> q, char qName) {
+        Integer top1 = p.peek();
+        Integer top2 = q.peek();
+        if (top1 == null && top2 == null) return;              // both empty (cannot happen mid-solve)
+        if (top2 == null || (top1 != null && top1 < top2)) {   // move smaller onto larger/empty
+            q.push(p.pop());
+            moveCount++;
+            System.out.println("Move disk " + q.peek() + " from " + pName + " -> " + qName);
+        } else {
+            p.push(q.pop());
+            moveCount++;
+            System.out.println("Move disk " + p.peek() + " from " + qName + " -> " + pName);
+        }
+    }
+
+    public static void main(String[] a) {
+        int n = 3;
+        char from = 'A', to = 'C', aux = 'B';
+        Deque<Integer> src = new ArrayDeque<>(), dst = new ArrayDeque<>(), spare = new ArrayDeque<>();
+        // Stack disks n..1 with the smallest (1) on top.
+        for (int d = n; d >= 1; d--) src.push(d);
+
+        long totalMoves = (1L << n) - 1;
+        // For an EVEN number of disks the smallest disk cycles src->aux->dst;
+        // for ODD it cycles src->dst->aux. We swap the roles accordingly.
+        if (n % 2 == 0) { char t = to; to = aux; aux = t; }
+
+        for (long m = 1; m <= totalMoves; m++) {
+            if (m % 3 == 1)      legalMoveBetween(src, from, dst, to);   // smallest disk hop
+            else if (m % 3 == 2) legalMoveBetween(src, from, spare, aux);
+            else                 legalMoveBetween(dst, to, spare, aux);
+        }
+        System.out.println("Total moves = " + moveCount + " (2^" + n + " - 1 = " + totalMoves + ")");
+        // Same optimal count as the recursive version, but with an explicit loop.
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How many moves does Tower of Hanoi need for n disks?`,
+                a: `2^n - 1, which is provably the minimum. It follows from the recurrence T(n) = 2*T(n-1) + 1 with T(0) = 0.`
+              },
+              {
+                q: `State the 3-step recursive idea for n disks.`,
+                a: `1) move top n-1 disks from source to spare, 2) move the largest disk source to target, 3) move the n-1 disks from spare onto the target.`
+              },
+              {
+                q: `What is the base case in the recursive solution?`,
+                a: `n == 0 (zero disks): do nothing and return. It stops the recursion.`
+              },
+              {
+                q: `What is the recursion depth / space cost?`,
+                a: `O(n) stack frames -- the depth equals the number of disks, even though the number of moves is O(2^n).`
+              }
+            ]
+          },
+          {
+            title: `String Permutations [Medium]`,
+            notes: `## String Permutations
+
+List every ordering of a string's characters. Example: "ABC" -> ABC, ACB, BAC, BCA, CAB, CBA (6 = 3! results).
+
+### Approaches
+- **Swap-based**: fix each character at position 'start' by swapping, recurse on the suffix, then swap back (backtrack). In-place, no extra structures.
+- **Pick + StringBuilder**: keep a used[] flag; pick any unused char, append to the prefix, recurse, remove it (backtrack). Reads naturally.
+- **Insertion**: permute the suffix, then insert the first char into every gap of each sub-permutation.
+
+**Why n!?** The first slot has n choices, the next n-1, ..., the last 1: n*(n-1)*...*1 = n!.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Swap-based | O(n * n!) | O(n) | n! leaves, O(n) to copy each result |
+| Pick + StringBuilder | O(n * n!) | O(n) | used[] + prefix + recursion depth |
+| Insertion | O(n * n!) | O(n * n!) | builds intermediate lists |
+
+### Which to use
+Swap-based is the canonical, most memory-efficient answer. Pick+StringBuilder generalizes best to lists/objects and to de-duplicating (skip equal chars). All produce n! permutations.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 -- Swap-based recursion`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Approach 1: String permutations via SWAP-based recursion (in-place).
+// Idea: fix each character in turn at position 'start' by swapping it there,
+// then recurse on the remaining suffix start+1..end. Undo the swap on the way
+// back (backtracking) so the array is restored for the next choice.
+// There are n! orderings of n distinct chars, so we print n! permutations.
+public class PermuteSwap {
+
+    static void permute(char[] s, int start, List<String> out) {
+        // BASE CASE: pointer past the last index -> one full permutation is fixed.
+        if (start == s.length) {
+            out.add(new String(s));
+            return;
+        }
+        for (int i = start; i < s.length; i++) {
+            swap(s, start, i);          // choose: bring char i to the front slot
+            permute(s, start + 1, out); // explore: permute the rest
+            swap(s, start, i);          // un-choose: restore for the next iteration
+        }
+    }
+
+    static void swap(char[] s, int i, int j) {
+        char t = s[i]; s[i] = s[j]; s[j] = t;
+    }
+
+    public static void main(String[] a) {
+        String input = "ABC";
+        List<String> out = new ArrayList<>();
+        permute(input.toCharArray(), 0, out);
+        System.out.println("permutations of \\"" + input + "\\": " + out);
+        System.out.println("count = " + out.size() + " (expected 3! = 6)");
+        // Time O(n * n!) (n! leaves, O(n) to copy each string), Space O(n) recursion depth.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 -- Pick char + StringBuilder`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Approach 2: "pick a char + recurse on the rest" using a StringBuilder.
+// Instead of swapping, we keep a 'used' flag per index. At each level we pick
+// any unused character, append it to the current prefix, recurse, then remove
+// it (backtrack). This reads very naturally and generalizes to permutations of
+// any list. Still n! results for n distinct characters.
+public class PermutePick {
+
+    static void permute(char[] s, boolean[] used, StringBuilder prefix, List<String> out) {
+        // BASE CASE: prefix has all n chars -> record this permutation.
+        if (prefix.length() == s.length) {
+            out.add(prefix.toString());
+            return;
+        }
+        for (int i = 0; i < s.length; i++) {
+            if (used[i]) continue;       // skip chars already placed in the prefix
+            used[i] = true;              // choose char i
+            prefix.append(s[i]);
+            permute(s, used, prefix, out);           // recurse on the remaining chars
+            prefix.deleteCharAt(prefix.length() - 1); // un-choose (backtrack)
+            used[i] = false;
+        }
+    }
+
+    public static void main(String[] a) {
+        String input = "ABC";
+        List<String> out = new ArrayList<>();
+        permute(input.toCharArray(), new boolean[input.length()], new StringBuilder(), out);
+        System.out.println("permutations of \\"" + input + "\\": " + out);
+        System.out.println("count = " + out.size() + " (expected 3! = 6)");
+        // Why n!? The first slot has n choices, the next n-1, ... down to 1:
+        // n * (n-1) * ... * 1 = n!.
+        // Time O(n * n!), Space O(n) for used[] + prefix + recursion depth.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 -- Insertion into every gap`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Approach 3: INSERTION-based recursion (build permutations of the suffix,
+// then insert the current char into every gap).
+// permutations("ABC") = for each p in permutations("BC"), insert 'A' at every
+// position: A|BC, B|A|C, BC|A -> ABC, BAC, BCA ... and so on.
+// Same n! results; this variant needs no used[] flags or swaps.
+public class PermuteInsert {
+
+    static List<String> permute(String s) {
+        List<String> result = new ArrayList<>();
+        // BASE CASE: empty string has exactly one permutation -- the empty string.
+        if (s.isEmpty()) {
+            result.add("");
+            return result;
+        }
+        char first = s.charAt(0);
+        // Recurse on the rest, then splice 'first' into each gap of each sub-permutation.
+        for (String rest : permute(s.substring(1))) {
+            for (int pos = 0; pos <= rest.length(); pos++) {
+                result.add(rest.substring(0, pos) + first + rest.substring(pos));
+            }
+        }
+        return result;
+    }
+
+    public static void main(String[] a) {
+        String input = "ABC";
+        List<String> out = permute(input);
+        System.out.println("permutations of \\"" + input + "\\": " + out);
+        System.out.println("count = " + out.size() + " (expected 3! = 6)");
+        // Each of the (n-1)! sub-permutations yields n insertions -> n! total.
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How many permutations does a string of n distinct chars have?`,
+                a: `n! -- the first position has n choices, the next n-1, and so on down to 1, giving n*(n-1)*...*1.`
+              },
+              {
+                q: `In swap-based permutation, why swap back after recursing?`,
+                a: `To backtrack: restore the array to its previous state so the next loop iteration starts from the correct configuration. Without the undo, later choices operate on a corrupted array.`
+              },
+              {
+                q: `What is the total time complexity of generating all permutations?`,
+                a: `O(n * n!): there are n! permutations and copying each into a string costs O(n). You cannot beat n! since that many outputs exist.`
+              },
+              {
+                q: `How would you avoid duplicate permutations when characters repeat?`,
+                a: `Sort first, then in the pick approach skip a char if it equals the previous char and the previous is unused (standard "skip duplicates" rule).`
+              }
+            ]
+          },
+          {
+            title: `Subsets / Power Set [Medium]`,
+            notes: `## Subsets / Power Set
+
+Generate all subsets of a set. Example: [1,2,3] -> [], [1], [2], [3], [1,2], [1,3], [2,3], [1,2,3] (2^3 = 8 subsets).
+
+### Approaches
+- **Include/exclude recursion**: at each index branch two ways -- element in or out. A binary decision tree with 2^n leaves.
+- **Bitmask iteration**: each subset maps to an n-bit number 0..2^n-1; bit j set means include element j. Counting all masks enumerates every subset once.
+- **Start-index backtracking**: the shared template with combinations -- record the current partial set, then extend with each later element.
+
+All three produce the same 2^n subsets (ordering differs).
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Include/exclude | O(n * 2^n) | O(n) | 2^n subsets, O(n) copy each; recursion depth n |
+| Bitmask | O(n * 2^n) | O(1) | no recursion stack (beyond output) |
+| Start-index backtracking | O(n * 2^n) | O(n) | same template as combinations |
+
+### Which to use
+Include/exclude is the clearest recursive explanation. Bitmask is the slick iterative one-liner when n <= ~20 (2^n masks fit an int). All are O(n * 2^n) because there are that many subset elements to emit.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 -- Include/exclude recursion`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Approach 1: Power set via INCLUDE / EXCLUDE recursion.
+// At each index we make a binary decision: either the element is IN the current
+// subset or it is OUT. Two branches per element => a binary decision tree with
+// 2^n leaves, one per subset.
+public class SubsetsIncludeExclude {
+
+    static void build(int[] nums, int i, List<Integer> current, List<List<Integer>> out) {
+        // BASE CASE: decided about every element -> 'current' is one complete subset.
+        if (i == nums.length) {
+            out.add(new ArrayList<>(current)); // copy: 'current' keeps mutating
+            return;
+        }
+        // Branch 1: EXCLUDE nums[i].
+        build(nums, i + 1, current, out);
+        // Branch 2: INCLUDE nums[i], then backtrack by removing it.
+        current.add(nums[i]);
+        build(nums, i + 1, current, out);
+        current.remove(current.size() - 1);
+    }
+
+    public static void main(String[] a) {
+        int[] nums = {1, 2, 3};
+        List<List<Integer>> out = new ArrayList<>();
+        build(nums, 0, new ArrayList<>(), out);
+        System.out.println("subsets of [1,2,3]: " + out);
+        System.out.println("count = " + out.size() + " (expected 2^3 = 8)");
+        // Time O(n * 2^n) (2^n subsets, up to O(n) to copy each), Space O(n) depth.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 -- Bitmask iteration`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Approach 2: Power set via BITMASK iteration (no recursion).
+// Every subset corresponds to an n-bit number from 0 to 2^n - 1.
+// Bit j set means "include nums[j]". Counting through all masks enumerates
+// every subset exactly once -- a neat iterative mirror of include/exclude.
+public class SubsetsBitmask {
+
+    static List<List<Integer>> subsets(int[] nums) {
+        int n = nums.length;
+        List<List<Integer>> out = new ArrayList<>();
+        int total = 1 << n; // 2^n masks
+        for (int mask = 0; mask < total; mask++) {
+            List<Integer> subset = new ArrayList<>();
+            for (int j = 0; j < n; j++) {
+                // Is bit j set in mask? If so, element j is part of this subset.
+                if ((mask & (1 << j)) != 0) subset.add(nums[j]);
+            }
+            out.add(subset);
+        }
+        return out;
+    }
+
+    public static void main(String[] a) {
+        int[] nums = {1, 2, 3};
+        List<List<Integer>> out = subsets(nums);
+        System.out.println("subsets of [1,2,3]: " + out);
+        System.out.println("count = " + out.size() + " (expected 2^3 = 8)");
+        // mask 000->[], 001->[1], 010->[2], 011->[1,2], ... 111->[1,2,3]
+        // Same 8 sets as the recursive version, just produced by counting bits.
+        // Time O(n * 2^n), Space O(1) beyond the output (no recursion stack).
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 -- Start-index backtracking`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Approach 3: Power set via START-INDEX backtracking.
+// This is the template shared with combinations: at each call we add the
+// current partial subset to the result, then try to extend it with every
+// element from 'start' onward. The start index guarantees we only ever move
+// forward, so no subset is generated twice.
+public class SubsetsBacktrack {
+
+    static void backtrack(int[] nums, int start, List<Integer> current, List<List<Integer>> out) {
+        // Every node of the recursion tree is itself a valid subset -> record it.
+        out.add(new ArrayList<>(current));
+        for (int i = start; i < nums.length; i++) {
+            current.add(nums[i]);                 // choose nums[i]
+            backtrack(nums, i + 1, current, out); // explore using elements after i
+            current.remove(current.size() - 1);   // un-choose (backtrack)
+        }
+    }
+
+    public static void main(String[] a) {
+        int[] nums = {1, 2, 3};
+        List<List<Integer>> out = new ArrayList<>();
+        backtrack(nums, 0, new ArrayList<>(), out);
+        System.out.println("subsets of [1,2,3]: " + out);
+        System.out.println("count = " + out.size() + " (expected 2^3 = 8)");
+        // Produces the same 8 subsets; ordering differs from the bitmask version.
+        // Time O(n * 2^n), Space O(n) recursion depth.
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How many subsets does a set of n elements have, and why?`,
+                a: `2^n. Each element is independently either in or out of a subset -> 2 choices for each of n elements -> 2^n combinations.`
+              },
+              {
+                q: `How does the bitmask method enumerate subsets?`,
+                a: `Loop mask from 0 to 2^n - 1. For each mask, include element j whenever bit j is set. Each of the 2^n masks corresponds to exactly one subset.`
+              },
+              {
+                q: `What does each node of the include/exclude recursion tree represent?`,
+                a: `A decision point for one element (include vs exclude). The 2^n leaves are the complete subsets.`
+              },
+              {
+                q: `When does the bitmask approach stop being practical?`,
+                a: `When n exceeds ~31 (2^n no longer fits an int) or the 2^n subsets simply do not fit in memory/time. The count 2^n is the hard limit regardless of method.`
+              }
+            ]
+          },
+          {
+            title: `Generate Balanced Parentheses [Medium]`,
+            notes: `## Generate Balanced Parentheses
+
+Generate all valid combinations of n pairs of parentheses. Example: n=3 -> ((())), (()()), (())(), ()(()), ()()() (5 = Catalan number C_3).
+
+### Approaches
+- **Backtracking with counters**: track open and close counts. Add '(' only while open < n; add ')' only while close < open. Because we only extend valid prefixes, every finished string of length 2n is balanced -- no filtering needed.
+- **Brute force**: generate all 2^(2n) bracket strings and keep the balanced ones -- shows why pruning matters (most candidates are wasted).
+- **Count (Catalan)**: the number of results is the n-th Catalan number, via recurrence or closed form.
+
+**The key pruning**: only add ')' if close < open. A ')' with no unmatched '(' before it can never lead to a valid string, so that branch is cut immediately.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Backtracking | O(4^n / sqrt(n)) | O(n) | outputs Catalan-many strings directly |
+| Brute force | O(2n * 2^(2n)) | O(n) | builds 2^(2n), discards most |
+| Count (Catalan) | O(n) | O(1) | just the number C_n |
+
+### Which to use
+Backtracking with the two counter rules is the expected answer -- it generates only valid strings. The count is the n-th Catalan number C_n = (2n)! / ((n+1)! n!).
+
+\`\`\`mermaid
+flowchart TD
+  R["start open=0 close=0"] --> A["add '(' if open < n"]
+  A --> B["add ')' if close < open"]
+  B --> C{"length == 2n?"}
+  C -->|yes| D["record valid string"]
+  C -->|no| A
+\`\`\``,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 -- Backtracking with open/close counters`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Approach 1: Generate all valid parentheses via BACKTRACKING with counters.
+// We build the string one bracket at a time, tracking how many '(' and ')'
+// we have used. Two PRUNING rules keep every path valid:
+//   - add '(' only while open  < n            (do not exceed n opens)
+//   - add ')' only while close < open         (never close more than is open)
+// Because we only ever extend valid prefixes, every completed string of length
+// 2n is guaranteed balanced -- we never generate garbage to filter out.
+public class ParenBacktrack {
+
+    static void gen(int open, int close, int n, StringBuilder sb, List<String> out) {
+        // BASE CASE: used all n opens and n closes -> a complete valid string.
+        if (sb.length() == 2 * n) {
+            out.add(sb.toString());
+            return;
+        }
+        if (open < n) {                 // still have opening brackets to spend
+            sb.append('(');
+            gen(open + 1, close, n, sb, out);
+            sb.deleteCharAt(sb.length() - 1); // backtrack
+        }
+        if (close < open) {             // a ')' is only legal if it matches an earlier '('
+            sb.append(')');
+            gen(open, close + 1, n, sb, out);
+            sb.deleteCharAt(sb.length() - 1); // backtrack
+        }
+    }
+
+    public static void main(String[] a) {
+        int n = 3;
+        List<String> out = new ArrayList<>();
+        gen(0, 0, n, new StringBuilder(), out);
+        System.out.println("valid parentheses for n=" + n + ": " + out);
+        System.out.println("count = " + out.size() + " (3rd Catalan number C_3 = 5)");
+        // The number of results is the n-th Catalan number C_n = (2n)! / ((n+1)! n!).
+        // Time O(4^n / sqrt(n)) (Catalan-many results), Space O(n) recursion depth.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 -- Brute force + validate`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Approach 2: BRUTE FORCE -- generate every one of the 2^(2n) bracket strings,
+// then keep only the balanced ones. This shows WHY the backtracking pruning
+// matters: here we build 2^(2n) candidates and throw most of them away, whereas
+// backtracking builds only the Catalan-many valid ones directly.
+public class ParenBruteForce {
+
+    // A string is balanced if the running open-minus-close count never goes
+    // negative and finishes at exactly zero.
+    static boolean isBalanced(String s) {
+        int bal = 0;
+        for (int i = 0; i < s.length(); i++) {
+            bal += (s.charAt(i) == '(') ? 1 : -1;
+            if (bal < 0) return false; // a ')' with no matching '(' before it
+        }
+        return bal == 0;
+    }
+
+    public static void main(String[] a) {
+        int n = 3;
+        int len = 2 * n;
+        List<String> out = new ArrayList<>();
+        int total = 1 << len; // 2^(2n) candidate strings
+        for (int mask = 0; mask < total; mask++) {
+            StringBuilder sb = new StringBuilder();
+            // Bit i chooses '(' or ')' for position i.
+            for (int i = 0; i < len; i++) sb.append(((mask & (1 << i)) != 0) ? '(' : ')');
+            String cand = sb.toString();
+            if (isBalanced(cand)) out.add(cand);
+        }
+        System.out.println("valid parentheses for n=" + n + ": " + out);
+        System.out.println("checked " + total + " candidates, kept " + out.size() + " (C_3 = 5)");
+        // Time O(2n * 2^(2n)) -- exponentially wasteful compared to backtracking.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 -- Count via Catalan number`,
+                code: `// Approach 3: COUNT valid parentheses without listing them -- the Catalan number.
+// The number of balanced strings with n pairs is the n-th Catalan number:
+//   C_0 = 1,  C_n = sum over i of C_i * C_(n-1-i)   (recursive split), or
+//   C_n = (2n)! / ((n+1)! * n!)                      (closed form).
+public class ParenCount {
+
+    // (a) Recursive Catalan via the classic split recurrence.
+    static long catalanRec(int n) {
+        if (n == 0) return 1;
+        long sum = 0;
+        // Split: the first '(' closes after some balanced block of i pairs,
+        // leaving n-1-i pairs outside. Sum over every place it can close.
+        for (int i = 0; i < n; i++) sum += catalanRec(i) * catalanRec(n - 1 - i);
+        return sum;
+    }
+
+    // (b) Closed form using the product formula (avoids big factorials overflowing).
+    static long catalanFormula(int n) {
+        long c = 1;
+        for (int i = 0; i < n; i++) c = c * (2L * n - i) / (i + 1);
+        return c / (n + 1);
+    }
+
+    public static void main(String[] a) {
+        System.out.println(" n | recurrence | formula");
+        for (int n = 0; n <= 8; n++) {
+            System.out.printf("%2d | %10d | %d%n", n, catalanRec(n), catalanFormula(n));
+        }
+        // C_3 = 5 matches the 5 strings the backtracking version lists for n=3.
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What are the two pruning rules in the backtracking solution?`,
+                a: `Add '(' only while open < n; add ')' only while close < open. The second rule prevents closing more brackets than are currently open.`
+              },
+              {
+                q: `Why is the ")" rule (close < open) essential?`,
+                a: `A ")" that has no unmatched "(" before it makes the prefix invalid and unrecoverable. Adding it only when close < open guarantees every prefix stays balanceable.`
+              },
+              {
+                q: `How many valid strings exist for n pairs?`,
+                a: `The n-th Catalan number C_n = (2n)! / ((n+1)! * n!). For n=3 that is 5.`
+              },
+              {
+                q: `Why is backtracking far better than brute force here?`,
+                a: `Brute force builds all 2^(2n) strings then filters; backtracking constructs only the Catalan-many valid strings, pruning invalid prefixes early.`
+              }
+            ]
+          },
+          {
+            title: `N-Queens [Hard]`,
+            notes: `## N-Queens
+
+Place n queens on an n x n board so none attack another (no shared row, column, or diagonal). Count solutions or print one. Known counts: n=4 -> 2, n=8 -> 92.
+
+### Approaches
+- **Count via backtracking**: place one queen per row; for each row try every column and keep only safe ones; recurse to the next row.
+- **One solution**: same search, but short-circuit and print the board at the first full placement.
+- **Bitmask (optimized)**: carry bitmasks of attacked columns and both diagonals; the safe columns of a row are computed in O(1) with bit tricks.
+
+**Board and diagonal-attack idea** (queen at row r, col c):
+
+\`\`\`
+    c0  c1  c2  c3
+r0   .   Q   .   .
+r1   .   .   .   Q
+r2   Q   .   .   .
+r3   .   .   Q   .
+\`\`\`
+
+Two queens share a diagonal exactly when the row distance equals the column distance: |r1 - r2| == |c1 - c2|. (The "/" diagonal has constant r+c; the "\\" diagonal has constant r-c.)
+
+**Why one-queen-per-row + pruning makes it feasible**: fixing one queen per row removes all row conflicts and caps the tree at n^n; but the safety check prunes any partial placement the instant it conflicts, so the vast majority of branches are never expanded. That is the difference between "runs instantly" and "never finishes".
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Count (array safe-check) | O(n!) roughly | O(n) | safe() is O(row) per candidate |
+| One solution | O(n!) worst | O(n) | stops at first success |
+| Bitmask | O(n!) roughly | O(n) | O(1) safety test per candidate |
+
+### Which to use
+The per-row backtracking with a safe() check is the standard interview answer; mention |dr| == |dc| for diagonals. The bitmask version is the optimized follow-up: same result, O(1) safety checks.
+
+\`\`\`mermaid
+flowchart TD
+  A["place queen in row r"] --> B{"column c safe? (col, / and \\ diagonals)"}
+  B -->|no| C["skip c -- prune this branch"]
+  B -->|yes| D["place, recurse to row r+1"]
+  D --> E{"r+1 == n?"}
+  E -->|yes| F["full solution found"]
+  E -->|no| A
+\`\`\``,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 -- Count solutions (backtracking)`,
+                code: `// Approach 1: N-Queens -- COUNT all solutions via backtracking.
+// Place exactly one queen per ROW (that already prevents row clashes).
+// For each row we try every column and check it is safe against all queens
+// already placed in earlier rows. If safe we recurse to the next row; if we
+// reach row n we found a full valid placement.
+// PRUNING is what makes n=8 (and beyond) feasible: the moment a partial
+// placement conflicts we abandon that whole branch instead of expanding it.
+public class NQueensCount {
+
+    static int n;
+    static int[] col; // col[r] = column of the queen in row r
+
+    static boolean safe(int row, int c) {
+        for (int r = 0; r < row; r++) {
+            // Same column? OR on a diagonal? Two queens share a diagonal when
+            // the row-distance equals the column-distance: |r1-r2| == |c1-c2|.
+            if (col[r] == c || Math.abs(col[r] - c) == Math.abs(r - row)) return false;
+        }
+        return true;
+    }
+
+    static int solve(int row) {
+        if (row == n) return 1;      // placed queens in all n rows -> one solution
+        int count = 0;
+        for (int c = 0; c < n; c++) {
+            if (safe(row, c)) {      // prune: skip columns under attack
+                col[row] = c;        // place queen
+                count += solve(row + 1);
+                // no explicit undo needed: col[row] is overwritten on the next try
+            }
+        }
+        return count;
+    }
+
+    public static void main(String[] a) {
+        int[] expected = {0, 1, 0, 0, 2, 10, 4, 40, 92}; // known counts for n=0..8
+        for (n = 1; n <= 8; n++) {
+            col = new int[n];
+            System.out.println(n + "-Queens solutions = " + solve(0) + " (expected " + expected[n] + ")");
+        }
+        // Time is far below n^n thanks to pruning; worst case still exponential.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 -- Print one solution board`,
+                code: `// Approach 2: N-Queens -- find and PRINT one solution board.
+// Same row-by-row backtracking, but we stop at the first full placement and
+// draw the board so the diagonal-safety idea is visible.
+public class NQueensOneSolution {
+
+    static int n;
+    static int[] col;
+
+    static boolean safe(int row, int c) {
+        for (int r = 0; r < row; r++) {
+            if (col[r] == c || Math.abs(col[r] - c) == Math.abs(r - row)) return false;
+        }
+        return true;
+    }
+
+    // Returns true as soon as ANY complete solution is found (short-circuits).
+    static boolean solve(int row) {
+        if (row == n) return true;
+        for (int c = 0; c < n; c++) {
+            if (safe(row, c)) {
+                col[row] = c;
+                if (solve(row + 1)) return true; // propagate success up the stack
+            }
+        }
+        return false; // no column worked in this row -> backtrack to caller
+    }
+
+    static void printBoard() {
+        for (int r = 0; r < n; r++) {
+            StringBuilder sb = new StringBuilder();
+            for (int c = 0; c < n; c++) sb.append(col[r] == c ? " Q " : " . ");
+            System.out.println(sb);
+        }
+    }
+
+    public static void main(String[] a) {
+        n = 8;
+        col = new int[n];
+        if (solve(0)) {
+            System.out.println("One solution to " + n + "-Queens (Q = queen):");
+            printBoard();
+            System.out.print("column of queen in each row: ");
+            for (int r = 0; r < n; r++) System.out.print(col[r] + " ");
+            System.out.println();
+        } else {
+            System.out.println("no solution for n=" + n);
+        }
+        // No two Q's share a row (one per row), a column, or a diagonal.
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 -- Bitmask-optimized count`,
+                code: `// Approach 3: N-Queens counted with BITMASKS -- the optimized interview answer.
+// Instead of scanning earlier rows for each candidate, we carry three bitmasks
+// of columns/diagonals that are ALREADY attacked:
+//   cols  -> occupied columns
+//   diag1 -> "/" diagonals (shift left as we go down a row)
+//   diag2 -> "\\" diagonals (shift right as we go down a row)
+// The set of SAFE columns in a row is computed in O(1) with bit tricks, making
+// the safety check a constant-time mask test instead of an O(row) loop.
+public class NQueensBitmask {
+
+    static int n;
+    static int full; // n low bits set = every column available
+
+    static int solve(int cols, int diag1, int diag2) {
+        if (cols == full) return 1; // all columns filled -> a complete solution
+        int count = 0;
+        // available = columns not attacked by column or either diagonal.
+        int available = full & ~(cols | diag1 | diag2);
+        while (available != 0) {
+            int bit = available & -available; // lowest set bit = one free column
+            available -= bit;                 // consume that column choice
+            // Move to next row: diag1 shifts left, diag2 shifts right (masked to n bits).
+            count += solve(cols | bit, ((diag1 | bit) << 1) & full, (diag2 | bit) >> 1);
+        }
+        return count;
+    }
+
+    public static void main(String[] a) {
+        int[] expected = {0, 1, 0, 0, 2, 10, 4, 40, 92};
+        for (n = 1; n <= 8; n++) {
+            full = (1 << n) - 1;
+            System.out.println(n + "-Queens solutions = " + solve(0, 0, 0) + " (expected " + expected[n] + ")");
+        }
+        // Same counts as the plain version, but each safety test is O(1) bit work.
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How do you test if two queens share a diagonal?`,
+                a: `They share a diagonal iff the row distance equals the column distance: |r1 - r2| == |c1 - c2|. The "/" diagonal keeps r+c constant, the "\\" diagonal keeps r-c constant.`
+              },
+              {
+                q: `Why place exactly one queen per row?`,
+                a: `It automatically eliminates all row conflicts and reduces the search to choosing one column per row, bounding the tree and simplifying the safety check to column + two diagonals.`
+              },
+              {
+                q: `What makes N-Queens feasible despite exponential worst case?`,
+                a: `Pruning: the moment a partial placement is unsafe, that entire branch is abandoned, so the search explores far fewer than n^n placements.`
+              },
+              {
+                q: `How does the bitmask version speed things up?`,
+                a: `It stores attacked columns and both diagonals as bitmasks; the set of safe columns is full & ~(cols | diag1 | diag2), an O(1) test, instead of scanning previous rows.`
+              },
+              {
+                q: `How many solutions does 8-Queens have?`,
+                a: `92 distinct solutions (12 unique up to symmetry).`
+              }
+            ]
+          },
+          {
+            title: `Combination Sum [Medium]`,
+            notes: `## Combination Sum
+
+Given distinct candidates and a target, find all combinations summing to the target; each candidate may be reused unlimited times. Example: candidates [2,3,6,7], target 7 -> [[2,2,3],[7]].
+
+### Approaches
+- **Backtracking with reuse**: choose a candidate, subtract it from the remaining target, recurse passing the same index i (not i+1) so it can be reused. The **start index** prevents revisiting earlier candidates, so [2,3] and [3,2] are not both generated -- each combination appears once.
+- **Sorted + break pruning**: sort candidates, then break out of the loop as soon as cand[i] > remaining (all later ones are larger too).
+- **Count via DP**: unbounded-knapsack counting, ways[t] += ways[t-c], candidates in the outer loop to keep combinations order-independent.
+
+**Why the start index?** Passing i keeps combinations non-decreasing, which is exactly the canonical form of an unordered combination. Without it you would generate every permutation of each combination.
+
+### Complexity
+| Approach | Time | Space | Notes |
+|---|---|---|---|
+| Backtracking | exponential | O(target/min) | depth bounded by target/smallest candidate |
+| Sorted + break | exponential (pruned) | O(target/min) | break cuts hopeless branches |
+| Count DP | O(k * target) | O(target) | k candidates; only counts, no lists |
+
+### Which to use
+Start-index backtracking (passing i to allow reuse) is the expected answer. Sort + break is the standard optimization. If only the count is needed, the DP is polynomial.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Approach 1 -- Backtracking with reuse (start index)`,
+                code: `import java.util.ArrayList;
+import java.util.List;
+
+// Approach 1: Combination Sum via BACKTRACKING with element REUSE.
+// Given distinct candidates and a target, find all combinations that sum to
+// the target; each candidate may be used unlimited times.
+// The START INDEX is the key trick: when we recurse we pass 'i' (not i+1) so the
+// same element can be reused, but we never look at earlier indices again. That
+// forbids reordered duplicates like [2,3] and [3,2] -- only non-decreasing
+// combinations are produced, so each combination is generated exactly once.
+public class CombSumBacktrack {
+
+    static void backtrack(int[] cand, int start, int remaining, List<Integer> current, List<List<Integer>> out) {
+        if (remaining == 0) {                 // hit the target exactly
+            out.add(new ArrayList<>(current));
+            return;
+        }
+        if (remaining < 0) return;            // overshot -> dead end, prune
+        for (int i = start; i < cand.length; i++) {
+            current.add(cand[i]);             // choose cand[i]
+            // pass i (NOT i+1) so cand[i] can be picked again -> reuse allowed
+            backtrack(cand, i, remaining - cand[i], current, out);
+            current.remove(current.size() - 1); // un-choose (backtrack)
+        }
+    }
+
+    public static void main(String[] a) {
+        int[] cand = {2, 3, 6, 7};
+        int target = 7;
+        List<List<Integer>> out = new ArrayList<>();
+        backtrack(cand, 0, target, new ArrayList<>(), out);
+        System.out.println("combinations of " + java.util.Arrays.toString(cand) + " summing to " + target + ": " + out);
+        System.out.println("count = " + out.size() + " (expected [[2,2,3],[7]] -> 2)");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 2 -- Sorted + break pruning`,
+                code: `import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+// Approach 2: Combination Sum with SORTING + early BREAK pruning.
+// Same start-index backtracking, but we sort the candidates first. Then inside
+// the loop, the first time cand[i] exceeds the remaining target we can BREAK:
+// every later candidate is >= cand[i], so none of them can fit either. This
+// cuts off large useless branches and is the version to show in an interview.
+public class CombSumSortedPrune {
+
+    static void backtrack(int[] cand, int start, int remaining, List<Integer> current, List<List<Integer>> out) {
+        if (remaining == 0) {
+            out.add(new ArrayList<>(current));
+            return;
+        }
+        for (int i = start; i < cand.length; i++) {
+            // Because cand is sorted ascending, if this one overshoots, so do all
+            // the rest in this row -> stop scanning entirely (break, not continue).
+            if (cand[i] > remaining) break;
+            current.add(cand[i]);
+            backtrack(cand, i, remaining - cand[i], current, out); // reuse: pass i
+            current.remove(current.size() - 1);
+        }
+    }
+
+    public static void main(String[] a) {
+        int[] cand = {7, 2, 6, 3};
+        Arrays.sort(cand); // -> [2,3,6,7]; sorting enables the break-prune
+        int target = 7;
+        List<List<Integer>> out = new ArrayList<>();
+        backtrack(cand, 0, target, new ArrayList<>(), out);
+        System.out.println("combinations summing to " + target + ": " + out);
+        System.out.println("count = " + out.size() + " (expected [[2,2,3],[7]] -> 2)");
+
+        // Bigger demo to show the pruning still yields correct results.
+        int[] c2 = {2, 3, 5};
+        List<List<Integer>> out2 = new ArrayList<>();
+        backtrack(c2, 0, 8, new ArrayList<>(), out2);
+        System.out.println("combinations of [2,3,5] summing to 8: " + out2 + " (count " + out2.size() + ")");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Approach 3 -- Count solutions via DP`,
+                code: `// Approach 3: COUNT the number of combination-sum solutions (unbounded knapsack
+// style DP), without listing them. This reframes the recursion as a counting
+// problem and shows the relationship to dynamic programming.
+// ways[t] = number of combinations (order-independent) that sum to t using the
+// candidates. Iterating candidates in the OUTER loop makes combinations
+// order-independent (each candidate considered once as a "type"), so [2,3] and
+// [3,2] are counted once -- matching the backtracking definition.
+public class CombSumCount {
+
+    static long countCombos(int[] cand, int target) {
+        long[] ways = new long[target + 1];
+        ways[0] = 1; // one way to make 0: the empty combination
+        for (int c : cand) {              // outer loop over candidate "types"
+            for (int t = c; t <= target; t++) {
+                ways[t] += ways[t - c];   // extend every combination for t-c by one c
+            }
+        }
+        return ways[target];
+    }
+
+    public static void main(String[] a) {
+        int[] cand = {2, 3, 6, 7};
+        System.out.println("combinations summing to 7 = " + countCombos(cand, 7) + " (expected 2)");
+
+        int[] coins = {2, 3, 5};
+        for (int t = 0; t <= 8; t++) {
+            System.out.println("ways to sum to " + t + " with [2,3,5] = " + countCombos(coins, t));
+        }
+        // Time O(candidates * target), Space O(target) -- polynomial, unlike the
+        // exponential enumeration, because we only COUNT rather than build each list.
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `How do you allow reusing the same element in Combination Sum?`,
+                a: `Recurse passing the current index i (not i+1). Reusing i lets the same candidate be picked again; still moving forward (never < start) avoids duplicate combinations.`
+              },
+              {
+                q: `Why pass a start index instead of always scanning from 0?`,
+                a: `It forces non-decreasing combinations so each unordered combination is generated exactly once. Scanning from 0 would produce [2,3] and [3,2] as separate answers.`
+              },
+              {
+                q: `What pruning does sorting enable?`,
+                a: `Once sorted ascending, if cand[i] > remaining you can break: every later candidate is even larger, so none can fit. This skips whole branches.`
+              },
+              {
+                q: `When would you use the DP counting version?`,
+                a: `When only the NUMBER of combinations is needed, not the lists. It runs in O(candidates * target) time and O(target) space -- polynomial instead of exponential.`
+              }
+            ]
+          }
+        ]
+      }
+    ]
   }
 ];

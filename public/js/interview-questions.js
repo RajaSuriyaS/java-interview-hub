@@ -1796,5 +1796,93 @@ const INTERVIEW_QUESTIONS = {
       "q": "How do you structure a strong answer to an open-ended 'how would you design X' design question?",
       "a": "I use a four-beat structure: name the force (what varies or couples here), state the choice (the pattern, lightly named, and its realization as a lambda, enum, or class), state the trade-off (what it costs versus buys and why that's justified by a present need), and name the alternative plus the trigger to switch (if it became multi-method or needed runtime swapping I'd move to X). I prefer the lightest tool first — a lambda before a class, an enum before a hierarchy, a Map before a Strategy interface — and patterns the platform already provides like Comparator, BlockingQueue, or @Transactional. The red flags interviewers listen for are name-dropping with no force and absolutism like 'Singletons are always bad'; nuance and trade-off awareness signal seniority far more than reciting the catalog."
     }
+  ],
+  "13.1": [
+    {
+      "q": "How do you reverse a string in Java, and which approach is best?",
+      "a": "Idiomatic and fastest is new StringBuilder(s).reverse().toString(). For an interview showing you understand the mechanics, use a char array with two pointers swapping ends inward: O(n) time, O(n) space for the array, O(1) extra beyond it. Recursion is elegant but risks StackOverflow on very long strings and uses O(n) stack. Strings are immutable so you always build a new one; there is no true in-place reverse of a String."
+    },
+    {
+      "q": "What does String.compareTo return, and how does it order strings?",
+      "a": "compareTo does a lexicographic (dictionary) comparison character by character using Unicode values. It returns a negative int if this string sorts before the argument, zero if equal, and positive if after. If one is a prefix of the other, the shorter sorts first and the return value is the length difference. This is the natural ordering used by Collections.sort, TreeSet, and TreeMap; a Comparator lets you define a different ordering (e.g. by length, or case-insensitive)."
+    },
+    {
+      "q": "Why should you never compare strings with == , and when is it a subtle trap?",
+      "a": "== compares references (are these the same object), not contents. String literals are interned into a shared pool, so \"a\"==\"a\" happens to be true, which lures beginners into thinking == compares text. But new String(\"a\") == \"a\" is false, and any runtime-built string (concatenation, input, StringBuilder.toString()) is a distinct object, so == fails. Always use equals() for content, or equalsIgnoreCase() to ignore case."
+    },
+    {
+      "q": "How do you check if two strings are anagrams efficiently?",
+      "a": "The O(n) approach counts characters: for lowercase letters use an int[26], increment for the first string and decrement for the second, then verify every count is zero (also check equal lengths first). For a full Unicode alphabet use a HashMap<Character,Integer>. Sorting both strings and comparing is simpler to write but O(n log n). The counting approach is the interview-preferred answer."
+    },
+    {
+      "q": "How do you find the first non-repeating character in a string?",
+      "a": "Use a LinkedHashMap<Character,Integer> to count occurrences while preserving insertion order, then return the first key whose count is 1 -- O(n) with one pass to count and one to scan. For a fixed alphabet an int[256] frequency array plus a second pass over the original string works and avoids the map overhead. The key insight is that you need to preserve original order, which a plain HashMap does not."
+    }
+  ],
+  "13.2": [
+    {
+      "q": "How do you solve Two Sum in O(n), and what is the idea?",
+      "a": "Iterate once with a HashMap from value to index. For each element x, check whether target - x is already in the map; if so you have the pair, otherwise store x. This trades O(n) extra space for O(n) time versus the O(n^2) brute-force double loop. The two-pointer method is O(n log n) because it requires sorting, and sorting loses the original indices unless you track them."
+    },
+    {
+      "q": "Explain Kadane's algorithm for maximum subarray sum.",
+      "a": "Walk the array keeping a running sum 'current': at each element, current = max(element, current + element) -- i.e. either extend the previous subarray or start fresh at this element -- and track the best value seen. It is O(n) time, O(1) space. The insight is that a negative running prefix can never help a future subarray, so you reset. Brute force checking every subarray is O(n^2)."
+    },
+    {
+      "q": "How do you find the missing number in an array of 1..n, and why prefer XOR?",
+      "a": "Two O(n) tricks: (1) expected sum n(n+1)/2 minus the actual sum gives the missing value -- simple but the sum can overflow int for large n (use long). (2) XOR all indices 1..n and all array values together; pairs cancel and the leftover is the missing number -- no overflow risk and O(1) space. XOR is the safer answer when n is large."
+    },
+    {
+      "q": "How do you move all zeroes to the end of an array while keeping order?",
+      "a": "Use a two-pointer write index: scan with a read pointer, and whenever you see a non-zero, write it at the write index and advance write; after the scan, fill the remaining positions from write to the end with zeroes. This is O(n) time, O(1) space, and stable (preserves the relative order of non-zero elements). A swap-based variant avoids the final fill."
+    },
+    {
+      "q": "How do you find the second largest element in one pass?",
+      "a": "Track two variables, largest and secondLargest, initialised to negative infinity. For each element: if it is greater than largest, shift largest into secondLargest and update largest; else if it is greater than secondLargest and not equal to largest, update secondLargest. O(n) time, O(1) space, and it handles duplicates of the maximum correctly. Sorting works but is O(n log n)."
+    }
+  ],
+  "13.3": [
+    {
+      "q": "How do you check if a number is prime efficiently?",
+      "a": "Test divisibility only up to sqrt(n): if no divisor exists below the square root, none exists above it. Further, after handling 2 and 3, test only numbers of the form 6k +- 1. That makes a single check O(sqrt(n)). If you need all primes up to N, the Sieve of Eratosthenes computes them in about O(N log log N), which is far better than checking each number individually."
+    },
+    {
+      "q": "Why does factorial overflow, and how do you compute large factorials?",
+      "a": "A long overflows past 20! (21! exceeds Long.MAX_VALUE and silently wraps to a wrong, often negative, value). For arbitrarily large factorials use java.math.BigInteger, which grows as needed. The interview point is recognising the silent overflow and reaching for BigInteger, not just writing the recursion."
+    },
+    {
+      "q": "Compare the ways to compute Fibonacci and their complexity.",
+      "a": "Naive recursion recomputes overlapping subproblems and is O(2^n) -- exponential and unusable beyond ~40. Memoization (top-down) caches results for O(n) time, O(n) space. Bottom-up iteration is O(n) time and can be O(1) space by keeping only the last two values -- the preferred answer. (A matrix-power method reaches O(log n) but is rarely needed.)"
+    },
+    {
+      "q": "How do you compute a^b in O(log n) time?",
+      "a": "Exponentiation by squaring: if the exponent is even, a^b = (a^(b/2))^2; if odd, a^b = a * a^(b-1). Each step halves the exponent, so it runs in O(log b) multiplications instead of the naive O(b) loop. It can be written recursively or iteratively by scanning the exponent's bits. This is essential for modular exponentiation in cryptography."
+    },
+    {
+      "q": "Why compute LCM as (a / gcd) * b rather than (a * b) / gcd?",
+      "a": "Both are mathematically equal, but a * b can overflow before you divide, whereas dividing a by the gcd first keeps the intermediate value small, then multiplying by b is less likely to overflow. The gcd itself comes from the Euclidean algorithm gcd(a,b) = gcd(b, a % b), which is O(log(min(a,b)))."
+    }
+  ],
+  "13.4": [
+    {
+      "q": "What are the essential parts of a correct recursive function?",
+      "a": "A base case that stops the recursion (and returns a known answer for the smallest input), and a recursive case that reduces the problem toward the base case and combines the sub-result. Missing or wrong base cases cause infinite recursion and StackOverflowError. Each call adds a frame to the call stack, so deep recursion has O(depth) space cost -- which is why an iterative version is sometimes preferred."
+    },
+    {
+      "q": "Explain the recursive idea behind Tower of Hanoi and its move count.",
+      "a": "To move n disks from source to target using an auxiliary peg: recursively move the top n-1 disks to the auxiliary peg, move the largest disk to the target, then recursively move the n-1 disks from auxiliary onto the target. The recurrence T(n) = 2*T(n-1) + 1 solves to 2^n - 1 moves, which is the minimum possible."
+    },
+    {
+      "q": "What is backtracking, and how does pruning make problems like N-Queens feasible?",
+      "a": "Backtracking builds a solution incrementally and abandons a partial candidate ('backtracks') as soon as it cannot possibly lead to a valid full solution. In N-Queens you place one queen per row and, before placing, check that no earlier queen shares the column or a diagonal (two queens attack diagonally when |row1-row2| == |col1-col2|); pruning invalid placements early prunes huge branches of the search tree, turning an intractable brute force into something that solves n=8 instantly."
+    },
+    {
+      "q": "How do you generate all subsets (the power set) of a set?",
+      "a": "Two classic ways: (1) recursive include/exclude -- for each element, branch into 'take it' and 'skip it', producing 2^n subsets; (2) bitmask iteration -- loop mask from 0 to 2^n - 1 and include element i whenever bit i of mask is set. Both are O(2^n) because there are 2^n subsets; the bitmask version is iterative and avoids recursion."
+    },
+    {
+      "q": "In Combination Sum, how do you avoid producing duplicate combinations?",
+      "a": "Pass a start index into the recursion so each call only considers elements from the current position onward, never revisiting earlier elements -- this ensures combinations are generated in non-decreasing index order and duplicates like [2,3] and [3,2] are not both produced. When elements may be reused you recurse with the same index; when each may be used once you advance to index+1. Sorting first also lets you break early once the running sum exceeds the target."
+    }
   ]
 };
