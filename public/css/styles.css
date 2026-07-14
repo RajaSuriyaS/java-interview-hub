@@ -111,6 +111,74 @@ pre, code, kbd, samp, textarea, .font-mono, .monaco-wrap, .output-pre {
 [data-theme="light"] #bottom-nav-wrap .text-slate-500 { color: #64748b !important; }
 [data-theme="light"] #bottom-nav-wrap .text-slate-200 { color: #1e293b !important; }
 
+/* ─── Light theme — MAIN CONTENT AREA (dashboard + module pages) ──────────
+   The content chrome (title, section picker, tabs, cards, dashboard) is built
+   from hard-coded dark Tailwind utilities. Remap those utilities to a light
+   palette here, scoped to #content so the sidebar/prose rules above are
+   untouched. Colored surfaces (bg-brand / bg-success / gradients) are left
+   alone so buttons and accents keep their look. */
+/* surfaces */
+[data-theme="light"] #content .bg-slate-950,
+[data-theme="light"] #content .bg-slate-900,
+[data-theme="light"] #content .bg-slate-900\/70,
+[data-theme="light"] #content .bg-slate-900\/60,
+[data-theme="light"] #content .bg-slate-900\/50,
+[data-theme="light"] #content .bg-slate-900\/40 { background-color: #ffffff !important; }
+[data-theme="light"] #content .bg-slate-800,
+[data-theme="light"] #content .bg-slate-800\/70,
+[data-theme="light"] #content .bg-slate-800\/60,
+[data-theme="light"] #content .bg-slate-800\/40 { background-color: #f1f5f9 !important; }
+[data-theme="light"] #content .bg-slate-700 { background-color: #e2e8f0 !important; }
+/* hover surfaces */
+[data-theme="light"] #content .hover\:bg-slate-800\/60:hover,
+[data-theme="light"] #content .hover\:bg-slate-800:hover { background-color: #eef2f7 !important; }
+[data-theme="light"] #content .hover\:bg-slate-700:hover { background-color: #e2e8f0 !important; }
+/* borders */
+[data-theme="light"] #content .border-slate-950,
+[data-theme="light"] #content .border-slate-900,
+[data-theme="light"] #content .border-slate-800 { border-color: #e2e8f0 !important; }
+[data-theme="light"] #content .border-slate-700,
+[data-theme="light"] #content .border-slate-600 { border-color: #cbd5e1 !important; }
+[data-theme="light"] #content .hover\:border-slate-600:hover,
+[data-theme="light"] #content .hover\:border-slate-500:hover { border-color: #94a3b8 !important; }
+/* muted text */
+[data-theme="light"] #content .text-slate-200 { color: #1e293b !important; }
+[data-theme="light"] #content .text-slate-300 { color: #334155 !important; }
+[data-theme="light"] #content .text-slate-400 { color: #475569 !important; }
+[data-theme="light"] #content .text-slate-500 { color: #64748b !important; }
+[data-theme="light"] #content .text-slate-600 { color: #94a3b8 !important; }
+/* primary (white) page text — only when NOT sitting on a colored surface */
+[data-theme="light"] #content .text-white:not([class*="bg-brand"]):not([class*="bg-gradient"]):not([class*="bg-success"]):not([class*="bg-emerald"]):not([class*="bg-indigo"]):not([class*="bg-violet"]):not([class*="bg-sky"]):not([class*="bg-amber"]):not([class*="bg-rose"]):not([class*="bg-red"]) { color: #0f172a !important; }
+[data-theme="light"] #content .hover\:text-white:hover:not([class*="bg-brand"]):not([class*="bg-success"]) { color: #334155 !important; }
+/* content tab-bar underline border */
+[data-theme="light"] #content .border-b.border-slate-800 { border-color: #e2e8f0 !important; }
+/* primary "continue studying" hero card gradient -> clean pale purple */
+[data-theme="light"] #content .bg-gradient-to-br.from-brand\/25 {
+  background-image: linear-gradient(to bottom right, rgba(139,92,246,.12), rgba(99,102,241,.10)) !important;
+}
+/* status button (not-started) chip */
+[data-theme="light"] #content .status-btn.bg-slate-800 { background-color: #e2e8f0 !important; }
+
+/* ─── Dim theme — content-area polish (match the dim panel palette) ─────── */
+[data-theme="dim"] #content .bg-slate-950,
+[data-theme="dim"] #content .bg-slate-900,
+[data-theme="dim"] #content .bg-slate-900\/70,
+[data-theme="dim"] #content .bg-slate-900\/60,
+[data-theme="dim"] #content .bg-slate-900\/50,
+[data-theme="dim"] #content .bg-slate-900\/40 { background-color: #2d333b !important; }
+[data-theme="dim"] #content .bg-slate-800,
+[data-theme="dim"] #content .bg-slate-800\/70,
+[data-theme="dim"] #content .bg-slate-800\/60,
+[data-theme="dim"] #content .bg-slate-800\/40 { background-color: #373e47 !important; }
+[data-theme="dim"] #content .border-slate-950,
+[data-theme="dim"] #content .border-slate-900,
+[data-theme="dim"] #content .border-slate-800 { border-color: #444c56 !important; }
+[data-theme="dim"] #content .border-slate-700,
+[data-theme="dim"] #content .border-slate-600 { border-color: #545d68 !important; }
+[data-theme="dim"] #content .text-slate-300 { color: #adbac7 !important; }
+[data-theme="dim"] #content .text-slate-400 { color: #909dab !important; }
+[data-theme="dim"] #content .text-slate-500 { color: #768390 !important; }
+
 /* Scrollbars */
 .custom-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
 .custom-scroll::-webkit-scrollbar-track { background: transparent; }
