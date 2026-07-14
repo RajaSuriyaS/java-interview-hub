@@ -20633,6 +20633,2449 @@ public class MinMaxScan {
       },
       {
         id: `2.2`,
+        title: `Streams, Lambdas & Functional Java`,
+        hours: 5,
+        sections: [
+          {
+            title: `Lambdas & Functional Interfaces — The @FunctionalInterface Toolkit`,
+            notes: `## Lambdas & The Functional-Interface Toolkit
+
+A **lambda** is an instance of a **functional interface** — an interface with exactly one abstract method (the *SAM*, single abstract method). The lambda's parameter list and body supply that method's implementation. \`@FunctionalInterface\` is an optional compile-time guard that fails the build if a second abstract method sneaks in.
+
+> [!TIP]
+> A lambda is NOT a closure object you can introspect, and it is NOT an anonymous class. The compiler desugars lambdas to \`invokedynamic\` + a bootstrap (\`LambdaMetafactory\`) that spins the implementation at first use. Anonymous classes generate a \`$1.class\` eagerly. That difference shows up in startup cost, identity, and \`this\` semantics.
+
+### The \`java.util.function\` core toolkit
+
+| Interface | Abstract method | Shape | Typical use |
+|-----------|-----------------|-------|-------------|
+| \`Supplier<T>\` | \`T get()\` | \`() -> T\` | lazy/deferred value, factory |
+| \`Consumer<T>\` | \`void accept(T)\` | \`T -> void\` | side effect (\`forEach\`) |
+| \`Function<T,R>\` | \`R apply(T)\` | \`T -> R\` | map/transform |
+| \`BiFunction<T,U,R>\` | \`R apply(T,U)\` | \`(T,U) -> R\` | two-arg transform, \`Map.merge\` |
+| \`Predicate<T>\` | \`boolean test(T)\` | \`T -> boolean\` | filter, match |
+| \`UnaryOperator<T>\` | \`T apply(T)\` | \`T -> T\` | \`List.replaceAll\`, same-type map |
+| \`BinaryOperator<T>\` | \`T apply(T,T)\` | \`(T,T) -> T\` | \`reduce\`, \`Map.merge\` combiner |
+| \`BiConsumer<T,U>\` | \`void accept(T,U)\` | \`(T,U) -> void\` | \`Map.forEach\` |
+
+> [!WARNING]
+> Generics don't specialize over primitives, so \`Function<Integer,Integer>\` autoboxes on every call. The library provides primitive specializations to avoid this: \`IntFunction<R>\`, \`ToIntFunction<T>\`, \`IntUnaryOperator\`, \`IntBinaryOperator\`, \`IntPredicate\`, \`IntSupplier\`, \`IntConsumer\` (and \`Long\`/\`Double\` variants). Reach for them in hot loops.
+
+### Method references — the four kinds
+
+| Kind | Syntax | Equivalent lambda |
+|------|--------|-------------------|
+| Static | \`Integer::parseInt\` | \`s -> Integer.parseInt(s)\` |
+| Bound instance (receiver fixed) | \`out::println\` | \`x -> out.println(x)\` |
+| Unbound instance (receiver is first arg) | \`String::toUpperCase\` | \`s -> s.toUpperCase()\` |
+| Constructor | \`ArrayList::new\` | \`() -> new ArrayList<>()\` |
+
+> [!DANGER]
+> A **bound** method reference captures the receiver *at the moment the reference is created*. \`list::add\` snapshots the current \`list\` reference. If \`list\` is later reassigned (only possible for a field, since locals must be effectively final), the reference still targets the old object. This is a classic source of "why is my callback writing to the wrong collection" bugs.
+
+### Effectively-final capture & closures
+
+A lambda can read local variables only if they are **effectively final** — assigned once and never mutated. This isn't arbitrary: locals live on the stack, but a lambda may outlive the enclosing frame, so the compiler **copies** the value into the synthetic lambda. Allowing mutation would create two diverging copies. Instance/static fields ARE capturable and mutable, because the lambda captures \`this\` (a reference) and mutates through it.
+
+\`\`\`mermaid
+flowchart LR
+  A["enclosing method frame<br/>(stack)"] -->|copies value| B["lambda instance<br/>(heap)"]
+  B -->|reads| C["captured snapshot"]
+  A -. "field via this" .-> D["heap object<br/>(mutable, shared)"]
+\`\`\`
+
+> [!SUCCESS]
+> The common interview workaround for "I need a mutable counter in a lambda" is a single-element array (\`int[] c = {0}; c[0]++\`) or an \`AtomicInteger\`. The array reference is effectively final; its *contents* mutate. Prefer \`AtomicInteger\` when the lambda may run in parallel.
+
+### Lambda vs anonymous class — \`this\` is the trap
+
+Inside an **anonymous class**, \`this\` is the anonymous instance. Inside a **lambda**, \`this\` is the *enclosing* instance — a lambda has no scope of its own; it shares the enclosing scope (no shadowing of \`this\`, no new local-variable scope). That makes \`this.field\` and method calls behave very differently between the two.
+
+### When lambdas hurt readability
+
+- Deeply nested lambdas/streams that would be clearer as a named method or a plain loop.
+- A lambda body longer than ~3 lines — extract to a named method and use a method reference.
+- Side-effecting lambdas inside \`map\`/\`peek\` (streams are for transformation, not mutation).
+- Clever \`reduce\`/\`collect\` that the next engineer must decode. Senior judgment: prefer the form a reviewer reads correctly on the first pass.`,
+            code: [
+              {
+                lang: `java`,
+                title: `The whole toolkit in one runnable file`,
+                code: `import java.util.function.*;
+
+public class ToolkitDemo {
+    public static void main(String[] args) {
+        Supplier<String> sup   = () -> "lazy";
+        Consumer<String> con   = s -> System.out.println("consume:" + s);
+        Function<String,Integer> len = String::length;        // unbound ref
+        BiFunction<Integer,Integer,Integer> add = Integer::sum;
+        Predicate<String> nonEmpty = s -> !s.isEmpty();
+        UnaryOperator<String> up = String::toUpperCase;
+        BinaryOperator<Integer> max = Integer::max;
+
+        System.out.println(sup.get());            // lazy
+        con.accept("hi");                          // consume:hi
+        System.out.println(len.apply("hello"));   // 5
+        System.out.println(add.apply(3, 4));      // 7
+        System.out.println(nonEmpty.test(""));    // false
+        System.out.println(up.apply("abc"));      // ABC
+        System.out.println(max.apply(2, 9));      // 9
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `The four kinds of method reference, side by side`,
+                code: `import java.util.*;
+import java.util.function.*;
+
+public class MethodRefDemo {
+    public static void main(String[] args) {
+        // 1. Static
+        Function<String,Integer> parse = Integer::parseInt;
+        System.out.println(parse.apply("42"));            // 42
+
+        // 2. Bound instance (receiver captured now)
+        String prefix = "log> ";
+        Function<String,String> prepend = prefix::concat;
+        System.out.println(prepend.apply("done"));        // log> done
+
+        // 3. Unbound instance (receiver becomes first arg)
+        Function<String,Integer> length = String::length;
+        System.out.println(length.apply("hello"));        // 5
+
+        // 4. Constructor
+        Supplier<List<String>> maker = ArrayList::new;
+        List<String> list = maker.get();
+        list.add("x");
+        System.out.println(list);                         // [x]
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Effectively-final capture & the mutable-counter workaround`,
+                code: `import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class CaptureDemo {
+    public static void main(String[] args) {
+        int base = 10;                 // effectively final: captured by value
+        // base = 11;                  // <- uncommenting breaks compilation below
+        Runnable r = () -> System.out.println("base=" + base);
+        r.run();                        // base=10
+
+        // Mutable counter trick 1: single-element array (ref is final, contents mutate)
+        int[] counter = {0};
+        List.of("a","b","c").forEach(s -> counter[0]++);
+        System.out.println("count=" + counter[0]);   // count=3
+
+        // Trick 2: AtomicInteger (preferred when parallel)
+        AtomicInteger n = new AtomicInteger();
+        List.of("x","y").forEach(s -> n.incrementAndGet());
+        System.out.println("atomic=" + n.get());      // atomic=2
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `this in a lambda vs an anonymous class`,
+                code: `public class ThisDemo {
+    private final String name = "outer";
+
+    Runnable lambda() {
+        return () -> System.out.println("lambda this -> " + this.name);
+    }
+    Runnable anon() {
+        return new Runnable() {
+            // 'this' here is the anonymous Runnable, which has no 'name' field
+            public void run() {
+                System.out.println("anon this -> " + ThisDemo.this.name);
+            }
+        };
+    }
+    public static void main(String[] args) {
+        ThisDemo d = new ThisDemo();
+        d.lambda().run();   // lambda this -> outer
+        d.anon().run();     // anon this -> outer (must qualify with ThisDemo.this)
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Custom @FunctionalInterface and primitive specialization`,
+                code: `import java.util.function.IntUnaryOperator;
+
+public class CustomFIDemo {
+    @FunctionalInterface
+    interface Distance { double between(double a, double b); }   // SAM
+
+    public static void main(String[] args) {
+        Distance abs = (a, b) -> Math.abs(a - b);
+        System.out.println(abs.between(3.0, 7.5));   // 4.5
+
+        // Primitive specialization avoids Integer boxing in a tight loop
+        IntUnaryOperator square = x -> x * x;
+        long sum = 0;
+        for (int i = 1; i <= 5; i++) sum += square.applyAsInt(i);
+        System.out.println("sumSquares=" + sum);     // 55
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What makes an interface a functional interface, and what does @FunctionalInterface do?`,
+                a: `Exactly one abstract method (default/static/Object methods do not count). The annotation is an optional compile-time guard that errors if a second abstract method is added.`
+              },
+              {
+                q: `How does a lambda differ from an anonymous class at the bytecode level?`,
+                a: `A lambda compiles to invokedynamic bound via LambdaMetafactory (implementation spun at first use); an anonymous class generates a separate $1.class eagerly. Different startup cost, identity, and this semantics.`
+              },
+              {
+                q: `Why must captured local variables be effectively final?`,
+                a: `Locals live on the stack but the lambda may outlive the frame, so the value is copied into the lambda. Allowing mutation would create two diverging copies. Fields are fine because the lambda captures this and mutates through the reference.`
+              },
+              {
+                q: `What is this inside a lambda vs an anonymous class?`,
+                a: `In a lambda, this is the enclosing instance (a lambda introduces no new scope). In an anonymous class, this is the anonymous instance, so you must write Outer.this to reach the enclosing object.`
+              },
+              {
+                q: `Name the four kinds of method reference.`,
+                a: `Static (Integer::parseInt), bound instance (out::println), unbound instance (String::length — receiver is the first arg), and constructor (ArrayList::new).`
+              },
+              {
+                q: `What does a bound method reference capture, and when does that bite?`,
+                a: `It snapshots the receiver at creation time. If a field receiver is later reassigned, the reference still targets the old object — a callback-writing-to-wrong-object bug.`
+              },
+              {
+                q: `Why prefer IntFunction/ToIntFunction over Function<Integer,Integer> in hot code?`,
+                a: `Generic functional interfaces only work over reference types, so int args autobox to Integer on every call. Primitive specializations avoid the boxing/unboxing churn and allocation.`
+              },
+              {
+                q: `Give the shapes: Supplier, Consumer, Function, Predicate, UnaryOperator, BinaryOperator.`,
+                a: `() -> T; T -> void; T -> R; T -> boolean; T -> T; (T,T) -> T.`
+              },
+              {
+                q: `How do you mutate a counter from inside a lambda?`,
+                a: `Use a one-element array (int[] c={0}; c[0]++) whose reference is effectively final, or an AtomicInteger. Prefer AtomicInteger if the lambda runs in parallel.`
+              },
+              {
+                q: `When is BinaryOperator the right type vs BiFunction?`,
+                a: `BinaryOperator<T> is the special case (T,T)->T — both inputs and the output share a type. Use it for reduce accumulators/combiners and Map.merge; use BiFunction when the types differ.`
+              },
+              {
+                q: `When do lambdas hurt readability?`,
+                a: `Bodies over ~3 lines, deeply nested streams, side-effecting map/peek, or clever reduce/collect. Extract to a named method (method reference) or use a plain loop when a reviewer would read it wrong on first pass.`
+              },
+              {
+                q: `Does a lambda introduce a new variable scope?`,
+                a: `No. It shares the enclosing scope, so it cannot redeclare a name already visible there, and this/super refer to the enclosing instance — unlike an anonymous class which has its own scope.`
+              }
+            ]
+          },
+          {
+            title: `Built-in Functional Interfaces -- Supplier, Consumer, Function, Predicate & the Whole Toolkit`,
+            notes: `## Built-in Functional Interfaces: the \`java.util.function\` Toolkit
+
+A *functional interface* is any interface with exactly **one abstract method** (a "SAM" -- Single Abstract Method). A lambda or method reference is just a concise way to create an **instance** of such an interface. The JDK ships a catalog of ~43 of them in \`java.util.function\` so you rarely need to declare your own.
+
+### The core shapes
+
+| Interface | Abstract method | Arity | Returns | Typical use |
+|---|---|---|---|---|
+| \`Supplier<T>\` | \`T get()\` | 0 | value | lazy factory, \`Stream.generate\`, \`Optional.orElseGet\` |
+| \`Consumer<T>\` | \`void accept(T)\` | 1 | nothing | side effects, \`forEach\` |
+| \`BiConsumer<T,U>\` | \`void accept(T,U)\` | 2 | nothing | \`Map.forEach\` |
+| \`Function<T,R>\` | \`R apply(T)\` | 1 | value | \`map\`, transforms |
+| \`BiFunction<T,U,R>\` | \`R apply(T,U)\` | 2 | value | \`Map.merge\`, combine two inputs |
+| \`Predicate<T>\` | \`boolean test(T)\` | 1 | boolean | \`filter\`, \`removeIf\` |
+| \`BiPredicate<T,U>\` | \`boolean test(T,U)\` | 2 | boolean | two-arg tests |
+| \`UnaryOperator<T>\` | \`T apply(T)\` | 1 | same type | \`List.replaceAll\` |
+| \`BinaryOperator<T>\` | \`T apply(T,T)\` | 2 | same type | \`reduce\`, \`Map.merge\` |
+
+\`UnaryOperator<T>\` extends \`Function<T,T>\` and \`BinaryOperator<T>\` extends \`BiFunction<T,T,T>\` -- they are just the "same in, same out" special cases with a shorter name.
+
+### Primitive specializations -- and why they exist
+
+Generics cannot hold primitives, so \`Function<Integer,Integer>\` **autoboxes** every value into an \`Integer\` object. In hot loops that is real garbage-collector pressure. The primitive specializations work directly on \`int\`/\`long\`/\`double\` and box nothing.
+
+| Generic | Primitive variant | Method |
+|---|---|---|
+| \`Supplier<Integer>\` | \`IntSupplier\` | \`int getAsInt()\` |
+| \`Function<Integer,R>\` | \`IntFunction<R>\` | \`R apply(int)\` |
+| \`Function<T,Integer>\` | \`ToIntFunction<T>\` | \`int applyAsInt(T)\` |
+| \`Predicate<Integer>\` | \`IntPredicate\` | \`boolean test(int)\` |
+| \`UnaryOperator<Integer>\` | \`IntUnaryOperator\` | \`int applyAsInt(int)\` |
+| \`BinaryOperator<Integer>\` | \`IntBinaryOperator\` | \`int applyAsInt(int,int)\` |
+
+Parallel \`Long*\` and \`Double*\` families exist. \`Stream.mapToInt\` returns an \`IntStream\` precisely so downstream operations stay unboxed.
+
+> [!TIP]
+> Reach for a primitive specialization whenever a stream stage handles a numeric key -- \`mapToInt\`, \`comparingInt\`, \`ToIntFunction\` -- to skip a boxing allocation per element.
+
+### Default methods: composing behavior
+
+These interfaces carry \`default\` methods so you can build pipelines without extra classes:
+
+- \`Function\`: \`f.andThen(g)\` runs \`f\` then \`g\`; \`f.compose(g)\` runs \`g\` then \`f\`.
+- \`Predicate\`: \`and\`, \`or\`, \`negate\`, plus static \`isEqual\`.
+- \`Consumer\`: \`andThen\` chains two side effects on the same input.
+
+\`\`\`mermaid
+flowchart LR
+  A["input x"] --> B["compose: g(x) first"]
+  B --> C["then f"]
+  C --> D["result"]
+  A2["input x"] --> E["andThen: f(x) first"]
+  E --> F["then g"]
+  F --> G["result"]
+\`\`\`
+
+> [!NOTE]
+> \`andThen\` and \`compose\` are mirror images. \`f.andThen(g).apply(x)\` equals \`g(f(x))\`; \`f.compose(g).apply(x)\` equals \`f(g(x))\`. Read \`andThen\` left-to-right, \`compose\` right-to-left.
+
+### A lambda IS an instance
+
+There is no special "lambda type." \`() -> "hi"\` typed as \`Supplier<String>\` produces an object where \`instanceof Supplier\` is \`true\`. Anonymous classes, lambdas, static/instance/constructor method references, and hand-written classes are all interchangeable ways to supply that single method.
+
+> [!TIP]
+> **See also:** a shorter version of the toolkit table also appears in this module's first section ("Lambdas & Functional Interfaces"); the canonical **Comparable vs Comparator** treatment lives in **Module 2.1**.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `The four core interfaces (and a lambda IS an instance)`,
+                code: `import java.util.function.*;
+
+public class S1D1 {
+    // A method reference target: matches Function<String,Integer>
+    static int lengthOf(String s) { return s.length(); }
+
+    public static void main(String[] a) {
+        // Supplier<T>: () -> T. No input, produces a value (lazy factory).
+        Supplier<String> greeting = () -> "hello";
+        System.out.println("Supplier: " + greeting.get());
+
+        // Consumer<T>: T -> void. Takes a value, returns nothing (side effect).
+        Consumer<String> printer = s -> System.out.println("Consumer: " + s);
+        printer.accept("side-effect");
+
+        // Function<T,R>: T -> R. Transforms input to output.
+        Function<String, Integer> len = s -> s.length();
+        System.out.println("Function: " + len.apply("abcd"));
+
+        // The SAME Function type, backed by a method reference instead of a lambda.
+        Function<String, Integer> len2 = S1D1::lengthOf;
+        System.out.println("Function (method ref): " + len2.apply("abcd"));
+
+        // Predicate<T>: T -> boolean. A boolean test.
+        Predicate<String> isEmpty = String::isEmpty;
+        System.out.println("Predicate: " + isEmpty.test(""));
+
+        // Proof that a lambda IS an instance of the interface.
+        System.out.println("greeting instanceof Supplier: " + (greeting instanceof Supplier));
+        System.out.println("printer instanceof Consumer: " + (printer instanceof Consumer));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Bi* variants, UnaryOperator & BinaryOperator`,
+                code: `import java.util.function.*;
+import java.util.*;
+
+public class S1D2 {
+    public static void main(String[] a) {
+        // BiConsumer<T,U>: (T,U) -> void. Classic use: Map.forEach.
+        BiConsumer<String, Integer> entry =
+            (k, v) -> System.out.println("BiConsumer: " + k + "=" + v);
+        Map<String, Integer> stock = new LinkedHashMap<>();
+        stock.put("pens", 12);
+        stock.put("pads", 7);
+        stock.forEach(entry);
+
+        // BiFunction<T,U,R>: (T,U) -> R.
+        BiFunction<Integer, Integer, Integer> add = (x, y) -> x + y;
+        System.out.println("BiFunction: " + add.apply(3, 4));
+
+        // BiPredicate<T,U>: (T,U) -> boolean.
+        BiPredicate<String, Integer> longerThan = (s, n) -> s.length() > n;
+        System.out.println("BiPredicate: " + longerThan.test("interview", 4));
+
+        // UnaryOperator<T> extends Function<T,T>: input and output are the SAME type.
+        UnaryOperator<String> shout = s -> s.toUpperCase();
+        System.out.println("UnaryOperator: " + shout.apply("loud"));
+
+        // BinaryOperator<T> extends BiFunction<T,T,T>: two same-typed args, same-typed result.
+        BinaryOperator<Integer> max = (x, y) -> x >= y ? x : y;
+        System.out.println("BinaryOperator: " + max.apply(9, 4));
+
+        // BinaryOperator convenience factories: minBy / maxBy take a Comparator.
+        BinaryOperator<String> longest = BinaryOperator.maxBy(Comparator.comparingInt(String::length));
+        System.out.println("BinaryOperator.maxBy: " + longest.apply("cat", "hippo"));
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Primitive specializations avoid autoboxing`,
+                code: `import java.util.function.*;
+import java.util.stream.*;
+
+public class S1D3 {
+    public static void main(String[] a) {
+        // Primitive specializations exist to avoid autoboxing (no Integer objects created).
+
+        // IntSupplier: () -> int   (vs Supplier<Integer> which boxes).
+        IntSupplier roll = () -> 4;
+        System.out.println("IntSupplier: " + roll.getAsInt());
+
+        // IntFunction<R>: int -> R.
+        IntFunction<String> label = n -> "row-" + n;
+        System.out.println("IntFunction: " + label.apply(7));
+
+        // ToIntFunction<T>: T -> int (used by mapToInt, comparingInt).
+        ToIntFunction<String> len = String::length;
+        System.out.println("ToIntFunction: " + len.applyAsInt("hello"));
+
+        // IntPredicate: int -> boolean.
+        IntPredicate isEven = n -> n % 2 == 0;
+        System.out.println("IntPredicate: " + isEven.test(10));
+
+        // IntUnaryOperator: int -> int.
+        IntUnaryOperator square = n -> n * n;
+        System.out.println("IntUnaryOperator: " + square.applyAsInt(6));
+
+        // IntBinaryOperator: (int,int) -> int (used by IntStream.reduce).
+        IntBinaryOperator sum = (x, y) -> x + y;
+        System.out.println("IntBinaryOperator: " + sum.applyAsInt(3, 5));
+
+        // In a stream, mapToInt returns an IntStream of primitives -- no boxing.
+        int total = Stream.of("a", "bb", "ccc")
+                          .mapToInt(String::length) // ToIntFunction
+                          .sum();
+        System.out.println("Stream mapToInt sum: " + total);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Composition: andThen / compose / and / or / negate`,
+                code: `import java.util.function.*;
+
+public class S1D4 {
+    public static void main(String[] a) {
+        // Function.andThen: apply THIS first, then the argument.
+        Function<Integer, Integer> plus1 = x -> x + 1;
+        Function<Integer, Integer> times2 = x -> x * 2;
+        System.out.println("andThen (plus1 then times2): " + plus1.andThen(times2).apply(3)); // (3+1)*2 = 8
+
+        // Function.compose: apply the ARGUMENT first, then THIS.
+        System.out.println("compose (times2 then plus1): " + plus1.compose(times2).apply(3)); // (3*2)+1 = 7
+
+        // Predicate composition: and / or / negate.
+        Predicate<Integer> positive = n -> n > 0;
+        Predicate<Integer> even = n -> n % 2 == 0;
+        System.out.println("and: " + positive.and(even).test(4));   // true
+        System.out.println("or: " + positive.or(even).test(-2));    // true
+        System.out.println("negate: " + positive.negate().test(-5)); // true
+
+        // Predicate.isEqual: static factory for an equals-based predicate.
+        System.out.println("isEqual: " + Predicate.isEqual("x").test("x")); // true
+
+        // Consumer.andThen: run both consumers in order on the same input.
+        StringBuilder log = new StringBuilder();
+        Consumer<String> a1 = s -> log.append("[").append(s).append("]");
+        Consumer<String> a2 = s -> log.append("(").append(s.length()).append(")");
+        a1.andThen(a2).accept("hi");
+        System.out.println("Consumer.andThen: " + log);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Four ways to build the same Supplier`,
+                code: `import java.util.function.*;
+import java.util.*;
+
+public class S1D5 {
+    static String makeGreeting() { return "made by static method ref"; }
+
+    public static void main(String[] a) {
+        // Four ways to obtain the SAME Supplier<String> type.
+
+        // 1) Anonymous class -- the "old" form a lambda desugars toward.
+        Supplier<String> s1 = new Supplier<String>() {
+            public String get() { return "anonymous class"; }
+        };
+
+        // 2) Lambda expression.
+        Supplier<String> s2 = () -> "lambda";
+
+        // 3) Static method reference (Class::staticMethod).
+        Supplier<String> s3 = S1D5::makeGreeting;
+
+        // 4) Bound instance method reference (instance::method).
+        String captured = "bound instance method ref";
+        Supplier<String> s4 = captured::toString;
+
+        for (Supplier<String> s : List.of(s1, s2, s3, s4)) {
+            System.out.println(s.get() + " -> is a Supplier? " + (s instanceof Supplier));
+        }
+
+        // Unbound instance method ref: String::length is a Function<String,Integer>.
+        Function<String, Integer> len = String::length;
+        System.out.println("String::length on \\"abc\\" = " + len.apply("abc"));
+
+        // Constructor reference: ArrayList::new is a Supplier<List<String>>.
+        Supplier<List<String>> newList = ArrayList::new;
+        List<String> fresh = newList.get();
+        fresh.add("built via constructor ref");
+        System.out.println(fresh);
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What makes an interface a "functional interface"?`,
+                a: `It has exactly one abstract method (a SAM). Default and static methods do not count. This lets a lambda or method reference serve as an instance of it. The optional @FunctionalInterface annotation asks the compiler to enforce the single-abstract-method rule.`
+              },
+              {
+                q: `Give the abstract-method signature and arity for Supplier, Consumer, Function, and Predicate.`,
+                a: `Supplier<T>: T get() -- arity 0. Consumer<T>: void accept(T) -- arity 1. Function<T,R>: R apply(T) -- arity 1. Predicate<T>: boolean test(T) -- arity 1.`
+              },
+              {
+                q: `How do UnaryOperator<T> and BinaryOperator<T> relate to Function and BiFunction?`,
+                a: `UnaryOperator<T> extends Function<T,T> (input and output are the same type). BinaryOperator<T> extends BiFunction<T,T,T> (two same-typed args, same-typed result). They are shorthand for the same-in/same-out cases.`
+              },
+              {
+                q: `Why do primitive specializations like IntFunction and ToIntFunction exist?`,
+                a: `Generics cannot hold primitives, so Function<Integer,Integer> autoboxes every value into an Integer object, creating GC pressure in hot paths. The primitive variants operate directly on int/long/double and allocate nothing.`
+              },
+              {
+                q: `What is the difference between ToIntFunction<T> and IntFunction<R>?`,
+                a: `ToIntFunction<T> is T -> int (int applyAsInt(T)); it produces a primitive int from an object, used by mapToInt and comparingInt. IntFunction<R> is int -> R (R apply(int)); it consumes a primitive int and produces an object.`
+              },
+              {
+                q: `Contrast Function.andThen with Function.compose.`,
+                a: `f.andThen(g).apply(x) equals g(f(x)) -- run f first (left to right). f.compose(g).apply(x) equals f(g(x)) -- run g first (right to left). They are mirror images.`
+              },
+              {
+                q: `Which default/static methods let you combine Predicates?`,
+                a: `Instance defaults and(), or(), negate(); plus the static factory Predicate.isEqual(target) which builds a predicate testing Objects.equals against target.`
+              },
+              {
+                q: `What does Consumer.andThen do?`,
+                a: `It returns a Consumer that runs the first consumer, then the second, both on the SAME input value -- chaining two side effects in order.`
+              },
+              {
+                q: `Is a lambda a distinct type in Java?`,
+                a: `No. A lambda has no type of its own; it is an instance of whatever functional interface the context (the 'target type') requires. () -> "hi" is a Supplier<String> in one place and could satisfy any other zero-arg SAM elsewhere. instanceof Supplier returns true for it.`
+              },
+              {
+                q: `Name four ways to create an instance of a functional interface.`,
+                a: `Anonymous class, lambda expression, method reference (static Class::m, bound instance obj::m, unbound Type::m, constructor Type::new), and a normal named class implementing the interface. All are interchangeable.`
+              },
+              {
+                q: `Which functional interface fits Map.forEach and what is its signature?`,
+                a: `BiConsumer<K,V>, whose SAM is void accept(K,V). Map.forEach passes each key and value to it.`
+              }
+            ]
+          },
+          {
+            title: `Runnable, Callable & Comparator as Functional Interfaces -- Threads, Tasks & Ordering`,
+            notes: `## Runnable, Callable & Comparator -- Functional Interfaces Beyond \`java.util.function\`
+
+Not every functional interface lives in \`java.util.function\`. Three of the most important predate it and are used throughout concurrency and collections.
+
+### Runnable vs Callable
+
+| | \`Runnable\` | \`Callable<V>\` |
+|---|---|---|
+| SAM | \`void run()\` | \`V call()\` |
+| Returns a value? | No | Yes (\`V\`) |
+| Checked exceptions? | **No** -- cannot throw checked | **Yes** -- declares \`throws Exception\` |
+| Submitted via | \`Thread\`, \`ExecutorService.execute\`, \`submit\` | \`ExecutorService.submit\`, \`invokeAll\` |
+| Result handle | none (fire-and-forget) | \`Future<V>\` |
+| Package | \`java.lang\` | \`java.util.concurrent\` |
+
+Because \`Callable\` can both return a value and throw checked exceptions, it is the right choice for a unit of work that computes something or does I/O. \`Runnable\` is for pure side effects.
+
+\`\`\`mermaid
+flowchart LR
+  R["Runnable\\nrun() -> void"] --> EX["execute()\\nfire and forget"]
+  C["Callable V\\ncall() -> V"] --> SUB["submit()"]
+  SUB --> FUT["Future V"]
+  FUT --> GET["future.get()\\nblocks for result"]
+\`\`\`
+
+> [!WARNING]
+> A lambda passed to \`Thread\`/\`execute\` binds to \`Runnable\`, so it must not throw checked exceptions. If your task does I/O, target \`Callable\` via \`submit\` -- or the compiler will reject the checked throw.
+
+> [!TIP]
+> Keep concurrency demos deterministic: submit \`Callable\`s, read results with \`future.get()\` (which blocks until done), then \`shutdown()\` and \`awaitTermination(...)\`. Never rely on \`Thread.sleep\` for ordering.
+
+### Comparator as a functional interface
+
+\`Comparator<T>\` has one abstract method, \`int compare(T,T)\`, so it too is a functional interface -- and it carries a rich set of static and default factory methods:
+
+| Factory / method | What it builds |
+|---|---|
+| \`comparing(keyExtractor)\` | compare by an extracted \`Comparable\` key |
+| \`comparingInt/Long/Double\` | key comparators without boxing |
+| \`thenComparing(...)\` | tie-breaker applied when the primary compares equal |
+| \`reversed()\` | flips the whole comparator |
+| \`naturalOrder()\` / \`reverseOrder()\` | order any \`Comparable\` type |
+| \`nullsFirst(cmp)\` / \`nullsLast(cmp)\` | null-safe wrappers |
+
+\`thenComparing\` is what makes stable, multi-level sorts readable -- "by department, then by salary descending" is one fluent expression. \`nullsFirst\`/\`nullsLast\` wrap another comparator so a \`null\` element (or \`null\` key) sorts to a chosen end instead of throwing \`NullPointerException\`.
+
+> [!NOTE]
+> \`reversed()\` flips **every** level of a chained comparator, not just the last \`thenComparing\`. To reverse only one key, call \`.reversed()\` on that key's sub-comparator, e.g. \`comparingDouble(Employee::salary).reversed()\`.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Runnable with Thread and ExecutorService.execute`,
+                code: `import java.util.concurrent.*;
+
+public class S2D1 {
+    public static void main(String[] a) throws InterruptedException {
+        // Runnable: () -> void, throws no checked exceptions. Its SAM is run().
+        Runnable task = () -> System.out.println("Runnable ran on: " + Thread.currentThread().getName());
+
+        // 1) A Runnable can drive a raw Thread.
+        Thread t = new Thread(task, "worker-thread");
+        t.start();
+        t.join(); // deterministic: wait for it to finish before continuing.
+
+        // 2) A Runnable can be handed to ExecutorService.execute (fire-and-forget, no result).
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        pool.execute(() -> System.out.println("execute() Runnable, no return value"));
+
+        // Orderly shutdown + await so the program ends deterministically.
+        pool.shutdown();
+        pool.awaitTermination(5, TimeUnit.SECONDS);
+        System.out.println("done");
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Callable + Future.get() and invokeAll (deterministic)`,
+                code: `import java.util.concurrent.*;
+import java.util.*;
+
+public class S2D2 {
+    public static void main(String[] a) throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+
+        // Callable<V>: () -> V, and MAY throw checked exceptions. Its SAM is call().
+        Callable<Integer> compute = () -> {
+            // A checked exception here would be fine -- Callable declares "throws Exception".
+            int sum = 0;
+            for (int i = 1; i <= 10; i++) sum += i;
+            return sum;
+        };
+
+        // submit(Callable) returns a Future<V>; future.get() blocks for the result.
+        Future<Integer> f = pool.submit(compute);
+        System.out.println("Callable result via Future.get(): " + f.get()); // 55
+
+        // invokeAll runs a batch and returns Futures in the SAME order -> deterministic output.
+        List<Callable<String>> tasks = List.of(
+            () -> "task-A",
+            () -> "task-B",
+            () -> "task-C"
+        );
+        List<Future<String>> results = pool.invokeAll(tasks);
+        for (Future<String> r : results) {
+            System.out.println("invokeAll -> " + r.get());
+        }
+
+        pool.shutdown();
+        pool.awaitTermination(5, TimeUnit.SECONDS);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Comparator.comparing / thenComparing / reversed / comparingInt`,
+                code: `import java.util.*;
+
+public class S2D3 {
+    record Person(String name, int age) {}
+
+    public static void main(String[] a) {
+        List<Person> people = new ArrayList<>(List.of(
+            new Person("Alice", 30),
+            new Person("Bob", 30),
+            new Person("Cara", 25),
+            new Person("Dan", 40)
+        ));
+
+        // Comparator.comparing extracts a Comparable key (here the age).
+        // thenComparing breaks ties (here by name). This is a stable, multi-level sort.
+        Comparator<Person> byAgeThenName =
+            Comparator.comparing(Person::age).thenComparing(Person::name);
+
+        List<Person> sorted = new ArrayList<>(people);
+        sorted.sort(byAgeThenName);
+        System.out.println("age asc, then name asc:");
+        sorted.forEach(p -> System.out.println("  " + p));
+
+        // reversed() flips the WHOLE comparator (both levels).
+        List<Person> rev = new ArrayList<>(people);
+        rev.sort(byAgeThenName.reversed());
+        System.out.println("reversed:");
+        rev.forEach(p -> System.out.println("  " + p));
+
+        // comparingInt avoids boxing the int key.
+        List<Person> byAge = new ArrayList<>(people);
+        byAge.sort(Comparator.comparingInt(Person::age));
+        System.out.println("comparingInt(age): " + byAge);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `naturalOrder, reverseOrder, nullsFirst / nullsLast`,
+                code: `import java.util.*;
+
+public class S2D4 {
+    public static void main(String[] a) {
+        // naturalOrder / reverseOrder: comparators for any Comparable type.
+        List<String> words = new ArrayList<>(List.of("pear", "apple", "kiwi"));
+        words.sort(Comparator.naturalOrder());
+        System.out.println("naturalOrder: " + words);
+        words.sort(Comparator.reverseOrder());
+        System.out.println("reverseOrder: " + words);
+
+        // nullsFirst / nullsLast: wrap a comparator so nulls do not throw NPE.
+        List<String> withNulls = new ArrayList<>(Arrays.asList("banana", null, "apple", null, "cherry"));
+        withNulls.sort(Comparator.nullsFirst(Comparator.naturalOrder()));
+        System.out.println("nullsFirst: " + withNulls);
+        withNulls.sort(Comparator.nullsLast(Comparator.naturalOrder()));
+        System.out.println("nullsLast: " + withNulls);
+
+        // Combine: sort a list of records where a field may be null.
+        record Task(String name, Integer priority) {}
+        List<Task> tasks = new ArrayList<>(List.of(
+            new Task("deploy", 2),
+            new Task("triage", null),
+            new Task("review", 1)
+        ));
+        // Keys with null priority go last; non-nulls ascending.
+        tasks.sort(Comparator.comparing(Task::priority, Comparator.nullsLast(Comparator.naturalOrder())));
+        System.out.println("null-safe key sort: " + tasks);
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Compare Runnable and Callable on return value and checked exceptions.`,
+                a: `Runnable: void run(), returns nothing, cannot throw checked exceptions. Callable<V>: V call(), returns a value of type V and declares throws Exception so it CAN throw checked exceptions.`
+              },
+              {
+                q: `How do you get the result of a Callable submitted to an ExecutorService?`,
+                a: `submit(Callable) returns a Future<V>. Call future.get(), which blocks until the task completes and returns V (or rethrows the task's exception wrapped in ExecutionException).`
+              },
+              {
+                q: `What is the difference between ExecutorService.execute and submit?`,
+                a: `execute(Runnable) is fire-and-forget: void, no handle. submit accepts a Runnable OR a Callable and returns a Future you can use to wait for completion, fetch a result, or cancel.`
+              },
+              {
+                q: `Why does a lambda passed to new Thread(...) reject a checked exception?`,
+                a: `The target type is Runnable, whose run() declares no checked exceptions. A checked throw would violate the SAM signature, so it must be caught inside or the work must target Callable via submit instead.`
+              },
+              {
+                q: `How do you make an executor-based demo produce deterministic output?`,
+                a: `Use future.get() (or invokeAll, which returns Futures in submission order) to read results in order, then shutdown() and awaitTermination(...). Do not rely on Thread.sleep or scheduling for ordering.`
+              },
+              {
+                q: `Is Comparator a functional interface? What is its SAM?`,
+                a: `Yes. Its single abstract method is int compare(T o1, T o2). It also has many default and static helper methods, but only one abstract method.`
+              },
+              {
+                q: `What does Comparator.thenComparing do?`,
+                a: `It supplies a tie-breaker: when the primary comparator returns 0 (equal), the next comparator decides. This builds stable multi-level orderings like 'by dept, then by salary'.`
+              },
+              {
+                q: `What is the effect of calling reversed() on a chained comparator?`,
+                a: `It flips EVERY level of the chain, not just the last thenComparing. To reverse only one key, call reversed() on that key's sub-comparator, e.g. comparingDouble(Employee::salary).reversed().thenComparing(name).`
+              },
+              {
+                q: `When do you need nullsFirst / nullsLast?`,
+                a: `When the list contains null elements, or a comparison key may be null. They wrap another comparator so nulls sort to the chosen end instead of causing a NullPointerException. Example: comparing(Task::priority, nullsLast(naturalOrder())).`
+              },
+              {
+                q: `Difference between Comparator.comparing and Comparator.comparingInt?`,
+                a: `comparing(keyExtractor) extracts a Comparable key (boxes primitives). comparingInt/comparingLong/comparingDouble take a To*Function and compare primitive keys without boxing -- prefer them for numeric keys.`
+              },
+              {
+                q: `What do Comparator.naturalOrder and reverseOrder return?`,
+                a: `naturalOrder() returns a Comparator that orders any Comparable type by its compareTo; reverseOrder() returns the inverse. Useful as the base of nullsFirst/nullsLast wrappers or for sorting simple lists.`
+              }
+            ]
+          },
+          {
+            title: `Comparable vs Comparator + Using Every Functional Interface in Lambdas & Streams`,
+            notes: `## Comparable vs Comparator -- and Driving Streams with Every Interface
+
+### Two ways to define order
+
+| | \`Comparable<T>\` | \`Comparator<T>\` |
+|---|---|---|
+| Method | \`int compareTo(T)\` | \`int compare(T,T)\` |
+| Location | **inside** the class being ordered | **outside**, a separate object |
+| How many orderings | exactly one ("natural order") | as many as you want |
+| Used by | \`Collections.sort(list)\`, \`TreeSet\`, \`sort(null)\` | \`list.sort(cmp)\`, \`stream.sorted(cmp)\`, \`min/max\` |
+| Change requires | editing the class | none -- pass a different comparator |
+
+Rule of thumb: implement \`Comparable\` when the type has ONE obvious, intrinsic order (version numbers, money, dates). Reach for \`Comparator\` for everything else -- alternate sorts, sorts you cannot edit the class for, or context-specific ordering. A \`Comparator\` argument always **overrides** natural order.
+
+> [!TIP]
+> All three sign contracts return an \`int\`: negative if "this before that," zero if equal, positive if "this after that." Implement them with \`Integer.compare\` / \`Double.compare\` rather than subtraction (\`a - b\` overflows for large values).
+
+### Every functional interface, one stream story
+
+The big demo below runs an "employee analytics" pipeline where each functional interface drives one stream operation:
+
+\`\`\`mermaid
+flowchart TD
+  S["Supplier -> Stream.generate (bonuses)"]
+  F["Predicate -> filter (Eng only)"]
+  M["Function -> map (to label)"]
+  U["UnaryOperator -> map (upper case)"]
+  C["Consumer -> forEach (print)"]
+  T["ToIntFunction -> mapToInt (salaries)"]
+  B["BinaryOperator -> reduce (sum)"]
+  O["Comparator -> sorted / max"]
+  COL["Collectors -> groupingBy / joining"]
+  S --> F --> M --> U --> C
+  T --> B
+  O --> COL
+\`\`\`
+
+| Stream op | Functional interface it accepts |
+|---|---|
+| \`filter\` | \`Predicate<T>\` |
+| \`map\` | \`Function<T,R>\` (or \`UnaryOperator<T>\`) |
+| \`mapToInt\` | \`ToIntFunction<T>\` |
+| \`forEach\` / \`peek\` | \`Consumer<T>\` |
+| \`reduce\` | \`BinaryOperator<T>\` |
+| \`sorted\` / \`min\` / \`max\` | \`Comparator<T>\` |
+| \`generate\` | \`Supplier<T>\` |
+
+> [!NOTE]
+> \`peek\` takes a \`Consumer\` and is intended for debugging/observation mid-pipeline; it is not a substitute for \`map\`. Use \`forEach\` as the terminal side-effect sink.
+
+> [!TIP]
+> **Canonical reference:** the core **Comparable vs Comparator** distinction (natural vs custom ordering) is covered in **Module 2.1**; this section focuses on driving them, and the other functional interfaces, through streams.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `Comparable: one natural ordering baked into the class`,
+                code: `import java.util.*;
+
+public class S3D1 {
+    // Comparable<T>: the class defines ITS OWN natural ordering via compareTo.
+    // Here Version sorts by major, then minor. There is exactly ONE natural order.
+    static final class Version implements Comparable<Version> {
+        final int major, minor;
+        Version(int major, int minor) { this.major = major; this.minor = minor; }
+
+        @Override
+        public int compareTo(Version o) {
+            int c = Integer.compare(this.major, o.major);
+            return c != 0 ? c : Integer.compare(this.minor, o.minor);
+        }
+        @Override
+        public String toString() { return major + "." + minor; }
+    }
+
+    public static void main(String[] a) {
+        List<Version> versions = new ArrayList<>(List.of(
+            new Version(2, 0), new Version(1, 5), new Version(2, 1), new Version(1, 0)
+        ));
+
+        // Collections.sort / List.sort with no comparator uses the NATURAL ordering.
+        Collections.sort(versions);
+        System.out.println("natural order: " + versions);
+
+        // TreeSet and Collections.min/max also rely on Comparable.
+        System.out.println("min: " + Collections.min(versions));
+        System.out.println("max: " + Collections.max(versions));
+
+        // A Comparator can OVERRIDE natural order without touching the class.
+        versions.sort(Comparator.reverseOrder());
+        System.out.println("comparator override (desc): " + versions);
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Comparator: many external orderings over the same type`,
+                code: `import java.util.*;
+
+public class S3D2 {
+    // The class has a natural order (by id) but callers often need OTHER orders.
+    record Employee(int id, String name, String dept, double salary) implements Comparable<Employee> {
+        @Override
+        public int compareTo(Employee o) { return Integer.compare(this.id, o.id); }
+    }
+
+    public static void main(String[] a) {
+        List<Employee> emps = new ArrayList<>(List.of(
+            new Employee(3, "Cara", "Eng", 95000),
+            new Employee(1, "Alice", "Eng", 120000),
+            new Employee(2, "Bob", "Sales", 80000),
+            new Employee(4, "Dan", "Sales", 80000)
+        ));
+
+        // Natural order (Comparable): by id.
+        emps.sort(null); // null comparator => natural ordering
+        System.out.println("by id (natural): " + idsOf(emps));
+
+        // External Comparator #1: by salary descending, then name ascending.
+        emps.sort(Comparator.comparingDouble(Employee::salary).reversed()
+                            .thenComparing(Employee::name));
+        System.out.println("by salary desc, name asc: " + namesOf(emps));
+
+        // External Comparator #2: group-friendly order by dept, then salary.
+        emps.sort(Comparator.comparing(Employee::dept)
+                            .thenComparing(Comparator.comparingDouble(Employee::salary).reversed()));
+        System.out.println("by dept, salary desc: " + namesOf(emps));
+    }
+
+    static List<Integer> idsOf(List<Employee> es) {
+        List<Integer> r = new ArrayList<>();
+        for (Employee e : es) r.add(e.id());
+        return r;
+    }
+    static List<String> namesOf(List<Employee> es) {
+        List<String> r = new ArrayList<>();
+        for (Employee e : es) r.add(e.name());
+        return r;
+    }
+}
+`
+              },
+              {
+                lang: `java`,
+                title: `Employee analytics: every functional interface driving a stream op`,
+                code: `import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
+
+public class S3D3 {
+    record Employee(String name, String dept, int salary) {}
+
+    public static void main(String[] a) {
+        // Supplier drives Stream.generate: an infinite source we bound with limit().
+        // A tiny deterministic pseudo-random via a mutable holder (no timing dependence).
+        int[] seed = { 1 };
+        Supplier<Integer> nextBonus = () -> {
+            seed[0] = (seed[0] * 1103515245 + 12345) & 0x7fffffff;
+            return 1000 + seed[0] % 5000; // deterministic sequence
+        };
+        List<Integer> bonuses = Stream.generate(nextBonus).limit(3).collect(Collectors.toList());
+        System.out.println("Supplier via generate: " + bonuses);
+
+        List<Employee> staff = List.of(
+            new Employee("Alice", "Eng", 120000),
+            new Employee("Bob", "Sales", 80000),
+            new Employee("Cara", "Eng", 95000),
+            new Employee("Dan", "Sales", 70000),
+            new Employee("Eve", "Eng", 105000)
+        );
+
+        // Predicate via filter: keep Engineering only.
+        Predicate<Employee> isEng = e -> e.dept().equals("Eng");
+
+        // Function via map: project to a display string.
+        Function<Employee, String> label = e -> e.name() + "($" + e.salary() + ")";
+
+        // UnaryOperator via map: normalize names to upper case (String -> String).
+        UnaryOperator<String> upper = String::toUpperCase;
+
+        // Consumer via forEach (peek is also a Consumer used mid-pipeline).
+        System.out.println("Predicate+Function+UnaryOperator+Consumer:");
+        staff.stream()
+             .filter(isEng)                              // Predicate
+             .map(label)                                 // Function
+             .map(upper)                                 // UnaryOperator
+             .forEach(s -> System.out.println("  " + s)); // Consumer
+
+        // ToIntFunction via mapToInt + BinaryOperator via reduce.
+        ToIntFunction<Employee> salaryOf = Employee::salary;
+        int totalEng = staff.stream()
+                            .filter(isEng)
+                            .mapToInt(salaryOf)          // ToIntFunction -> IntStream (no boxing)
+                            .sum();
+        System.out.println("Total Eng salary (mapToInt.sum): " + totalEng);
+
+        BinaryOperator<Integer> add = Integer::sum;
+        int totalAll = staff.stream()
+                            .map(Employee::salary)
+                            .reduce(0, add);             // BinaryOperator via reduce
+        System.out.println("Total all salary (reduce): " + totalAll);
+
+        // Comparator via max / sorted.
+        Comparator<Employee> bySalary = Comparator.comparingInt(Employee::salary);
+        Optional<Employee> topPaid = staff.stream().max(bySalary);
+        System.out.println("Highest paid (max): " + topPaid.map(Employee::name).orElse("none"));
+
+        System.out.println("Sorted by salary desc (sorted+Comparator):");
+        staff.stream()
+             .sorted(bySalary.reversed())
+             .forEach(e -> System.out.println("  " + e.name() + " " + e.salary()));
+
+        // Collectors: group by dept, averaging salary; and joining names.
+        Map<String, Double> avgByDept = staff.stream()
+            .collect(Collectors.groupingBy(Employee::dept,
+                     Collectors.averagingInt(Employee::salary)));
+        System.out.println("Avg salary by dept: " + new TreeMap<>(avgByDept));
+
+        String roster = staff.stream()
+            .map(Employee::name)
+            .collect(Collectors.joining(", ", "[", "]"));
+        System.out.println("Roster (joining): " + roster);
+    }
+}
+`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Comparable vs Comparator: where does each live and how many orderings does each give?`,
+                a: `Comparable<T> is implemented INSIDE the class (int compareTo(T)) and defines exactly one natural ordering. Comparator<T> is a separate external object (int compare(T,T)) and you can define as many orderings as you like.`
+              },
+              {
+                q: `When should a class implement Comparable, and when do you reach for a Comparator?`,
+                a: `Implement Comparable when the type has one obvious intrinsic order (versions, money, dates). Use a Comparator for alternate sorts, for classes you cannot edit, or for context-specific ordering. A passed Comparator overrides natural order.`
+              },
+              {
+                q: `What do compareTo / compare return?`,
+                a: `An int: negative if 'this'/first sorts before the other, zero if equal, positive if after. Implement with Integer.compare / Double.compare, not subtraction, to avoid integer overflow.`
+              },
+              {
+                q: `Which methods use natural ordering (Comparable) with no comparator?`,
+                a: `Collections.sort(list), list.sort(null), Collections.min/max, and TreeSet/TreeMap without an explicit comparator all rely on the elements' Comparable.compareTo.`
+              },
+              {
+                q: `Which functional interface does Stream.filter accept, and Stream.map?`,
+                a: `filter accepts a Predicate<T> (T -> boolean). map accepts a Function<T,R> (T -> R); if the result type equals the input type you may use a UnaryOperator<T>.`
+              },
+              {
+                q: `Which functional interface drives Stream.reduce with an identity?`,
+                a: `BinaryOperator<T>: reduce(identity, accumulator) folds two same-typed values into one, e.g. reduce(0, Integer::sum) to total a stream of ints.`
+              },
+              {
+                q: `How does Supplier participate in the Streams API?`,
+                a: `Stream.generate(Supplier<T>) builds an infinite stream by repeatedly calling get(); bound it with limit(n). Supplier also backs Optional.orElseGet and lazy defaults.`
+              },
+              {
+                q: `What functional interface does mapToInt take and why prefer it?`,
+                a: `It takes a ToIntFunction<T> (T -> int) and yields an IntStream of primitives, avoiding boxing and enabling numeric terminal ops like sum(), average(), and summaryStatistics().`
+              },
+              {
+                q: `peek vs forEach -- what interface do they take and how do they differ?`,
+                a: `Both take a Consumer<T>. forEach is a terminal side-effect sink. peek is an intermediate operation meant for observing/debugging elements as they flow; it is not a replacement for map and may be skipped by some optimizations.`
+              },
+              {
+                q: `Which Comparator-accepting stream operations find extremes?`,
+                a: `stream.min(comparator) and stream.max(comparator) return an Optional<T>; stream.sorted(comparator) orders the whole stream. All three consume a Comparator<T>.`
+              },
+              {
+                q: `How would you compute average salary per department in one stream?`,
+                a: `Use collect(Collectors.groupingBy(Employee::dept, Collectors.averagingInt(Employee::salary))), which returns a Map<String,Double> keyed by department.`
+              },
+              {
+                q: `How do you join a stream of names into a bracketed, comma-separated string?`,
+                a: `stream.map(Employee::name).collect(Collectors.joining(", ", "[", "]")) -- the three args are delimiter, prefix, and suffix.`
+              }
+            ]
+          },
+          {
+            title: `Stream Pipeline Mechanics — Laziness, Single-Use, Ordering, Primitives`,
+            notes: `## Stream Pipeline Mechanics: Lazy, Single-Use, Possibly-Unordered
+
+A stream is **not a data structure** — it carries no storage. It is a *pipeline description*: a **source**, zero or more **intermediate operations** (lazy, return a new stream), and exactly one **terminal operation** (eager, triggers execution and produces a result or side effect).
+
+\`\`\`mermaid
+flowchart LR
+  SRC["SOURCE<br/>collection / array<br/>Stream.of / generate"] --> I1["intermediate (lazy)<br/>filter"]
+  I1 --> I2["intermediate (lazy)<br/>map"]
+  I2 --> I3["intermediate (lazy)<br/>limit"]
+  I3 --> T["TERMINAL (eager)<br/>collect / forEach / reduce"]
+  T --> R["result / side effect"]
+\`\`\`
+
+### Laziness & short-circuiting
+
+Intermediate ops build up but execute *nothing* until a terminal op runs. Then elements are pulled through the whole chain **one at a time** (depth-first per element, not breadth-first per stage). This enables:
+
+- **Short-circuiting**: \`findFirst\`, \`anyMatch\`, \`limit\` can stop early without touching the rest of the source — essential for infinite streams (\`Stream.iterate\`, \`Stream.generate\`).
+- **Fusion**: \`filter\` then \`map\` doesn't materialize an intermediate list; each element flows through both.
+
+> [!TIP]
+> Order matters for cost. Put cheap, highly-selective \`filter\`s *before* expensive \`map\`s so fewer elements reach the costly stage. \`stream.filter(cheap).map(expensive)\` beats \`stream.map(expensive).filter(cheap)\`.
+
+> [!WARNING]
+> A terminal op is required. \`list.stream().map(...).filter(...)\` with no terminal does **nothing** — no elements are processed. \`peek\` is not a terminal and may be skipped entirely under optimizations; never rely on it for production side effects.
+
+### Statelessness & why you can't reuse a stream
+
+Most intermediate ops should be **stateless** (output for an element depends only on that element). \`sorted\`, \`distinct\`, \`limit\` are **stateful** — they may buffer or need the whole input. Stateful ops and side-effecting lambdas break under parallelism.
+
+A stream is **single-use**. After a terminal op, the stream is *consumed* and its pipeline is marked operated-upon; reusing it throws \`IllegalStateException: stream has already been operated upon or closed\`. Conceptually the source is bound to a one-shot \`Spliterator\`. To run two pipelines, create two streams (or use a \`Supplier<Stream<T>>\`).
+
+> [!DANGER]
+> Mutating the *source* collection while a stream is flowing (outside well-defined cases) causes \`ConcurrentModificationException\` or undefined results. The stream observes the source lazily at terminal time; don't change it mid-pipeline.
+
+### Ordered vs unordered & encounter order
+
+A stream has an **encounter order** if its source does (\`List\`, arrays, \`Stream.of\`). \`HashSet\` sources are unordered. Some ops *respect* encounter order (\`findFirst\`, \`limit\`, \`forEachOrdered\`); calling \`unordered()\` (or using \`forEach\` instead of \`forEachOrdered\`, or \`findAny\`) frees the runtime to skip ordering constraints — a real speedup in **parallel** pipelines.
+
+### Primitive streams & boxing cost
+
+\`IntStream\`, \`LongStream\`, \`DoubleStream\` avoid boxing and add numeric terminals: \`sum()\`, \`average()\`, \`summaryStatistics()\`, \`range\`/\`rangeClosed\`. Convert with \`mapToInt\`/\`mapToObj\`/\`boxed\`.
+
+> [!SUCCESS]
+> \`list.stream().mapToInt(Integer::intValue).sum()\` is cheaper than \`list.stream().reduce(0, Integer::sum)\` because the former unboxes once into an \`IntStream\`; the latter boxes the running total on every step. For numeric aggregation, go primitive.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Laziness proven: nothing runs without a terminal`,
+                code: `import java.util.stream.Stream;
+
+public class LazinessDemo {
+    public static void main(String[] args) {
+        Stream<String> s = Stream.of("a","bb","ccc")
+            .peek(x -> System.out.println("peek " + x))   // side effect
+            .map(String::toUpperCase);
+        System.out.println("-- no terminal yet, nothing printed above --");
+
+        // Now add a terminal: elements flow one-at-a-time
+        long n = s.filter(x -> x.length() > 1).count();
+        System.out.println("count=" + n);
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Short-circuiting an infinite stream`,
+                code: `import java.util.stream.Stream;
+import java.util.stream.IntStream;
+
+public class ShortCircuitDemo {
+    public static void main(String[] args) {
+        // Infinite source, but limit stops it
+        Stream.iterate(1, x -> x * 2)
+              .limit(5)
+              .forEach(System.out::println);     // 1 2 4 8 16
+
+        // findFirst stops as soon as one matches
+        int firstOver100 = IntStream.iterate(1, x -> x + 7)
+              .filter(x -> x > 100)
+              .findFirst().orElse(-1);
+        System.out.println("first>100 = " + firstOver100);  // 106
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `A stream is single-use`,
+                code: `import java.util.stream.Stream;
+import java.util.function.Supplier;
+
+public class SingleUseDemo {
+    public static void main(String[] args) {
+        Stream<String> s = Stream.of("a","b","c");
+        System.out.println(s.count());            // 3 (terminal consumes it)
+        try {
+            s.forEach(System.out::println);       // boom
+        } catch (IllegalStateException e) {
+            System.out.println("reuse failed: " + e.getMessage());
+        }
+        // Fix: a Supplier yields a fresh stream each time
+        Supplier<Stream<String>> src = () -> Stream.of("a","b","c");
+        System.out.println(src.get().count());    // 3
+        src.get().forEach(System.out::println);   // a b c
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Operation order changes how much work happens`,
+                code: `import java.util.stream.Stream;
+
+public class OrderingCostDemo {
+    static int calls = 0;
+    static String expensive(String s) { calls++; return s + s; }
+
+    public static void main(String[] args) {
+        calls = 0;
+        Stream.of("a","bb","ccc","dddd")
+              .map(OrderingCostDemo::expensive)        // runs on ALL 4
+              .filter(s -> s.length() > 4)
+              .forEach(x -> {});
+        System.out.println("expensive calls (map first) = " + calls);  // 4
+
+        calls = 0;
+        Stream.of("a","bb","ccc","dddd")
+              .filter(s -> s.length() > 2)             // selective first
+              .map(OrderingCostDemo::expensive)        // runs on 2
+              .forEach(x -> {});
+        System.out.println("expensive calls (filter first) = " + calls); // 2
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Primitive streams avoid boxing`,
+                code: `import java.util.List;
+import java.util.IntSummaryStatistics;
+
+public class PrimitiveStreamDemo {
+    public static void main(String[] args) {
+        List<Integer> nums = List.of(4, 8, 15, 16, 23, 42);
+
+        int sum = nums.stream().mapToInt(Integer::intValue).sum();
+        double avg = nums.stream().mapToInt(Integer::intValue).average().orElse(0);
+        IntSummaryStatistics stats =
+            nums.stream().mapToInt(Integer::intValue).summaryStatistics();
+
+        System.out.println("sum=" + sum + " avg=" + avg);        // sum=108 avg=18.0
+        System.out.println("min=" + stats.getMin() +
+                           " max=" + stats.getMax() +
+                           " count=" + stats.getCount());        // min=4 max=42 count=6
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Intermediate vs terminal operations?`,
+                a: `Intermediate ops are lazy and return a new stream (filter, map, sorted). Terminal ops are eager, trigger execution, and produce a result or side effect (collect, reduce, forEach, count). Exactly one terminal per pipeline.`
+              },
+              {
+                q: `Are elements processed stage-by-stage or element-by-element?`,
+                a: `Element-by-element (depth-first): each element is pulled through the entire chain before the next, not the whole source through filter then the whole through map. This enables fusion and short-circuiting.`
+              },
+              {
+                q: `What is short-circuiting and which ops do it?`,
+                a: `Producing a result without consuming the whole source. limit, findFirst, findAny, anyMatch/allMatch/noneMatch can stop early — required to terminate infinite streams.`
+              },
+              {
+                q: `Why can a stream be used only once?`,
+                a: `A stream is bound to a one-shot source spliterator and marked operated-upon after a terminal op; reuse throws IllegalStateException. Wrap creation in a Supplier<Stream<T>> to get fresh streams.`
+              },
+              {
+                q: `Which intermediate operations are stateful?`,
+                a: `sorted, distinct, and limit (and the bounded forms). They may buffer or require seeing more of the input, which costs memory and complicates parallelism.`
+              },
+              {
+                q: `Why put filter before map?`,
+                a: `filter reduces the element count reaching the expensive map, so fewer transformations run. Operation order changes total work even though the result is the same.`
+              },
+              {
+                q: `Why is mapToInt(...).sum() better than reduce(0, Integer::sum) for ints?`,
+                a: `mapToInt unboxes into a primitive IntStream and sums without boxing; the reduce form boxes the accumulator on every step, allocating Integers.`
+              },
+              {
+                q: `What is encounter order and who has it?`,
+                a: `A defined element order inherited from an ordered source (List, arrays, Stream.of). HashSet is unordered. Ops like findFirst, limit, forEachOrdered respect it; findAny/forEach/unordered() may ignore it.`
+              },
+              {
+                q: `When does dropping ordering (unordered()) help?`,
+                a: `Mainly in parallel pipelines: relaxing encounter-order constraints lets the runtime avoid merge/ordering overhead. In sequential streams it rarely matters.`
+              },
+              {
+                q: `Why should you never rely on peek for side effects?`,
+                a: `peek is an intermediate debugging hook; the JDK may elide it when a terminal can compute its result without running every stage (e.g. count on a sized stream). Use it only for logging during development.`
+              },
+              {
+                q: `What happens if a pipeline has no terminal operation?`,
+                a: `Nothing executes — no element is ever pulled. The intermediate ops just describe a pipeline that is never run.`
+              },
+              {
+                q: `Name the primitive stream types and a benefit beyond no-boxing.`,
+                a: `IntStream, LongStream, DoubleStream. Besides avoiding boxing, they add numeric terminals: sum(), average(), summaryStatistics(), range/rangeClosed.`
+              }
+            ]
+          },
+          {
+            title: `Collectors Deep Dive — groupingBy, toMap, partitioningBy, teeing, custom`,
+            notes: `## Collectors Deep Dive
+
+> [!NOTE]
+> **What is a collector?** A \`Collector\` is simply the *recipe* for gathering the elements flowing out of a stream into a final result -- a \`List\`, a \`Set\`, a \`Map\`, a count or a joined \`String\`. You hand one to the terminal \`collect(...)\` operation. The formal "supplier + accumulator + combiner + finisher" machinery below is just how that recipe is built; most of the time you use the ready-made recipes in the \`Collectors\` class.
+
+\`collect\` is the most powerful terminal op: it performs a **mutable reduction** using a \`Collector\` (supplier + accumulator + combiner + finisher). The \`Collectors\` factory covers almost everything; the real depth is **downstream collectors** that post-process each group.
+
+| Collector | Produces | Note |
+|-----------|----------|------|
+| \`toList()\` / \`toSet()\` | List / Set | toList unmodifiable-unspecified; use \`toUnmodifiableList\` to guarantee |
+| \`toMap(k,v)\` | Map | throws on duplicate key unless you pass a merge function |
+| \`groupingBy(classifier)\` | \`Map<K,List<T>>\` | add a downstream to reshape each group |
+| \`partitioningBy(pred)\` | \`Map<Boolean,List<T>>\` | always has both true & false keys |
+| \`counting()\` | Long | downstream: count per group |
+| \`mapping(f, dn)\` | — | transform elements before the downstream |
+| \`filtering(p, dn)\` | — | filter within a group (keeps empty groups, unlike upstream filter) |
+| \`summingInt/averagingDouble\` | Integer/Double | numeric aggregation per group |
+| \`joining(sep,pre,post)\` | String | concatenation |
+| \`reducing(...)\` | — | general reduction as a downstream |
+| \`collectingAndThen(dn, fin)\` | — | post-process the finished result (e.g. make immutable) |
+| \`teeing(dn1, dn2, merge)\` | — | (Java 12+) two collectors, one pass, merged |
+
+### groupingBy + downstream is the workhorse
+
+\`groupingBy\` without a downstream gives \`Map<K, List<T>>\`. With a downstream you reshape each bucket: count, sum, average, map-and-collect, even nest a second \`groupingBy\` for multi-level grouping.
+
+> [!TIP]
+> \`groupingBy(classifier, downstream)\` and the three-arg \`groupingBy(classifier, mapFactory, downstream)\` let you pick the map type (e.g. \`TreeMap::new\` for sorted keys) and the per-group reduction in one shot.
+
+### toMap and the merge function — the #1 collector trap
+
+\`\`\`java
+// THROWS IllegalStateException on the first duplicate key:
+Map<Integer,String> m = stream.collect(toMap(String::length, s -> s));
+\`\`\`
+
+> [!DANGER]
+> Two elements that map to the same key make 2-arg \`toMap\` throw \`Duplicate key\`. Always supply a **merge function** \`(existing, incoming) -> ...\` when keys can collide. \`(a,b) -> a\` keeps first, \`(a,b) -> b\` keeps last, \`Integer::sum\` adds, \`(a,b) -> a + "," + b\` concatenates.
+
+### partitioningBy vs groupingBy(boolean)
+
+\`partitioningBy\` always returns a map with **both** \`true\` and \`false\` keys (even if one is empty) and is optimized for the boolean case. \`groupingBy(x -> pred(x))\` omits a key whose group has no elements — a subtle difference when you later read \`map.get(false)\`.
+
+### collectingAndThen — finish then transform
+
+Wrap any collector to apply a finisher: the classic is producing an **immutable** result, e.g. \`collectingAndThen(toList(), List::copyOf)\` or \`collectingAndThen(toList(), Collections::unmodifiableList)\`.
+
+### Custom Collector
+
+When no factory fits, implement \`Collector<T,A,R>\` via \`Collector.of(supplier, accumulator, combiner, finisher, characteristics)\`. The **combiner** merges two partial accumulators and is only exercised under **parallel** streams — if it's wrong, your sequential tests pass but parallel runs corrupt data.
+
+> [!SUCCESS]
+> 90% of "write a custom collector" interview asks are actually solvable with \`groupingBy\` + a downstream or \`reducing\`. Reach for a hand-rolled \`Collector.of\` only when you need a custom container or non-trivial finisher.`,
+            code: [
+              {
+                lang: `java`,
+                title: `groupingBy with downstream collectors`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class GroupingDemo {
+    record Emp(String name, String dept, int salary) {}
+
+    public static void main(String[] args) {
+        List<Emp> emps = List.of(
+            new Emp("Ann","ENG",120), new Emp("Bob","ENG",100),
+            new Emp("Cay","SAL", 90), new Emp("Dan","SAL", 95),
+            new Emp("Eve","HR",  80));
+
+        // count per dept
+        Map<String,Long> byCount = emps.stream()
+            .collect(groupingBy(Emp::dept, counting()));
+        System.out.println(byCount);              // {ENG=2, SAL=2, HR=1}
+
+        // average salary per dept
+        Map<String,Double> avg = emps.stream()
+            .collect(groupingBy(Emp::dept, averagingInt(Emp::salary)));
+        System.out.println(avg);                  // {ENG=110.0, SAL=92.5, HR=80.0}
+
+        // names per dept (mapping downstream), sorted keys via TreeMap
+        Map<String,List<String>> names = emps.stream()
+            .collect(groupingBy(Emp::dept, TreeMap::new,
+                                mapping(Emp::name, toList())));
+        System.out.println(names);                // {ENG=[Ann, Bob], HR=[Eve], SAL=[Cay, Dan]}
+
+        // joining downstream
+        String roster = emps.stream()
+            .collect(groupingBy(Emp::dept, mapping(Emp::name, joining(",")))).toString();
+        System.out.println(roster);
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `toMap with a merge function (and without — the trap)`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class ToMapMergeDemo {
+    public static void main(String[] args) {
+        List<String> words = List.of("apple","avocado","banana","cherry","cranberry");
+
+        // Duplicate keys (first letter) -> need a merge function
+        Map<Character,String> first = words.stream()
+            .collect(toMap(w -> w.charAt(0), w -> w, (a,b) -> a)); // keep first
+        System.out.println(first);   // {a=apple, b=banana, c=cherry}
+
+        Map<Character,String> joined = words.stream()
+            .collect(toMap(w -> w.charAt(0), w -> w, (a,b) -> a + "|" + b));
+        System.out.println(joined);  // {a=apple|avocado, b=banana, c=cherry|cranberry}
+
+        // Without merge it throws:
+        try {
+            words.stream().collect(toMap(w -> w.charAt(0), w -> w));
+        } catch (IllegalStateException e) {
+            System.out.println("threw: Duplicate key");
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `partitioningBy vs filtering downstream`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class PartitionDemo {
+    public static void main(String[] args) {
+        List<Integer> nums = IntStream.rangeClosed(1,10).boxed().collect(toList());
+
+        // partitioningBy ALWAYS has true and false keys
+        Map<Boolean,List<Integer>> p = nums.stream()
+            .collect(partitioningBy(n -> n % 2 == 0));
+        System.out.println("even=" + p.get(true));    // [2, 4, 6, 8, 10]
+        System.out.println("odd=" + p.get(false));     // [1, 3, 5, 7, 9]
+
+        // filtering downstream keeps empty groups (unlike a pre-filter)
+        Map<Integer,List<Integer>> byMod3 = nums.stream()
+            .collect(groupingBy(n -> n % 3, filtering(n -> n > 5, toList())));
+        System.out.println(byMod3);  // {0=[6, 9], 1=[7, 10], 2=[8]}
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `collectingAndThen for immutability + teeing (Java 12+)`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class AndThenTeeingDemo {
+    public static void main(String[] args) {
+        List<Integer> nums = List.of(3, 1, 4, 1, 5, 9, 2, 6);
+
+        // collectingAndThen -> immutable list
+        List<Integer> immutable = nums.stream().distinct()
+            .collect(collectingAndThen(toList(), List::copyOf));
+        System.out.println(immutable);   // [3, 1, 4, 5, 9, 2, 6]
+        try { immutable.add(0); }
+        catch (UnsupportedOperationException e) { System.out.println("immutable!"); }
+
+        // teeing: compute average in ONE pass (sum and count together)
+        double mean = nums.stream().collect(teeing(
+            summingInt(Integer::intValue),
+            counting(),
+            (sum, cnt) -> sum.doubleValue() / cnt));
+        System.out.println("mean=" + mean);   // mean=3.875
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `A custom Collector via Collector.of (with a real combiner)`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class CustomCollectorDemo {
+    public static void main(String[] args) {
+        // Collect into a comma-joined String inside brackets, custom container
+        Collector<String, StringJoiner, String> bracketJoin = Collector.of(
+            () -> new StringJoiner(", ", "[", "]"),   // supplier
+            StringJoiner::add,                          // accumulator
+            StringJoiner::merge,                        // combiner (used in parallel)
+            StringJoiner::toString);                     // finisher
+
+        String out = Stream.of("a","b","c").collect(bracketJoin);
+        System.out.println(out);   // [a, b, c]
+
+        // Same collector works in parallel because the combiner is correct
+        String par = Stream.of("x","y","z","w").parallel().collect(bracketJoin);
+        System.out.println(par.length() + " chars");  // proves it ran
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What four functions define a Collector?`,
+                a: `supplier (new mutable container), accumulator (fold one element in), combiner (merge two partial containers — used in parallel), and finisher (transform the container to the result). Plus characteristics (CONCURRENT/UNORDERED/IDENTITY_FINISH).`
+              },
+              {
+                q: `What is the toMap duplicate-key trap and the fix?`,
+                a: `Two elements mapping to the same key make 2-arg toMap throw IllegalStateException: Duplicate key. Pass a 3rd merge function (existing, incoming) -> ... e.g. (a,b)->a (first), (a,b)->b (last), Integer::sum.`
+              },
+              {
+                q: `partitioningBy vs groupingBy on a boolean classifier?`,
+                a: `partitioningBy always returns both true and false keys (even if empty) and is optimized for booleans; groupingBy(pred) omits a key whose group is empty, so map.get(false) could be null.`
+              },
+              {
+                q: `What does a downstream collector do in groupingBy?`,
+                a: `It reshapes each group after classification — counting(), summingInt, averagingDouble, mapping(f, dn), joining, filtering, or a nested groupingBy for multi-level grouping.`
+              },
+              {
+                q: `Difference between filtering() downstream and filtering upstream then grouping?`,
+                a: `A pre-filter drops elements before classification, so empty groups vanish. Collectors.filtering filters within each group, preserving the keys of groups that end up empty.`
+              },
+              {
+                q: `How do you produce an immutable result from collect?`,
+                a: `collectingAndThen(downstream, finisher), e.g. collectingAndThen(toList(), List::copyOf) or unmodifiableList. The finisher runs once on the assembled container.`
+              },
+              {
+                q: `What does Collectors.teeing do?`,
+                a: `Java 12+. Feeds each element to two downstream collectors simultaneously and merges their results with a BiFunction — e.g. sum and count in one pass to compute a mean.`
+              },
+              {
+                q: `When is a custom collector's combiner exercised, and why does that matter?`,
+                a: `Only under parallel streams. A wrong combiner passes all sequential tests but corrupts data in parallel — a classic latent bug.`
+              },
+              {
+                q: `How do you choose the Map implementation produced by groupingBy?`,
+                a: `Use the three-arg form groupingBy(classifier, mapFactory, downstream), e.g. TreeMap::new for sorted keys or LinkedHashMap::new for insertion order.`
+              },
+              {
+                q: `mapping vs map for per-group transformation?`,
+                a: `Stream.map transforms before grouping (you lose the original to classify by). Collectors.mapping(f, downstream) transforms within the group while classifying by the original element.`
+              },
+              {
+                q: `Does Collectors.toList guarantee mutability or a specific type?`,
+                a: `No — the returned List type and mutability are unspecified. Use toCollection(ArrayList::new) for a guaranteed mutable ArrayList, or toUnmodifiableList for a guaranteed immutable list.`
+              },
+              {
+                q: `What does reducing() add as a downstream?`,
+                a: `A general reduction per group (identity, optional mapper, BinaryOperator) when counting/summing/averaging do not fit — e.g. find the max-salary employee per department.`
+              }
+            ]
+          },
+          {
+            title: `flatMap, reduce & Composition — Associativity & Optional Chaining`,
+            notes: `## flatMap, reduce, Composition & Optional
+
+### flatMap — flatten one-to-many
+
+\`map\` is 1:1 (\`T -> R\`). \`flatMap\` is 1:many (\`T -> Stream<R>\`) and **flattens** the resulting streams into one. Use it for nested collections, splitting strings into words/chars, expanding a parent into its children, or unwrapping \`Optional\`/\`Stream\` of streams.
+
+> [!TIP]
+> If your \`map\` lambda returns a \`Stream\`, \`List\`, or \`Optional\` and you find yourself with a \`Stream<Stream<X>>\` / \`Stream<List<X>>\`, you wanted \`flatMap\`. Java 16+ also has \`mapMulti\` for high-volume expansion without allocating an intermediate stream per element.
+
+### reduce — fold with identity, accumulator, (combiner)
+
+Three forms:
+1. \`reduce(BinaryOperator)\` -> \`Optional<T>\` (no identity).
+2. \`reduce(identity, BinaryOperator)\` -> \`T\`.
+3. \`reduce(identity, BiFunction accumulator, BinaryOperator combiner)\` -> \`U\` (map-reduce; **required** for parallel when the result type differs from the element type).
+
+> [!DANGER]
+> reduce demands an **associative** accumulator and an identity that satisfies \`combiner(identity, x) == x\`. Subtraction \`(a,b)->a-b\` is NOT associative — \`((10-1)-2) != (10-(1-2))\` — so it gives different answers sequentially vs in parallel. The same hazard applies to a non-true identity (e.g. using 1 as the identity for a sum). If reduce can ever be parallelized, prove associativity first.
+
+\`\`\`mermaid
+flowchart TD
+  subgraph parallel reduce
+    A1["chunk A"] -->|accumulator| PA["partial A"]
+    A2["chunk B"] -->|accumulator| PB["partial B"]
+    PA --> C["combiner(partialA, partialB)"]
+    PB --> C
+    C --> R["final result"]
+  end
+\`\`\`
+
+### Function composition
+
+- \`f.andThen(g)\` => \`x -> g(f(x))\` (apply f first).
+- \`f.compose(g)\` => \`x -> f(g(x))\` (apply g first).
+- \`Predicate\`: \`and\`, \`or\`, \`negate\`. \`Consumer\`: \`andThen\`. Build complex behavior from small named pieces.
+
+> [!WARNING]
+> \`andThen\` vs \`compose\` ordering is a frequent slip. Mnemonic: **andThen = and then next** (left-to-right), **compose = like math g∘f** (right-to-left).
+
+### Optional chaining
+
+\`Optional\` is a *return type for "maybe absent"*, not a field type or parameter type. Chain without null checks:
+
+- \`map(f)\` — transform if present.
+- \`flatMap(f)\` — when \`f\` itself returns an \`Optional\` (avoids \`Optional<Optional<X>>\`).
+- \`filter(p)\` — keep only if predicate holds.
+- \`or(supplier)\` — fall back to another Optional (Java 9+).
+- \`orElse(v)\` / \`orElseGet(supplier)\` / \`orElseThrow()\`.
+
+> [!SUCCESS]
+> Prefer \`orElseGet(this::expensiveDefault)\` over \`orElse(expensiveDefault())\` — \`orElse\`'s argument is **always evaluated** even when the Optional is present; \`orElseGet\`'s supplier runs only when empty. And never call \`.get()\` without \`isPresent()\` — use \`orElseThrow()\` to signal intent.`,
+            code: [
+              {
+                lang: `java`,
+                title: `flatMap: flatten nested lists and split into words`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class FlatMapDemo {
+    public static void main(String[] args) {
+        List<List<Integer>> nested = List.of(
+            List.of(1,2,3), List.of(4,5), List.of(6));
+
+        List<Integer> flat = nested.stream()
+            .flatMap(List::stream)
+            .collect(Collectors.toList());
+        System.out.println(flat);   // [1, 2, 3, 4, 5, 6]
+
+        // one-to-many: sentences -> distinct words
+        List<String> lines = List.of("the quick brown", "the lazy fox");
+        List<String> words = lines.stream()
+            .flatMap(l -> Arrays.stream(l.split(" ")))
+            .distinct()
+            .sorted()
+            .collect(Collectors.toList());
+        System.out.println(words);  // [brown, fox, lazy, quick, the]
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `reduce — three forms and the associativity trap`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class ReduceDemo {
+    public static void main(String[] args) {
+        List<Integer> n = List.of(1,2,3,4,5);
+
+        Optional<Integer> sum1 = n.stream().reduce(Integer::sum);      // Optional[15]
+        int sum2 = n.stream().reduce(0, Integer::sum);                 // 15
+        // map-reduce: total string length
+        int totalLen = Stream.of("aa","bbb","c")
+            .reduce(0, (acc,s) -> acc + s.length(), Integer::sum);     // 6
+        System.out.println(sum1.get() + " " + sum2 + " " + totalLen);
+
+        // ASSOCIATIVITY TRAP: subtraction differs sequential vs parallel
+        int seq = n.stream().reduce(100, (a,b) -> a - b);
+        int par = n.stream().parallel().reduce(100, (a,b) -> a - b);
+        System.out.println("seq=" + seq + " par=" + par);  // usually different!
+    }
+}`,
+                note: `seq and par typically differ because subtraction is not associative — never parallel-reduce with a non-associative op.`
+              },
+              {
+                lang: `java`,
+                title: `Function and Predicate composition`,
+                code: `import java.util.function.*;
+
+public class CompositionDemo {
+    public static void main(String[] args) {
+        Function<Integer,Integer> times2 = x -> x * 2;
+        Function<Integer,Integer> plus3  = x -> x + 3;
+
+        // andThen: times2 THEN plus3  -> (x*2)+3
+        System.out.println(times2.andThen(plus3).apply(5));   // 13
+        // compose: plus3 first        -> (x+3)*2
+        System.out.println(times2.compose(plus3).apply(5));   // 16
+
+        Predicate<String> nonEmpty = s -> !s.isEmpty();
+        Predicate<String> shortStr = s -> s.length() < 4;
+        Predicate<String> ok = nonEmpty.and(shortStr);
+        System.out.println(ok.test("hi"));     // true
+        System.out.println(ok.test("hello"));  // false
+        System.out.println(ok.negate().test("")); // true
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Optional chaining, or, orElseGet, orElseThrow`,
+                code: `import java.util.*;
+
+public class OptionalDemo {
+    record User(String name, Optional<String> email) {}
+
+    static Optional<User> find(String name) {
+        return name.equals("ann")
+            ? Optional.of(new User("ann", Optional.of("ann@x.io")))
+            : Optional.empty();
+    }
+
+    public static void main(String[] args) {
+        // map + flatMap + orElse
+        String email = find("ann")
+            .flatMap(User::email)              // flatMap: User -> Optional<String>
+            .map(String::toUpperCase)
+            .orElse("no-email");
+        System.out.println(email);             // ANN@X.IO
+
+        String missing = find("bob")
+            .map(User::name)
+            .orElse("unknown");
+        System.out.println(missing);           // unknown
+
+        // or(): fall back to another Optional (Java 9+)
+        String fb = find("bob").map(User::name)
+            .or(() -> Optional.of("default-user"))
+            .get();
+        System.out.println(fb);                // default-user
+
+        // orElseThrow signals intent
+        try {
+            find("bob").orElseThrow(() -> new NoSuchElementException("no user"));
+        } catch (NoSuchElementException e) {
+            System.out.println("threw: " + e.getMessage());
+        }
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `map vs flatMap?`,
+                a: `map is 1:1 (T -> R). flatMap is 1:many (T -> Stream<R>) and flattens the inner streams into one. Use flatMap to avoid Stream<Stream<X>>/Stream<List<X>> when expanding nested or one-to-many data.`
+              },
+              {
+                q: `What property must a reduce accumulator have, and why?`,
+                a: `Associativity, so the result is identical regardless of grouping/order. Parallel reduce splits, folds chunks independently, then combines — non-associative ops (subtraction, division) give different sequential vs parallel answers.`
+              },
+              {
+                q: `What is the identity requirement in reduce?`,
+                a: `identity must satisfy combiner(identity, x) == x for all x — a true zero. 0 for sum, 1 for product, "" for concat, Integer.MIN_VALUE for max. A wrong identity corrupts results (especially in parallel where it is injected per chunk).`
+              },
+              {
+                q: `When is the 3-arg reduce (identity, accumulator, combiner) required?`,
+                a: `When the result type differs from the element type (map-reduce) AND you may run in parallel — the combiner merges partial results of the result type across chunks.`
+              },
+              {
+                q: `andThen vs compose?`,
+                a: `f.andThen(g) applies f then g: g(f(x)) (left-to-right). f.compose(g) applies g then f: f(g(x)) (right-to-left, like math g∘f).`
+              },
+              {
+                q: `orElse vs orElseGet — why prefer orElseGet?`,
+                a: `orElse(v) always evaluates its argument, even when the Optional is present; orElseGet(supplier) runs the supplier only when empty. Use orElseGet for expensive or side-effecting defaults.`
+              },
+              {
+                q: `When do you use Optional.flatMap vs map?`,
+                a: `Use flatMap when the mapping function itself returns an Optional, to avoid a nested Optional<Optional<X>>. Use map when it returns a plain value.`
+              },
+              {
+                q: `Why is Optional a poor choice for fields and parameters?`,
+                a: `It is designed as a return type meaning maybe-absent. As a field it adds an allocation and is not Serializable; as a parameter it forces callers to wrap and still pass null. Use plain nullable or overloads instead.`
+              },
+              {
+                q: `What does Optional.or do and since when?`,
+                a: `Java 9+. It returns the present Optional, or lazily supplies a fallback Optional — chaining alternatives without unwrapping (unlike orElse which returns a bare value).`
+              },
+              {
+                q: `Predicate combinators?`,
+                a: `and, or, negate build compound predicates from simple ones; and/or are short-circuiting. Compose small named predicates instead of one giant lambda.`
+              },
+              {
+                q: `How do you flatten a List<List<T>> into a List<T> with streams?`,
+                a: `list.stream().flatMap(List::stream).collect(toList()). flatMap turns each inner list into a stream and concatenates them.`
+              },
+              {
+                q: `Why avoid calling Optional.get() directly?`,
+                a: `It throws NoSuchElementException if empty and gives no intent. Prefer orElse/orElseGet/orElseThrow(supplier), or ifPresent/map, which make the absent case explicit.`
+              }
+            ]
+          },
+          {
+            title: `Parallel Streams & Pitfalls — ForkJoinPool, Hazards, Measuring`,
+            notes: `## Parallel Streams: When They Help and How They Bite
+
+\`stream.parallel()\` (or \`collection.parallelStream()\`) splits the source via its \`Spliterator\`, runs the pipeline on multiple threads, and merges. It is *trivial to type* and *easy to misuse*.
+
+### The common ForkJoinPool
+
+By default, parallel streams run on the **shared** \`ForkJoinPool.commonPool()\`, sized to \`Runtime.availableProcessors() - 1\`. Every parallel stream in the JVM competes for those threads.
+
+> [!DANGER]
+> Do NOT run **blocking I/O** (HTTP, JDBC, disk) inside a parallel stream. One slow task starves the common pool and stalls every other parallel stream — including unrelated library code. For blocking work use a dedicated \`ExecutorService\` (or wrap the stream in a custom ForkJoinPool via \`pool.submit(() -> stream...).get()\`).
+
+### When parallelism actually helps
+
+Parallel pays off only when **all** of these hold:
+
+- **CPU-bound** work per element (real computation, not I/O or trivial ops).
+- **Large N** — enough elements to amortize fork/join/merge overhead (rule of thumb: tens of thousands+).
+- **Cheaply splittable source** — arrays, \`ArrayList\`, \`IntStream.range\` split in O(1). \`LinkedList\`, \`Stream.iterate\`, and most \`Iterator\`-backed sources split poorly.
+- **Stateless, associative, non-interfering** operations — no shared mutable state, no order dependence.
+
+\`\`\`mermaid
+flowchart TD
+  Q{"CPU-bound?"} -->|no| SEQ["stay sequential"]
+  Q -->|yes| N{"N large?<br/>(10k+)"}
+  N -->|no| SEQ
+  N -->|yes| SP{"source splits cheaply?<br/>(array/ArrayList/range)"}
+  SP -->|no| SEQ
+  SP -->|yes| ST{"stateless & associative?"}
+  ST -->|no| SEQ
+  ST -->|yes| PAR["parallel() — then MEASURE"]
+\`\`\`
+
+### The hazards
+
+> [!WARNING]
+> **Ordering**: \`forEach\` does not preserve encounter order in parallel — use \`forEachOrdered\` if order matters (it serializes the terminal, eroding the gain). \`findFirst\` is more expensive than \`findAny\` in parallel because it must respect order.
+
+> [!DANGER]
+> **Stateful lambdas / shared mutable state**: writing to an external collection or counter from a parallel \`map\`/\`forEach\` is a data race. \`ArrayList\` is not thread-safe — you'll get lost updates, \`ArrayIndexOutOfBoundsException\`, or nulls. Use a proper \`Collector\` (which provides a thread-safe combiner) or an atomic/concurrent structure.
+
+> [!WARNING]
+> **Non-associative reduce / wrong identity**: as in Section 4, parallel splits the reduction, so a non-associative accumulator yields different results than sequential. Test parallel paths explicitly.
+
+### Why most parallel streams are premature optimization
+
+The overhead (spliterator splitting, task scheduling, result merging, false sharing) frequently makes parallel **slower** than sequential for typical business workloads (small collections, I/O-bound, cheap per-element work).
+
+> [!SUCCESS]
+> Rule: **measure, don't guess**. Add \`.parallel()\` only after a benchmark (ideally JMH — \`System.nanoTime\` micro-timing is misleading due to JIT warmup) proves a real, repeatable win on representative data. Default to sequential; parallel is the exception that earns its place with numbers.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Parallel works when the op is associative; data race when it is not`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class ParallelSafetyDemo {
+    public static void main(String[] args) {
+        // SAFE: sum is associative -> same result sequential & parallel
+        long seq = LongStream.rangeClosed(1, 1_000_000).sum();
+        long par = LongStream.rangeClosed(1, 1_000_000).parallel().sum();
+        System.out.println("seq==par ? " + (seq == par));  // true
+
+        // UNSAFE: writing to a shared ArrayList from parallel forEach is a data race
+        List<Integer> unsafe = new ArrayList<>();
+        try {
+            IntStream.range(0, 10_000).parallel().forEach(unsafe::add);  // race!
+            System.out.println("expected 10000, got " + unsafe.size()); // often != 10000
+        } catch (Exception e) {
+            // The race can also throw (e.g. ArrayIndexOutOfBoundsException / null)
+            System.out.println("data race threw: " + e.getClass().getSimpleName());
+        }
+
+        // SAFE alternative: let the Collector handle thread-safe accumulation
+        List<Integer> safe = IntStream.range(0, 10_000).parallel()
+            .boxed().collect(Collectors.toList());
+        System.out.println("collector size = " + safe.size());      // 10000
+    }
+}`,
+                note: `The unsafe forEach into ArrayList is a genuine data race; the size will frequently be wrong or it may throw. Use a Collector.`
+              },
+              {
+                lang: `java`,
+                title: `forEach vs forEachOrdered under parallelism`,
+                code: `import java.util.stream.IntStream;
+
+public class OrderingDemo {
+    public static void main(String[] args) {
+        System.out.print("forEach (parallel): ");
+        IntStream.range(0, 8).parallel().forEach(i -> System.out.print(i + " "));
+        System.out.println();   // order NOT guaranteed
+
+        System.out.print("forEachOrdered:     ");
+        IntStream.range(0, 8).parallel().forEachOrdered(i -> System.out.print(i + " "));
+        System.out.println();   // 0 1 2 3 4 5 6 7 (order preserved, slower)
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Running a parallel stream on your OWN ForkJoinPool`,
+                code: `import java.util.concurrent.*;
+import java.util.stream.IntStream;
+
+public class CustomPoolDemo {
+    public static void main(String[] args) throws Exception {
+        // Isolate the work from the shared common pool (e.g. to bound parallelism)
+        ForkJoinPool pool = new ForkJoinPool(4);
+        try {
+            long sum = pool.submit(() ->
+                IntStream.rangeClosed(1, 1_000_000).parallel()
+                         .filter(n -> n % 2 == 0)
+                         .mapToLong(n -> (long) n)
+                         .sum()
+            ).get();
+            System.out.println("evenSum=" + sum);   // 250000500000
+        } finally {
+            pool.shutdown();
+        }
+        // Still NEVER do blocking I/O here; this only bounds CPU parallelism.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `A crude timing harness (illustrative — prefer JMH)`,
+                code: `import java.util.stream.LongStream;
+
+public class TimingDemo {
+    static long work(long n) {                  // some CPU work per element
+        long h = 0; for (int i = 0; i < 50; i++) h = h * 31 + (n ^ i); return h;
+    }
+    static long run(boolean parallel) {
+        LongStream s = LongStream.range(0, 2_000_000);
+        if (parallel) s = s.parallel();
+        return s.map(TimingDemo::work).sum();
+    }
+    public static void main(String[] args) {
+        for (int i = 0; i < 3; i++) { run(false); run(true); }  // warm up JIT
+
+        long t0 = System.nanoTime(); long a = run(false);
+        long t1 = System.nanoTime(); long b = run(true);
+        long t2 = System.nanoTime();
+        System.out.printf("seq=%dms par=%dms equal=%b%n",
+            (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000, a == b);
+        // GOTCHA: nanoTime micro-benchmarks are noisy; use JMH for real numbers.
+    }
+}`,
+                note: `Timings vary by machine/core count. The point is the methodology: warm up, compare, verify correctness, prefer JMH for rigor.`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Where do parallel streams run by default, and what is the risk?`,
+                a: `On the shared ForkJoinPool.commonPool(), sized to availableProcessors()-1. All parallel streams JVM-wide share it, so a slow task starves everything else.`
+              },
+              {
+                q: `Why must you never do blocking I/O in a parallel stream?`,
+                a: `Blocking a common-pool thread starves all other parallel streams in the JVM. Use a dedicated ExecutorService for I/O, or at least submit the stream to your own ForkJoinPool to bound parallelism.`
+              },
+              {
+                q: `What four conditions justify parallelism?`,
+                a: `CPU-bound work per element, large N (10k+), a cheaply splittable source (array/ArrayList/range), and stateless/associative/non-interfering ops. If any fails, stay sequential.`
+              },
+              {
+                q: `Which sources split well vs poorly for parallel streams?`,
+                a: `Well: arrays, ArrayList, IntStream.range (O(1) split). Poorly: LinkedList, HashSet, Stream.iterate, and Iterator-backed sources, which split unevenly or one element at a time.`
+              },
+              {
+                q: `forEach vs forEachOrdered in parallel?`,
+                a: `forEach gives no order guarantee (fast). forEachOrdered preserves encounter order by serializing the terminal, which erodes the parallel speedup. Use it only when order is required.`
+              },
+              {
+                q: `findFirst vs findAny in parallel?`,
+                a: `findFirst must respect encounter order, so it is more expensive in parallel; findAny lets any thread return its match and is cheaper when any result will do.`
+              },
+              {
+                q: `Why is writing to an ArrayList from a parallel forEach wrong?`,
+                a: `ArrayList is not thread-safe; concurrent add is a data race causing lost updates, nulls, or ArrayIndexOutOfBoundsException. Use a Collector (thread-safe combiner) or a concurrent/atomic structure.`
+              },
+              {
+                q: `How does a Collector stay correct in parallel?`,
+                a: `Each thread accumulates into its own container (supplier), and the combiner merges partials. As long as the combiner is associative and correct, the result matches sequential.`
+              },
+              {
+                q: `Why are most parallel streams premature optimization?`,
+                a: `Split/schedule/merge overhead and false sharing often make parallel slower for typical small or I/O-bound workloads. The gain only materializes on large CPU-bound, splittable data.`
+              },
+              {
+                q: `How should you decide to parallelize?`,
+                a: `Measure, do not guess: benchmark (ideally JMH, since nanoTime micro-timing is skewed by JIT warmup) on representative data and only keep .parallel() if it shows a real, repeatable win.`
+              },
+              {
+                q: `How do you isolate a parallel stream from the common pool?`,
+                a: `Submit it to your own ForkJoinPool: pool.submit(() -> stream.parallel()...).get(). The stream uses that pool, bounding parallelism — but still never block on I/O inside it.`
+              },
+              {
+                q: `How does parallelism interact with reduce associativity?`,
+                a: `Parallel splits the reduction across chunks and combines partials, so a non-associative accumulator or wrong identity yields different (wrong) results than sequential. Prove associativity before parallelizing.`
+              }
+            ]
+          },
+          {
+            title: `Coding Problems — Streams & Lambdas (Interview Drills)`,
+            notes: `## Coding Problems — Streams & Lambdas (Interview Drills)
+
+These are the stream/lambda problems that actually appear in coding rounds. Each demo is **self-contained and runnable** (\`public static void main\`, printed output). For every problem: the **prompt**, a **clean stream solution**, and the **imperative equivalent or a gotcha note**.
+
+> [!TIP]
+> In a live round, narrate the trade-off: streams win on declarative clarity and easy parallelism; a plain loop wins when you mutate shared state, need early break with side effects, or the logic is simpler imperatively. Interviewers reward knowing *when not* to use a stream.
+
+Problems covered: word frequency, group-by-dept average salary, top-N by value, first non-repeated char, flatten list-of-lists, partition primes, sum of squares of evens, group anagrams, running totals, find duplicates, map inversion, nth highest, multi-key sort (Comparator chaining), list↔map conversion, collect-to-immutable, sliding window, dedupe preserving order, and frequency-of-most-common.
+
+> [!WARNING]
+> Watch the classics in these drills: \`toMap\` needs a merge function; \`groupingBy(...,counting())\` returns \`Long\` not \`int\`; \`Collectors.toMap\` into a \`LinkedHashMap\` to preserve order; \`distinct()\` relies on \`equals\`/\`hashCode\`; and \`reduce\` must stay associative.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Problem 1 — Word frequency count`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class WordFrequency {
+    // PROMPT: count occurrences of each word, case-insensitive.
+    public static void main(String[] args) {
+        String text = "the cat the dog the bird a cat";
+
+        Map<String,Long> freq = Arrays.stream(text.toLowerCase().split("\\\\s+"))
+            .collect(groupingBy(w -> w, counting()));
+        System.out.println(freq);  // {a=1, bird=1, cat=2, dog=1, the=3}
+
+        // IMPERATIVE equivalent:
+        Map<String,Integer> m = new HashMap<>();
+        for (String w : text.toLowerCase().split("\\\\s+"))
+            m.merge(w, 1, Integer::sum);
+        System.out.println(m);
+        // GOTCHA: counting() yields Long, not Integer.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 2 — Group employees by department, average salary`,
+                code: `import java.util.*;
+import static java.util.stream.Collectors.*;
+
+public class AvgSalaryByDept {
+    record Emp(String name, String dept, int salary) {}
+    // PROMPT: average salary per department.
+    public static void main(String[] args) {
+        List<Emp> emps = List.of(
+            new Emp("Ann","ENG",120), new Emp("Bob","ENG",100),
+            new Emp("Cay","SAL", 90), new Emp("Dan","SAL", 95));
+
+        Map<String,Double> avg = emps.stream()
+            .collect(groupingBy(Emp::dept, averagingInt(Emp::salary)));
+        System.out.println(avg);   // {ENG=110.0, SAL=92.5}
+        // GOTCHA: use averagingInt to avoid manual sum/count and integer division.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 3 — Top-N elements by value`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class TopN {
+    // PROMPT: return the top 3 numbers in descending order.
+    public static void main(String[] args) {
+        List<Integer> nums = List.of(5, 1, 9, 3, 7, 8, 2);
+
+        List<Integer> top3 = nums.stream()
+            .sorted(Comparator.reverseOrder())
+            .limit(3)
+            .collect(Collectors.toList());
+        System.out.println(top3);   // [9, 8, 7]
+        // GOTCHA: for huge inputs a bounded min-heap (PriorityQueue of size N)
+        // is O(n log N) vs full sort O(n log n).
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 4 — First non-repeated character`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class FirstNonRepeated {
+    // PROMPT: first character that appears exactly once.
+    public static void main(String[] args) {
+        String s = "swiss cheese";
+
+        Map<Character,Long> counts = s.chars().mapToObj(c -> (char) c)
+            .collect(groupingBy(c -> c, LinkedHashMap::new, counting()));
+        char first = counts.entrySet().stream()
+            .filter(e -> e.getValue() == 1)
+            .map(Map.Entry::getKey)
+            .findFirst().orElse('-');
+        System.out.println(first);   // w
+        // GOTCHA: LinkedHashMap preserves first-seen order so findFirst is correct.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 5 — Flatten a list of lists`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class FlattenLists {
+    // PROMPT: flatten List<List<T>> into a single List<T>.
+    public static void main(String[] args) {
+        List<List<Integer>> nested = List.of(
+            List.of(1,2), List.of(3,4,5), List.of(6));
+
+        List<Integer> flat = nested.stream()
+            .flatMap(List::stream)
+            .collect(Collectors.toList());
+        System.out.println(flat);   // [1, 2, 3, 4, 5, 6]
+        // IMPERATIVE: nested for-loops adding into one result list.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 6 — Partition primes from composites`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class PartitionPrimes {
+    static boolean isPrime(int n) {
+        if (n < 2) return false;
+        for (int i = 2; (long) i * i <= n; i++) if (n % i == 0) return false;
+        return true;
+    }
+    // PROMPT: split 2..20 into primes and non-primes.
+    public static void main(String[] args) {
+        Map<Boolean,List<Integer>> parts = IntStream.rangeClosed(2, 20).boxed()
+            .collect(partitioningBy(PartitionPrimes::isPrime));
+        System.out.println("primes=" + parts.get(true));
+        System.out.println("composites=" + parts.get(false));
+        // GOTCHA: partitioningBy guarantees both true and false keys exist.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 7 — Sum of squares of even numbers`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class SumSquaresEven {
+    // PROMPT: sum of squares of the even numbers.
+    public static void main(String[] args) {
+        List<Integer> nums = List.of(1,2,3,4,5,6);
+
+        int result = nums.stream()
+            .filter(n -> n % 2 == 0)
+            .mapToInt(n -> n * n)        // primitive: no boxing
+            .sum();
+        System.out.println(result);     // 4+16+36 = 56
+        // GOTCHA: mapToInt before sum() avoids reduce-with-boxing.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 8 — Group anagrams`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class GroupAnagrams {
+    static String key(String s) {
+        char[] c = s.toCharArray(); Arrays.sort(c); return new String(c);
+    }
+    // PROMPT: group words that are anagrams of each other.
+    public static void main(String[] args) {
+        List<String> words = List.of("eat","tea","tan","ate","nat","bat");
+
+        Map<String,List<String>> groups = words.stream()
+            .collect(groupingBy(GroupAnagrams::key));
+        System.out.println(new ArrayList<>(groups.values()));
+        // [[eat, tea, ate], [tan, nat], [bat]]
+        // GOTCHA: the classifier is the sorted-letters signature.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 9 — Running totals (prefix sums)`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class RunningTotals {
+    // PROMPT: produce a running (cumulative) total list.
+    public static void main(String[] args) {
+        int[] nums = {1, 2, 3, 4, 5};
+
+        int[] prefix = new int[nums.length];
+        Arrays.parallelPrefix(prefix.length == 0 ? prefix
+            : (prefix = nums.clone()), Integer::sum);
+        System.out.println(Arrays.toString(prefix)); // [1, 3, 6, 10, 15]
+
+        // Stream-based with an explicit accumulator (stateful — sequential only):
+        int[] acc = {0};
+        List<Integer> running = IntStream.of(1,2,3,4,5)
+            .boxed()
+            .map(n -> acc[0] += n)
+            .collect(Collectors.toList());
+        System.out.println(running);   // [1, 3, 6, 10, 15]
+        // GOTCHA: the stateful map lambda is NOT parallel-safe; use parallelPrefix instead.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 10 — Find duplicate elements`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class FindDuplicates {
+    // PROMPT: return the set of elements that occur more than once.
+    public static void main(String[] args) {
+        List<Integer> nums = List.of(1,2,3,2,4,5,5,5,6);
+
+        Set<Integer> dups = nums.stream()
+            .collect(groupingBy(n -> n, counting()))
+            .entrySet().stream()
+            .filter(e -> e.getValue() > 1)
+            .map(Map.Entry::getKey)
+            .collect(toSet());
+        System.out.println(dups);   // [2, 5]
+
+        // Alternative: a 'seen' set, add returns false on duplicate.
+        Set<Integer> seen = new HashSet<>(), dup2 = new LinkedHashSet<>();
+        for (int n : nums) if (!seen.add(n)) dup2.add(n);
+        System.out.println(dup2);   // [2, 5]
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 11 — Invert a map (value -> key)`,
+                code: `import java.util.*;
+import static java.util.stream.Collectors.*;
+
+public class InvertMap {
+    // PROMPT: swap keys and values; handle duplicate values.
+    public static void main(String[] args) {
+        Map<String,Integer> m = Map.of("a",1, "b",2, "c",2);
+
+        // Duplicate values (2) collide -> merge collects keys
+        Map<Integer,String> inv = m.entrySet().stream()
+            .collect(toMap(Map.Entry::getValue, Map.Entry::getKey,
+                           (k1,k2) -> k1 + "," + k2));
+        System.out.println(inv);   // {1=a, 2=b,c} (order of b,c may vary)
+        // GOTCHA: without the merge function this throws on the duplicate value 2.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 12 — Nth highest distinct value`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class NthHighest {
+    // PROMPT: find the 2nd highest DISTINCT salary.
+    public static void main(String[] args) {
+        List<Integer> sal = List.of(100, 200, 200, 150, 300, 300);
+        int n = 2;
+
+        Optional<Integer> nth = sal.stream()
+            .distinct()
+            .sorted(Comparator.reverseOrder())
+            .skip(n - 1)
+            .findFirst();
+        System.out.println(nth.orElse(-1));   // 200
+        // GOTCHA: distinct() first so ties count once; skip(n-1) then findFirst.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 13 — Sort by multiple keys (Comparator chaining)`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class MultiKeySort {
+    record Person(String name, int age) {}
+    // PROMPT: sort by age ascending, then name ascending; reverse a tier.
+    public static void main(String[] args) {
+        List<Person> people = List.of(
+            new Person("Bob", 30), new Person("Ann", 30),
+            new Person("Cay", 25), new Person("Dan", 25));
+
+        List<Person> sorted = people.stream()
+            .sorted(Comparator.comparingInt(Person::age)
+                              .thenComparing(Person::name))
+            .collect(Collectors.toList());
+        sorted.forEach(p -> System.out.println(p.name() + " " + p.age()));
+        // Cay 25, Dan 25, Ann 30, Bob 30
+        // Reverse just the name tier: .thenComparing(Comparator.comparing(Person::name).reversed())
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 14 — Convert List <-> Map both directions`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class ListMapConvert {
+    record User(int id, String name) {}
+    // PROMPT: List<User> -> Map<id,name>, then back to a List<String>.
+    public static void main(String[] args) {
+        List<User> users = List.of(new User(1,"ann"), new User(2,"bob"));
+
+        Map<Integer,String> byId = users.stream()
+            .collect(toMap(User::id, User::name));
+        System.out.println(byId);   // {1=ann, 2=bob}
+
+        List<String> names = byId.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .map(e -> e.getKey() + ":" + e.getValue())
+            .collect(toList());
+        System.out.println(names);  // [1:ann, 2:bob]
+        // GOTCHA: toMap throws on duplicate ids — add a merge fn if ids can repeat.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 15 — Collect to an immutable structure`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class CollectImmutable {
+    // PROMPT: produce an unmodifiable list of squares.
+    public static void main(String[] args) {
+        List<Integer> squares = IntStream.rangeClosed(1,5)
+            .mapToObj(i -> i * i)
+            .collect(toUnmodifiableList());     // or collectingAndThen(toList(), List::copyOf)
+        System.out.println(squares);   // [1, 4, 9, 16, 25]
+        try { squares.add(36); }
+        catch (UnsupportedOperationException e) { System.out.println("immutable"); }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 16 — Sliding window of size k`,
+                code: `import java.util.*;
+import java.util.stream.*;
+
+public class SlidingWindow {
+    // PROMPT: produce all contiguous windows of size k.
+    public static void main(String[] args) {
+        List<Integer> nums = List.of(1,2,3,4,5);
+        int k = 3;
+
+        List<List<Integer>> windows = IntStream.rangeClosed(0, nums.size() - k)
+            .mapToObj(i -> nums.subList(i, i + k))
+            .collect(Collectors.toList());
+        System.out.println(windows);   // [[1, 2, 3], [2, 3, 4], [3, 4, 5]]
+        // GOTCHA: subList is a VIEW; copy (new ArrayList<>(...)) if the source mutates.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 17 — Dedupe preserving insertion order`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class DedupeOrdered {
+    // PROMPT: remove duplicates but keep first-seen order.
+    public static void main(String[] args) {
+        List<String> items = List.of("b","a","b","c","a","d");
+
+        List<String> deduped = items.stream()
+            .distinct()                 // preserves encounter order for ordered source
+            .collect(toList());
+        System.out.println(deduped);   // [b, a, c, d]
+
+        // Explicit LinkedHashSet form (also order-preserving):
+        List<String> alt = new ArrayList<>(new LinkedHashSet<>(items));
+        System.out.println(alt);       // [b, a, c, d]
+        // GOTCHA: HashSet would NOT preserve order; distinct relies on equals/hashCode.
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Problem 18 — Most frequent element`,
+                code: `import java.util.*;
+import java.util.stream.*;
+import static java.util.stream.Collectors.*;
+
+public class MostFrequent {
+    // PROMPT: find the most frequently occurring element.
+    public static void main(String[] args) {
+        List<String> items = List.of("a","b","a","c","b","a");
+
+        String mode = items.stream()
+            .collect(groupingBy(x -> x, counting()))
+            .entrySet().stream()
+            .max(Map.Entry.comparingByValue())
+            .map(Map.Entry::getKey)
+            .orElse(null);
+        System.out.println(mode);   // a
+        // GOTCHA: max(comparingByValue()) over the frequency map; ties resolved arbitrarily.
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `Word frequency in one stream — which collector?`,
+                a: `collect(groupingBy(w -> w, counting())). Note counting() returns Long. The imperative twin is map.merge(w, 1, Integer::sum) in a loop.`
+              },
+              {
+                q: `How do you find the first non-repeated character correctly?`,
+                a: `Count chars into a LinkedHashMap (preserves first-seen order), then filter count==1 and findFirst. A plain HashMap would lose order and break findFirst.`
+              },
+              {
+                q: `Top-N by value: full sort vs heap?`,
+                a: `sorted(reverseOrder()).limit(N) is O(n log n) and fine for small data; a bounded min-heap (PriorityQueue capped at N) is O(n log N) and better for very large inputs.`
+              },
+              {
+                q: `Group anagrams — what is the classifier?`,
+                a: `The sorted-characters signature of each word: groupingBy(w -> sortedChars(w)). Words sharing the signature land in the same bucket.`
+              },
+              {
+                q: `How do you invert a map whose values are not unique?`,
+                a: `toMap(Entry::getValue, Entry::getKey, mergeFn) — a merge function is mandatory or it throws on the first duplicate value; merge by concatenating or collecting keys.`
+              },
+              {
+                q: `Nth highest distinct value via streams?`,
+                a: `distinct().sorted(reverseOrder()).skip(n-1).findFirst(). distinct() first so ties collapse to one rank.`
+              },
+              {
+                q: `Sort by two keys with streams?`,
+                a: `sorted(Comparator.comparing(keyA).thenComparing(keyB)). Use comparingInt for primitives and .reversed() on a single comparator to flip one tier.`
+              },
+              {
+                q: `Why can a stateful running-total map lambda be wrong in parallel?`,
+                a: `It mutates external state (acc[0] += n) and depends on encounter order; parallel execution interleaves accumulation nondeterministically. Use Arrays.parallelPrefix or a sequential stream.`
+              },
+              {
+                q: `Dedupe while preserving order — two ways?`,
+                a: `stream().distinct() on an ordered source, or new ArrayList<>(new LinkedHashSet<>(list)). Both rely on equals/hashCode; a plain HashSet loses order.`
+              },
+              {
+                q: `Sliding windows with streams — the hidden trap?`,
+                a: `IntStream.rangeClosed(0, n-k).mapToObj(i -> list.subList(i, i+k)). subList returns a view backed by the source, so copy it (new ArrayList<>) if the source can change.`
+              },
+              {
+                q: `When should you reject the stream solution in an interview?`,
+                a: `When you mutate shared state, need an early break with side effects, the logic reads simpler as a loop, or you need indexed access — say so explicitly; interviewers reward the judgment.`
+              },
+              {
+                q: `How do you get the mode (most frequent element)?`,
+                a: `groupingBy(x->x, counting()) then max(Map.Entry.comparingByValue()) and map to the key. Ties are resolved arbitrarily unless you add a tiebreaker.`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: `2.3`,
         title: `Multithreading & Concurrency: Threads, Locks, Executors`,
         hours: 7,
         sections: [
@@ -23063,2449 +25506,6 @@ public class FanOutFanInDemo {
               {
                 q: `How do you bridge a callback-based API (e.g., an async driver) into a CompletableFuture?`,
                 a: `Create an empty CF and complete it from the callback: CompletableFuture<T> cf = new CompletableFuture<>(); api.call(req, (result, error) -> { if (error != null) cf.completeExceptionally(error); else cf.complete(result); }); return cf. This is the 'promise' side of CF — it's both a Future you await AND a completion handle you fulfill. Watch: guarantee exactly-one completion on every callback path (including timeouts), or the CF hangs consumers forever.`
-              }
-            ]
-          }
-        ]
-      },
-      {
-        id: `2.3`,
-        title: `Streams, Lambdas & Functional Java`,
-        hours: 5,
-        sections: [
-          {
-            title: `Lambdas & Functional Interfaces — The @FunctionalInterface Toolkit`,
-            notes: `## Lambdas & The Functional-Interface Toolkit
-
-A **lambda** is an instance of a **functional interface** — an interface with exactly one abstract method (the *SAM*, single abstract method). The lambda's parameter list and body supply that method's implementation. \`@FunctionalInterface\` is an optional compile-time guard that fails the build if a second abstract method sneaks in.
-
-> [!TIP]
-> A lambda is NOT a closure object you can introspect, and it is NOT an anonymous class. The compiler desugars lambdas to \`invokedynamic\` + a bootstrap (\`LambdaMetafactory\`) that spins the implementation at first use. Anonymous classes generate a \`$1.class\` eagerly. That difference shows up in startup cost, identity, and \`this\` semantics.
-
-### The \`java.util.function\` core toolkit
-
-| Interface | Abstract method | Shape | Typical use |
-|-----------|-----------------|-------|-------------|
-| \`Supplier<T>\` | \`T get()\` | \`() -> T\` | lazy/deferred value, factory |
-| \`Consumer<T>\` | \`void accept(T)\` | \`T -> void\` | side effect (\`forEach\`) |
-| \`Function<T,R>\` | \`R apply(T)\` | \`T -> R\` | map/transform |
-| \`BiFunction<T,U,R>\` | \`R apply(T,U)\` | \`(T,U) -> R\` | two-arg transform, \`Map.merge\` |
-| \`Predicate<T>\` | \`boolean test(T)\` | \`T -> boolean\` | filter, match |
-| \`UnaryOperator<T>\` | \`T apply(T)\` | \`T -> T\` | \`List.replaceAll\`, same-type map |
-| \`BinaryOperator<T>\` | \`T apply(T,T)\` | \`(T,T) -> T\` | \`reduce\`, \`Map.merge\` combiner |
-| \`BiConsumer<T,U>\` | \`void accept(T,U)\` | \`(T,U) -> void\` | \`Map.forEach\` |
-
-> [!WARNING]
-> Generics don't specialize over primitives, so \`Function<Integer,Integer>\` autoboxes on every call. The library provides primitive specializations to avoid this: \`IntFunction<R>\`, \`ToIntFunction<T>\`, \`IntUnaryOperator\`, \`IntBinaryOperator\`, \`IntPredicate\`, \`IntSupplier\`, \`IntConsumer\` (and \`Long\`/\`Double\` variants). Reach for them in hot loops.
-
-### Method references — the four kinds
-
-| Kind | Syntax | Equivalent lambda |
-|------|--------|-------------------|
-| Static | \`Integer::parseInt\` | \`s -> Integer.parseInt(s)\` |
-| Bound instance (receiver fixed) | \`out::println\` | \`x -> out.println(x)\` |
-| Unbound instance (receiver is first arg) | \`String::toUpperCase\` | \`s -> s.toUpperCase()\` |
-| Constructor | \`ArrayList::new\` | \`() -> new ArrayList<>()\` |
-
-> [!DANGER]
-> A **bound** method reference captures the receiver *at the moment the reference is created*. \`list::add\` snapshots the current \`list\` reference. If \`list\` is later reassigned (only possible for a field, since locals must be effectively final), the reference still targets the old object. This is a classic source of "why is my callback writing to the wrong collection" bugs.
-
-### Effectively-final capture & closures
-
-A lambda can read local variables only if they are **effectively final** — assigned once and never mutated. This isn't arbitrary: locals live on the stack, but a lambda may outlive the enclosing frame, so the compiler **copies** the value into the synthetic lambda. Allowing mutation would create two diverging copies. Instance/static fields ARE capturable and mutable, because the lambda captures \`this\` (a reference) and mutates through it.
-
-\`\`\`mermaid
-flowchart LR
-  A["enclosing method frame<br/>(stack)"] -->|copies value| B["lambda instance<br/>(heap)"]
-  B -->|reads| C["captured snapshot"]
-  A -. "field via this" .-> D["heap object<br/>(mutable, shared)"]
-\`\`\`
-
-> [!SUCCESS]
-> The common interview workaround for "I need a mutable counter in a lambda" is a single-element array (\`int[] c = {0}; c[0]++\`) or an \`AtomicInteger\`. The array reference is effectively final; its *contents* mutate. Prefer \`AtomicInteger\` when the lambda may run in parallel.
-
-### Lambda vs anonymous class — \`this\` is the trap
-
-Inside an **anonymous class**, \`this\` is the anonymous instance. Inside a **lambda**, \`this\` is the *enclosing* instance — a lambda has no scope of its own; it shares the enclosing scope (no shadowing of \`this\`, no new local-variable scope). That makes \`this.field\` and method calls behave very differently between the two.
-
-### When lambdas hurt readability
-
-- Deeply nested lambdas/streams that would be clearer as a named method or a plain loop.
-- A lambda body longer than ~3 lines — extract to a named method and use a method reference.
-- Side-effecting lambdas inside \`map\`/\`peek\` (streams are for transformation, not mutation).
-- Clever \`reduce\`/\`collect\` that the next engineer must decode. Senior judgment: prefer the form a reviewer reads correctly on the first pass.`,
-            code: [
-              {
-                lang: `java`,
-                title: `The whole toolkit in one runnable file`,
-                code: `import java.util.function.*;
-
-public class ToolkitDemo {
-    public static void main(String[] args) {
-        Supplier<String> sup   = () -> "lazy";
-        Consumer<String> con   = s -> System.out.println("consume:" + s);
-        Function<String,Integer> len = String::length;        // unbound ref
-        BiFunction<Integer,Integer,Integer> add = Integer::sum;
-        Predicate<String> nonEmpty = s -> !s.isEmpty();
-        UnaryOperator<String> up = String::toUpperCase;
-        BinaryOperator<Integer> max = Integer::max;
-
-        System.out.println(sup.get());            // lazy
-        con.accept("hi");                          // consume:hi
-        System.out.println(len.apply("hello"));   // 5
-        System.out.println(add.apply(3, 4));      // 7
-        System.out.println(nonEmpty.test(""));    // false
-        System.out.println(up.apply("abc"));      // ABC
-        System.out.println(max.apply(2, 9));      // 9
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `The four kinds of method reference, side by side`,
-                code: `import java.util.*;
-import java.util.function.*;
-
-public class MethodRefDemo {
-    public static void main(String[] args) {
-        // 1. Static
-        Function<String,Integer> parse = Integer::parseInt;
-        System.out.println(parse.apply("42"));            // 42
-
-        // 2. Bound instance (receiver captured now)
-        String prefix = "log> ";
-        Function<String,String> prepend = prefix::concat;
-        System.out.println(prepend.apply("done"));        // log> done
-
-        // 3. Unbound instance (receiver becomes first arg)
-        Function<String,Integer> length = String::length;
-        System.out.println(length.apply("hello"));        // 5
-
-        // 4. Constructor
-        Supplier<List<String>> maker = ArrayList::new;
-        List<String> list = maker.get();
-        list.add("x");
-        System.out.println(list);                         // [x]
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Effectively-final capture & the mutable-counter workaround`,
-                code: `import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
-
-public class CaptureDemo {
-    public static void main(String[] args) {
-        int base = 10;                 // effectively final: captured by value
-        // base = 11;                  // <- uncommenting breaks compilation below
-        Runnable r = () -> System.out.println("base=" + base);
-        r.run();                        // base=10
-
-        // Mutable counter trick 1: single-element array (ref is final, contents mutate)
-        int[] counter = {0};
-        List.of("a","b","c").forEach(s -> counter[0]++);
-        System.out.println("count=" + counter[0]);   // count=3
-
-        // Trick 2: AtomicInteger (preferred when parallel)
-        AtomicInteger n = new AtomicInteger();
-        List.of("x","y").forEach(s -> n.incrementAndGet());
-        System.out.println("atomic=" + n.get());      // atomic=2
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `this in a lambda vs an anonymous class`,
-                code: `public class ThisDemo {
-    private final String name = "outer";
-
-    Runnable lambda() {
-        return () -> System.out.println("lambda this -> " + this.name);
-    }
-    Runnable anon() {
-        return new Runnable() {
-            // 'this' here is the anonymous Runnable, which has no 'name' field
-            public void run() {
-                System.out.println("anon this -> " + ThisDemo.this.name);
-            }
-        };
-    }
-    public static void main(String[] args) {
-        ThisDemo d = new ThisDemo();
-        d.lambda().run();   // lambda this -> outer
-        d.anon().run();     // anon this -> outer (must qualify with ThisDemo.this)
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Custom @FunctionalInterface and primitive specialization`,
-                code: `import java.util.function.IntUnaryOperator;
-
-public class CustomFIDemo {
-    @FunctionalInterface
-    interface Distance { double between(double a, double b); }   // SAM
-
-    public static void main(String[] args) {
-        Distance abs = (a, b) -> Math.abs(a - b);
-        System.out.println(abs.between(3.0, 7.5));   // 4.5
-
-        // Primitive specialization avoids Integer boxing in a tight loop
-        IntUnaryOperator square = x -> x * x;
-        long sum = 0;
-        for (int i = 1; i <= 5; i++) sum += square.applyAsInt(i);
-        System.out.println("sumSquares=" + sum);     // 55
-    }
-}`
-              }
-            ],
-            flashcards: [
-              {
-                q: `What makes an interface a functional interface, and what does @FunctionalInterface do?`,
-                a: `Exactly one abstract method (default/static/Object methods do not count). The annotation is an optional compile-time guard that errors if a second abstract method is added.`
-              },
-              {
-                q: `How does a lambda differ from an anonymous class at the bytecode level?`,
-                a: `A lambda compiles to invokedynamic bound via LambdaMetafactory (implementation spun at first use); an anonymous class generates a separate $1.class eagerly. Different startup cost, identity, and this semantics.`
-              },
-              {
-                q: `Why must captured local variables be effectively final?`,
-                a: `Locals live on the stack but the lambda may outlive the frame, so the value is copied into the lambda. Allowing mutation would create two diverging copies. Fields are fine because the lambda captures this and mutates through the reference.`
-              },
-              {
-                q: `What is this inside a lambda vs an anonymous class?`,
-                a: `In a lambda, this is the enclosing instance (a lambda introduces no new scope). In an anonymous class, this is the anonymous instance, so you must write Outer.this to reach the enclosing object.`
-              },
-              {
-                q: `Name the four kinds of method reference.`,
-                a: `Static (Integer::parseInt), bound instance (out::println), unbound instance (String::length — receiver is the first arg), and constructor (ArrayList::new).`
-              },
-              {
-                q: `What does a bound method reference capture, and when does that bite?`,
-                a: `It snapshots the receiver at creation time. If a field receiver is later reassigned, the reference still targets the old object — a callback-writing-to-wrong-object bug.`
-              },
-              {
-                q: `Why prefer IntFunction/ToIntFunction over Function<Integer,Integer> in hot code?`,
-                a: `Generic functional interfaces only work over reference types, so int args autobox to Integer on every call. Primitive specializations avoid the boxing/unboxing churn and allocation.`
-              },
-              {
-                q: `Give the shapes: Supplier, Consumer, Function, Predicate, UnaryOperator, BinaryOperator.`,
-                a: `() -> T; T -> void; T -> R; T -> boolean; T -> T; (T,T) -> T.`
-              },
-              {
-                q: `How do you mutate a counter from inside a lambda?`,
-                a: `Use a one-element array (int[] c={0}; c[0]++) whose reference is effectively final, or an AtomicInteger. Prefer AtomicInteger if the lambda runs in parallel.`
-              },
-              {
-                q: `When is BinaryOperator the right type vs BiFunction?`,
-                a: `BinaryOperator<T> is the special case (T,T)->T — both inputs and the output share a type. Use it for reduce accumulators/combiners and Map.merge; use BiFunction when the types differ.`
-              },
-              {
-                q: `When do lambdas hurt readability?`,
-                a: `Bodies over ~3 lines, deeply nested streams, side-effecting map/peek, or clever reduce/collect. Extract to a named method (method reference) or use a plain loop when a reviewer would read it wrong on first pass.`
-              },
-              {
-                q: `Does a lambda introduce a new variable scope?`,
-                a: `No. It shares the enclosing scope, so it cannot redeclare a name already visible there, and this/super refer to the enclosing instance — unlike an anonymous class which has its own scope.`
-              }
-            ]
-          },
-          {
-            title: `Stream Pipeline Mechanics — Laziness, Single-Use, Ordering, Primitives`,
-            notes: `## Stream Pipeline Mechanics: Lazy, Single-Use, Possibly-Unordered
-
-A stream is **not a data structure** — it carries no storage. It is a *pipeline description*: a **source**, zero or more **intermediate operations** (lazy, return a new stream), and exactly one **terminal operation** (eager, triggers execution and produces a result or side effect).
-
-\`\`\`mermaid
-flowchart LR
-  SRC["SOURCE<br/>collection / array<br/>Stream.of / generate"] --> I1["intermediate (lazy)<br/>filter"]
-  I1 --> I2["intermediate (lazy)<br/>map"]
-  I2 --> I3["intermediate (lazy)<br/>limit"]
-  I3 --> T["TERMINAL (eager)<br/>collect / forEach / reduce"]
-  T --> R["result / side effect"]
-\`\`\`
-
-### Laziness & short-circuiting
-
-Intermediate ops build up but execute *nothing* until a terminal op runs. Then elements are pulled through the whole chain **one at a time** (depth-first per element, not breadth-first per stage). This enables:
-
-- **Short-circuiting**: \`findFirst\`, \`anyMatch\`, \`limit\` can stop early without touching the rest of the source — essential for infinite streams (\`Stream.iterate\`, \`Stream.generate\`).
-- **Fusion**: \`filter\` then \`map\` doesn't materialize an intermediate list; each element flows through both.
-
-> [!TIP]
-> Order matters for cost. Put cheap, highly-selective \`filter\`s *before* expensive \`map\`s so fewer elements reach the costly stage. \`stream.filter(cheap).map(expensive)\` beats \`stream.map(expensive).filter(cheap)\`.
-
-> [!WARNING]
-> A terminal op is required. \`list.stream().map(...).filter(...)\` with no terminal does **nothing** — no elements are processed. \`peek\` is not a terminal and may be skipped entirely under optimizations; never rely on it for production side effects.
-
-### Statelessness & why you can't reuse a stream
-
-Most intermediate ops should be **stateless** (output for an element depends only on that element). \`sorted\`, \`distinct\`, \`limit\` are **stateful** — they may buffer or need the whole input. Stateful ops and side-effecting lambdas break under parallelism.
-
-A stream is **single-use**. After a terminal op, the stream is *consumed* and its pipeline is marked operated-upon; reusing it throws \`IllegalStateException: stream has already been operated upon or closed\`. Conceptually the source is bound to a one-shot \`Spliterator\`. To run two pipelines, create two streams (or use a \`Supplier<Stream<T>>\`).
-
-> [!DANGER]
-> Mutating the *source* collection while a stream is flowing (outside well-defined cases) causes \`ConcurrentModificationException\` or undefined results. The stream observes the source lazily at terminal time; don't change it mid-pipeline.
-
-### Ordered vs unordered & encounter order
-
-A stream has an **encounter order** if its source does (\`List\`, arrays, \`Stream.of\`). \`HashSet\` sources are unordered. Some ops *respect* encounter order (\`findFirst\`, \`limit\`, \`forEachOrdered\`); calling \`unordered()\` (or using \`forEach\` instead of \`forEachOrdered\`, or \`findAny\`) frees the runtime to skip ordering constraints — a real speedup in **parallel** pipelines.
-
-### Primitive streams & boxing cost
-
-\`IntStream\`, \`LongStream\`, \`DoubleStream\` avoid boxing and add numeric terminals: \`sum()\`, \`average()\`, \`summaryStatistics()\`, \`range\`/\`rangeClosed\`. Convert with \`mapToInt\`/\`mapToObj\`/\`boxed\`.
-
-> [!SUCCESS]
-> \`list.stream().mapToInt(Integer::intValue).sum()\` is cheaper than \`list.stream().reduce(0, Integer::sum)\` because the former unboxes once into an \`IntStream\`; the latter boxes the running total on every step. For numeric aggregation, go primitive.`,
-            code: [
-              {
-                lang: `java`,
-                title: `Laziness proven: nothing runs without a terminal`,
-                code: `import java.util.stream.Stream;
-
-public class LazinessDemo {
-    public static void main(String[] args) {
-        Stream<String> s = Stream.of("a","bb","ccc")
-            .peek(x -> System.out.println("peek " + x))   // side effect
-            .map(String::toUpperCase);
-        System.out.println("-- no terminal yet, nothing printed above --");
-
-        // Now add a terminal: elements flow one-at-a-time
-        long n = s.filter(x -> x.length() > 1).count();
-        System.out.println("count=" + n);
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Short-circuiting an infinite stream`,
-                code: `import java.util.stream.Stream;
-import java.util.stream.IntStream;
-
-public class ShortCircuitDemo {
-    public static void main(String[] args) {
-        // Infinite source, but limit stops it
-        Stream.iterate(1, x -> x * 2)
-              .limit(5)
-              .forEach(System.out::println);     // 1 2 4 8 16
-
-        // findFirst stops as soon as one matches
-        int firstOver100 = IntStream.iterate(1, x -> x + 7)
-              .filter(x -> x > 100)
-              .findFirst().orElse(-1);
-        System.out.println("first>100 = " + firstOver100);  // 106
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `A stream is single-use`,
-                code: `import java.util.stream.Stream;
-import java.util.function.Supplier;
-
-public class SingleUseDemo {
-    public static void main(String[] args) {
-        Stream<String> s = Stream.of("a","b","c");
-        System.out.println(s.count());            // 3 (terminal consumes it)
-        try {
-            s.forEach(System.out::println);       // boom
-        } catch (IllegalStateException e) {
-            System.out.println("reuse failed: " + e.getMessage());
-        }
-        // Fix: a Supplier yields a fresh stream each time
-        Supplier<Stream<String>> src = () -> Stream.of("a","b","c");
-        System.out.println(src.get().count());    // 3
-        src.get().forEach(System.out::println);   // a b c
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Operation order changes how much work happens`,
-                code: `import java.util.stream.Stream;
-
-public class OrderingCostDemo {
-    static int calls = 0;
-    static String expensive(String s) { calls++; return s + s; }
-
-    public static void main(String[] args) {
-        calls = 0;
-        Stream.of("a","bb","ccc","dddd")
-              .map(OrderingCostDemo::expensive)        // runs on ALL 4
-              .filter(s -> s.length() > 4)
-              .forEach(x -> {});
-        System.out.println("expensive calls (map first) = " + calls);  // 4
-
-        calls = 0;
-        Stream.of("a","bb","ccc","dddd")
-              .filter(s -> s.length() > 2)             // selective first
-              .map(OrderingCostDemo::expensive)        // runs on 2
-              .forEach(x -> {});
-        System.out.println("expensive calls (filter first) = " + calls); // 2
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Primitive streams avoid boxing`,
-                code: `import java.util.List;
-import java.util.IntSummaryStatistics;
-
-public class PrimitiveStreamDemo {
-    public static void main(String[] args) {
-        List<Integer> nums = List.of(4, 8, 15, 16, 23, 42);
-
-        int sum = nums.stream().mapToInt(Integer::intValue).sum();
-        double avg = nums.stream().mapToInt(Integer::intValue).average().orElse(0);
-        IntSummaryStatistics stats =
-            nums.stream().mapToInt(Integer::intValue).summaryStatistics();
-
-        System.out.println("sum=" + sum + " avg=" + avg);        // sum=108 avg=18.0
-        System.out.println("min=" + stats.getMin() +
-                           " max=" + stats.getMax() +
-                           " count=" + stats.getCount());        // min=4 max=42 count=6
-    }
-}`
-              }
-            ],
-            flashcards: [
-              {
-                q: `Intermediate vs terminal operations?`,
-                a: `Intermediate ops are lazy and return a new stream (filter, map, sorted). Terminal ops are eager, trigger execution, and produce a result or side effect (collect, reduce, forEach, count). Exactly one terminal per pipeline.`
-              },
-              {
-                q: `Are elements processed stage-by-stage or element-by-element?`,
-                a: `Element-by-element (depth-first): each element is pulled through the entire chain before the next, not the whole source through filter then the whole through map. This enables fusion and short-circuiting.`
-              },
-              {
-                q: `What is short-circuiting and which ops do it?`,
-                a: `Producing a result without consuming the whole source. limit, findFirst, findAny, anyMatch/allMatch/noneMatch can stop early — required to terminate infinite streams.`
-              },
-              {
-                q: `Why can a stream be used only once?`,
-                a: `A stream is bound to a one-shot source spliterator and marked operated-upon after a terminal op; reuse throws IllegalStateException. Wrap creation in a Supplier<Stream<T>> to get fresh streams.`
-              },
-              {
-                q: `Which intermediate operations are stateful?`,
-                a: `sorted, distinct, and limit (and the bounded forms). They may buffer or require seeing more of the input, which costs memory and complicates parallelism.`
-              },
-              {
-                q: `Why put filter before map?`,
-                a: `filter reduces the element count reaching the expensive map, so fewer transformations run. Operation order changes total work even though the result is the same.`
-              },
-              {
-                q: `Why is mapToInt(...).sum() better than reduce(0, Integer::sum) for ints?`,
-                a: `mapToInt unboxes into a primitive IntStream and sums without boxing; the reduce form boxes the accumulator on every step, allocating Integers.`
-              },
-              {
-                q: `What is encounter order and who has it?`,
-                a: `A defined element order inherited from an ordered source (List, arrays, Stream.of). HashSet is unordered. Ops like findFirst, limit, forEachOrdered respect it; findAny/forEach/unordered() may ignore it.`
-              },
-              {
-                q: `When does dropping ordering (unordered()) help?`,
-                a: `Mainly in parallel pipelines: relaxing encounter-order constraints lets the runtime avoid merge/ordering overhead. In sequential streams it rarely matters.`
-              },
-              {
-                q: `Why should you never rely on peek for side effects?`,
-                a: `peek is an intermediate debugging hook; the JDK may elide it when a terminal can compute its result without running every stage (e.g. count on a sized stream). Use it only for logging during development.`
-              },
-              {
-                q: `What happens if a pipeline has no terminal operation?`,
-                a: `Nothing executes — no element is ever pulled. The intermediate ops just describe a pipeline that is never run.`
-              },
-              {
-                q: `Name the primitive stream types and a benefit beyond no-boxing.`,
-                a: `IntStream, LongStream, DoubleStream. Besides avoiding boxing, they add numeric terminals: sum(), average(), summaryStatistics(), range/rangeClosed.`
-              }
-            ]
-          },
-          {
-            title: `Collectors Deep Dive — groupingBy, toMap, partitioningBy, teeing, custom`,
-            notes: `## Collectors Deep Dive
-
-> [!NOTE]
-> **What is a collector?** A \`Collector\` is simply the *recipe* for gathering the elements flowing out of a stream into a final result -- a \`List\`, a \`Set\`, a \`Map\`, a count or a joined \`String\`. You hand one to the terminal \`collect(...)\` operation. The formal "supplier + accumulator + combiner + finisher" machinery below is just how that recipe is built; most of the time you use the ready-made recipes in the \`Collectors\` class.
-
-\`collect\` is the most powerful terminal op: it performs a **mutable reduction** using a \`Collector\` (supplier + accumulator + combiner + finisher). The \`Collectors\` factory covers almost everything; the real depth is **downstream collectors** that post-process each group.
-
-| Collector | Produces | Note |
-|-----------|----------|------|
-| \`toList()\` / \`toSet()\` | List / Set | toList unmodifiable-unspecified; use \`toUnmodifiableList\` to guarantee |
-| \`toMap(k,v)\` | Map | throws on duplicate key unless you pass a merge function |
-| \`groupingBy(classifier)\` | \`Map<K,List<T>>\` | add a downstream to reshape each group |
-| \`partitioningBy(pred)\` | \`Map<Boolean,List<T>>\` | always has both true & false keys |
-| \`counting()\` | Long | downstream: count per group |
-| \`mapping(f, dn)\` | — | transform elements before the downstream |
-| \`filtering(p, dn)\` | — | filter within a group (keeps empty groups, unlike upstream filter) |
-| \`summingInt/averagingDouble\` | Integer/Double | numeric aggregation per group |
-| \`joining(sep,pre,post)\` | String | concatenation |
-| \`reducing(...)\` | — | general reduction as a downstream |
-| \`collectingAndThen(dn, fin)\` | — | post-process the finished result (e.g. make immutable) |
-| \`teeing(dn1, dn2, merge)\` | — | (Java 12+) two collectors, one pass, merged |
-
-### groupingBy + downstream is the workhorse
-
-\`groupingBy\` without a downstream gives \`Map<K, List<T>>\`. With a downstream you reshape each bucket: count, sum, average, map-and-collect, even nest a second \`groupingBy\` for multi-level grouping.
-
-> [!TIP]
-> \`groupingBy(classifier, downstream)\` and the three-arg \`groupingBy(classifier, mapFactory, downstream)\` let you pick the map type (e.g. \`TreeMap::new\` for sorted keys) and the per-group reduction in one shot.
-
-### toMap and the merge function — the #1 collector trap
-
-\`\`\`java
-// THROWS IllegalStateException on the first duplicate key:
-Map<Integer,String> m = stream.collect(toMap(String::length, s -> s));
-\`\`\`
-
-> [!DANGER]
-> Two elements that map to the same key make 2-arg \`toMap\` throw \`Duplicate key\`. Always supply a **merge function** \`(existing, incoming) -> ...\` when keys can collide. \`(a,b) -> a\` keeps first, \`(a,b) -> b\` keeps last, \`Integer::sum\` adds, \`(a,b) -> a + "," + b\` concatenates.
-
-### partitioningBy vs groupingBy(boolean)
-
-\`partitioningBy\` always returns a map with **both** \`true\` and \`false\` keys (even if one is empty) and is optimized for the boolean case. \`groupingBy(x -> pred(x))\` omits a key whose group has no elements — a subtle difference when you later read \`map.get(false)\`.
-
-### collectingAndThen — finish then transform
-
-Wrap any collector to apply a finisher: the classic is producing an **immutable** result, e.g. \`collectingAndThen(toList(), List::copyOf)\` or \`collectingAndThen(toList(), Collections::unmodifiableList)\`.
-
-### Custom Collector
-
-When no factory fits, implement \`Collector<T,A,R>\` via \`Collector.of(supplier, accumulator, combiner, finisher, characteristics)\`. The **combiner** merges two partial accumulators and is only exercised under **parallel** streams — if it's wrong, your sequential tests pass but parallel runs corrupt data.
-
-> [!SUCCESS]
-> 90% of "write a custom collector" interview asks are actually solvable with \`groupingBy\` + a downstream or \`reducing\`. Reach for a hand-rolled \`Collector.of\` only when you need a custom container or non-trivial finisher.`,
-            code: [
-              {
-                lang: `java`,
-                title: `groupingBy with downstream collectors`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class GroupingDemo {
-    record Emp(String name, String dept, int salary) {}
-
-    public static void main(String[] args) {
-        List<Emp> emps = List.of(
-            new Emp("Ann","ENG",120), new Emp("Bob","ENG",100),
-            new Emp("Cay","SAL", 90), new Emp("Dan","SAL", 95),
-            new Emp("Eve","HR",  80));
-
-        // count per dept
-        Map<String,Long> byCount = emps.stream()
-            .collect(groupingBy(Emp::dept, counting()));
-        System.out.println(byCount);              // {ENG=2, SAL=2, HR=1}
-
-        // average salary per dept
-        Map<String,Double> avg = emps.stream()
-            .collect(groupingBy(Emp::dept, averagingInt(Emp::salary)));
-        System.out.println(avg);                  // {ENG=110.0, SAL=92.5, HR=80.0}
-
-        // names per dept (mapping downstream), sorted keys via TreeMap
-        Map<String,List<String>> names = emps.stream()
-            .collect(groupingBy(Emp::dept, TreeMap::new,
-                                mapping(Emp::name, toList())));
-        System.out.println(names);                // {ENG=[Ann, Bob], HR=[Eve], SAL=[Cay, Dan]}
-
-        // joining downstream
-        String roster = emps.stream()
-            .collect(groupingBy(Emp::dept, mapping(Emp::name, joining(",")))).toString();
-        System.out.println(roster);
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `toMap with a merge function (and without — the trap)`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class ToMapMergeDemo {
-    public static void main(String[] args) {
-        List<String> words = List.of("apple","avocado","banana","cherry","cranberry");
-
-        // Duplicate keys (first letter) -> need a merge function
-        Map<Character,String> first = words.stream()
-            .collect(toMap(w -> w.charAt(0), w -> w, (a,b) -> a)); // keep first
-        System.out.println(first);   // {a=apple, b=banana, c=cherry}
-
-        Map<Character,String> joined = words.stream()
-            .collect(toMap(w -> w.charAt(0), w -> w, (a,b) -> a + "|" + b));
-        System.out.println(joined);  // {a=apple|avocado, b=banana, c=cherry|cranberry}
-
-        // Without merge it throws:
-        try {
-            words.stream().collect(toMap(w -> w.charAt(0), w -> w));
-        } catch (IllegalStateException e) {
-            System.out.println("threw: Duplicate key");
-        }
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `partitioningBy vs filtering downstream`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class PartitionDemo {
-    public static void main(String[] args) {
-        List<Integer> nums = IntStream.rangeClosed(1,10).boxed().collect(toList());
-
-        // partitioningBy ALWAYS has true and false keys
-        Map<Boolean,List<Integer>> p = nums.stream()
-            .collect(partitioningBy(n -> n % 2 == 0));
-        System.out.println("even=" + p.get(true));    // [2, 4, 6, 8, 10]
-        System.out.println("odd=" + p.get(false));     // [1, 3, 5, 7, 9]
-
-        // filtering downstream keeps empty groups (unlike a pre-filter)
-        Map<Integer,List<Integer>> byMod3 = nums.stream()
-            .collect(groupingBy(n -> n % 3, filtering(n -> n > 5, toList())));
-        System.out.println(byMod3);  // {0=[6, 9], 1=[7, 10], 2=[8]}
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `collectingAndThen for immutability + teeing (Java 12+)`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class AndThenTeeingDemo {
-    public static void main(String[] args) {
-        List<Integer> nums = List.of(3, 1, 4, 1, 5, 9, 2, 6);
-
-        // collectingAndThen -> immutable list
-        List<Integer> immutable = nums.stream().distinct()
-            .collect(collectingAndThen(toList(), List::copyOf));
-        System.out.println(immutable);   // [3, 1, 4, 5, 9, 2, 6]
-        try { immutable.add(0); }
-        catch (UnsupportedOperationException e) { System.out.println("immutable!"); }
-
-        // teeing: compute average in ONE pass (sum and count together)
-        double mean = nums.stream().collect(teeing(
-            summingInt(Integer::intValue),
-            counting(),
-            (sum, cnt) -> sum.doubleValue() / cnt));
-        System.out.println("mean=" + mean);   // mean=3.875
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `A custom Collector via Collector.of (with a real combiner)`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class CustomCollectorDemo {
-    public static void main(String[] args) {
-        // Collect into a comma-joined String inside brackets, custom container
-        Collector<String, StringJoiner, String> bracketJoin = Collector.of(
-            () -> new StringJoiner(", ", "[", "]"),   // supplier
-            StringJoiner::add,                          // accumulator
-            StringJoiner::merge,                        // combiner (used in parallel)
-            StringJoiner::toString);                     // finisher
-
-        String out = Stream.of("a","b","c").collect(bracketJoin);
-        System.out.println(out);   // [a, b, c]
-
-        // Same collector works in parallel because the combiner is correct
-        String par = Stream.of("x","y","z","w").parallel().collect(bracketJoin);
-        System.out.println(par.length() + " chars");  // proves it ran
-    }
-}`
-              }
-            ],
-            flashcards: [
-              {
-                q: `What four functions define a Collector?`,
-                a: `supplier (new mutable container), accumulator (fold one element in), combiner (merge two partial containers — used in parallel), and finisher (transform the container to the result). Plus characteristics (CONCURRENT/UNORDERED/IDENTITY_FINISH).`
-              },
-              {
-                q: `What is the toMap duplicate-key trap and the fix?`,
-                a: `Two elements mapping to the same key make 2-arg toMap throw IllegalStateException: Duplicate key. Pass a 3rd merge function (existing, incoming) -> ... e.g. (a,b)->a (first), (a,b)->b (last), Integer::sum.`
-              },
-              {
-                q: `partitioningBy vs groupingBy on a boolean classifier?`,
-                a: `partitioningBy always returns both true and false keys (even if empty) and is optimized for booleans; groupingBy(pred) omits a key whose group is empty, so map.get(false) could be null.`
-              },
-              {
-                q: `What does a downstream collector do in groupingBy?`,
-                a: `It reshapes each group after classification — counting(), summingInt, averagingDouble, mapping(f, dn), joining, filtering, or a nested groupingBy for multi-level grouping.`
-              },
-              {
-                q: `Difference between filtering() downstream and filtering upstream then grouping?`,
-                a: `A pre-filter drops elements before classification, so empty groups vanish. Collectors.filtering filters within each group, preserving the keys of groups that end up empty.`
-              },
-              {
-                q: `How do you produce an immutable result from collect?`,
-                a: `collectingAndThen(downstream, finisher), e.g. collectingAndThen(toList(), List::copyOf) or unmodifiableList. The finisher runs once on the assembled container.`
-              },
-              {
-                q: `What does Collectors.teeing do?`,
-                a: `Java 12+. Feeds each element to two downstream collectors simultaneously and merges their results with a BiFunction — e.g. sum and count in one pass to compute a mean.`
-              },
-              {
-                q: `When is a custom collector's combiner exercised, and why does that matter?`,
-                a: `Only under parallel streams. A wrong combiner passes all sequential tests but corrupts data in parallel — a classic latent bug.`
-              },
-              {
-                q: `How do you choose the Map implementation produced by groupingBy?`,
-                a: `Use the three-arg form groupingBy(classifier, mapFactory, downstream), e.g. TreeMap::new for sorted keys or LinkedHashMap::new for insertion order.`
-              },
-              {
-                q: `mapping vs map for per-group transformation?`,
-                a: `Stream.map transforms before grouping (you lose the original to classify by). Collectors.mapping(f, downstream) transforms within the group while classifying by the original element.`
-              },
-              {
-                q: `Does Collectors.toList guarantee mutability or a specific type?`,
-                a: `No — the returned List type and mutability are unspecified. Use toCollection(ArrayList::new) for a guaranteed mutable ArrayList, or toUnmodifiableList for a guaranteed immutable list.`
-              },
-              {
-                q: `What does reducing() add as a downstream?`,
-                a: `A general reduction per group (identity, optional mapper, BinaryOperator) when counting/summing/averaging do not fit — e.g. find the max-salary employee per department.`
-              }
-            ]
-          },
-          {
-            title: `flatMap, reduce & Composition — Associativity & Optional Chaining`,
-            notes: `## flatMap, reduce, Composition & Optional
-
-### flatMap — flatten one-to-many
-
-\`map\` is 1:1 (\`T -> R\`). \`flatMap\` is 1:many (\`T -> Stream<R>\`) and **flattens** the resulting streams into one. Use it for nested collections, splitting strings into words/chars, expanding a parent into its children, or unwrapping \`Optional\`/\`Stream\` of streams.
-
-> [!TIP]
-> If your \`map\` lambda returns a \`Stream\`, \`List\`, or \`Optional\` and you find yourself with a \`Stream<Stream<X>>\` / \`Stream<List<X>>\`, you wanted \`flatMap\`. Java 16+ also has \`mapMulti\` for high-volume expansion without allocating an intermediate stream per element.
-
-### reduce — fold with identity, accumulator, (combiner)
-
-Three forms:
-1. \`reduce(BinaryOperator)\` -> \`Optional<T>\` (no identity).
-2. \`reduce(identity, BinaryOperator)\` -> \`T\`.
-3. \`reduce(identity, BiFunction accumulator, BinaryOperator combiner)\` -> \`U\` (map-reduce; **required** for parallel when the result type differs from the element type).
-
-> [!DANGER]
-> reduce demands an **associative** accumulator and an identity that satisfies \`combiner(identity, x) == x\`. Subtraction \`(a,b)->a-b\` is NOT associative — \`((10-1)-2) != (10-(1-2))\` — so it gives different answers sequentially vs in parallel. The same hazard applies to a non-true identity (e.g. using 1 as the identity for a sum). If reduce can ever be parallelized, prove associativity first.
-
-\`\`\`mermaid
-flowchart TD
-  subgraph parallel reduce
-    A1["chunk A"] -->|accumulator| PA["partial A"]
-    A2["chunk B"] -->|accumulator| PB["partial B"]
-    PA --> C["combiner(partialA, partialB)"]
-    PB --> C
-    C --> R["final result"]
-  end
-\`\`\`
-
-### Function composition
-
-- \`f.andThen(g)\` => \`x -> g(f(x))\` (apply f first).
-- \`f.compose(g)\` => \`x -> f(g(x))\` (apply g first).
-- \`Predicate\`: \`and\`, \`or\`, \`negate\`. \`Consumer\`: \`andThen\`. Build complex behavior from small named pieces.
-
-> [!WARNING]
-> \`andThen\` vs \`compose\` ordering is a frequent slip. Mnemonic: **andThen = and then next** (left-to-right), **compose = like math g∘f** (right-to-left).
-
-### Optional chaining
-
-\`Optional\` is a *return type for "maybe absent"*, not a field type or parameter type. Chain without null checks:
-
-- \`map(f)\` — transform if present.
-- \`flatMap(f)\` — when \`f\` itself returns an \`Optional\` (avoids \`Optional<Optional<X>>\`).
-- \`filter(p)\` — keep only if predicate holds.
-- \`or(supplier)\` — fall back to another Optional (Java 9+).
-- \`orElse(v)\` / \`orElseGet(supplier)\` / \`orElseThrow()\`.
-
-> [!SUCCESS]
-> Prefer \`orElseGet(this::expensiveDefault)\` over \`orElse(expensiveDefault())\` — \`orElse\`'s argument is **always evaluated** even when the Optional is present; \`orElseGet\`'s supplier runs only when empty. And never call \`.get()\` without \`isPresent()\` — use \`orElseThrow()\` to signal intent.`,
-            code: [
-              {
-                lang: `java`,
-                title: `flatMap: flatten nested lists and split into words`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class FlatMapDemo {
-    public static void main(String[] args) {
-        List<List<Integer>> nested = List.of(
-            List.of(1,2,3), List.of(4,5), List.of(6));
-
-        List<Integer> flat = nested.stream()
-            .flatMap(List::stream)
-            .collect(Collectors.toList());
-        System.out.println(flat);   // [1, 2, 3, 4, 5, 6]
-
-        // one-to-many: sentences -> distinct words
-        List<String> lines = List.of("the quick brown", "the lazy fox");
-        List<String> words = lines.stream()
-            .flatMap(l -> Arrays.stream(l.split(" ")))
-            .distinct()
-            .sorted()
-            .collect(Collectors.toList());
-        System.out.println(words);  // [brown, fox, lazy, quick, the]
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `reduce — three forms and the associativity trap`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class ReduceDemo {
-    public static void main(String[] args) {
-        List<Integer> n = List.of(1,2,3,4,5);
-
-        Optional<Integer> sum1 = n.stream().reduce(Integer::sum);      // Optional[15]
-        int sum2 = n.stream().reduce(0, Integer::sum);                 // 15
-        // map-reduce: total string length
-        int totalLen = Stream.of("aa","bbb","c")
-            .reduce(0, (acc,s) -> acc + s.length(), Integer::sum);     // 6
-        System.out.println(sum1.get() + " " + sum2 + " " + totalLen);
-
-        // ASSOCIATIVITY TRAP: subtraction differs sequential vs parallel
-        int seq = n.stream().reduce(100, (a,b) -> a - b);
-        int par = n.stream().parallel().reduce(100, (a,b) -> a - b);
-        System.out.println("seq=" + seq + " par=" + par);  // usually different!
-    }
-}`,
-                note: `seq and par typically differ because subtraction is not associative — never parallel-reduce with a non-associative op.`
-              },
-              {
-                lang: `java`,
-                title: `Function and Predicate composition`,
-                code: `import java.util.function.*;
-
-public class CompositionDemo {
-    public static void main(String[] args) {
-        Function<Integer,Integer> times2 = x -> x * 2;
-        Function<Integer,Integer> plus3  = x -> x + 3;
-
-        // andThen: times2 THEN plus3  -> (x*2)+3
-        System.out.println(times2.andThen(plus3).apply(5));   // 13
-        // compose: plus3 first        -> (x+3)*2
-        System.out.println(times2.compose(plus3).apply(5));   // 16
-
-        Predicate<String> nonEmpty = s -> !s.isEmpty();
-        Predicate<String> shortStr = s -> s.length() < 4;
-        Predicate<String> ok = nonEmpty.and(shortStr);
-        System.out.println(ok.test("hi"));     // true
-        System.out.println(ok.test("hello"));  // false
-        System.out.println(ok.negate().test("")); // true
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Optional chaining, or, orElseGet, orElseThrow`,
-                code: `import java.util.*;
-
-public class OptionalDemo {
-    record User(String name, Optional<String> email) {}
-
-    static Optional<User> find(String name) {
-        return name.equals("ann")
-            ? Optional.of(new User("ann", Optional.of("ann@x.io")))
-            : Optional.empty();
-    }
-
-    public static void main(String[] args) {
-        // map + flatMap + orElse
-        String email = find("ann")
-            .flatMap(User::email)              // flatMap: User -> Optional<String>
-            .map(String::toUpperCase)
-            .orElse("no-email");
-        System.out.println(email);             // ANN@X.IO
-
-        String missing = find("bob")
-            .map(User::name)
-            .orElse("unknown");
-        System.out.println(missing);           // unknown
-
-        // or(): fall back to another Optional (Java 9+)
-        String fb = find("bob").map(User::name)
-            .or(() -> Optional.of("default-user"))
-            .get();
-        System.out.println(fb);                // default-user
-
-        // orElseThrow signals intent
-        try {
-            find("bob").orElseThrow(() -> new NoSuchElementException("no user"));
-        } catch (NoSuchElementException e) {
-            System.out.println("threw: " + e.getMessage());
-        }
-    }
-}`
-              }
-            ],
-            flashcards: [
-              {
-                q: `map vs flatMap?`,
-                a: `map is 1:1 (T -> R). flatMap is 1:many (T -> Stream<R>) and flattens the inner streams into one. Use flatMap to avoid Stream<Stream<X>>/Stream<List<X>> when expanding nested or one-to-many data.`
-              },
-              {
-                q: `What property must a reduce accumulator have, and why?`,
-                a: `Associativity, so the result is identical regardless of grouping/order. Parallel reduce splits, folds chunks independently, then combines — non-associative ops (subtraction, division) give different sequential vs parallel answers.`
-              },
-              {
-                q: `What is the identity requirement in reduce?`,
-                a: `identity must satisfy combiner(identity, x) == x for all x — a true zero. 0 for sum, 1 for product, "" for concat, Integer.MIN_VALUE for max. A wrong identity corrupts results (especially in parallel where it is injected per chunk).`
-              },
-              {
-                q: `When is the 3-arg reduce (identity, accumulator, combiner) required?`,
-                a: `When the result type differs from the element type (map-reduce) AND you may run in parallel — the combiner merges partial results of the result type across chunks.`
-              },
-              {
-                q: `andThen vs compose?`,
-                a: `f.andThen(g) applies f then g: g(f(x)) (left-to-right). f.compose(g) applies g then f: f(g(x)) (right-to-left, like math g∘f).`
-              },
-              {
-                q: `orElse vs orElseGet — why prefer orElseGet?`,
-                a: `orElse(v) always evaluates its argument, even when the Optional is present; orElseGet(supplier) runs the supplier only when empty. Use orElseGet for expensive or side-effecting defaults.`
-              },
-              {
-                q: `When do you use Optional.flatMap vs map?`,
-                a: `Use flatMap when the mapping function itself returns an Optional, to avoid a nested Optional<Optional<X>>. Use map when it returns a plain value.`
-              },
-              {
-                q: `Why is Optional a poor choice for fields and parameters?`,
-                a: `It is designed as a return type meaning maybe-absent. As a field it adds an allocation and is not Serializable; as a parameter it forces callers to wrap and still pass null. Use plain nullable or overloads instead.`
-              },
-              {
-                q: `What does Optional.or do and since when?`,
-                a: `Java 9+. It returns the present Optional, or lazily supplies a fallback Optional — chaining alternatives without unwrapping (unlike orElse which returns a bare value).`
-              },
-              {
-                q: `Predicate combinators?`,
-                a: `and, or, negate build compound predicates from simple ones; and/or are short-circuiting. Compose small named predicates instead of one giant lambda.`
-              },
-              {
-                q: `How do you flatten a List<List<T>> into a List<T> with streams?`,
-                a: `list.stream().flatMap(List::stream).collect(toList()). flatMap turns each inner list into a stream and concatenates them.`
-              },
-              {
-                q: `Why avoid calling Optional.get() directly?`,
-                a: `It throws NoSuchElementException if empty and gives no intent. Prefer orElse/orElseGet/orElseThrow(supplier), or ifPresent/map, which make the absent case explicit.`
-              }
-            ]
-          },
-          {
-            title: `Coding Problems — Streams & Lambdas (Interview Drills)`,
-            notes: `## Coding Problems — Streams & Lambdas (Interview Drills)
-
-These are the stream/lambda problems that actually appear in coding rounds. Each demo is **self-contained and runnable** (\`public static void main\`, printed output). For every problem: the **prompt**, a **clean stream solution**, and the **imperative equivalent or a gotcha note**.
-
-> [!TIP]
-> In a live round, narrate the trade-off: streams win on declarative clarity and easy parallelism; a plain loop wins when you mutate shared state, need early break with side effects, or the logic is simpler imperatively. Interviewers reward knowing *when not* to use a stream.
-
-Problems covered: word frequency, group-by-dept average salary, top-N by value, first non-repeated char, flatten list-of-lists, partition primes, sum of squares of evens, group anagrams, running totals, find duplicates, map inversion, nth highest, multi-key sort (Comparator chaining), list↔map conversion, collect-to-immutable, sliding window, dedupe preserving order, and frequency-of-most-common.
-
-> [!WARNING]
-> Watch the classics in these drills: \`toMap\` needs a merge function; \`groupingBy(...,counting())\` returns \`Long\` not \`int\`; \`Collectors.toMap\` into a \`LinkedHashMap\` to preserve order; \`distinct()\` relies on \`equals\`/\`hashCode\`; and \`reduce\` must stay associative.`,
-            code: [
-              {
-                lang: `java`,
-                title: `Problem 1 — Word frequency count`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class WordFrequency {
-    // PROMPT: count occurrences of each word, case-insensitive.
-    public static void main(String[] args) {
-        String text = "the cat the dog the bird a cat";
-
-        Map<String,Long> freq = Arrays.stream(text.toLowerCase().split("\\\\s+"))
-            .collect(groupingBy(w -> w, counting()));
-        System.out.println(freq);  // {a=1, bird=1, cat=2, dog=1, the=3}
-
-        // IMPERATIVE equivalent:
-        Map<String,Integer> m = new HashMap<>();
-        for (String w : text.toLowerCase().split("\\\\s+"))
-            m.merge(w, 1, Integer::sum);
-        System.out.println(m);
-        // GOTCHA: counting() yields Long, not Integer.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 2 — Group employees by department, average salary`,
-                code: `import java.util.*;
-import static java.util.stream.Collectors.*;
-
-public class AvgSalaryByDept {
-    record Emp(String name, String dept, int salary) {}
-    // PROMPT: average salary per department.
-    public static void main(String[] args) {
-        List<Emp> emps = List.of(
-            new Emp("Ann","ENG",120), new Emp("Bob","ENG",100),
-            new Emp("Cay","SAL", 90), new Emp("Dan","SAL", 95));
-
-        Map<String,Double> avg = emps.stream()
-            .collect(groupingBy(Emp::dept, averagingInt(Emp::salary)));
-        System.out.println(avg);   // {ENG=110.0, SAL=92.5}
-        // GOTCHA: use averagingInt to avoid manual sum/count and integer division.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 3 — Top-N elements by value`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class TopN {
-    // PROMPT: return the top 3 numbers in descending order.
-    public static void main(String[] args) {
-        List<Integer> nums = List.of(5, 1, 9, 3, 7, 8, 2);
-
-        List<Integer> top3 = nums.stream()
-            .sorted(Comparator.reverseOrder())
-            .limit(3)
-            .collect(Collectors.toList());
-        System.out.println(top3);   // [9, 8, 7]
-        // GOTCHA: for huge inputs a bounded min-heap (PriorityQueue of size N)
-        // is O(n log N) vs full sort O(n log n).
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 4 — First non-repeated character`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class FirstNonRepeated {
-    // PROMPT: first character that appears exactly once.
-    public static void main(String[] args) {
-        String s = "swiss cheese";
-
-        Map<Character,Long> counts = s.chars().mapToObj(c -> (char) c)
-            .collect(groupingBy(c -> c, LinkedHashMap::new, counting()));
-        char first = counts.entrySet().stream()
-            .filter(e -> e.getValue() == 1)
-            .map(Map.Entry::getKey)
-            .findFirst().orElse('-');
-        System.out.println(first);   // w
-        // GOTCHA: LinkedHashMap preserves first-seen order so findFirst is correct.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 5 — Flatten a list of lists`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class FlattenLists {
-    // PROMPT: flatten List<List<T>> into a single List<T>.
-    public static void main(String[] args) {
-        List<List<Integer>> nested = List.of(
-            List.of(1,2), List.of(3,4,5), List.of(6));
-
-        List<Integer> flat = nested.stream()
-            .flatMap(List::stream)
-            .collect(Collectors.toList());
-        System.out.println(flat);   // [1, 2, 3, 4, 5, 6]
-        // IMPERATIVE: nested for-loops adding into one result list.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 6 — Partition primes from composites`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class PartitionPrimes {
-    static boolean isPrime(int n) {
-        if (n < 2) return false;
-        for (int i = 2; (long) i * i <= n; i++) if (n % i == 0) return false;
-        return true;
-    }
-    // PROMPT: split 2..20 into primes and non-primes.
-    public static void main(String[] args) {
-        Map<Boolean,List<Integer>> parts = IntStream.rangeClosed(2, 20).boxed()
-            .collect(partitioningBy(PartitionPrimes::isPrime));
-        System.out.println("primes=" + parts.get(true));
-        System.out.println("composites=" + parts.get(false));
-        // GOTCHA: partitioningBy guarantees both true and false keys exist.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 7 — Sum of squares of even numbers`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class SumSquaresEven {
-    // PROMPT: sum of squares of the even numbers.
-    public static void main(String[] args) {
-        List<Integer> nums = List.of(1,2,3,4,5,6);
-
-        int result = nums.stream()
-            .filter(n -> n % 2 == 0)
-            .mapToInt(n -> n * n)        // primitive: no boxing
-            .sum();
-        System.out.println(result);     // 4+16+36 = 56
-        // GOTCHA: mapToInt before sum() avoids reduce-with-boxing.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 8 — Group anagrams`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class GroupAnagrams {
-    static String key(String s) {
-        char[] c = s.toCharArray(); Arrays.sort(c); return new String(c);
-    }
-    // PROMPT: group words that are anagrams of each other.
-    public static void main(String[] args) {
-        List<String> words = List.of("eat","tea","tan","ate","nat","bat");
-
-        Map<String,List<String>> groups = words.stream()
-            .collect(groupingBy(GroupAnagrams::key));
-        System.out.println(new ArrayList<>(groups.values()));
-        // [[eat, tea, ate], [tan, nat], [bat]]
-        // GOTCHA: the classifier is the sorted-letters signature.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 9 — Running totals (prefix sums)`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class RunningTotals {
-    // PROMPT: produce a running (cumulative) total list.
-    public static void main(String[] args) {
-        int[] nums = {1, 2, 3, 4, 5};
-
-        int[] prefix = new int[nums.length];
-        Arrays.parallelPrefix(prefix.length == 0 ? prefix
-            : (prefix = nums.clone()), Integer::sum);
-        System.out.println(Arrays.toString(prefix)); // [1, 3, 6, 10, 15]
-
-        // Stream-based with an explicit accumulator (stateful — sequential only):
-        int[] acc = {0};
-        List<Integer> running = IntStream.of(1,2,3,4,5)
-            .boxed()
-            .map(n -> acc[0] += n)
-            .collect(Collectors.toList());
-        System.out.println(running);   // [1, 3, 6, 10, 15]
-        // GOTCHA: the stateful map lambda is NOT parallel-safe; use parallelPrefix instead.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 10 — Find duplicate elements`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class FindDuplicates {
-    // PROMPT: return the set of elements that occur more than once.
-    public static void main(String[] args) {
-        List<Integer> nums = List.of(1,2,3,2,4,5,5,5,6);
-
-        Set<Integer> dups = nums.stream()
-            .collect(groupingBy(n -> n, counting()))
-            .entrySet().stream()
-            .filter(e -> e.getValue() > 1)
-            .map(Map.Entry::getKey)
-            .collect(toSet());
-        System.out.println(dups);   // [2, 5]
-
-        // Alternative: a 'seen' set, add returns false on duplicate.
-        Set<Integer> seen = new HashSet<>(), dup2 = new LinkedHashSet<>();
-        for (int n : nums) if (!seen.add(n)) dup2.add(n);
-        System.out.println(dup2);   // [2, 5]
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 11 — Invert a map (value -> key)`,
-                code: `import java.util.*;
-import static java.util.stream.Collectors.*;
-
-public class InvertMap {
-    // PROMPT: swap keys and values; handle duplicate values.
-    public static void main(String[] args) {
-        Map<String,Integer> m = Map.of("a",1, "b",2, "c",2);
-
-        // Duplicate values (2) collide -> merge collects keys
-        Map<Integer,String> inv = m.entrySet().stream()
-            .collect(toMap(Map.Entry::getValue, Map.Entry::getKey,
-                           (k1,k2) -> k1 + "," + k2));
-        System.out.println(inv);   // {1=a, 2=b,c} (order of b,c may vary)
-        // GOTCHA: without the merge function this throws on the duplicate value 2.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 12 — Nth highest distinct value`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class NthHighest {
-    // PROMPT: find the 2nd highest DISTINCT salary.
-    public static void main(String[] args) {
-        List<Integer> sal = List.of(100, 200, 200, 150, 300, 300);
-        int n = 2;
-
-        Optional<Integer> nth = sal.stream()
-            .distinct()
-            .sorted(Comparator.reverseOrder())
-            .skip(n - 1)
-            .findFirst();
-        System.out.println(nth.orElse(-1));   // 200
-        // GOTCHA: distinct() first so ties count once; skip(n-1) then findFirst.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 13 — Sort by multiple keys (Comparator chaining)`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class MultiKeySort {
-    record Person(String name, int age) {}
-    // PROMPT: sort by age ascending, then name ascending; reverse a tier.
-    public static void main(String[] args) {
-        List<Person> people = List.of(
-            new Person("Bob", 30), new Person("Ann", 30),
-            new Person("Cay", 25), new Person("Dan", 25));
-
-        List<Person> sorted = people.stream()
-            .sorted(Comparator.comparingInt(Person::age)
-                              .thenComparing(Person::name))
-            .collect(Collectors.toList());
-        sorted.forEach(p -> System.out.println(p.name() + " " + p.age()));
-        // Cay 25, Dan 25, Ann 30, Bob 30
-        // Reverse just the name tier: .thenComparing(Comparator.comparing(Person::name).reversed())
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 14 — Convert List <-> Map both directions`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class ListMapConvert {
-    record User(int id, String name) {}
-    // PROMPT: List<User> -> Map<id,name>, then back to a List<String>.
-    public static void main(String[] args) {
-        List<User> users = List.of(new User(1,"ann"), new User(2,"bob"));
-
-        Map<Integer,String> byId = users.stream()
-            .collect(toMap(User::id, User::name));
-        System.out.println(byId);   // {1=ann, 2=bob}
-
-        List<String> names = byId.entrySet().stream()
-            .sorted(Map.Entry.comparingByKey())
-            .map(e -> e.getKey() + ":" + e.getValue())
-            .collect(toList());
-        System.out.println(names);  // [1:ann, 2:bob]
-        // GOTCHA: toMap throws on duplicate ids — add a merge fn if ids can repeat.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 15 — Collect to an immutable structure`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class CollectImmutable {
-    // PROMPT: produce an unmodifiable list of squares.
-    public static void main(String[] args) {
-        List<Integer> squares = IntStream.rangeClosed(1,5)
-            .mapToObj(i -> i * i)
-            .collect(toUnmodifiableList());     // or collectingAndThen(toList(), List::copyOf)
-        System.out.println(squares);   // [1, 4, 9, 16, 25]
-        try { squares.add(36); }
-        catch (UnsupportedOperationException e) { System.out.println("immutable"); }
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 16 — Sliding window of size k`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class SlidingWindow {
-    // PROMPT: produce all contiguous windows of size k.
-    public static void main(String[] args) {
-        List<Integer> nums = List.of(1,2,3,4,5);
-        int k = 3;
-
-        List<List<Integer>> windows = IntStream.rangeClosed(0, nums.size() - k)
-            .mapToObj(i -> nums.subList(i, i + k))
-            .collect(Collectors.toList());
-        System.out.println(windows);   // [[1, 2, 3], [2, 3, 4], [3, 4, 5]]
-        // GOTCHA: subList is a VIEW; copy (new ArrayList<>(...)) if the source mutates.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 17 — Dedupe preserving insertion order`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class DedupeOrdered {
-    // PROMPT: remove duplicates but keep first-seen order.
-    public static void main(String[] args) {
-        List<String> items = List.of("b","a","b","c","a","d");
-
-        List<String> deduped = items.stream()
-            .distinct()                 // preserves encounter order for ordered source
-            .collect(toList());
-        System.out.println(deduped);   // [b, a, c, d]
-
-        // Explicit LinkedHashSet form (also order-preserving):
-        List<String> alt = new ArrayList<>(new LinkedHashSet<>(items));
-        System.out.println(alt);       // [b, a, c, d]
-        // GOTCHA: HashSet would NOT preserve order; distinct relies on equals/hashCode.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Problem 18 — Most frequent element`,
-                code: `import java.util.*;
-import java.util.stream.*;
-import static java.util.stream.Collectors.*;
-
-public class MostFrequent {
-    // PROMPT: find the most frequently occurring element.
-    public static void main(String[] args) {
-        List<String> items = List.of("a","b","a","c","b","a");
-
-        String mode = items.stream()
-            .collect(groupingBy(x -> x, counting()))
-            .entrySet().stream()
-            .max(Map.Entry.comparingByValue())
-            .map(Map.Entry::getKey)
-            .orElse(null);
-        System.out.println(mode);   // a
-        // GOTCHA: max(comparingByValue()) over the frequency map; ties resolved arbitrarily.
-    }
-}`
-              }
-            ],
-            flashcards: [
-              {
-                q: `Word frequency in one stream — which collector?`,
-                a: `collect(groupingBy(w -> w, counting())). Note counting() returns Long. The imperative twin is map.merge(w, 1, Integer::sum) in a loop.`
-              },
-              {
-                q: `How do you find the first non-repeated character correctly?`,
-                a: `Count chars into a LinkedHashMap (preserves first-seen order), then filter count==1 and findFirst. A plain HashMap would lose order and break findFirst.`
-              },
-              {
-                q: `Top-N by value: full sort vs heap?`,
-                a: `sorted(reverseOrder()).limit(N) is O(n log n) and fine for small data; a bounded min-heap (PriorityQueue capped at N) is O(n log N) and better for very large inputs.`
-              },
-              {
-                q: `Group anagrams — what is the classifier?`,
-                a: `The sorted-characters signature of each word: groupingBy(w -> sortedChars(w)). Words sharing the signature land in the same bucket.`
-              },
-              {
-                q: `How do you invert a map whose values are not unique?`,
-                a: `toMap(Entry::getValue, Entry::getKey, mergeFn) — a merge function is mandatory or it throws on the first duplicate value; merge by concatenating or collecting keys.`
-              },
-              {
-                q: `Nth highest distinct value via streams?`,
-                a: `distinct().sorted(reverseOrder()).skip(n-1).findFirst(). distinct() first so ties collapse to one rank.`
-              },
-              {
-                q: `Sort by two keys with streams?`,
-                a: `sorted(Comparator.comparing(keyA).thenComparing(keyB)). Use comparingInt for primitives and .reversed() on a single comparator to flip one tier.`
-              },
-              {
-                q: `Why can a stateful running-total map lambda be wrong in parallel?`,
-                a: `It mutates external state (acc[0] += n) and depends on encounter order; parallel execution interleaves accumulation nondeterministically. Use Arrays.parallelPrefix or a sequential stream.`
-              },
-              {
-                q: `Dedupe while preserving order — two ways?`,
-                a: `stream().distinct() on an ordered source, or new ArrayList<>(new LinkedHashSet<>(list)). Both rely on equals/hashCode; a plain HashSet loses order.`
-              },
-              {
-                q: `Sliding windows with streams — the hidden trap?`,
-                a: `IntStream.rangeClosed(0, n-k).mapToObj(i -> list.subList(i, i+k)). subList returns a view backed by the source, so copy it (new ArrayList<>) if the source can change.`
-              },
-              {
-                q: `When should you reject the stream solution in an interview?`,
-                a: `When you mutate shared state, need an early break with side effects, the logic reads simpler as a loop, or you need indexed access — say so explicitly; interviewers reward the judgment.`
-              },
-              {
-                q: `How do you get the mode (most frequent element)?`,
-                a: `groupingBy(x->x, counting()) then max(Map.Entry.comparingByValue()) and map to the key. Ties are resolved arbitrarily unless you add a tiebreaker.`
-              }
-            ]
-          },
-          {
-            title: `Parallel Streams & Pitfalls — ForkJoinPool, Hazards, Measuring`,
-            notes: `## Parallel Streams: When They Help and How They Bite
-
-\`stream.parallel()\` (or \`collection.parallelStream()\`) splits the source via its \`Spliterator\`, runs the pipeline on multiple threads, and merges. It is *trivial to type* and *easy to misuse*.
-
-### The common ForkJoinPool
-
-By default, parallel streams run on the **shared** \`ForkJoinPool.commonPool()\`, sized to \`Runtime.availableProcessors() - 1\`. Every parallel stream in the JVM competes for those threads.
-
-> [!DANGER]
-> Do NOT run **blocking I/O** (HTTP, JDBC, disk) inside a parallel stream. One slow task starves the common pool and stalls every other parallel stream — including unrelated library code. For blocking work use a dedicated \`ExecutorService\` (or wrap the stream in a custom ForkJoinPool via \`pool.submit(() -> stream...).get()\`).
-
-### When parallelism actually helps
-
-Parallel pays off only when **all** of these hold:
-
-- **CPU-bound** work per element (real computation, not I/O or trivial ops).
-- **Large N** — enough elements to amortize fork/join/merge overhead (rule of thumb: tens of thousands+).
-- **Cheaply splittable source** — arrays, \`ArrayList\`, \`IntStream.range\` split in O(1). \`LinkedList\`, \`Stream.iterate\`, and most \`Iterator\`-backed sources split poorly.
-- **Stateless, associative, non-interfering** operations — no shared mutable state, no order dependence.
-
-\`\`\`mermaid
-flowchart TD
-  Q{"CPU-bound?"} -->|no| SEQ["stay sequential"]
-  Q -->|yes| N{"N large?<br/>(10k+)"}
-  N -->|no| SEQ
-  N -->|yes| SP{"source splits cheaply?<br/>(array/ArrayList/range)"}
-  SP -->|no| SEQ
-  SP -->|yes| ST{"stateless & associative?"}
-  ST -->|no| SEQ
-  ST -->|yes| PAR["parallel() — then MEASURE"]
-\`\`\`
-
-### The hazards
-
-> [!WARNING]
-> **Ordering**: \`forEach\` does not preserve encounter order in parallel — use \`forEachOrdered\` if order matters (it serializes the terminal, eroding the gain). \`findFirst\` is more expensive than \`findAny\` in parallel because it must respect order.
-
-> [!DANGER]
-> **Stateful lambdas / shared mutable state**: writing to an external collection or counter from a parallel \`map\`/\`forEach\` is a data race. \`ArrayList\` is not thread-safe — you'll get lost updates, \`ArrayIndexOutOfBoundsException\`, or nulls. Use a proper \`Collector\` (which provides a thread-safe combiner) or an atomic/concurrent structure.
-
-> [!WARNING]
-> **Non-associative reduce / wrong identity**: as in Section 4, parallel splits the reduction, so a non-associative accumulator yields different results than sequential. Test parallel paths explicitly.
-
-### Why most parallel streams are premature optimization
-
-The overhead (spliterator splitting, task scheduling, result merging, false sharing) frequently makes parallel **slower** than sequential for typical business workloads (small collections, I/O-bound, cheap per-element work).
-
-> [!SUCCESS]
-> Rule: **measure, don't guess**. Add \`.parallel()\` only after a benchmark (ideally JMH — \`System.nanoTime\` micro-timing is misleading due to JIT warmup) proves a real, repeatable win on representative data. Default to sequential; parallel is the exception that earns its place with numbers.`,
-            code: [
-              {
-                lang: `java`,
-                title: `Parallel works when the op is associative; data race when it is not`,
-                code: `import java.util.*;
-import java.util.stream.*;
-
-public class ParallelSafetyDemo {
-    public static void main(String[] args) {
-        // SAFE: sum is associative -> same result sequential & parallel
-        long seq = LongStream.rangeClosed(1, 1_000_000).sum();
-        long par = LongStream.rangeClosed(1, 1_000_000).parallel().sum();
-        System.out.println("seq==par ? " + (seq == par));  // true
-
-        // UNSAFE: writing to a shared ArrayList from parallel forEach is a data race
-        List<Integer> unsafe = new ArrayList<>();
-        try {
-            IntStream.range(0, 10_000).parallel().forEach(unsafe::add);  // race!
-            System.out.println("expected 10000, got " + unsafe.size()); // often != 10000
-        } catch (Exception e) {
-            // The race can also throw (e.g. ArrayIndexOutOfBoundsException / null)
-            System.out.println("data race threw: " + e.getClass().getSimpleName());
-        }
-
-        // SAFE alternative: let the Collector handle thread-safe accumulation
-        List<Integer> safe = IntStream.range(0, 10_000).parallel()
-            .boxed().collect(Collectors.toList());
-        System.out.println("collector size = " + safe.size());      // 10000
-    }
-}`,
-                note: `The unsafe forEach into ArrayList is a genuine data race; the size will frequently be wrong or it may throw. Use a Collector.`
-              },
-              {
-                lang: `java`,
-                title: `forEach vs forEachOrdered under parallelism`,
-                code: `import java.util.stream.IntStream;
-
-public class OrderingDemo {
-    public static void main(String[] args) {
-        System.out.print("forEach (parallel): ");
-        IntStream.range(0, 8).parallel().forEach(i -> System.out.print(i + " "));
-        System.out.println();   // order NOT guaranteed
-
-        System.out.print("forEachOrdered:     ");
-        IntStream.range(0, 8).parallel().forEachOrdered(i -> System.out.print(i + " "));
-        System.out.println();   // 0 1 2 3 4 5 6 7 (order preserved, slower)
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Running a parallel stream on your OWN ForkJoinPool`,
-                code: `import java.util.concurrent.*;
-import java.util.stream.IntStream;
-
-public class CustomPoolDemo {
-    public static void main(String[] args) throws Exception {
-        // Isolate the work from the shared common pool (e.g. to bound parallelism)
-        ForkJoinPool pool = new ForkJoinPool(4);
-        try {
-            long sum = pool.submit(() ->
-                IntStream.rangeClosed(1, 1_000_000).parallel()
-                         .filter(n -> n % 2 == 0)
-                         .mapToLong(n -> (long) n)
-                         .sum()
-            ).get();
-            System.out.println("evenSum=" + sum);   // 250000500000
-        } finally {
-            pool.shutdown();
-        }
-        // Still NEVER do blocking I/O here; this only bounds CPU parallelism.
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `A crude timing harness (illustrative — prefer JMH)`,
-                code: `import java.util.stream.LongStream;
-
-public class TimingDemo {
-    static long work(long n) {                  // some CPU work per element
-        long h = 0; for (int i = 0; i < 50; i++) h = h * 31 + (n ^ i); return h;
-    }
-    static long run(boolean parallel) {
-        LongStream s = LongStream.range(0, 2_000_000);
-        if (parallel) s = s.parallel();
-        return s.map(TimingDemo::work).sum();
-    }
-    public static void main(String[] args) {
-        for (int i = 0; i < 3; i++) { run(false); run(true); }  // warm up JIT
-
-        long t0 = System.nanoTime(); long a = run(false);
-        long t1 = System.nanoTime(); long b = run(true);
-        long t2 = System.nanoTime();
-        System.out.printf("seq=%dms par=%dms equal=%b%n",
-            (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000, a == b);
-        // GOTCHA: nanoTime micro-benchmarks are noisy; use JMH for real numbers.
-    }
-}`,
-                note: `Timings vary by machine/core count. The point is the methodology: warm up, compare, verify correctness, prefer JMH for rigor.`
-              }
-            ],
-            flashcards: [
-              {
-                q: `Where do parallel streams run by default, and what is the risk?`,
-                a: `On the shared ForkJoinPool.commonPool(), sized to availableProcessors()-1. All parallel streams JVM-wide share it, so a slow task starves everything else.`
-              },
-              {
-                q: `Why must you never do blocking I/O in a parallel stream?`,
-                a: `Blocking a common-pool thread starves all other parallel streams in the JVM. Use a dedicated ExecutorService for I/O, or at least submit the stream to your own ForkJoinPool to bound parallelism.`
-              },
-              {
-                q: `What four conditions justify parallelism?`,
-                a: `CPU-bound work per element, large N (10k+), a cheaply splittable source (array/ArrayList/range), and stateless/associative/non-interfering ops. If any fails, stay sequential.`
-              },
-              {
-                q: `Which sources split well vs poorly for parallel streams?`,
-                a: `Well: arrays, ArrayList, IntStream.range (O(1) split). Poorly: LinkedList, HashSet, Stream.iterate, and Iterator-backed sources, which split unevenly or one element at a time.`
-              },
-              {
-                q: `forEach vs forEachOrdered in parallel?`,
-                a: `forEach gives no order guarantee (fast). forEachOrdered preserves encounter order by serializing the terminal, which erodes the parallel speedup. Use it only when order is required.`
-              },
-              {
-                q: `findFirst vs findAny in parallel?`,
-                a: `findFirst must respect encounter order, so it is more expensive in parallel; findAny lets any thread return its match and is cheaper when any result will do.`
-              },
-              {
-                q: `Why is writing to an ArrayList from a parallel forEach wrong?`,
-                a: `ArrayList is not thread-safe; concurrent add is a data race causing lost updates, nulls, or ArrayIndexOutOfBoundsException. Use a Collector (thread-safe combiner) or a concurrent/atomic structure.`
-              },
-              {
-                q: `How does a Collector stay correct in parallel?`,
-                a: `Each thread accumulates into its own container (supplier), and the combiner merges partials. As long as the combiner is associative and correct, the result matches sequential.`
-              },
-              {
-                q: `Why are most parallel streams premature optimization?`,
-                a: `Split/schedule/merge overhead and false sharing often make parallel slower for typical small or I/O-bound workloads. The gain only materializes on large CPU-bound, splittable data.`
-              },
-              {
-                q: `How should you decide to parallelize?`,
-                a: `Measure, do not guess: benchmark (ideally JMH, since nanoTime micro-timing is skewed by JIT warmup) on representative data and only keep .parallel() if it shows a real, repeatable win.`
-              },
-              {
-                q: `How do you isolate a parallel stream from the common pool?`,
-                a: `Submit it to your own ForkJoinPool: pool.submit(() -> stream.parallel()...).get(). The stream uses that pool, bounding parallelism — but still never block on I/O inside it.`
-              },
-              {
-                q: `How does parallelism interact with reduce associativity?`,
-                a: `Parallel splits the reduction across chunks and combines partials, so a non-associative accumulator or wrong identity yields different (wrong) results than sequential. Prove associativity before parallelizing.`
-              }
-            ]
-          },
-          {
-            title: `Built-in Functional Interfaces -- Supplier, Consumer, Function, Predicate & the Whole Toolkit`,
-            notes: `## Built-in Functional Interfaces: the \`java.util.function\` Toolkit
-
-A *functional interface* is any interface with exactly **one abstract method** (a "SAM" -- Single Abstract Method). A lambda or method reference is just a concise way to create an **instance** of such an interface. The JDK ships a catalog of ~43 of them in \`java.util.function\` so you rarely need to declare your own.
-
-### The core shapes
-
-| Interface | Abstract method | Arity | Returns | Typical use |
-|---|---|---|---|---|
-| \`Supplier<T>\` | \`T get()\` | 0 | value | lazy factory, \`Stream.generate\`, \`Optional.orElseGet\` |
-| \`Consumer<T>\` | \`void accept(T)\` | 1 | nothing | side effects, \`forEach\` |
-| \`BiConsumer<T,U>\` | \`void accept(T,U)\` | 2 | nothing | \`Map.forEach\` |
-| \`Function<T,R>\` | \`R apply(T)\` | 1 | value | \`map\`, transforms |
-| \`BiFunction<T,U,R>\` | \`R apply(T,U)\` | 2 | value | \`Map.merge\`, combine two inputs |
-| \`Predicate<T>\` | \`boolean test(T)\` | 1 | boolean | \`filter\`, \`removeIf\` |
-| \`BiPredicate<T,U>\` | \`boolean test(T,U)\` | 2 | boolean | two-arg tests |
-| \`UnaryOperator<T>\` | \`T apply(T)\` | 1 | same type | \`List.replaceAll\` |
-| \`BinaryOperator<T>\` | \`T apply(T,T)\` | 2 | same type | \`reduce\`, \`Map.merge\` |
-
-\`UnaryOperator<T>\` extends \`Function<T,T>\` and \`BinaryOperator<T>\` extends \`BiFunction<T,T,T>\` -- they are just the "same in, same out" special cases with a shorter name.
-
-### Primitive specializations -- and why they exist
-
-Generics cannot hold primitives, so \`Function<Integer,Integer>\` **autoboxes** every value into an \`Integer\` object. In hot loops that is real garbage-collector pressure. The primitive specializations work directly on \`int\`/\`long\`/\`double\` and box nothing.
-
-| Generic | Primitive variant | Method |
-|---|---|---|
-| \`Supplier<Integer>\` | \`IntSupplier\` | \`int getAsInt()\` |
-| \`Function<Integer,R>\` | \`IntFunction<R>\` | \`R apply(int)\` |
-| \`Function<T,Integer>\` | \`ToIntFunction<T>\` | \`int applyAsInt(T)\` |
-| \`Predicate<Integer>\` | \`IntPredicate\` | \`boolean test(int)\` |
-| \`UnaryOperator<Integer>\` | \`IntUnaryOperator\` | \`int applyAsInt(int)\` |
-| \`BinaryOperator<Integer>\` | \`IntBinaryOperator\` | \`int applyAsInt(int,int)\` |
-
-Parallel \`Long*\` and \`Double*\` families exist. \`Stream.mapToInt\` returns an \`IntStream\` precisely so downstream operations stay unboxed.
-
-> [!TIP]
-> Reach for a primitive specialization whenever a stream stage handles a numeric key -- \`mapToInt\`, \`comparingInt\`, \`ToIntFunction\` -- to skip a boxing allocation per element.
-
-### Default methods: composing behavior
-
-These interfaces carry \`default\` methods so you can build pipelines without extra classes:
-
-- \`Function\`: \`f.andThen(g)\` runs \`f\` then \`g\`; \`f.compose(g)\` runs \`g\` then \`f\`.
-- \`Predicate\`: \`and\`, \`or\`, \`negate\`, plus static \`isEqual\`.
-- \`Consumer\`: \`andThen\` chains two side effects on the same input.
-
-\`\`\`mermaid
-flowchart LR
-  A["input x"] --> B["compose: g(x) first"]
-  B --> C["then f"]
-  C --> D["result"]
-  A2["input x"] --> E["andThen: f(x) first"]
-  E --> F["then g"]
-  F --> G["result"]
-\`\`\`
-
-> [!NOTE]
-> \`andThen\` and \`compose\` are mirror images. \`f.andThen(g).apply(x)\` equals \`g(f(x))\`; \`f.compose(g).apply(x)\` equals \`f(g(x))\`. Read \`andThen\` left-to-right, \`compose\` right-to-left.
-
-### A lambda IS an instance
-
-There is no special "lambda type." \`() -> "hi"\` typed as \`Supplier<String>\` produces an object where \`instanceof Supplier\` is \`true\`. Anonymous classes, lambdas, static/instance/constructor method references, and hand-written classes are all interchangeable ways to supply that single method.
-
-> [!TIP]
-> **See also:** a shorter version of the toolkit table also appears in this module's first section ("Lambdas & Functional Interfaces"); the canonical **Comparable vs Comparator** treatment lives in **Module 2.1**.
-`,
-            code: [
-              {
-                lang: `java`,
-                title: `The four core interfaces (and a lambda IS an instance)`,
-                code: `import java.util.function.*;
-
-public class S1D1 {
-    // A method reference target: matches Function<String,Integer>
-    static int lengthOf(String s) { return s.length(); }
-
-    public static void main(String[] a) {
-        // Supplier<T>: () -> T. No input, produces a value (lazy factory).
-        Supplier<String> greeting = () -> "hello";
-        System.out.println("Supplier: " + greeting.get());
-
-        // Consumer<T>: T -> void. Takes a value, returns nothing (side effect).
-        Consumer<String> printer = s -> System.out.println("Consumer: " + s);
-        printer.accept("side-effect");
-
-        // Function<T,R>: T -> R. Transforms input to output.
-        Function<String, Integer> len = s -> s.length();
-        System.out.println("Function: " + len.apply("abcd"));
-
-        // The SAME Function type, backed by a method reference instead of a lambda.
-        Function<String, Integer> len2 = S1D1::lengthOf;
-        System.out.println("Function (method ref): " + len2.apply("abcd"));
-
-        // Predicate<T>: T -> boolean. A boolean test.
-        Predicate<String> isEmpty = String::isEmpty;
-        System.out.println("Predicate: " + isEmpty.test(""));
-
-        // Proof that a lambda IS an instance of the interface.
-        System.out.println("greeting instanceof Supplier: " + (greeting instanceof Supplier));
-        System.out.println("printer instanceof Consumer: " + (printer instanceof Consumer));
-    }
-}
-`
-              },
-              {
-                lang: `java`,
-                title: `Bi* variants, UnaryOperator & BinaryOperator`,
-                code: `import java.util.function.*;
-import java.util.*;
-
-public class S1D2 {
-    public static void main(String[] a) {
-        // BiConsumer<T,U>: (T,U) -> void. Classic use: Map.forEach.
-        BiConsumer<String, Integer> entry =
-            (k, v) -> System.out.println("BiConsumer: " + k + "=" + v);
-        Map<String, Integer> stock = new LinkedHashMap<>();
-        stock.put("pens", 12);
-        stock.put("pads", 7);
-        stock.forEach(entry);
-
-        // BiFunction<T,U,R>: (T,U) -> R.
-        BiFunction<Integer, Integer, Integer> add = (x, y) -> x + y;
-        System.out.println("BiFunction: " + add.apply(3, 4));
-
-        // BiPredicate<T,U>: (T,U) -> boolean.
-        BiPredicate<String, Integer> longerThan = (s, n) -> s.length() > n;
-        System.out.println("BiPredicate: " + longerThan.test("interview", 4));
-
-        // UnaryOperator<T> extends Function<T,T>: input and output are the SAME type.
-        UnaryOperator<String> shout = s -> s.toUpperCase();
-        System.out.println("UnaryOperator: " + shout.apply("loud"));
-
-        // BinaryOperator<T> extends BiFunction<T,T,T>: two same-typed args, same-typed result.
-        BinaryOperator<Integer> max = (x, y) -> x >= y ? x : y;
-        System.out.println("BinaryOperator: " + max.apply(9, 4));
-
-        // BinaryOperator convenience factories: minBy / maxBy take a Comparator.
-        BinaryOperator<String> longest = BinaryOperator.maxBy(Comparator.comparingInt(String::length));
-        System.out.println("BinaryOperator.maxBy: " + longest.apply("cat", "hippo"));
-    }
-}
-`
-              },
-              {
-                lang: `java`,
-                title: `Primitive specializations avoid autoboxing`,
-                code: `import java.util.function.*;
-import java.util.stream.*;
-
-public class S1D3 {
-    public static void main(String[] a) {
-        // Primitive specializations exist to avoid autoboxing (no Integer objects created).
-
-        // IntSupplier: () -> int   (vs Supplier<Integer> which boxes).
-        IntSupplier roll = () -> 4;
-        System.out.println("IntSupplier: " + roll.getAsInt());
-
-        // IntFunction<R>: int -> R.
-        IntFunction<String> label = n -> "row-" + n;
-        System.out.println("IntFunction: " + label.apply(7));
-
-        // ToIntFunction<T>: T -> int (used by mapToInt, comparingInt).
-        ToIntFunction<String> len = String::length;
-        System.out.println("ToIntFunction: " + len.applyAsInt("hello"));
-
-        // IntPredicate: int -> boolean.
-        IntPredicate isEven = n -> n % 2 == 0;
-        System.out.println("IntPredicate: " + isEven.test(10));
-
-        // IntUnaryOperator: int -> int.
-        IntUnaryOperator square = n -> n * n;
-        System.out.println("IntUnaryOperator: " + square.applyAsInt(6));
-
-        // IntBinaryOperator: (int,int) -> int (used by IntStream.reduce).
-        IntBinaryOperator sum = (x, y) -> x + y;
-        System.out.println("IntBinaryOperator: " + sum.applyAsInt(3, 5));
-
-        // In a stream, mapToInt returns an IntStream of primitives -- no boxing.
-        int total = Stream.of("a", "bb", "ccc")
-                          .mapToInt(String::length) // ToIntFunction
-                          .sum();
-        System.out.println("Stream mapToInt sum: " + total);
-    }
-}
-`
-              },
-              {
-                lang: `java`,
-                title: `Composition: andThen / compose / and / or / negate`,
-                code: `import java.util.function.*;
-
-public class S1D4 {
-    public static void main(String[] a) {
-        // Function.andThen: apply THIS first, then the argument.
-        Function<Integer, Integer> plus1 = x -> x + 1;
-        Function<Integer, Integer> times2 = x -> x * 2;
-        System.out.println("andThen (plus1 then times2): " + plus1.andThen(times2).apply(3)); // (3+1)*2 = 8
-
-        // Function.compose: apply the ARGUMENT first, then THIS.
-        System.out.println("compose (times2 then plus1): " + plus1.compose(times2).apply(3)); // (3*2)+1 = 7
-
-        // Predicate composition: and / or / negate.
-        Predicate<Integer> positive = n -> n > 0;
-        Predicate<Integer> even = n -> n % 2 == 0;
-        System.out.println("and: " + positive.and(even).test(4));   // true
-        System.out.println("or: " + positive.or(even).test(-2));    // true
-        System.out.println("negate: " + positive.negate().test(-5)); // true
-
-        // Predicate.isEqual: static factory for an equals-based predicate.
-        System.out.println("isEqual: " + Predicate.isEqual("x").test("x")); // true
-
-        // Consumer.andThen: run both consumers in order on the same input.
-        StringBuilder log = new StringBuilder();
-        Consumer<String> a1 = s -> log.append("[").append(s).append("]");
-        Consumer<String> a2 = s -> log.append("(").append(s.length()).append(")");
-        a1.andThen(a2).accept("hi");
-        System.out.println("Consumer.andThen: " + log);
-    }
-}
-`
-              },
-              {
-                lang: `java`,
-                title: `Four ways to build the same Supplier`,
-                code: `import java.util.function.*;
-import java.util.*;
-
-public class S1D5 {
-    static String makeGreeting() { return "made by static method ref"; }
-
-    public static void main(String[] a) {
-        // Four ways to obtain the SAME Supplier<String> type.
-
-        // 1) Anonymous class -- the "old" form a lambda desugars toward.
-        Supplier<String> s1 = new Supplier<String>() {
-            public String get() { return "anonymous class"; }
-        };
-
-        // 2) Lambda expression.
-        Supplier<String> s2 = () -> "lambda";
-
-        // 3) Static method reference (Class::staticMethod).
-        Supplier<String> s3 = S1D5::makeGreeting;
-
-        // 4) Bound instance method reference (instance::method).
-        String captured = "bound instance method ref";
-        Supplier<String> s4 = captured::toString;
-
-        for (Supplier<String> s : List.of(s1, s2, s3, s4)) {
-            System.out.println(s.get() + " -> is a Supplier? " + (s instanceof Supplier));
-        }
-
-        // Unbound instance method ref: String::length is a Function<String,Integer>.
-        Function<String, Integer> len = String::length;
-        System.out.println("String::length on \\"abc\\" = " + len.apply("abc"));
-
-        // Constructor reference: ArrayList::new is a Supplier<List<String>>.
-        Supplier<List<String>> newList = ArrayList::new;
-        List<String> fresh = newList.get();
-        fresh.add("built via constructor ref");
-        System.out.println(fresh);
-    }
-}
-`
-              }
-            ],
-            flashcards: [
-              {
-                q: `What makes an interface a "functional interface"?`,
-                a: `It has exactly one abstract method (a SAM). Default and static methods do not count. This lets a lambda or method reference serve as an instance of it. The optional @FunctionalInterface annotation asks the compiler to enforce the single-abstract-method rule.`
-              },
-              {
-                q: `Give the abstract-method signature and arity for Supplier, Consumer, Function, and Predicate.`,
-                a: `Supplier<T>: T get() -- arity 0. Consumer<T>: void accept(T) -- arity 1. Function<T,R>: R apply(T) -- arity 1. Predicate<T>: boolean test(T) -- arity 1.`
-              },
-              {
-                q: `How do UnaryOperator<T> and BinaryOperator<T> relate to Function and BiFunction?`,
-                a: `UnaryOperator<T> extends Function<T,T> (input and output are the same type). BinaryOperator<T> extends BiFunction<T,T,T> (two same-typed args, same-typed result). They are shorthand for the same-in/same-out cases.`
-              },
-              {
-                q: `Why do primitive specializations like IntFunction and ToIntFunction exist?`,
-                a: `Generics cannot hold primitives, so Function<Integer,Integer> autoboxes every value into an Integer object, creating GC pressure in hot paths. The primitive variants operate directly on int/long/double and allocate nothing.`
-              },
-              {
-                q: `What is the difference between ToIntFunction<T> and IntFunction<R>?`,
-                a: `ToIntFunction<T> is T -> int (int applyAsInt(T)); it produces a primitive int from an object, used by mapToInt and comparingInt. IntFunction<R> is int -> R (R apply(int)); it consumes a primitive int and produces an object.`
-              },
-              {
-                q: `Contrast Function.andThen with Function.compose.`,
-                a: `f.andThen(g).apply(x) equals g(f(x)) -- run f first (left to right). f.compose(g).apply(x) equals f(g(x)) -- run g first (right to left). They are mirror images.`
-              },
-              {
-                q: `Which default/static methods let you combine Predicates?`,
-                a: `Instance defaults and(), or(), negate(); plus the static factory Predicate.isEqual(target) which builds a predicate testing Objects.equals against target.`
-              },
-              {
-                q: `What does Consumer.andThen do?`,
-                a: `It returns a Consumer that runs the first consumer, then the second, both on the SAME input value -- chaining two side effects in order.`
-              },
-              {
-                q: `Is a lambda a distinct type in Java?`,
-                a: `No. A lambda has no type of its own; it is an instance of whatever functional interface the context (the 'target type') requires. () -> "hi" is a Supplier<String> in one place and could satisfy any other zero-arg SAM elsewhere. instanceof Supplier returns true for it.`
-              },
-              {
-                q: `Name four ways to create an instance of a functional interface.`,
-                a: `Anonymous class, lambda expression, method reference (static Class::m, bound instance obj::m, unbound Type::m, constructor Type::new), and a normal named class implementing the interface. All are interchangeable.`
-              },
-              {
-                q: `Which functional interface fits Map.forEach and what is its signature?`,
-                a: `BiConsumer<K,V>, whose SAM is void accept(K,V). Map.forEach passes each key and value to it.`
-              }
-            ]
-          },
-          {
-            title: `Runnable, Callable & Comparator as Functional Interfaces -- Threads, Tasks & Ordering`,
-            notes: `## Runnable, Callable & Comparator -- Functional Interfaces Beyond \`java.util.function\`
-
-Not every functional interface lives in \`java.util.function\`. Three of the most important predate it and are used throughout concurrency and collections.
-
-### Runnable vs Callable
-
-| | \`Runnable\` | \`Callable<V>\` |
-|---|---|---|
-| SAM | \`void run()\` | \`V call()\` |
-| Returns a value? | No | Yes (\`V\`) |
-| Checked exceptions? | **No** -- cannot throw checked | **Yes** -- declares \`throws Exception\` |
-| Submitted via | \`Thread\`, \`ExecutorService.execute\`, \`submit\` | \`ExecutorService.submit\`, \`invokeAll\` |
-| Result handle | none (fire-and-forget) | \`Future<V>\` |
-| Package | \`java.lang\` | \`java.util.concurrent\` |
-
-Because \`Callable\` can both return a value and throw checked exceptions, it is the right choice for a unit of work that computes something or does I/O. \`Runnable\` is for pure side effects.
-
-\`\`\`mermaid
-flowchart LR
-  R["Runnable\\nrun() -> void"] --> EX["execute()\\nfire and forget"]
-  C["Callable V\\ncall() -> V"] --> SUB["submit()"]
-  SUB --> FUT["Future V"]
-  FUT --> GET["future.get()\\nblocks for result"]
-\`\`\`
-
-> [!WARNING]
-> A lambda passed to \`Thread\`/\`execute\` binds to \`Runnable\`, so it must not throw checked exceptions. If your task does I/O, target \`Callable\` via \`submit\` -- or the compiler will reject the checked throw.
-
-> [!TIP]
-> Keep concurrency demos deterministic: submit \`Callable\`s, read results with \`future.get()\` (which blocks until done), then \`shutdown()\` and \`awaitTermination(...)\`. Never rely on \`Thread.sleep\` for ordering.
-
-### Comparator as a functional interface
-
-\`Comparator<T>\` has one abstract method, \`int compare(T,T)\`, so it too is a functional interface -- and it carries a rich set of static and default factory methods:
-
-| Factory / method | What it builds |
-|---|---|
-| \`comparing(keyExtractor)\` | compare by an extracted \`Comparable\` key |
-| \`comparingInt/Long/Double\` | key comparators without boxing |
-| \`thenComparing(...)\` | tie-breaker applied when the primary compares equal |
-| \`reversed()\` | flips the whole comparator |
-| \`naturalOrder()\` / \`reverseOrder()\` | order any \`Comparable\` type |
-| \`nullsFirst(cmp)\` / \`nullsLast(cmp)\` | null-safe wrappers |
-
-\`thenComparing\` is what makes stable, multi-level sorts readable -- "by department, then by salary descending" is one fluent expression. \`nullsFirst\`/\`nullsLast\` wrap another comparator so a \`null\` element (or \`null\` key) sorts to a chosen end instead of throwing \`NullPointerException\`.
-
-> [!NOTE]
-> \`reversed()\` flips **every** level of a chained comparator, not just the last \`thenComparing\`. To reverse only one key, call \`.reversed()\` on that key's sub-comparator, e.g. \`comparingDouble(Employee::salary).reversed()\`.`,
-            code: [
-              {
-                lang: `java`,
-                title: `Runnable with Thread and ExecutorService.execute`,
-                code: `import java.util.concurrent.*;
-
-public class S2D1 {
-    public static void main(String[] a) throws InterruptedException {
-        // Runnable: () -> void, throws no checked exceptions. Its SAM is run().
-        Runnable task = () -> System.out.println("Runnable ran on: " + Thread.currentThread().getName());
-
-        // 1) A Runnable can drive a raw Thread.
-        Thread t = new Thread(task, "worker-thread");
-        t.start();
-        t.join(); // deterministic: wait for it to finish before continuing.
-
-        // 2) A Runnable can be handed to ExecutorService.execute (fire-and-forget, no result).
-        ExecutorService pool = Executors.newSingleThreadExecutor();
-        pool.execute(() -> System.out.println("execute() Runnable, no return value"));
-
-        // Orderly shutdown + await so the program ends deterministically.
-        pool.shutdown();
-        pool.awaitTermination(5, TimeUnit.SECONDS);
-        System.out.println("done");
-    }
-}
-`
-              },
-              {
-                lang: `java`,
-                title: `Callable + Future.get() and invokeAll (deterministic)`,
-                code: `import java.util.concurrent.*;
-import java.util.*;
-
-public class S2D2 {
-    public static void main(String[] a) throws Exception {
-        ExecutorService pool = Executors.newFixedThreadPool(2);
-
-        // Callable<V>: () -> V, and MAY throw checked exceptions. Its SAM is call().
-        Callable<Integer> compute = () -> {
-            // A checked exception here would be fine -- Callable declares "throws Exception".
-            int sum = 0;
-            for (int i = 1; i <= 10; i++) sum += i;
-            return sum;
-        };
-
-        // submit(Callable) returns a Future<V>; future.get() blocks for the result.
-        Future<Integer> f = pool.submit(compute);
-        System.out.println("Callable result via Future.get(): " + f.get()); // 55
-
-        // invokeAll runs a batch and returns Futures in the SAME order -> deterministic output.
-        List<Callable<String>> tasks = List.of(
-            () -> "task-A",
-            () -> "task-B",
-            () -> "task-C"
-        );
-        List<Future<String>> results = pool.invokeAll(tasks);
-        for (Future<String> r : results) {
-            System.out.println("invokeAll -> " + r.get());
-        }
-
-        pool.shutdown();
-        pool.awaitTermination(5, TimeUnit.SECONDS);
-    }
-}
-`
-              },
-              {
-                lang: `java`,
-                title: `Comparator.comparing / thenComparing / reversed / comparingInt`,
-                code: `import java.util.*;
-
-public class S2D3 {
-    record Person(String name, int age) {}
-
-    public static void main(String[] a) {
-        List<Person> people = new ArrayList<>(List.of(
-            new Person("Alice", 30),
-            new Person("Bob", 30),
-            new Person("Cara", 25),
-            new Person("Dan", 40)
-        ));
-
-        // Comparator.comparing extracts a Comparable key (here the age).
-        // thenComparing breaks ties (here by name). This is a stable, multi-level sort.
-        Comparator<Person> byAgeThenName =
-            Comparator.comparing(Person::age).thenComparing(Person::name);
-
-        List<Person> sorted = new ArrayList<>(people);
-        sorted.sort(byAgeThenName);
-        System.out.println("age asc, then name asc:");
-        sorted.forEach(p -> System.out.println("  " + p));
-
-        // reversed() flips the WHOLE comparator (both levels).
-        List<Person> rev = new ArrayList<>(people);
-        rev.sort(byAgeThenName.reversed());
-        System.out.println("reversed:");
-        rev.forEach(p -> System.out.println("  " + p));
-
-        // comparingInt avoids boxing the int key.
-        List<Person> byAge = new ArrayList<>(people);
-        byAge.sort(Comparator.comparingInt(Person::age));
-        System.out.println("comparingInt(age): " + byAge);
-    }
-}
-`
-              },
-              {
-                lang: `java`,
-                title: `naturalOrder, reverseOrder, nullsFirst / nullsLast`,
-                code: `import java.util.*;
-
-public class S2D4 {
-    public static void main(String[] a) {
-        // naturalOrder / reverseOrder: comparators for any Comparable type.
-        List<String> words = new ArrayList<>(List.of("pear", "apple", "kiwi"));
-        words.sort(Comparator.naturalOrder());
-        System.out.println("naturalOrder: " + words);
-        words.sort(Comparator.reverseOrder());
-        System.out.println("reverseOrder: " + words);
-
-        // nullsFirst / nullsLast: wrap a comparator so nulls do not throw NPE.
-        List<String> withNulls = new ArrayList<>(Arrays.asList("banana", null, "apple", null, "cherry"));
-        withNulls.sort(Comparator.nullsFirst(Comparator.naturalOrder()));
-        System.out.println("nullsFirst: " + withNulls);
-        withNulls.sort(Comparator.nullsLast(Comparator.naturalOrder()));
-        System.out.println("nullsLast: " + withNulls);
-
-        // Combine: sort a list of records where a field may be null.
-        record Task(String name, Integer priority) {}
-        List<Task> tasks = new ArrayList<>(List.of(
-            new Task("deploy", 2),
-            new Task("triage", null),
-            new Task("review", 1)
-        ));
-        // Keys with null priority go last; non-nulls ascending.
-        tasks.sort(Comparator.comparing(Task::priority, Comparator.nullsLast(Comparator.naturalOrder())));
-        System.out.println("null-safe key sort: " + tasks);
-    }
-}
-`
-              }
-            ],
-            flashcards: [
-              {
-                q: `Compare Runnable and Callable on return value and checked exceptions.`,
-                a: `Runnable: void run(), returns nothing, cannot throw checked exceptions. Callable<V>: V call(), returns a value of type V and declares throws Exception so it CAN throw checked exceptions.`
-              },
-              {
-                q: `How do you get the result of a Callable submitted to an ExecutorService?`,
-                a: `submit(Callable) returns a Future<V>. Call future.get(), which blocks until the task completes and returns V (or rethrows the task's exception wrapped in ExecutionException).`
-              },
-              {
-                q: `What is the difference between ExecutorService.execute and submit?`,
-                a: `execute(Runnable) is fire-and-forget: void, no handle. submit accepts a Runnable OR a Callable and returns a Future you can use to wait for completion, fetch a result, or cancel.`
-              },
-              {
-                q: `Why does a lambda passed to new Thread(...) reject a checked exception?`,
-                a: `The target type is Runnable, whose run() declares no checked exceptions. A checked throw would violate the SAM signature, so it must be caught inside or the work must target Callable via submit instead.`
-              },
-              {
-                q: `How do you make an executor-based demo produce deterministic output?`,
-                a: `Use future.get() (or invokeAll, which returns Futures in submission order) to read results in order, then shutdown() and awaitTermination(...). Do not rely on Thread.sleep or scheduling for ordering.`
-              },
-              {
-                q: `Is Comparator a functional interface? What is its SAM?`,
-                a: `Yes. Its single abstract method is int compare(T o1, T o2). It also has many default and static helper methods, but only one abstract method.`
-              },
-              {
-                q: `What does Comparator.thenComparing do?`,
-                a: `It supplies a tie-breaker: when the primary comparator returns 0 (equal), the next comparator decides. This builds stable multi-level orderings like 'by dept, then by salary'.`
-              },
-              {
-                q: `What is the effect of calling reversed() on a chained comparator?`,
-                a: `It flips EVERY level of the chain, not just the last thenComparing. To reverse only one key, call reversed() on that key's sub-comparator, e.g. comparingDouble(Employee::salary).reversed().thenComparing(name).`
-              },
-              {
-                q: `When do you need nullsFirst / nullsLast?`,
-                a: `When the list contains null elements, or a comparison key may be null. They wrap another comparator so nulls sort to the chosen end instead of causing a NullPointerException. Example: comparing(Task::priority, nullsLast(naturalOrder())).`
-              },
-              {
-                q: `Difference between Comparator.comparing and Comparator.comparingInt?`,
-                a: `comparing(keyExtractor) extracts a Comparable key (boxes primitives). comparingInt/comparingLong/comparingDouble take a To*Function and compare primitive keys without boxing -- prefer them for numeric keys.`
-              },
-              {
-                q: `What do Comparator.naturalOrder and reverseOrder return?`,
-                a: `naturalOrder() returns a Comparator that orders any Comparable type by its compareTo; reverseOrder() returns the inverse. Useful as the base of nullsFirst/nullsLast wrappers or for sorting simple lists.`
-              }
-            ]
-          },
-          {
-            title: `Comparable vs Comparator + Using Every Functional Interface in Lambdas & Streams`,
-            notes: `## Comparable vs Comparator -- and Driving Streams with Every Interface
-
-### Two ways to define order
-
-| | \`Comparable<T>\` | \`Comparator<T>\` |
-|---|---|---|
-| Method | \`int compareTo(T)\` | \`int compare(T,T)\` |
-| Location | **inside** the class being ordered | **outside**, a separate object |
-| How many orderings | exactly one ("natural order") | as many as you want |
-| Used by | \`Collections.sort(list)\`, \`TreeSet\`, \`sort(null)\` | \`list.sort(cmp)\`, \`stream.sorted(cmp)\`, \`min/max\` |
-| Change requires | editing the class | none -- pass a different comparator |
-
-Rule of thumb: implement \`Comparable\` when the type has ONE obvious, intrinsic order (version numbers, money, dates). Reach for \`Comparator\` for everything else -- alternate sorts, sorts you cannot edit the class for, or context-specific ordering. A \`Comparator\` argument always **overrides** natural order.
-
-> [!TIP]
-> All three sign contracts return an \`int\`: negative if "this before that," zero if equal, positive if "this after that." Implement them with \`Integer.compare\` / \`Double.compare\` rather than subtraction (\`a - b\` overflows for large values).
-
-### Every functional interface, one stream story
-
-The big demo below runs an "employee analytics" pipeline where each functional interface drives one stream operation:
-
-\`\`\`mermaid
-flowchart TD
-  S["Supplier -> Stream.generate (bonuses)"]
-  F["Predicate -> filter (Eng only)"]
-  M["Function -> map (to label)"]
-  U["UnaryOperator -> map (upper case)"]
-  C["Consumer -> forEach (print)"]
-  T["ToIntFunction -> mapToInt (salaries)"]
-  B["BinaryOperator -> reduce (sum)"]
-  O["Comparator -> sorted / max"]
-  COL["Collectors -> groupingBy / joining"]
-  S --> F --> M --> U --> C
-  T --> B
-  O --> COL
-\`\`\`
-
-| Stream op | Functional interface it accepts |
-|---|---|
-| \`filter\` | \`Predicate<T>\` |
-| \`map\` | \`Function<T,R>\` (or \`UnaryOperator<T>\`) |
-| \`mapToInt\` | \`ToIntFunction<T>\` |
-| \`forEach\` / \`peek\` | \`Consumer<T>\` |
-| \`reduce\` | \`BinaryOperator<T>\` |
-| \`sorted\` / \`min\` / \`max\` | \`Comparator<T>\` |
-| \`generate\` | \`Supplier<T>\` |
-
-> [!NOTE]
-> \`peek\` takes a \`Consumer\` and is intended for debugging/observation mid-pipeline; it is not a substitute for \`map\`. Use \`forEach\` as the terminal side-effect sink.
-
-> [!TIP]
-> **Canonical reference:** the core **Comparable vs Comparator** distinction (natural vs custom ordering) is covered in **Module 2.1**; this section focuses on driving them, and the other functional interfaces, through streams.
-`,
-            code: [
-              {
-                lang: `java`,
-                title: `Comparable: one natural ordering baked into the class`,
-                code: `import java.util.*;
-
-public class S3D1 {
-    // Comparable<T>: the class defines ITS OWN natural ordering via compareTo.
-    // Here Version sorts by major, then minor. There is exactly ONE natural order.
-    static final class Version implements Comparable<Version> {
-        final int major, minor;
-        Version(int major, int minor) { this.major = major; this.minor = minor; }
-
-        @Override
-        public int compareTo(Version o) {
-            int c = Integer.compare(this.major, o.major);
-            return c != 0 ? c : Integer.compare(this.minor, o.minor);
-        }
-        @Override
-        public String toString() { return major + "." + minor; }
-    }
-
-    public static void main(String[] a) {
-        List<Version> versions = new ArrayList<>(List.of(
-            new Version(2, 0), new Version(1, 5), new Version(2, 1), new Version(1, 0)
-        ));
-
-        // Collections.sort / List.sort with no comparator uses the NATURAL ordering.
-        Collections.sort(versions);
-        System.out.println("natural order: " + versions);
-
-        // TreeSet and Collections.min/max also rely on Comparable.
-        System.out.println("min: " + Collections.min(versions));
-        System.out.println("max: " + Collections.max(versions));
-
-        // A Comparator can OVERRIDE natural order without touching the class.
-        versions.sort(Comparator.reverseOrder());
-        System.out.println("comparator override (desc): " + versions);
-    }
-}
-`
-              },
-              {
-                lang: `java`,
-                title: `Comparator: many external orderings over the same type`,
-                code: `import java.util.*;
-
-public class S3D2 {
-    // The class has a natural order (by id) but callers often need OTHER orders.
-    record Employee(int id, String name, String dept, double salary) implements Comparable<Employee> {
-        @Override
-        public int compareTo(Employee o) { return Integer.compare(this.id, o.id); }
-    }
-
-    public static void main(String[] a) {
-        List<Employee> emps = new ArrayList<>(List.of(
-            new Employee(3, "Cara", "Eng", 95000),
-            new Employee(1, "Alice", "Eng", 120000),
-            new Employee(2, "Bob", "Sales", 80000),
-            new Employee(4, "Dan", "Sales", 80000)
-        ));
-
-        // Natural order (Comparable): by id.
-        emps.sort(null); // null comparator => natural ordering
-        System.out.println("by id (natural): " + idsOf(emps));
-
-        // External Comparator #1: by salary descending, then name ascending.
-        emps.sort(Comparator.comparingDouble(Employee::salary).reversed()
-                            .thenComparing(Employee::name));
-        System.out.println("by salary desc, name asc: " + namesOf(emps));
-
-        // External Comparator #2: group-friendly order by dept, then salary.
-        emps.sort(Comparator.comparing(Employee::dept)
-                            .thenComparing(Comparator.comparingDouble(Employee::salary).reversed()));
-        System.out.println("by dept, salary desc: " + namesOf(emps));
-    }
-
-    static List<Integer> idsOf(List<Employee> es) {
-        List<Integer> r = new ArrayList<>();
-        for (Employee e : es) r.add(e.id());
-        return r;
-    }
-    static List<String> namesOf(List<Employee> es) {
-        List<String> r = new ArrayList<>();
-        for (Employee e : es) r.add(e.name());
-        return r;
-    }
-}
-`
-              },
-              {
-                lang: `java`,
-                title: `Employee analytics: every functional interface driving a stream op`,
-                code: `import java.util.*;
-import java.util.function.*;
-import java.util.stream.*;
-
-public class S3D3 {
-    record Employee(String name, String dept, int salary) {}
-
-    public static void main(String[] a) {
-        // Supplier drives Stream.generate: an infinite source we bound with limit().
-        // A tiny deterministic pseudo-random via a mutable holder (no timing dependence).
-        int[] seed = { 1 };
-        Supplier<Integer> nextBonus = () -> {
-            seed[0] = (seed[0] * 1103515245 + 12345) & 0x7fffffff;
-            return 1000 + seed[0] % 5000; // deterministic sequence
-        };
-        List<Integer> bonuses = Stream.generate(nextBonus).limit(3).collect(Collectors.toList());
-        System.out.println("Supplier via generate: " + bonuses);
-
-        List<Employee> staff = List.of(
-            new Employee("Alice", "Eng", 120000),
-            new Employee("Bob", "Sales", 80000),
-            new Employee("Cara", "Eng", 95000),
-            new Employee("Dan", "Sales", 70000),
-            new Employee("Eve", "Eng", 105000)
-        );
-
-        // Predicate via filter: keep Engineering only.
-        Predicate<Employee> isEng = e -> e.dept().equals("Eng");
-
-        // Function via map: project to a display string.
-        Function<Employee, String> label = e -> e.name() + "($" + e.salary() + ")";
-
-        // UnaryOperator via map: normalize names to upper case (String -> String).
-        UnaryOperator<String> upper = String::toUpperCase;
-
-        // Consumer via forEach (peek is also a Consumer used mid-pipeline).
-        System.out.println("Predicate+Function+UnaryOperator+Consumer:");
-        staff.stream()
-             .filter(isEng)                              // Predicate
-             .map(label)                                 // Function
-             .map(upper)                                 // UnaryOperator
-             .forEach(s -> System.out.println("  " + s)); // Consumer
-
-        // ToIntFunction via mapToInt + BinaryOperator via reduce.
-        ToIntFunction<Employee> salaryOf = Employee::salary;
-        int totalEng = staff.stream()
-                            .filter(isEng)
-                            .mapToInt(salaryOf)          // ToIntFunction -> IntStream (no boxing)
-                            .sum();
-        System.out.println("Total Eng salary (mapToInt.sum): " + totalEng);
-
-        BinaryOperator<Integer> add = Integer::sum;
-        int totalAll = staff.stream()
-                            .map(Employee::salary)
-                            .reduce(0, add);             // BinaryOperator via reduce
-        System.out.println("Total all salary (reduce): " + totalAll);
-
-        // Comparator via max / sorted.
-        Comparator<Employee> bySalary = Comparator.comparingInt(Employee::salary);
-        Optional<Employee> topPaid = staff.stream().max(bySalary);
-        System.out.println("Highest paid (max): " + topPaid.map(Employee::name).orElse("none"));
-
-        System.out.println("Sorted by salary desc (sorted+Comparator):");
-        staff.stream()
-             .sorted(bySalary.reversed())
-             .forEach(e -> System.out.println("  " + e.name() + " " + e.salary()));
-
-        // Collectors: group by dept, averaging salary; and joining names.
-        Map<String, Double> avgByDept = staff.stream()
-            .collect(Collectors.groupingBy(Employee::dept,
-                     Collectors.averagingInt(Employee::salary)));
-        System.out.println("Avg salary by dept: " + new TreeMap<>(avgByDept));
-
-        String roster = staff.stream()
-            .map(Employee::name)
-            .collect(Collectors.joining(", ", "[", "]"));
-        System.out.println("Roster (joining): " + roster);
-    }
-}
-`
-              }
-            ],
-            flashcards: [
-              {
-                q: `Comparable vs Comparator: where does each live and how many orderings does each give?`,
-                a: `Comparable<T> is implemented INSIDE the class (int compareTo(T)) and defines exactly one natural ordering. Comparator<T> is a separate external object (int compare(T,T)) and you can define as many orderings as you like.`
-              },
-              {
-                q: `When should a class implement Comparable, and when do you reach for a Comparator?`,
-                a: `Implement Comparable when the type has one obvious intrinsic order (versions, money, dates). Use a Comparator for alternate sorts, for classes you cannot edit, or for context-specific ordering. A passed Comparator overrides natural order.`
-              },
-              {
-                q: `What do compareTo / compare return?`,
-                a: `An int: negative if 'this'/first sorts before the other, zero if equal, positive if after. Implement with Integer.compare / Double.compare, not subtraction, to avoid integer overflow.`
-              },
-              {
-                q: `Which methods use natural ordering (Comparable) with no comparator?`,
-                a: `Collections.sort(list), list.sort(null), Collections.min/max, and TreeSet/TreeMap without an explicit comparator all rely on the elements' Comparable.compareTo.`
-              },
-              {
-                q: `Which functional interface does Stream.filter accept, and Stream.map?`,
-                a: `filter accepts a Predicate<T> (T -> boolean). map accepts a Function<T,R> (T -> R); if the result type equals the input type you may use a UnaryOperator<T>.`
-              },
-              {
-                q: `Which functional interface drives Stream.reduce with an identity?`,
-                a: `BinaryOperator<T>: reduce(identity, accumulator) folds two same-typed values into one, e.g. reduce(0, Integer::sum) to total a stream of ints.`
-              },
-              {
-                q: `How does Supplier participate in the Streams API?`,
-                a: `Stream.generate(Supplier<T>) builds an infinite stream by repeatedly calling get(); bound it with limit(n). Supplier also backs Optional.orElseGet and lazy defaults.`
-              },
-              {
-                q: `What functional interface does mapToInt take and why prefer it?`,
-                a: `It takes a ToIntFunction<T> (T -> int) and yields an IntStream of primitives, avoiding boxing and enabling numeric terminal ops like sum(), average(), and summaryStatistics().`
-              },
-              {
-                q: `peek vs forEach -- what interface do they take and how do they differ?`,
-                a: `Both take a Consumer<T>. forEach is a terminal side-effect sink. peek is an intermediate operation meant for observing/debugging elements as they flow; it is not a replacement for map and may be skipped by some optimizations.`
-              },
-              {
-                q: `Which Comparator-accepting stream operations find extremes?`,
-                a: `stream.min(comparator) and stream.max(comparator) return an Optional<T>; stream.sorted(comparator) orders the whole stream. All three consume a Comparator<T>.`
-              },
-              {
-                q: `How would you compute average salary per department in one stream?`,
-                a: `Use collect(Collectors.groupingBy(Employee::dept, Collectors.averagingInt(Employee::salary))), which returns a Map<String,Double> keyed by department.`
-              },
-              {
-                q: `How do you join a stream of names into a bracketed, comma-separated string?`,
-                a: `stream.map(Employee::name).collect(Collectors.joining(", ", "[", "]")) -- the three args are delimiter, prefix, and suffix.`
               }
             ]
           }
@@ -32976,842 +32976,1123 @@ class AutoConfigTest {
       },
       {
         id: `3.3`,
-        title: `Transactions, AOP & @Transactional`,
-        hours: 3,
+        title: `Spring MVC & REST APIs — Controllers, Validation & Error Handling`,
+        hours: 5,
         sections: [
           {
-            title: `@Transactional Internals — Proxy Mechanics & Pitfalls`,
-            notes: `## @Transactional Internals — Proxy Mechanics & Pitfalls
+            title: `Spring MVC in One Picture — DispatcherServlet, Controllers & @RestController`,
+            notes: `## Spring MVC in one picture
 
-> [!TIP]
-> **Big picture — read this first.** \`@Transactional\` doesn't change your method's code. Instead, Spring wraps your bean in an invisible stand-in (a *proxy*) that says "open a database transaction -> call your real method -> commit (or roll back if it threw)". Every caller actually talks to the proxy, not to you directly. This single fact explains the two most-asked Spring gotchas in interviews: (1) calling \`this.otherTransactionalMethod()\` from inside the same class **skips the proxy**, so no new transaction starts; and (2) by default Spring only rolls back on *unchecked* exceptions. Keep the proxy picture in your head and the pitfalls below stop being surprising. The runnable proxy demo in the **Code** tab lets you watch this happen on a bare JVM.
+**Spring MVC** is the web framework inside Spring. It follows the **front-controller** pattern: a single servlet, the **\`DispatcherServlet\`**, receives *every* HTTP request that hits your app, figures out which of your methods should handle it, calls that method, and turns whatever it returns back into an HTTP response. You never touch the raw servlet plumbing -- you just write handler methods and annotate them.
 
-### How @Transactional Works
+Spring Boot auto-registers and configures the \`DispatcherServlet\` for you. You add a controller class, and the routes light up.
 
-Spring implements @Transactional using AOP proxies. When you annotate a class or method with @Transactional, Spring wraps your bean in a proxy that intercepts method calls to begin/commit/rollback the transaction.
+### The request flow
 
 \`\`\`mermaid
-sequenceDiagram
-    participant C as Caller
-    participant P as Proxy (Spring AOP)
-    participant T as TransactionManager
-    participant S as YourService
-    C->>P: orderService.createOrder(req)
-    P->>T: getTransaction(txDef)
-    T-->>P: txStatus (begin tx)
-    P->>S: createOrder(req)
-    S-->>P: result (or exception)
-    alt No exception
-        P->>T: commit(txStatus)
-    else RuntimeException
-        P->>T: rollback(txStatus)
-    end
-    P-->>C: result
+flowchart LR
+    A[HTTP Client] -->|request| B[DispatcherServlet]
+    B --> C[HandlerMapping]
+    C -->|finds handler| B
+    B --> D["Controller method"]
+    D -->|returns object| B
+    B --> E[HttpMessageConverter]
+    E -->|Jackson: object -> JSON| B
+    B -->|HTTP response| A
 \`\`\`
 
-### The Self-Invocation Problem
+1. Client sends \`GET /api/products/42\`.
+2. \`DispatcherServlet\` asks the **\`HandlerMapping\`** which method matches that path + verb.
+3. It invokes your **controller** method, binding path/query/body values into your parameters.
+4. Your method returns a plain Java object.
+5. An **\`HttpMessageConverter\`** (Jackson, for JSON) serializes it into the response body.
 
-\`\`\`java
-@Service
-public class OrderService {
+### \`@RestController\` vs \`@Controller\`
 
-    // BROKEN — self-invocation bypasses the proxy
-    public void processOrder(Order order) {
-        validateOrder(order);
-        this.saveOrder(order);  // calls this.saveOrder directly, NOT via proxy
-        // The @Transactional on saveOrder is IGNORED
-    }
+- **\`@Controller\`** is the classic MVC stereotype. Its methods return **view names** (e.g. a Thymeleaf template) unless a method or return value is annotated \`@ResponseBody\`.
+- **\`@RestController\`** = \`@Controller\` + \`@ResponseBody\` on every method. Return values are written *directly* to the response body (serialized to JSON), never resolved as views. This is what you want for a REST API.
 
-    @Transactional
-    public void saveOrder(Order order) {
-        repo.save(order);
-        auditLog.save(new AuditEntry(order.id()));
-    }
-}
+### Mapping annotations
 
-// WHY: 'this.saveOrder(order)' skips the proxy. The proxy wraps the BEAN, but
-// self-calls go directly to the object — Spring never sees them.
+\`@RequestMapping\` is the general form; it can set path, HTTP method, and content types. In practice you use the verb shortcuts:
 
-// FIX 1: Extract to separate @Service (preferred)
-@Service public class OrderSaveService {
-    @Transactional
-    public void save(Order order) { ... }
-}
-// orderSaveService.save(order) — goes through the proxy
+| Annotation | HTTP verb |
+| --- | --- |
+| \`@GetMapping\` | GET |
+| \`@PostMapping\` | POST |
+| \`@PutMapping\` | PUT |
+| \`@PatchMapping\` | PATCH |
+| \`@DeleteMapping\` | DELETE |
 
-// FIX 2: Self-inject (SpEP) — works but is a code smell
-@Service public class OrderService {
-    @Autowired @Lazy private OrderService self;  // inject own proxy
-    public void processOrder(Order order) { self.saveOrder(order); }
-    @Transactional public void saveOrder(Order o) { ... }
-}
-\`\`\`
+Put \`@RequestMapping("/api/products")\` on the class to set a **base path** shared by every method.
 
-### Rollback Rules
+### Binding parameters
 
-\`\`\`java
-// DEFAULT: rollback on RuntimeException and Error, commit on checked exceptions
-@Transactional
-public void createUser(String email) throws EmailAlreadyExists {
-    // Throws EmailAlreadyExists (checked) -> COMMITS (no data changes)
-    if (repo.existsByEmail(email)) throw new EmailAlreadyExists(email);
-    repo.save(new User(email));
-}
+- **\`@PathVariable\`** -- pulls a value out of the URL template: \`/products/{id}\` -> \`@PathVariable Long id\`.
+- **\`@RequestParam\`** -- pulls a query-string (or form) value: \`?page=2\` -> \`@RequestParam int page\`. Supports \`defaultValue\` and \`required = false\`.
+- **\`@RequestBody\`** -- deserializes the request body (JSON) into a Java object via Jackson.
+- **\`@ResponseBody\`** -- serializes the return value into the response body. Implied by \`@RestController\`.
 
-// Override rollback behaviour
-@Transactional(rollbackFor = Exception.class)  // rollback on checked too
-public void riskyOperation() throws IOException { ... }
-
-@Transactional(noRollbackFor = OptimisticLockException.class)  // don't rollback on this
-public void retryableUpdate(Entity e) { ... }
-
-// Best practice: use unchecked exceptions for domain errors
-// Spring's @Transactional rollback on RuntimeException is intentional
-public class BusinessException extends RuntimeException { ... }  // auto-rollback
-
-// WRONG: catching and swallowing exception inside @Transactional method
-@Transactional
-public void dangerousMethod() {
-    try {
-        repo.save(entity);
-        externalService.call();  // throws RuntimeException
-    } catch (Exception e) {
-        log.warn("Ignoring error: " + e.getMessage());
-        // Transaction will COMMIT even though something went wrong!
-    }
-}
-\`\`\`
-
-### Transaction on Private/Protected Methods
-
-\`\`\`java
-@Service
-public class MyService {
-    @Transactional
-    private void doWork() { ... }   // IGNORED — Spring can only proxy public methods
-                                     // (CGlib proxies can't override private methods)
-
-    @Transactional
-    protected void helper() { ... } // Works with JDK proxies only if interface declared
-                                     // CGlib proxies handle protected, but still self-invoke issue
-
-    @Transactional
-    public void publicMethod() { ... }  // CORRECT — always public
-}
-\`\`\``,
+Returning a plain object (or a \`List\`) from a \`@RestController\` method gives you automatic JSON with a \`200 OK\` status. No manual serialization, no \`PrintWriter\`.`,
             code: [
-              `import java.lang.reflect.*;
-import java.lang.annotation.*;
-import java.util.*;
+              {
+                lang: `java`,
+                title: `A complete small CRUD controller`,
+                code: `package com.example.catalog.web;
 
-// ✅ RUNNABLE on a bare JDK — no Spring needed. This recreates exactly what
-// Spring's @Transactional proxy does, so you can WATCH the self-invocation bug.
-public class TxProxyDemo {
-    // a tiny "transaction manager" — just prints begin/commit/rollback
-    static int depth = 0;
-    static void begin(String m)    { System.out.println("  ".repeat(depth++) + "BEGIN tx  -> " + m + "()"); }
-    static void commit(String m)   { System.out.println("  ".repeat(--depth) + "COMMIT    <- " + m + "()"); }
-    static void rollback(String m) { System.out.println("  ".repeat(--depth) + "ROLLBACK  <- " + m + "() (unchecked exception)"); }
+import java.util.List;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-    @Retention(RetentionPolicy.RUNTIME) @interface Tx {}
+// @RestController = @Controller + @ResponseBody: every return value is
+// serialized straight to the response body (JSON via Jackson).
+@RestController
+@RequestMapping("/api/products")   // shared base path for all methods
+public class ProductController {
 
-    interface AccountService {
-        void transfer(String from, String to, int amt);
-        void audited(String from, String to, int amt);
+    private final ProductService service;
+
+    // Constructor injection -- preferred: fields can be final, and the
+    // dependency is explicit and easy to test.
+    public ProductController(ProductService service) {
+        this.service = service;
     }
 
-    // your real bean — plain business logic, zero framework code
-    static class Impl implements AccountService {
-        @Tx public void transfer(String from, String to, int amt) {
-            System.out.println("    transferring " + amt + " from " + from + " to " + to);
-            if (amt < 0) throw new IllegalArgumentException("negative amount");
-        }
-        @Tx public void audited(String from, String to, int amt) {
-            System.out.println("    audited(): doing extra work, then calling this.transfer()...");
-            this.transfer(from, to, amt);   // ⚠️ self-call through 'this' bypasses the proxy
-        }
+    // GET /api/products?limit=20  -> returns a JSON array, 200 OK
+    @GetMapping
+    public List<Product> list(@RequestParam(defaultValue = "50") int limit) {
+        return service.findAll(limit);
     }
 
-    // the proxy — opens a tx around any @Tx method, just like Spring AOP
-    static AccountService proxy(AccountService target) {
-        return (AccountService) Proxy.newProxyInstance(
-            AccountService.class.getClassLoader(), new Class<?>[]{AccountService.class},
-            (px, method, args) -> {
-                Method real = target.getClass().getMethod(method.getName(), method.getParameterTypes());
-                if (!real.isAnnotationPresent(Tx.class)) return real.invoke(target, args);
-                begin(method.getName());
-                try {
-                    Object r = real.invoke(target, args);
-                    commit(method.getName());
-                    return r;
-                } catch (InvocationTargetException e) {
-                    if (e.getCause() instanceof RuntimeException) rollback(method.getName());
-                    else commit(method.getName());     // checked exception -> Spring COMMITS by default
-                    throw e.getCause();
-                }
-            });
+    // GET /api/products/42  -> {id} bound to the method parameter
+    @GetMapping("/{id}")
+    public Product getOne(@PathVariable Long id) {
+        return service.findById(id);   // returns a plain object -> JSON
     }
 
-    public static void main(String[] args) {
-        AccountService svc = proxy(new Impl());
-
-        System.out.println("1) Normal call THROUGH the proxy:");
-        svc.transfer("alice", "bob", 100);
-
-        System.out.println("\\n2) Self-invocation — audited() calls this.transfer():");
-        svc.audited("alice", "bob", 50);
-        System.out.println("   ^ transfer() got NO BEGIN/COMMIT of its own — the classic @Transactional bug.");
-        System.out.println("     Fix: call an injected reference to the proxy (self.transfer), or split into 2 beans.");
-
-        System.out.println("\\n3) Unchecked exception rolls the tx back:");
-        try { svc.transfer("alice", "bob", -5); }
-        catch (Exception e) { System.out.println("   caught: " + e.getMessage()); }
-    }
-}`,
-              `import org.springframework.transaction.annotation.Transactional;
-import org.springframework.stereotype.*;
-import org.springframework.beans.factory.annotation.*;
-
-// Demonstrating @Transactional proxy mechanism and pitfalls
-@Service
-public class AccountService {
-    private final AccountRepository accountRepo;
-    private final AuditRepository auditRepo;
-    private final AccountService self; // self-injection workaround (code smell, for demo only)
-
-    public AccountService(AccountRepository accountRepo, AuditRepository auditRepo,
-                          @Lazy AccountService self) {
-        this.accountRepo = accountRepo;
-        this.auditRepo = auditRepo;
-        this.self = self;
+    // POST /api/products  -> body deserialized from JSON into Product
+    @PostMapping
+    public Product create(@RequestBody Product product) {
+        return service.create(product);
     }
 
-    // PUBLIC — @Transactional works here
-    @Transactional
-    public void transfer(String fromId, String toId, double amount) {
-        Account from = accountRepo.findById(fromId).orElseThrow();
-        Account to   = accountRepo.findById(toId).orElseThrow();
-
-        if (from.balance() < amount) throw new InsufficientFundsException(from.id());
-
-        accountRepo.save(from.debit(amount));
-        accountRepo.save(to.credit(amount));
-        auditRepo.save(new TransferAudit(fromId, toId, amount));
-        // If auditRepo.save() throws -> ENTIRE transaction rolls back
-        // Both account updates are reverted — atomic by definition
+    // PUT /api/products/42  -> full replace
+    @PutMapping("/{id}")
+    public Product replace(@PathVariable Long id, @RequestBody Product product) {
+        return service.replace(id, product);
     }
 
-    // BAD: calling internal @Transactional via 'this' — proxy bypassed
-    public void processPaymentBad(Payment payment) {
-        validatePayment(payment);
-        this.recordPayment(payment); // BUG: 'this' bypasses proxy, no transaction!
+    // PATCH /api/products/42  -> partial update
+    @PatchMapping("/{id}")
+    public Product patch(@PathVariable Long id, @RequestBody Product changes) {
+        return service.applyPatch(id, changes);
     }
 
-    // GOOD: delegate to self-injected proxy
-    public void processPaymentGood(Payment payment) {
-        validatePayment(payment);
-        self.recordPayment(payment); // goes through proxy — transaction active
+    // DELETE /api/products/42
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable Long id) {
+        service.delete(id);
     }
-
-    @Transactional
-    public void recordPayment(Payment payment) {
-        accountRepo.debit(payment.accountId(), payment.amount());
-        auditRepo.record(payment);
-    }
-
-    private void validatePayment(Payment payment) {
-        if (payment.amount() <= 0) throw new IllegalArgumentException("Invalid amount");
-    }
-}`,
-              `// Rollback scenarios
-@Service
-public class OrderService {
-    private final OrderRepository orderRepo;
-    private final InventoryService inventoryService;
-    private final EmailService emailService;
-
-    @Transactional // rolls back on any RuntimeException
-    public Order createOrder(OrderRequest req) {
-        Order order = orderRepo.save(new Order(req));                 // 1. persist order
-        inventoryService.reserve(req.productId(), req.quantity());    // 2. reserve stock
-        // If inventoryService.reserve throws OutOfStockException (RuntimeException)
-        // -> order.save() is ROLLED BACK automatically
-
-        // emailService.send is NOT critical — we don't want email failure to rollback order
-        // Pattern: do non-critical side-effects in a try-catch or separate async call
-        try { emailService.sendConfirmation(order); }
-        catch (EmailException e) { log.warn("Email failed: {}", e.getMessage()); }
-
-        return order;
-    }
-
-    // Checked exception — NO rollback by default
-    @Transactional
-    public void importOrders(List<OrderRequest> reqs) throws ImportException {
-        for (var req : reqs) orderRepo.save(new Order(req));
-        // If ImportException (checked) is thrown, transaction COMMITS the partial work
-        // FIX: add rollbackFor = ImportException.class
-    }
-
-    // CORRECT checked exception rollback
-    @Transactional(rollbackFor = ImportException.class)
-    public void importOrdersSafe(List<OrderRequest> reqs) throws ImportException {
-        for (var req : reqs) orderRepo.save(new Order(req));
-        // Now ImportException triggers rollback too
-    }
-
-    // Timeout: rollback after 30 seconds
-    @Transactional(timeout = 30)
-    public void longRunningOperation() { /* ... */ }
 }`
+              },
+              {
+                lang: `java`,
+                title: `@Controller vs @RestController — the difference in one class`,
+                code: `// @Controller: methods return VIEW NAMES by default...
+@Controller
+public class PageController {
+
+    @GetMapping("/home")
+    public String home() {
+        return "home";  // resolved to a template (e.g. home.html) -- NOT JSON
+    }
+
+    // ...unless you add @ResponseBody to a single method:
+    @GetMapping("/ping")
+    @ResponseBody
+    public String ping() {
+        return "pong";  // written straight to the body because of @ResponseBody
+    }
+}
+
+// @RestController: @ResponseBody is implied on EVERY method.
+@RestController
+public class ApiController {
+
+    @GetMapping("/api/ping")
+    public String ping() {
+        return "pong";  // straight to the body, no view resolution
+    }
+}`
+              },
+              {
+                lang: `bash`,
+                title: `Exercising the endpoints with curl`,
+                code: `# List (query param)
+curl "http://localhost:8080/api/products?limit=10"
+
+# Get one (path variable)
+curl http://localhost:8080/api/products/42
+
+# Create (JSON request body)
+curl -X POST http://localhost:8080/api/products \\
+  -H "Content-Type: application/json" \\
+  -d '{"name":"Keyboard","priceCents":4999}'
+
+# Delete
+curl -X DELETE http://localhost:8080/api/products/42`
+              }
             ],
             flashcards: [
               {
-                q: `How does Spring's @Transactional work under the hood?`,
-                a: `Spring creates a JDK proxy (if interface exists) or CGLib proxy around your bean. The proxy intercepts method calls: before calling the actual method, it gets a transaction from the TransactionManager (begins if needed per propagation rules). After the method returns normally, it commits. If a RuntimeException (or Error) escapes, it rolls back. The @Transactional annotation is read at proxy creation time — it is only effective on proxied method calls from OUTSIDE the bean.`
+                q: `What is the DispatcherServlet?`,
+                a: `The single front-controller servlet in Spring MVC. Every HTTP request goes through it; it consults a HandlerMapping to find the right controller method, invokes it, and uses an HttpMessageConverter to turn the return value into the response. Spring Boot auto-configures it.`
               },
               {
-                q: `What is the self-invocation problem and how do you fix it?`,
-                a: `When a method inside a @Service calls another @Transactional method on "this", it bypasses the proxy — the transaction on the inner method is ignored. Example: method A (non-transactional) calls this.methodB() where methodB is @Transactional — methodB runs WITHOUT a transaction. Fix (preferred): extract methodB into a separate @Service bean, so the call goes through a proxy. Fix (code smell): self-inject the bean via @Autowired @Lazy MyService self and call self.methodB().`
+                q: `What design pattern does Spring MVC use for request dispatch?`,
+                a: `The front-controller pattern: one central servlet (DispatcherServlet) receives all requests and routes each to the appropriate handler.`
               },
               {
-                q: `What exceptions trigger a rollback in @Transactional by default?`,
-                a: `By default, @Transactional rolls back on RuntimeException and Error (unchecked exceptions). Checked exceptions (Exception subclasses that are not RuntimeException) do NOT trigger rollback by default — the transaction commits even if a checked exception is thrown. Override with: rollbackFor = Exception.class (rollback on all exceptions) or rollbackFor = MyCheckedException.class (specific). Best practice: use RuntimeException for domain errors to get automatic rollback.`
+                q: `@RestController vs @Controller?`,
+                a: `@Controller methods return view names by default (resolved to templates). @RestController = @Controller + @ResponseBody on every method, so return values are serialized directly to the response body (JSON). Use @RestController for REST APIs.`
               },
               {
-                q: `Why does @Transactional on private methods not work?`,
-                a: `Spring AOP proxies (both JDK and CGLib) can only intercept public method calls from outside the bean. Private methods can't be overridden by proxies. Even with CGLib (which can technically intercept protected), the self-invocation issue means the proxy is never in the call path for internal calls. Rule: always put @Transactional on public methods. If you need a private method to be transactional, make it public and move it to a separate service.`
+                q: `What does @ResponseBody do?`,
+                a: `Tells Spring to write the method's return value straight to the HTTP response body (via an HttpMessageConverter such as Jackson) instead of treating it as a view name.`
               },
               {
-                q: `What happens if you swallow an exception inside a @Transactional method?`,
-                a: `The transaction commits as if nothing went wrong. If method code catches a RuntimeException and logs it without rethrowing: the transaction sees a clean return, commits all database changes made before the exception. This is a dangerous pattern — partial writes can be committed even though the operation logically failed. Either rethrow the exception (ensuring rollback), or manually call TransactionAspectSupport.currentTransactionStatus().setRollbackOnly() to mark for rollback without rethrowing.`
+                q: `Which converter turns a returned object into JSON, and who provides it?`,
+                a: `An HttpMessageConverter -- specifically MappingJackson2HttpMessageConverter, backed by the Jackson library, auto-configured by Spring Boot.`
+              },
+              {
+                q: `Difference between @PathVariable and @RequestParam?`,
+                a: `@PathVariable binds a value from the URL path template (/products/{id}). @RequestParam binds a query-string or form value (?page=2). @RequestParam supports defaultValue and required=false.`
+              },
+              {
+                q: `What does @RequestBody do?`,
+                a: `Deserializes the incoming request body (e.g. JSON) into a Java object using an HttpMessageConverter (Jackson).`
+              },
+              {
+                q: `Name the five HTTP-verb mapping shortcut annotations.`,
+                a: `@GetMapping, @PostMapping, @PutMapping, @PatchMapping, @DeleteMapping -- each a specialization of @RequestMapping with the method preset.`
+              },
+              {
+                q: `What does @RequestMapping on the class (not a method) do?`,
+                a: `Sets a base path prefix shared by every handler method in the controller, e.g. @RequestMapping("/api/products").`
+              },
+              {
+                q: `What status code does a @RestController method return by default?`,
+                a: `200 OK, with the returned object serialized as the body. You override it with @ResponseStatus or by returning a ResponseEntity.`
+              },
+              {
+                q: `Why use constructor injection in a controller?`,
+                a: `Dependencies can be final (immutable), they are explicit, the object is never in a half-constructed state, and it is trivial to pass mocks in a plain unit test without Spring.`
               }
             ]
           },
           {
-            title: `Transaction Propagation & Isolation Levels`,
-            notes: `## Transaction Propagation & Isolation Levels
+            title: `Request & Response Modeling — DTOs, ResponseEntity & Status Codes`,
+            notes: `## Model your API on purpose
 
-### Propagation Modes
+Your JPA entities describe how data is *stored*. Your API describes what clients are *allowed to see and send*. These are two different concerns, and coupling them causes real problems.
 
-Propagation defines what happens when one @Transactional method calls another.
+### Why DTOs instead of exposing entities
 
-\`\`\`java
-// REQUIRED (default): join existing tx if one exists, else create new
-@Transactional(propagation = Propagation.REQUIRED)
-public void orderSave(Order o) { repo.save(o); }
-// Called from within a tx -> joins it. Called standalone -> new tx.
+A **DTO** (Data Transfer Object) is a small, purpose-built type for a request or response. Prefer Java **\`record\`s** -- they are immutable and concise. Reasons to use them instead of returning entities directly:
 
-// REQUIRES_NEW: always suspend current tx and create a brand new one
-@Transactional(propagation = Propagation.REQUIRES_NEW)
-public void auditLog(String action) {
-    auditRepo.save(new AuditEntry(action));
-    // Even if the outer tx rolls back, this COMMITS independently
+- **Decoupling** -- you can refactor the DB schema (rename a column, split a table) without breaking the API contract, and vice versa.
+- **No lazy-loading traps** -- serializing an entity can trigger lazy associations *after* the transaction closed, throwing \`LazyInitializationException\`, or worse, silently pulling half the database into the response.
+- **Security / over-exposure** -- entities often carry fields clients must never see (\`passwordHash\`, internal flags, audit columns). A response DTO exposes exactly the fields you choose.
+- **Input safety** -- a request DTO prevents *mass assignment*: a client cannot set \`id\`, \`role\`, or \`createdAt\` just by putting them in the JSON, because those fields are not on the DTO.
+
+You map entity <-> DTO in the service or a small mapper. Keep it boring and explicit (or use MapStruct in bigger projects).
+
+### \`ResponseEntity\` -- explicit status, headers, body
+
+Returning a plain object gives \`200 OK\`. When you need to control the **status code**, add **headers**, or return **no body**, return a \`ResponseEntity<T>\`.
+
+### Correct status codes for CRUD
+
+| Operation | Success | Notes |
+| --- | --- | --- |
+| Create (POST) | **201 Created** | Add a \`Location\` header pointing at the new resource |
+| Read (GET) found | **200 OK** | body = resource |
+| Read not found | **404 Not Found** | |
+| Update (PUT/PATCH) | **200 OK** (body) or **204 No Content** | 204 when you return nothing |
+| Delete (DELETE) | **204 No Content** | empty body |
+| Bad input | **400 Bad Request** | validation / malformed JSON |
+| Conflict | **409 Conflict** | e.g. duplicate unique key, version conflict |
+
+The **\`Location\`** header on a 201 tells the client the URL of the thing it just created -- build it with \`ServletUriComponentsBuilder\` or \`URI.create\`.
+
+### Content negotiation (the short version)
+
+Clients send an **\`Accept\`** header saying what they can read (\`Accept: application/json\`); Spring picks a matching \`HttpMessageConverter\`. Requests carry a **\`Content-Type\`** saying what the body *is*.
+
+You can constrain a handler with:
+
+- **\`produces\`** -- the media type(s) this method can return (matched against \`Accept\`).
+- **\`consumes\`** -- the media type(s) this method accepts as a body (matched against \`Content-Type\`).
+
+Example: \`@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)\`. If nothing matches, Spring returns \`406 Not Acceptable\` (produces) or \`415 Unsupported Media Type\` (consumes).
+
+> [!NOTE]
+> *JPA entities are the persistence-layer objects covered next -- in **Spring Data JPA** and, in depth, in **Module 4.5 (Hibernate & JPA Internals)**. Here you only need the idea that an entity maps to a database row.*
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `Request and response DTOs as records`,
+                code: `package com.example.catalog.web.dto;
+
+import java.time.Instant;
+
+// Request DTO: exactly the fields a client is allowed to SEND.
+// Note there is no id / createdAt here -> the client cannot spoof them.
+public record CreateProductRequest(
+        String name,
+        long priceCents,
+        String sku) {
 }
 
-// MANDATORY: must be called within an existing tx, else throws exception
-@Transactional(propagation = Propagation.MANDATORY)
-public void mustBeInTransaction() {
-    // IllegalTransactionStateException if no active tx when called
+// Response DTO: exactly the fields a client is allowed to SEE.
+// The entity's internal columns (audit user, soft-delete flag, ...) stay hidden.
+public record ProductResponse(
+        Long id,
+        String name,
+        long priceCents,
+        String sku,
+        Instant createdAt) {
+}`
+              },
+              {
+                lang: `java`,
+                title: `Mapping entity <-> DTO (explicit, in one place)`,
+                code: `package com.example.catalog.web.dto;
+
+import com.example.catalog.domain.Product;
+
+// A tiny mapper keeps conversion in one place. In larger codebases a
+// library like MapStruct generates this for you.
+public final class ProductMapper {
+
+    private ProductMapper() { }
+
+    // entity -> response DTO
+    public static ProductResponse toResponse(Product p) {
+        return new ProductResponse(
+                p.getId(),
+                p.getName(),
+                p.getPriceCents(),
+                p.getSku(),
+                p.getCreatedAt());
+    }
+
+    // request DTO -> new entity (id/createdAt are set by JPA, not the client)
+    public static Product toEntity(CreateProductRequest req) {
+        Product p = new Product();
+        p.setName(req.name());
+        p.setPriceCents(req.priceCents());
+        p.setSku(req.sku());
+        return p;
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `ResponseEntity with correct status codes and a Location header`,
+                code: `package com.example.catalog.web;
+
+import java.net.URI;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
+import com.example.catalog.domain.Product;
+import com.example.catalog.web.dto.CreateProductRequest;
+import com.example.catalog.web.dto.ProductMapper;
+import com.example.catalog.web.dto.ProductResponse;
+
+@RestController
+@RequestMapping("/api/products")
+public class ProductApi {
+
+    private final ProductService service;
+
+    public ProductApi(ProductService service) {
+        this.service = service;
+    }
+
+    // 200 OK with a body when found. (404 is handled globally -- see section 4.)
+    @GetMapping("/{id}")
+    public ResponseEntity<ProductResponse> getOne(@PathVariable Long id) {
+        Product p = service.findById(id);
+        return ResponseEntity.ok(ProductMapper.toResponse(p));
+    }
+
+    // 201 Created + Location header pointing at the new resource.
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE,
+                 produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ProductResponse> create(@RequestBody CreateProductRequest req) {
+        Product saved = service.create(ProductMapper.toEntity(req));
+
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest()          // /api/products
+                .path("/{id}")                 // /api/products/{id}
+                .buildAndExpand(saved.getId())
+                .toUri();
+
+        return ResponseEntity
+                .created(location)             // status 201 + Location header
+                .body(ProductMapper.toResponse(saved));
+    }
+
+    // 204 No Content: successful delete, empty body.
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        service.delete(id);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+}`
+              },
+              {
+                lang: `json`,
+                title: `The 201 Created response (headers + body)`,
+                code: `HTTP/1.1 201 Created
+Location: http://localhost:8080/api/products/42
+Content-Type: application/json
+
+{
+  "id": 42,
+  "name": "Keyboard",
+  "priceCents": 4999,
+  "sku": "KB-001",
+  "createdAt": "2026-07-14T10:15:30Z"
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is a DTO?`,
+                a: `A Data Transfer Object -- a small, purpose-built type for a specific request or response, separate from your persistence entities. In modern Java, typically a record.`
+              },
+              {
+                q: `Give three reasons not to return JPA entities directly from controllers.`,
+                a: `(1) Decoupling: the DB schema can change without breaking the API. (2) Avoids LazyInitializationException and accidental over-fetching during serialization. (3) Security: entities carry fields (passwordHash, internal flags) that must not be exposed, and request DTOs prevent mass assignment of fields like id/role.`
+              },
+              {
+                q: `What is 'mass assignment' and how do request DTOs prevent it?`,
+                a: `When a client sets fields it shouldn't (id, role, createdAt) just by including them in the JSON. A request DTO only exposes settable fields, so those attributes have nowhere to bind.`
+              },
+              {
+                q: `Why prefer records for DTOs?`,
+                a: `They are immutable, concise (no boilerplate getters/constructors), give value-based equals/hashCode, and clearly signal 'plain data carrier'.`
+              },
+              {
+                q: `When do you return ResponseEntity instead of a plain object?`,
+                a: `When you need explicit control over the status code, want to set response headers (e.g. Location), or need to return no body (204).`
+              },
+              {
+                q: `What status code and header should a successful POST/create return?`,
+                a: `201 Created, plus a Location header holding the URL of the newly created resource.`
+              },
+              {
+                q: `200 vs 204 for an update or delete?`,
+                a: `200 OK when you return a body; 204 No Content when the response body is empty (common for DELETE and body-less updates).`
+              },
+              {
+                q: `Which status code signals a duplicate/unique-key or version conflict?`,
+                a: `409 Conflict.`
+              },
+              {
+                q: `Which status codes cover bad input vs a missing resource?`,
+                a: `400 Bad Request for malformed or invalid input; 404 Not Found for a resource that does not exist.`
+              },
+              {
+                q: `produces vs consumes on a mapping?`,
+                a: `produces declares the media type(s) the method can return (matched against the client's Accept header). consumes declares the media type(s) it accepts as a request body (matched against Content-Type).`
+              },
+              {
+                q: `What status codes result from failed content negotiation?`,
+                a: `406 Not Acceptable when no producible type matches Accept; 415 Unsupported Media Type when the request Content-Type is not among consumes.`
+              },
+              {
+                q: `How do you build the Location URI for a newly created resource?`,
+                a: `With ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(id).toUri(), then ResponseEntity.created(uri).`
+              }
+            ]
+          },
+          {
+            title: `Validation — @Valid, Bean Validation & Binding Errors`,
+            notes: `## Validate at the edge
+
+Never trust incoming data. **Jakarta Bean Validation** lets you declare constraints as annotations on your DTO fields, and Spring enforces them automatically when you mark the parameter \`@Valid\`. Spring Boot pulls in an implementation (Hibernate Validator) via the \`spring-boot-starter-validation\` starter.
+
+> Namespace note (Spring Boot 3.x / Jakarta EE): the annotations live in **\`jakarta.validation.constraints.*\`**, not \`javax.*\`.
+
+### The common constraints
+
+| Annotation | Meaning |
+| --- | --- |
+| \`@NotNull\` | value must not be null |
+| \`@NotBlank\` | string must not be null and must contain non-whitespace |
+| \`@NotEmpty\` | collection/string not null and size >= 1 |
+| \`@Size(min=, max=)\` | string length / collection size in range |
+| \`@Email\` | must look like an email address |
+| \`@Min\` / \`@Max\` | numeric bounds |
+| \`@Positive\` / \`@PositiveOrZero\` | sign constraints |
+| \`@Pattern(regexp=)\` | must match a regex |
+
+### \`@Valid\` on \`@RequestBody\`
+
+Put \`@Valid\` before the \`@RequestBody\` parameter. Before your method body runs, Spring validates the deserialized object. If any constraint fails, it throws **\`MethodArgumentNotValidException\`** -- and by default that becomes a \`400 Bad Request\`. (Section 4 shows how to turn it into a clean field-by-field error response.)
+
+### Validating path and query params
+
+Constraints directly on method parameters (not inside a DTO) are only enforced if the **class** is annotated **\`@Validated\`** (from \`org.springframework.validation.annotation\`). Then \`@Min\`, \`@Size\`, etc. on \`@PathVariable\` / \`@RequestParam\` are checked, and a failure throws \`ConstraintViolationException\` (a \`HandlerMethodValidationException\` in newer Spring 6.1+ handling).
+
+### Nested and cascaded validation
+
+Constraints do **not** automatically recurse into nested objects. To validate a field that is itself a DTO (or a collection of DTOs), annotate that field with **\`@Valid\`**. That cascades validation into it.
+
+### Custom constraints
+
+When the built-ins do not fit (e.g. "SKU must be uppercase letters + digits with a dash"), write your own: a constraint **annotation** plus a **\`ConstraintValidator\`** implementation. You then use it like any other constraint.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Constraints on a request DTO (with a nested, cascaded object)`,
+                code: `package com.example.catalog.web.dto;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
+public record CreateOrderRequest(
+
+        @NotBlank(message = "customer name is required")
+        @Size(max = 100)
+        String customerName,
+
+        @NotBlank
+        @Email(message = "must be a valid email address")
+        String email,
+
+        @NotNull
+        @Min(value = 1, message = "quantity must be at least 1")
+        Integer quantity,
+
+        @NotBlank
+        @Pattern(regexp = "[A-Z0-9]+-[A-Z0-9]+", message = "bad SKU format")
+        String sku,
+
+        // @Valid CASCADES validation into the nested object; without it,
+        // ShippingAddress's own constraints would be ignored.
+        @NotNull
+        @Valid
+        ShippingAddress shippingAddress) {
+}`
+              },
+              {
+                lang: `java`,
+                title: `Nested DTO with its own constraints`,
+                code: `package com.example.catalog.web.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+
+public record ShippingAddress(
+
+        @NotBlank String street,
+
+        @NotBlank String city,
+
+        @NotBlank
+        @Pattern(regexp = "\\\\d{5}", message = "zip must be 5 digits")
+        String zip) {
+}`
+              },
+              {
+                lang: `java`,
+                title: `@Valid on the body, plus @Validated for path/query constraints`,
+                code: `package com.example.catalog.web;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.example.catalog.web.dto.CreateOrderRequest;
+
+// @Validated on the CLASS is required for constraints placed directly on
+// method parameters (@PathVariable / @RequestParam) to be enforced.
+@RestController
+@RequestMapping("/api/orders")
+@Validated
+public class OrderController {
+
+    private final OrderService service;
+
+    public OrderController(OrderService service) {
+        this.service = service;
+    }
+
+    // @Valid triggers Bean Validation on the deserialized body. A failure
+    // throws MethodArgumentNotValidException -> 400 Bad Request.
+    @PostMapping
+    public ResponseEntity<Void> create(@Valid @RequestBody CreateOrderRequest req) {
+        service.create(req);
+        return ResponseEntity.status(201).build();
+    }
+
+    // Constraints on params -- enforced because the class is @Validated.
+    @GetMapping("/{id}")
+    public OrderView getOne(@PathVariable @Positive Long id) {
+        return service.view(id);
+    }
+
+    @GetMapping
+    public java.util.List<OrderView> list(
+            @RequestParam(defaultValue = "1") @Min(1) int page) {
+        return service.page(page);
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Custom constraint: annotation + ConstraintValidator`,
+                code: `// 1) The constraint annotation.
+package com.example.catalog.web.validation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import jakarta.validation.Constraint;
+import jakarta.validation.Payload;
+
+@Target({ElementType.FIELD, ElementType.PARAMETER})
+@Retention(RetentionPolicy.RUNTIME)
+@Constraint(validatedBy = UppercaseSkuValidator.class)
+public @interface ValidSku {
+    String message() default "SKU must be uppercase letters/digits with a dash";
+    Class<?>[] groups() default {};
+    Class<? extends Payload>[] payload() default {};
 }
 
-// NEVER: must NOT be called within an existing tx, else throws exception
-@Transactional(propagation = Propagation.NEVER)
-public void neverRunInTransaction() { /* read-only utility */ }
+// 2) The validator that backs it.
+package com.example.catalog.web.validation;
 
-// NOT_SUPPORTED: suspend current tx, run without tx
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-public void runOutsideTransaction() { /* ... */ }
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
 
-// SUPPORTS: run in tx if one exists, without tx if none
-@Transactional(propagation = Propagation.SUPPORTS)
-public List<User> listUsers() { return repo.findAll(); }
+public class UppercaseSkuValidator implements ConstraintValidator<ValidSku, String> {
 
-// NESTED: savepoint in outer tx — partial rollback possible
-@Transactional(propagation = Propagation.NESTED)
-public void nestedOperation() { /* rollback to savepoint on failure */ }
-\`\`\`
-
-### REQUIRES_NEW Use Case — Audit Logging
-
-\`\`\`java
-@Service
-public class PaymentService {
-    private final AuditService audit;
-
-    @Transactional
-    public void processPayment(Payment payment) {
-        audit.log("PAYMENT_STARTED", payment.id());  // REQUIRES_NEW tx commits immediately
-        try {
-            performPayment(payment);                  // may throw
-        } catch (PaymentException e) {
-            audit.log("PAYMENT_FAILED", payment.id()); // ALSO commits even though outer tx will rollback
-            throw e;
+    @Override
+    public boolean isValid(String value, ConstraintValidatorContext ctx) {
+        // Let @NotBlank handle null/blank; treat null as valid here.
+        if (value == null) {
+            return true;
         }
+        return value.matches("[A-Z0-9]+-[A-Z0-9]+");
     }
 }
 
-@Service
-public class AuditService {
-    private final AuditRepository auditRepo;
+// 3) Usage -- exactly like any built-in constraint:
+//    public record CreateProductRequest(@ValidSku String sku) { }`
+              }
+            ],
+            flashcards: [
+              {
+                q: `In Spring Boot 3.x, which package do Bean Validation constraints live in?`,
+                a: `jakarta.validation.constraints.* (Jakarta EE), NOT javax.validation.*. Add the spring-boot-starter-validation starter (Hibernate Validator).`
+              },
+              {
+                q: `What does @Valid on a @RequestBody parameter do?`,
+                a: `Triggers Bean Validation on the deserialized object before the method body runs. If a constraint fails, Spring throws MethodArgumentNotValidException, which maps to 400 Bad Request by default.`
+              },
+              {
+                q: `@NotNull vs @NotEmpty vs @NotBlank?`,
+                a: `@NotNull: not null (any type). @NotEmpty: not null and size/length >= 1 (strings/collections). @NotBlank: string not null and contains at least one non-whitespace character.`
+              },
+              {
+                q: `Which exception is thrown when @Valid on a request body fails?`,
+                a: `MethodArgumentNotValidException. It carries a BindingResult with all field errors.`
+              },
+              {
+                q: `How do you validate constraints placed directly on @PathVariable / @RequestParam?`,
+                a: `Annotate the controller class with @Validated (org.springframework.validation.annotation). Then param-level constraints like @Min/@Positive are enforced; a failure throws ConstraintViolationException / HandlerMethodValidationException.`
+              },
+              {
+                q: `Do constraints automatically apply to nested objects?`,
+                a: `No. Validation does not recurse by default. You must put @Valid on the nested field (or collection) to cascade validation into it.`
+              },
+              {
+                q: `What two pieces make a custom constraint?`,
+                a: `(1) A constraint annotation meta-annotated with @Constraint(validatedBy=...), declaring message()/groups()/payload(). (2) A class implementing ConstraintValidator<A, T> with the isValid logic.`
+              },
+              {
+                q: `In a ConstraintValidator, how should you treat a null value?`,
+                a: `Usually return true for null and let a separate @NotNull/@NotBlank handle presence -- so constraints compose cleanly instead of duplicating null checks.`
+              },
+              {
+                q: `What does @Size(min=, max=) apply to?`,
+                a: `String length and collection/array/map size -- checks that it falls within the given bounds.`
+              },
+              {
+                q: `Which annotation constrains a numeric field to a lower/upper bound?`,
+                a: `@Min and @Max (also @Positive, @PositiveOrZero, @Negative for sign).`
+              },
+              {
+                q: `Where should validation live -- edge or deep in the code?`,
+                a: `Validate at the edge: on request DTOs with @Valid at the controller boundary, so bad data is rejected with a 400 before it reaches business logic or the database.`
+              }
+            ]
+          },
+          {
+            title: `Global Error Handling — @ExceptionHandler, @ControllerAdvice & ProblemDetail (RFC 7807)`,
+            notes: `## Turn exceptions into clean, consistent responses
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void log(String event, String entityId) {
-        auditRepo.save(new AuditEntry(event, entityId, Instant.now()));
-        // Commits in its own transaction — unaffected by outer tx rollback
+By default an unhandled exception becomes a generic \`500\` (or Spring's default error JSON). A good API returns a **consistent, machine-readable** error body for every failure. There are three layers of control.
+
+### 1. Local \`@ExceptionHandler\`
+
+A method inside a controller annotated \`@ExceptionHandler(SomeException.class)\` handles that exception for *that controller only*. Fine for one-off cases, but it does not scale across many controllers.
+
+### 2. Centralized \`@RestControllerAdvice\`
+
+\`@RestControllerAdvice\` = \`@ControllerAdvice\` + \`@ResponseBody\`. It is a single class whose \`@ExceptionHandler\` methods apply to **every** controller in the app. This is where you put your global exception-to-response translation, so error handling lives in one place and stays uniform.
+
+### 3. \`ProblemDetail\` -- RFC 7807
+
+Spring Framework 6 ships **\`ProblemDetail\`**, the standard representation of an error defined by **RFC 7807** (updated as RFC 9457). It serializes as media type **\`application/problem+json\`** with a well-known shape:
+
+\`\`\`json
+{
+  "type": "https://example.com/problems/not-found",
+  "title": "Resource not found",
+  "status": 404,
+  "detail": "Product 42 does not exist",
+  "instance": "/api/products/42"
+}
+\`\`\`
+
+You can also attach custom properties (e.g. a list of field errors) via \`setProperty\`. Returning \`ProblemDetail\` (or \`ResponseEntity<ProblemDetail>\`) gives clients a predictable, spec-compliant error format.
+
+### Handling validation failures nicely
+
+Catch **\`MethodArgumentNotValidException\`** and walk its \`BindingResult\` to produce a field-by-field error map, attached to a \`ProblemDetail\`. That turns a raw 400 into something a frontend can render next to each input.
+
+### Mapping domain exceptions
+
+Throw meaningful domain exceptions (\`NotFoundException\`, \`DuplicateSkuException\`) from your service layer, and let the advice map each to the right status (404, 409, ...). The service stays free of HTTP concerns; the advice owns the translation.
+
+### Extending Spring's base handler (optional)
+
+For Spring MVC's own exceptions (malformed JSON, missing params, 404 on no handler), you can extend **\`ResponseEntityExceptionHandler\`**, which already produces \`ProblemDetail\` responses in Spring 6 and gives you override hooks.
+
+### Testing controllers
+
+\`@WebMvcTest\` boots just the web layer (one controller, the advice, converters) -- not the whole app or the database -- and injects a **\`MockMvc\`** to fire simulated requests and assert on status/body. Fast and focused.`,
+            code: [
+              {
+                lang: `java`,
+                title: `Domain exceptions (no HTTP concerns)`,
+                code: `package com.example.catalog.domain;
+
+// Thrown by the service layer when a lookup fails. It knows nothing
+// about HTTP -- the @RestControllerAdvice maps it to 404.
+public class NotFoundException extends RuntimeException {
+    public NotFoundException(String message) {
+        super(message);
     }
 }
-// Result: audit entries persist even when payment fails — exactly what you want
+
+// Thrown when a unique constraint (e.g. SKU) would be violated -> 409.
+package com.example.catalog.domain;
+
+public class DuplicateSkuException extends RuntimeException {
+    public DuplicateSkuException(String sku) {
+        super("SKU already exists: " + sku);
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `A clean centralized ApiExceptionHandler with ProblemDetail`,
+                code: `package com.example.catalog.web;
+
+import java.net.URI;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import com.example.catalog.domain.DuplicateSkuException;
+import com.example.catalog.domain.NotFoundException;
+
+// One class, applies to EVERY controller. @RestControllerAdvice =
+// @ControllerAdvice + @ResponseBody.
+@RestControllerAdvice
+public class ApiExceptionHandler {
+
+    // Domain 404. ProblemDetail serializes as application/problem+json.
+    @ExceptionHandler(NotFoundException.class)
+    public ProblemDetail handleNotFound(NotFoundException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(
+                HttpStatus.NOT_FOUND, ex.getMessage());
+        pd.setTitle("Resource not found");
+        pd.setType(URI.create("https://example.com/problems/not-found"));
+        return pd;
+    }
+
+    // Domain 409.
+    @ExceptionHandler(DuplicateSkuException.class)
+    public ProblemDetail handleDuplicate(DuplicateSkuException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT, ex.getMessage());
+        pd.setTitle("Conflict");
+        return pd;
+    }
+
+    // Validation 400: collect every field error into a map and attach it
+    // as a custom property on the ProblemDetail.
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
+            errors.put(fe.getField(), fe.getDefaultMessage());
+        }
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST, "One or more fields are invalid");
+        pd.setTitle("Validation failed");
+        pd.setProperty("errors", errors);   // extra member in the JSON
+        return pd;
+    }
+}`
+              },
+              {
+                lang: `json`,
+                title: `The validation error response (application/problem+json)`,
+                code: `HTTP/1.1 400 Bad Request
+Content-Type: application/problem+json
+
+{
+  "type": "about:blank",
+  "title": "Validation failed",
+  "status": 400,
+  "detail": "One or more fields are invalid",
+  "errors": {
+    "email": "must be a valid email address",
+    "quantity": "quantity must be at least 1"
+  }
+}`
+              },
+              {
+                lang: `java`,
+                title: `A single local @ExceptionHandler (scoped to one controller)`,
+                code: `// Inside a controller -- handles ONLY exceptions from this controller.
+// Prefer @RestControllerAdvice for anything shared.
+@ExceptionHandler(IllegalArgumentException.class)
+public ProblemDetail handleBadArg(IllegalArgumentException ex) {
+    return ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, ex.getMessage());
+}`
+              },
+              {
+                lang: `java`,
+                title: `@WebMvcTest + MockMvc — testing just the web layer`,
+                code: `package com.example.catalog.web;
+
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import com.example.catalog.domain.NotFoundException;
+
+// Boots only ProductApi + the advice + converters (no DB, no full context).
+@WebMvcTest(ProductApi.class)
+class ProductApiTest {
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @MockitoBean   // Spring Boot 3.4+ replacement for @MockBean
+    ProductService service;
+
+    @Test
+    void missingProductReturns404ProblemDetail() throws Exception {
+        when(service.findById(99L))
+                .thenThrow(new NotFoundException("Product 99 does not exist"));
+
+        mockMvc.perform(get("/api/products/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.detail").value("Product 99 does not exist"));
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is the scope of a @ExceptionHandler method declared inside a controller?`,
+                a: `It only handles exceptions thrown by that single controller. For app-wide handling use @RestControllerAdvice.`
+              },
+              {
+                q: `What is @RestControllerAdvice?`,
+                a: `@ControllerAdvice + @ResponseBody: a single class whose @ExceptionHandler methods apply to every controller, centralizing exception-to-response translation and serializing the result as the response body.`
+              },
+              {
+                q: `What is ProblemDetail?`,
+                a: `Spring Framework 6's implementation of RFC 7807 (RFC 9457) -- a standardized error body (type, title, status, detail, instance, plus custom properties) served as media type application/problem+json.`
+              },
+              {
+                q: `What media type does an RFC 7807 error use?`,
+                a: `application/problem+json.`
+              },
+              {
+                q: `Which fields make up a standard ProblemDetail body?`,
+                a: `type (URI), title, status, detail, and instance (URI). You can attach extra members via setProperty(name, value).`
+              },
+              {
+                q: `How do you turn a MethodArgumentNotValidException into a field-by-field error response?`,
+                a: `In an @ExceptionHandler, iterate ex.getBindingResult().getFieldErrors(), build a field->message map, and attach it to a ProblemDetail via setProperty("errors", map) with status 400.`
+              },
+              {
+                q: `Why throw domain exceptions (NotFoundException) instead of setting status in the service?`,
+                a: `Keeps the service free of HTTP concerns. The @RestControllerAdvice owns the mapping (NotFoundException->404, DuplicateSkuException->409), so translation is centralized and the domain stays transport-agnostic.`
+              },
+              {
+                q: `What does extending ResponseEntityExceptionHandler give you?`,
+                a: `Built-in handling (as ProblemDetail in Spring 6) for Spring MVC's own exceptions -- malformed JSON, missing params, unsupported media types, no-handler 404 -- with override hooks to customize each.`
+              },
+              {
+                q: `What does @WebMvcTest do?`,
+                a: `Boots only the web slice -- the specified controller(s), advice, and message converters -- without the full application context or database. Fast, focused controller tests.`
+              },
+              {
+                q: `What is MockMvc used for?`,
+                a: `To perform simulated HTTP requests against controllers in a test and assert on the response status, headers, and JSON body -- without a running server.`
+              },
+              {
+                q: `In Spring Boot 3.4+, what replaces @MockBean in slice tests?`,
+                a: `@MockitoBean (org.springframework.test.context.bean.override.mockito). @MockBean is deprecated.`
+              }
+            ]
+          },
+          {
+            title: `Securing the API — Spring Security Orientation`,
+            notes: `## Securing the API — an orientation
+
+Before shipping, an API needs to know **who is calling** and **what they are allowed to do**. That is what Spring Security provides. This section is a plain primer; the deep dive comes later (pointer at the end).
+
+### Two words that sound alike but are not
+
+- **Authentication (authn)** -- *who are you?* Verifying identity: a username/password, an API key, a JWT, an OAuth2 token.
+- **Authorization (authz)** -- *what may you do?* Deciding, once identity is known, whether this caller may perform this action (roles, permissions, ownership).
+
+Authenticate first, then authorize.
+
+### The Spring Security filter chain
+
+Spring Security is a chain of **servlet filters** that sits **in front of the \`DispatcherServlet\`**. Every request passes through this chain *before* it reaches any controller:
+
+\`\`\`mermaid
+flowchart LR
+    A[Request] --> B[Security Filter Chain]
+    B -->|authenticate + authorize| C{allowed?}
+    C -->|yes| D[DispatcherServlet -> Controller]
+    C -->|no| E[401 Unauthorized / 403 Forbidden]
 \`\`\`
 
-### Isolation Levels
+Filters in the chain extract credentials, establish the current identity (an \`Authentication\` in the \`SecurityContext\`), and enforce access rules. If authentication is missing/invalid you get **401 Unauthorized**; if the identity lacks permission you get **403 Forbidden**.
 
-Isolation controls what data a transaction can see from other concurrent transactions.
+### A minimal, stateless config
 
-| Level | Dirty Read | Non-Repeatable Read | Phantom Read |
-|---|---|---|---|
-| READ_UNCOMMITTED | ✓ possible | ✓ possible | ✓ possible |
-| READ_COMMITTED (default in most DBs) | ✗ prevented | ✓ possible | ✓ possible |
-| REPEATABLE_READ | ✗ prevented | ✗ prevented | ✓ possible |
-| SERIALIZABLE | ✗ prevented | ✗ prevented | ✗ prevented |
+For a REST API you typically want a **stateless** setup (no server-side session; each request carries its own token), some public routes, and everything else authenticated. You express this with a single **\`SecurityFilterChain\`** bean.
 
-\`\`\`java
-// Dirty read: reading uncommitted data from another tx
-@Transactional(isolation = Isolation.READ_UNCOMMITTED)
-// Can see changes from other transactions that haven't committed yet
-// DANGEROUS — never use this
+### Where JWT and OAuth2 fit (high level)
 
-// Non-repeatable read: same row returns different values in two reads within same tx
-@Transactional(isolation = Isolation.READ_COMMITTED)
-public double getBalanceTwice(String accountId) {
-    double first  = repo.findBalance(accountId);  // reads 100
-    // Another tx commits a withdrawal here
-    double second = repo.findBalance(accountId);  // reads 70 — non-repeatable read
-    return second; // inconsistency within same tx
-}
+- **JWT (JSON Web Token)** -- a signed token the client sends on each request (usually \`Authorization: Bearer <token>\`). The server validates the signature and reads the claims; no session needed. Great fit for stateless APIs.
+- **OAuth2 / OIDC** -- a delegation protocol: an external **authorization server** (Keycloak, Auth0, Google, ...) issues tokens; your API is a **resource server** that just validates them. You avoid handling passwords yourself.
 
-// Phantom read: a range query returns different rows in two reads
-@Transactional(isolation = Isolation.REPEATABLE_READ)
-public List<Order> getNewOrders() {
-    List<Order> first  = repo.findByStatus("NEW");  // returns 5 orders
-    // Another tx inserts a new order here
-    List<Order> second = repo.findByStatus("NEW");  // returns 6 orders — phantom read
-    return second;
-}
+At this level, the mental model is: *something issues a token, your API validates it and turns it into an authenticated identity with authorities.*
 
-// Serializable: no anomalies, but worst performance
-@Transactional(isolation = Isolation.SERIALIZABLE)
-public void criticalFinancialOperation() { ... }
-\`\`\`
+### Method security
 
-### @Transactional(readOnly = true)
-
-\`\`\`java
-// Hint to Spring and the DB driver that this tx won't write
-@Transactional(readOnly = true)
-public List<Product> getAllProducts() {
-    return productRepo.findAll();
-}
-
-// Benefits:
-// 1. JPA/Hibernate disables dirty checking (no need to snapshot entities)
-// 2. Some databases/drivers optimise for read-only (e.g. MySQL routes to replica)
-// 3. Clearer code intent
-// 4. Throws exception if you accidentally try to write
-
-// Tip: add @Transactional(readOnly = true) at CLASS level, override specific methods
-@Service
-@Transactional(readOnly = true)   // default: all reads
-public class ProductService {
-    public List<Product> list() { return repo.findAll(); }
-    public Product findById(Long id) { return repo.findById(id).orElseThrow(); }
-
-    @Transactional  // overrides class-level readOnly=false for writes
-    public Product create(ProductRequest req) { return repo.save(new Product(req)); }
-}
-\`\`\`
+Beyond URL rules, you can guard individual methods with **\`@PreAuthorize\`** (enable it with \`@EnableMethodSecurity\`). It evaluates a SpEL expression before the method runs -- ideal for role or ownership checks close to the business logic.
 
 ---
 
-**Further reading**
-
-- [Transaction Propagation and Isolation — Baeldung](https://www.baeldung.com/spring-transactional-propagation-isolation)
-`,
+**Where to go next:** this was orientation only. The full deep dive -- filter chain internals, JWT issue/validate/refresh/revoke, OAuth2/OIDC, RBAC/ABAC, multi-tenant isolation -- is in **Module 11.3 (Spring Security, OAuth2 & Authn/Authz)**.`,
             code: [
-              `import org.springframework.transaction.annotation.*;
-import org.springframework.stereotype.*;
+              {
+                lang: `java`,
+                title: `A minimal stateless SecurityFilterChain`,
+                code: `package com.example.catalog.security;
 
-// Propagation in action: outer rollback doesn't affect REQUIRES_NEW
-@Service
-public class TransferService {
-    private final AccountRepository accounts;
-    private final AuditService audit;
-    private final NotificationService notifications;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
 
-    @Transactional  // outer transaction
-    public TransferResult transfer(String from, String to, double amount) {
-        audit.recordEvent("TRANSFER_INITIATED", from, amount); // REQUIRES_NEW — always commits
+@Configuration
+public class SecurityConfig {
 
-        try {
-            Account sender   = accounts.findById(from).orElseThrow();
-            Account receiver = accounts.findById(to).orElseThrow();
+    // One bean defines the whole filter chain. It runs in front of the
+    // DispatcherServlet for every request.
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            // REST APIs are stateless: no HTTP session, each request self-carries
+            // its credentials (e.g. a bearer token), so CSRF protection is not needed.
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth
+                // public routes anyone can hit
+                .requestMatchers("/api/health", "/api/products/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/orders").authenticated()
+                // everything else requires an authenticated caller
+                .anyRequest().authenticated()
+            )
+            // Validate incoming JWTs as a resource server (issuer configured
+            // in properties). This is the high-level OAuth2 fit.
+            .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}));
 
-            if (sender.balance() < amount)
-                throw new InsufficientFundsException("Balance: " + sender.balance());
-
-            accounts.save(sender.debit(amount));
-            accounts.save(receiver.credit(amount));
-
-            audit.recordEvent("TRANSFER_COMPLETE", from, amount); // REQUIRES_NEW
-            notifications.sendAsync(from, "Transfer of " + amount + " successful");
-            return TransferResult.success();
-
-        } catch (InsufficientFundsException e) {
-            audit.recordEvent("TRANSFER_FAILED", from, amount); // REQUIRES_NEW — commits despite outer rollback
-            throw e; // outer tx rolls back account changes, but audit records survive
-        }
-    }
-}
-
-@Service
-class AuditService {
-    private final AuditRepository auditRepo;
-    AuditService(AuditRepository r) { this.auditRepo = r; }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void recordEvent(String event, String accountId, double amount) {
-        auditRepo.save(new AuditEntry(event, accountId, amount, java.time.Instant.now()));
-    }
-}`,
-              `import org.springframework.transaction.annotation.*;
-import org.springframework.stereotype.*;
-import java.util.*;
-
-// readOnly optimisation + isolation demonstration
-@Service
-@Transactional(readOnly = true)  // default for all methods
-public class ReportService {
-    private final OrderRepository orderRepo;
-    private final ProductRepository productRepo;
-
-    ReportService(OrderRepository o, ProductRepository p) {
-        this.orderRepo = o; this.productRepo = p;
-    }
-
-    // Inherits readOnly=true — no dirty checking, faster
-    public List<Order> getRecentOrders() { return orderRepo.findTop100ByOrderByCreatedAtDesc(); }
-
-    // Higher isolation for financial reports — prevent phantom reads during report generation
-    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public FinancialReport generateMonthlyReport(int year, int month) {
-        // Both queries see a consistent snapshot — no phantom rows between the two calls
-        List<Order> orders = orderRepo.findByYearAndMonth(year, month);
-        Map<String,Double> byProduct = productRepo.sumRevenueByProduct(year, month);
-        return new FinancialReport(orders, byProduct);
-    }
-
-    // Serializable for audit — must see exactly what was there at start of tx
-    @Transactional(readOnly = true, isolation = Isolation.SERIALIZABLE)
-    public AuditSnapshot auditSnapshot() {
-        return new AuditSnapshot(orderRepo.count(), productRepo.count());
-    }
-
-    // Write operation overrides class-level readOnly
-    @Transactional  // readOnly defaults back to false
-    public void archiveOldOrders() {
-        List<Order> old = orderRepo.findOlderThan(java.time.Instant.now().minusSeconds(60*60*24*365));
-        old.forEach(o -> o.setStatus("ARCHIVED"));
-        orderRepo.saveAll(old);
+        return http.build();
     }
 }`
-            ],
-            flashcards: [
-              {
-                q: `What is transaction propagation and what does REQUIRED vs REQUIRES_NEW mean?`,
-                a: `Propagation defines how a @Transactional method behaves when called within an existing transaction. REQUIRED (default): if a transaction already exists, join it; if not, create one. The inner method shares the outer transaction — if the inner throws, the outer also rolls back. REQUIRES_NEW: always suspend the current transaction and start a fresh one. The inner transaction commits or rolls back independently. Use REQUIRES_NEW for audit logging, where you want the audit record to persist even if the outer operation fails.`
               },
               {
-                q: `What are dirty reads, non-repeatable reads, and phantom reads?`,
-                a: `Dirty read: tx A reads data written by tx B before B commits — if B rolls back, A read data that never existed. Non-repeatable read: tx A reads a row twice; between the reads tx B commits an UPDATE — A sees different values for the same row. Phantom read: tx A executes a range query twice; between the reads tx B commits an INSERT — A sees a new "phantom" row. Default isolation (READ_COMMITTED) prevents dirty reads. REPEATABLE_READ also prevents non-repeatable reads. SERIALIZABLE prevents all three.`
+                lang: `java`,
+                title: `Method security with @PreAuthorize`,
+                code: `package com.example.catalog.web;
+
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/products")
+public class AdminProductController {
+
+    private final ProductService service;
+
+    public AdminProductController(ProductService service) {
+        this.service = service;
+    }
+
+    // The SpEL expression is checked BEFORE the method runs. A caller
+    // without ROLE_ADMIN gets 403 Forbidden and the body never executes.
+    @PreAuthorize("hasRole('ADMIN')")
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable Long id) {
+        service.delete(id);
+    }
+}`
               },
               {
-                q: `What does @Transactional(readOnly = true) do and why use it?`,
-                a: `Marks a transaction as read-only. Hibernate/JPA disables dirty checking (no entity snapshots needed — significant performance gain when loading many entities). Some DB drivers/routers use this hint to route queries to a read replica. The method will throw if it tries to flush writes. Best practice: annotate the @Service class with @Transactional(readOnly = true) as the default, then override individual write methods with @Transactional (which defaults readOnly to false).`
-              },
-              {
-                q: `When would you use Propagation.MANDATORY vs NEVER?`,
-                a: `MANDATORY: the method REQUIRES an active transaction — throws IllegalTransactionStateException if called outside one. Use when the method is a helper that must be part of the caller's unit of work (e.g. an internal repository helper that should never run standalone). NEVER: the method must NOT be called inside a transaction — throws if one is active. Use for operations that explicitly must not participate in a transaction (e.g. a utility that starts its own JDBC connection and would conflict with JPA transaction management).`
-              },
-              {
-                q: `What is NESTED propagation and how does it differ from REQUIRES_NEW?`,
-                a: `NESTED creates a savepoint within the outer transaction (using JDBC savepoints). If the nested method fails, it rolls back to the savepoint — the outer transaction continues with the changes made before the savepoint. If the outer tx fails, the entire tx including the nested work rolls back. REQUIRES_NEW is completely independent — it commits or rolls back separately. NESTED is supported by Spring with JdbcTransactionManager or when the underlying DB supports savepoints. Use NESTED when you want partial rollback within one overall transaction.`
+                lang: `java`,
+                title: `Enabling method security`,
+                code: `package com.example.catalog.security;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+
+// Required for @PreAuthorize / @PostAuthorize to be honored.
+@Configuration
+@EnableMethodSecurity
+public class MethodSecurityConfig {
+}`
               }
-            ]
-          },
-          {
-            title: `AOP Concepts & Spring AOP`,
-            notes: `## AOP Concepts & Spring AOP
-
-Aspect-Oriented Programming (AOP) separates cross-cutting concerns (logging, security, transactions, caching) from business logic.
-
-### Core Vocabulary
-
-\`\`\`
-Aspect      — the module encapsulating a cross-cutting concern (e.g. LoggingAspect)
-Join Point  — a point in execution where advice CAN be applied (Spring: always a method call)
-Pointcut    — an expression that matches join points (WHERE advice runs)
-Advice      — the code that runs at a matched join point (WHAT to do)
-Weaving     — linking aspects to the target (Spring: done at runtime via proxy)
-\`\`\`
-
-### Advice Types
-
-\`\`\`java
-@Aspect
-@Component
-public class LoggingAspect {
-
-    // @Before — runs before the method
-    @Before("execution(* com.example.service.*.*(..))")
-    public void logBefore(JoinPoint jp) {
-        log.info("Calling {}", jp.getSignature().getName());
-    }
-
-    // @AfterReturning — runs after method returns normally
-    @AfterReturning(pointcut = "execution(* com.example.service.*.*(..))", returning = "result")
-    public void logReturn(JoinPoint jp, Object result) {
-        log.info("{} returned: {}", jp.getSignature().getName(), result);
-    }
-
-    // @AfterThrowing — runs when method throws
-    @AfterThrowing(pointcut = "execution(* com.example.service.*.*(..))", throwing = "ex")
-    public void logException(JoinPoint jp, Exception ex) {
-        log.error("{} threw: {}", jp.getSignature().getName(), ex.getMessage());
-    }
-
-    // @After — runs after method, regardless of outcome (like finally)
-    @After("execution(* com.example.service.*.*(..))")
-    public void logFinally(JoinPoint jp) {
-        log.info("Method {} completed", jp.getSignature().getName());
-    }
-
-    // @Around — most powerful: surrounds the method call entirely
-    @Around("execution(* com.example.service.*.*(..))")
-    public Object logAround(ProceedingJoinPoint pjp) throws Throwable {
-        long start = System.currentTimeMillis();
-        try {
-            Object result = pjp.proceed();  // MUST call proceed() to invoke the actual method
-            log.info("{} took {}ms", pjp.getSignature().getName(), System.currentTimeMillis() - start);
-            return result;
-        } catch (Exception e) {
-            log.error("{} failed: {}", pjp.getSignature().getName(), e.getMessage());
-            throw e;  // MUST rethrow unless you want to swallow the exception
-        }
-    }
-}
-\`\`\`
-
-### Pointcut Expressions
-
-\`\`\`java
-// execution: matches method execution
-execution(modifiers? return-type declaring-type? method-name(params) throws?)
-
-execution(* com.example.service.*.*(..))   // any method in any class in service package
-execution(public * *(..))                  // any public method
-execution(* save*(..))                     // any method starting with 'save'
-execution(* OrderService.createOrder(..))  // specific method
-execution(* *(.., String))                 // methods whose last param is String
-
-// within: matches classes within a package
-within(com.example.service..*)  // any class in service package or subpackages
-
-// @annotation: matches methods annotated with a specific annotation
-@annotation(org.springframework.transaction.annotation.Transactional)
-@annotation(com.example.Audited)  // your custom annotation
-
-// @within: matches classes annotated with a specific annotation
-@within(org.springframework.stereotype.Service)
-
-// bean: matches by bean name
-bean(*Service)       // all beans ending with "Service"
-bean(orderService)   // specific bean name
-
-// Combining with && || !
-execution(* com.example.service.*.*(..)) && !execution(* get*(..))  // service methods, not getters
-\`\`\`
-
-### Custom Annotation-Based AOP
-
-\`\`\`java
-// Define the annotation
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
-public @interface Audited {
-    String action() default "";
-}
-
-// Apply it in business code
-@Service
-public class AccountService {
-    @Audited(action = "ACCOUNT_CREATED")
-    public Account createAccount(String owner) { ... }
-}
-
-// Intercept it in the aspect
-@Aspect @Component
-public class AuditAspect {
-    @Around("@annotation(audited)")
-    public Object audit(ProceedingJoinPoint pjp, Audited audited) throws Throwable {
-        String action = audited.action();
-        String user = SecurityContextHolder.getContext().getAuthentication().getName();
-        try {
-            Object result = pjp.proceed();
-            auditRepo.save(new AuditEntry(action, user, "SUCCESS"));
-            return result;
-        } catch (Exception e) {
-            auditRepo.save(new AuditEntry(action, user, "FAILURE: " + e.getMessage()));
-            throw e;
-        }
-    }
-}
-\`\`\``,
-            code: [
-              `import org.aspectj.lang.annotation.*;
-import org.aspectj.lang.*;
-import org.springframework.stereotype.*;
-import java.lang.annotation.*;
-import java.util.concurrent.atomic.*;
-
-// Complete AOP example: @Timed custom annotation + performance aspect
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
-@interface Timed { String value() default ""; }
-
-@Aspect
-@Component
-class PerformanceAspect {
-    private final AtomicLong totalCalls = new AtomicLong();
-    private final AtomicLong totalMs    = new AtomicLong();
-
-    @Around("@annotation(timed)")
-    public Object time(ProceedingJoinPoint pjp, Timed timed) throws Throwable {
-        long start = System.nanoTime();
-        String label = timed.value().isEmpty() ? pjp.getSignature().toShortString() : timed.value();
-        try {
-            Object result = pjp.proceed();   // invoke the actual method
-            long ms = (System.nanoTime() - start) / 1_000_000;
-            totalCalls.incrementAndGet();
-            totalMs.addAndGet(ms);
-            System.out.printf("[PERF] %s: %dms (avg %.1fms over %d calls)%n",
-                label, ms, (double)totalMs.get()/totalCalls.get(), totalCalls.get());
-            return result;
-        } catch (Throwable t) {
-            System.err.printf("[PERF] %s: FAILED after %dms%n",
-                label, (System.nanoTime() - start) / 1_000_000);
-            throw t;
-        }
-    }
-
-    @Before("execution(* com.example.controller..*(..))")
-    public void logControllerCalls(JoinPoint jp) {
-        System.out.println("[AOP] -> " + jp.getSignature().toShortString());
-    }
-
-    @AfterThrowing(pointcut = "within(com.example.service..*)", throwing = "ex")
-    public void alertOnServiceException(JoinPoint jp, Exception ex) {
-        System.err.printf("[ALERT] Service exception in %s: %s%n",
-            jp.getSignature().getName(), ex.getMessage());
-    }
-}
-
-// Usage
-@Service
-class ProductService {
-    @Timed("product.search")
-    public java.util.List<String> search(String query) {
-        try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        return java.util.List.of("Product A", "Product B");
-    }
-
-    @Timed
-    public void refresh() {
-        try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-    }
-}`,
-              `import org.aspectj.lang.annotation.*;
-import org.aspectj.lang.*;
-import java.lang.annotation.*;
-
-// Caching aspect — manual cache with AOP (before Spring Cache existed)
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
-@interface Cacheable { String key(); long ttlSeconds() default 60; }
-
-@Aspect
-@org.springframework.stereotype.Component
-class CachingAspect {
-    private final java.util.concurrent.ConcurrentHashMap<String, CacheEntry> cache
-        = new java.util.concurrent.ConcurrentHashMap<>();
-
-    record CacheEntry(Object value, long expiresAt) {}
-
-    @Around("@annotation(cacheable)")
-    public Object cache(ProceedingJoinPoint pjp, Cacheable cacheable) throws Throwable {
-        // Build cache key: annotation key + method args
-        String key = cacheable.key() + ":" + java.util.Arrays.toString(pjp.getArgs());
-
-        CacheEntry entry = cache.get(key);
-        if (entry != null && System.currentTimeMillis() < entry.expiresAt()) {
-            System.out.println("[CACHE] HIT: " + key);
-            return entry.value();
-        }
-
-        System.out.println("[CACHE] MISS: " + key + " — invoking method");
-        Object result = pjp.proceed();  // call actual method
-        long expiresAt = System.currentTimeMillis() + cacheable.ttlSeconds() * 1000;
-        cache.put(key, new CacheEntry(result, expiresAt));
-        return result;
-    }
-
-    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 60_000)
-    public void evictExpired() {
-        long now = System.currentTimeMillis();
-        cache.entrySet().removeIf(e -> e.getValue().expiresAt() < now);
-        System.out.println("[CACHE] Eviction ran, size=" + cache.size());
-    }
-}
-
-// Usage
-@org.springframework.stereotype.Service
-class UserService {
-    @Cacheable(key = "user", ttlSeconds = 300)
-    public String findUser(Long id) {
-        // Simulate DB call
-        return "User#" + id;
-    }
-}`
             ],
             flashcards: [
               {
-                q: `What are the five core AOP concepts: Aspect, Joinpoint, Pointcut, Advice, Weaving?`,
-                a: `Aspect: the module holding cross-cutting logic (e.g. LoggingAspect). Joinpoint: a specific moment during execution where advice can be applied — in Spring AOP this is always a method call. Pointcut: an expression that selects which joinpoints to intercept (e.g. execution(* com.example.service.*.*(..))). Advice: the actual code that runs at a matched joinpoint (@Before, @After, @Around). Weaving: the process of linking aspects to target objects — Spring does this at runtime via dynamic proxies (JDK or CGLib).`
+                q: `Authentication vs authorization?`,
+                a: `Authentication (authn) answers 'who are you?' -- verifying identity. Authorization (authz) answers 'what may you do?' -- deciding whether the known identity is allowed to perform an action. Authenticate first, then authorize.`
               },
               {
-                q: `What is the difference between @Before, @After, @Around, @AfterReturning, @AfterThrowing?`,
-                a: `@Before: runs before the method. @AfterReturning: runs after the method returns normally; can access the return value. @AfterThrowing: runs when the method throws an exception; can access the exception. @After: runs after the method regardless of outcome (like finally). @Around: surrounds the method call — must call pjp.proceed() to invoke the actual method; most powerful, can modify inputs/outputs, suppress exceptions. @Around can replace all others but is also most risky (forgetting proceed() silently skips the method).`
+                q: `Where does the Spring Security filter chain sit relative to the DispatcherServlet?`,
+                a: `In front of it. Requests pass through the chain of servlet filters -- establishing and checking identity/permissions -- before reaching the DispatcherServlet and any controller.`
               },
               {
-                q: `How does the execution() pointcut expression work?`,
-                a: `execution(modifiers? return-type declaring-type? method-name(params) throws?) where * is a wildcard and .. means zero or more. Examples: execution(* com.example.service.*.*(..)) — any method in any class in service package; execution(public * save*(..)) — any public method starting with "save"; execution(* OrderService.*(..)) — any method on OrderService. Combine with &&, ||, !: execution(* service.*.*(..)) && !execution(* get*(..)) — service methods excluding getters.`
+                q: `What does the security filter chain actually do to a request?`,
+                a: `Extracts credentials, authenticates the caller (populating an Authentication in the SecurityContext), and enforces access rules -- letting the request through or rejecting it.`
               },
               {
-                q: `What is @annotation pointcut and how does it enable custom cross-cutting behaviour?`,
-                a: `@annotation(myAnnotation) matches methods annotated with that annotation. This pattern lets you define custom annotations (@Audited, @Timed, @RateLimited) that carry configuration data, then write aspects that intercept those annotations: @Around("@annotation(audited)") public Object audit(ProceedingJoinPoint pjp, Audited audited). Business code declares what it wants (@Audited(action="SAVE")) and the aspect provides the behaviour — clean separation.`
+                q: `401 vs 403?`,
+                a: `401 Unauthorized: authentication is missing or invalid (we do not know who you are). 403 Forbidden: authenticated, but the identity lacks permission for this action.`
               },
               {
-                q: `What are the limitations of Spring AOP vs AspectJ?`,
-                a: `Spring AOP is proxy-based and has key limitations: (1) Only intercepts public method calls; (2) Self-invocation bypasses the proxy — this.method() inside the same class is not intercepted; (3) Only works on Spring-managed beans; (4) Only method-level join points (no field access, constructor interception). AspectJ does compile-time or load-time weaving with bytecode modification — intercepts any join point including field access, constructors, private methods. AspectJ is more powerful but adds build complexity. Spring AOP covers 90% of production needs.`
+                q: `How do you configure Spring Security in a modern (component-based) app?`,
+                a: `Define a SecurityFilterChain bean using the HttpSecurity DSL -- authorizeHttpRequests, sessionManagement, oauth2ResourceServer, etc. (the successor to the old WebSecurityConfigurerAdapter).`
+              },
+              {
+                q: `Why make a REST API stateless, and how?`,
+                a: `So each request carries its own credentials (e.g. a bearer token) with no server-side session to store or scale. Set SessionCreationPolicy.STATELESS; CSRF protection then becomes unnecessary.`
+              },
+              {
+                q: `What is a JWT and how is it used on a request?`,
+                a: `A JSON Web Token -- a signed token carrying claims about the caller. The client sends it as 'Authorization: Bearer <token>'; the server validates the signature and reads the claims, no session required.`
+              },
+              {
+                q: `In OAuth2 terms, what role does your API play?`,
+                a: `A resource server: it does not issue tokens or handle passwords; it validates tokens issued by an external authorization server (Keycloak, Auth0, Google) and derives the caller's identity and authorities from them.`
+              },
+              {
+                q: `What is @PreAuthorize and what enables it?`,
+                a: `Method-level security: a SpEL expression (e.g. hasRole('ADMIN')) evaluated before the method runs; failure yields 403. It requires @EnableMethodSecurity on a config class.`
+              },
+              {
+                q: `URL-based rules vs method security -- when each?`,
+                a: `authorizeHttpRequests guards by path/verb at the edge. Method security (@PreAuthorize) guards individual methods close to business logic, handy for role or ownership checks that URL rules cannot express.`
+              },
+              {
+                q: `Where is the full security deep dive covered?`,
+                a: `Module 11.3 (Spring Security, OAuth2 & Authn/Authz) -- filter chain internals, JWT issue/validate/refresh/revoke, OAuth2/OIDC, RBAC/ABAC, and multi-tenant isolation.`
               }
             ]
           }
@@ -34786,1119 +35067,842 @@ class OrderRepositoryTest {
       },
       {
         id: `3.5`,
-        title: `Spring MVC & REST APIs — Controllers, Validation & Error Handling`,
-        hours: 5,
+        title: `Transactions, AOP & @Transactional`,
+        hours: 3,
         sections: [
           {
-            title: `Spring MVC in One Picture — DispatcherServlet, Controllers & @RestController`,
-            notes: `## Spring MVC in one picture
+            title: `@Transactional Internals — Proxy Mechanics & Pitfalls`,
+            notes: `## @Transactional Internals — Proxy Mechanics & Pitfalls
 
-**Spring MVC** is the web framework inside Spring. It follows the **front-controller** pattern: a single servlet, the **\`DispatcherServlet\`**, receives *every* HTTP request that hits your app, figures out which of your methods should handle it, calls that method, and turns whatever it returns back into an HTTP response. You never touch the raw servlet plumbing -- you just write handler methods and annotate them.
+> [!TIP]
+> **Big picture — read this first.** \`@Transactional\` doesn't change your method's code. Instead, Spring wraps your bean in an invisible stand-in (a *proxy*) that says "open a database transaction -> call your real method -> commit (or roll back if it threw)". Every caller actually talks to the proxy, not to you directly. This single fact explains the two most-asked Spring gotchas in interviews: (1) calling \`this.otherTransactionalMethod()\` from inside the same class **skips the proxy**, so no new transaction starts; and (2) by default Spring only rolls back on *unchecked* exceptions. Keep the proxy picture in your head and the pitfalls below stop being surprising. The runnable proxy demo in the **Code** tab lets you watch this happen on a bare JVM.
 
-Spring Boot auto-registers and configures the \`DispatcherServlet\` for you. You add a controller class, and the routes light up.
+### How @Transactional Works
 
-### The request flow
+Spring implements @Transactional using AOP proxies. When you annotate a class or method with @Transactional, Spring wraps your bean in a proxy that intercepts method calls to begin/commit/rollback the transaction.
 
 \`\`\`mermaid
-flowchart LR
-    A[HTTP Client] -->|request| B[DispatcherServlet]
-    B --> C[HandlerMapping]
-    C -->|finds handler| B
-    B --> D["Controller method"]
-    D -->|returns object| B
-    B --> E[HttpMessageConverter]
-    E -->|Jackson: object -> JSON| B
-    B -->|HTTP response| A
+sequenceDiagram
+    participant C as Caller
+    participant P as Proxy (Spring AOP)
+    participant T as TransactionManager
+    participant S as YourService
+    C->>P: orderService.createOrder(req)
+    P->>T: getTransaction(txDef)
+    T-->>P: txStatus (begin tx)
+    P->>S: createOrder(req)
+    S-->>P: result (or exception)
+    alt No exception
+        P->>T: commit(txStatus)
+    else RuntimeException
+        P->>T: rollback(txStatus)
+    end
+    P-->>C: result
 \`\`\`
 
-1. Client sends \`GET /api/products/42\`.
-2. \`DispatcherServlet\` asks the **\`HandlerMapping\`** which method matches that path + verb.
-3. It invokes your **controller** method, binding path/query/body values into your parameters.
-4. Your method returns a plain Java object.
-5. An **\`HttpMessageConverter\`** (Jackson, for JSON) serializes it into the response body.
+### The Self-Invocation Problem
 
-### \`@RestController\` vs \`@Controller\`
+\`\`\`java
+@Service
+public class OrderService {
 
-- **\`@Controller\`** is the classic MVC stereotype. Its methods return **view names** (e.g. a Thymeleaf template) unless a method or return value is annotated \`@ResponseBody\`.
-- **\`@RestController\`** = \`@Controller\` + \`@ResponseBody\` on every method. Return values are written *directly* to the response body (serialized to JSON), never resolved as views. This is what you want for a REST API.
-
-### Mapping annotations
-
-\`@RequestMapping\` is the general form; it can set path, HTTP method, and content types. In practice you use the verb shortcuts:
-
-| Annotation | HTTP verb |
-| --- | --- |
-| \`@GetMapping\` | GET |
-| \`@PostMapping\` | POST |
-| \`@PutMapping\` | PUT |
-| \`@PatchMapping\` | PATCH |
-| \`@DeleteMapping\` | DELETE |
-
-Put \`@RequestMapping("/api/products")\` on the class to set a **base path** shared by every method.
-
-### Binding parameters
-
-- **\`@PathVariable\`** -- pulls a value out of the URL template: \`/products/{id}\` -> \`@PathVariable Long id\`.
-- **\`@RequestParam\`** -- pulls a query-string (or form) value: \`?page=2\` -> \`@RequestParam int page\`. Supports \`defaultValue\` and \`required = false\`.
-- **\`@RequestBody\`** -- deserializes the request body (JSON) into a Java object via Jackson.
-- **\`@ResponseBody\`** -- serializes the return value into the response body. Implied by \`@RestController\`.
-
-Returning a plain object (or a \`List\`) from a \`@RestController\` method gives you automatic JSON with a \`200 OK\` status. No manual serialization, no \`PrintWriter\`.`,
-            code: [
-              {
-                lang: `java`,
-                title: `A complete small CRUD controller`,
-                code: `package com.example.catalog.web;
-
-import java.util.List;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-
-// @RestController = @Controller + @ResponseBody: every return value is
-// serialized straight to the response body (JSON via Jackson).
-@RestController
-@RequestMapping("/api/products")   // shared base path for all methods
-public class ProductController {
-
-    private final ProductService service;
-
-    // Constructor injection -- preferred: fields can be final, and the
-    // dependency is explicit and easy to test.
-    public ProductController(ProductService service) {
-        this.service = service;
+    // BROKEN — self-invocation bypasses the proxy
+    public void processOrder(Order order) {
+        validateOrder(order);
+        this.saveOrder(order);  // calls this.saveOrder directly, NOT via proxy
+        // The @Transactional on saveOrder is IGNORED
     }
 
-    // GET /api/products?limit=20  -> returns a JSON array, 200 OK
-    @GetMapping
-    public List<Product> list(@RequestParam(defaultValue = "50") int limit) {
-        return service.findAll(limit);
-    }
-
-    // GET /api/products/42  -> {id} bound to the method parameter
-    @GetMapping("/{id}")
-    public Product getOne(@PathVariable Long id) {
-        return service.findById(id);   // returns a plain object -> JSON
-    }
-
-    // POST /api/products  -> body deserialized from JSON into Product
-    @PostMapping
-    public Product create(@RequestBody Product product) {
-        return service.create(product);
-    }
-
-    // PUT /api/products/42  -> full replace
-    @PutMapping("/{id}")
-    public Product replace(@PathVariable Long id, @RequestBody Product product) {
-        return service.replace(id, product);
-    }
-
-    // PATCH /api/products/42  -> partial update
-    @PatchMapping("/{id}")
-    public Product patch(@PathVariable Long id, @RequestBody Product changes) {
-        return service.applyPatch(id, changes);
-    }
-
-    // DELETE /api/products/42
-    @DeleteMapping("/{id}")
-    public void delete(@PathVariable Long id) {
-        service.delete(id);
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `@Controller vs @RestController — the difference in one class`,
-                code: `// @Controller: methods return VIEW NAMES by default...
-@Controller
-public class PageController {
-
-    @GetMapping("/home")
-    public String home() {
-        return "home";  // resolved to a template (e.g. home.html) -- NOT JSON
-    }
-
-    // ...unless you add @ResponseBody to a single method:
-    @GetMapping("/ping")
-    @ResponseBody
-    public String ping() {
-        return "pong";  // written straight to the body because of @ResponseBody
+    @Transactional
+    public void saveOrder(Order order) {
+        repo.save(order);
+        auditLog.save(new AuditEntry(order.id()));
     }
 }
 
-// @RestController: @ResponseBody is implied on EVERY method.
-@RestController
-public class ApiController {
+// WHY: 'this.saveOrder(order)' skips the proxy. The proxy wraps the BEAN, but
+// self-calls go directly to the object — Spring never sees them.
 
-    @GetMapping("/api/ping")
-    public String ping() {
-        return "pong";  // straight to the body, no view resolution
-    }
-}`
-              },
-              {
-                lang: `bash`,
-                title: `Exercising the endpoints with curl`,
-                code: `# List (query param)
-curl "http://localhost:8080/api/products?limit=10"
+// FIX 1: Extract to separate @Service (preferred)
+@Service public class OrderSaveService {
+    @Transactional
+    public void save(Order order) { ... }
+}
+// orderSaveService.save(order) — goes through the proxy
 
-# Get one (path variable)
-curl http://localhost:8080/api/products/42
+// FIX 2: Self-inject (SpEP) — works but is a code smell
+@Service public class OrderService {
+    @Autowired @Lazy private OrderService self;  // inject own proxy
+    public void processOrder(Order order) { self.saveOrder(order); }
+    @Transactional public void saveOrder(Order o) { ... }
+}
+\`\`\`
 
-# Create (JSON request body)
-curl -X POST http://localhost:8080/api/products \\
-  -H "Content-Type: application/json" \\
-  -d '{"name":"Keyboard","priceCents":4999}'
+### Rollback Rules
 
-# Delete
-curl -X DELETE http://localhost:8080/api/products/42`
-              }
-            ],
-            flashcards: [
-              {
-                q: `What is the DispatcherServlet?`,
-                a: `The single front-controller servlet in Spring MVC. Every HTTP request goes through it; it consults a HandlerMapping to find the right controller method, invokes it, and uses an HttpMessageConverter to turn the return value into the response. Spring Boot auto-configures it.`
-              },
-              {
-                q: `What design pattern does Spring MVC use for request dispatch?`,
-                a: `The front-controller pattern: one central servlet (DispatcherServlet) receives all requests and routes each to the appropriate handler.`
-              },
-              {
-                q: `@RestController vs @Controller?`,
-                a: `@Controller methods return view names by default (resolved to templates). @RestController = @Controller + @ResponseBody on every method, so return values are serialized directly to the response body (JSON). Use @RestController for REST APIs.`
-              },
-              {
-                q: `What does @ResponseBody do?`,
-                a: `Tells Spring to write the method's return value straight to the HTTP response body (via an HttpMessageConverter such as Jackson) instead of treating it as a view name.`
-              },
-              {
-                q: `Which converter turns a returned object into JSON, and who provides it?`,
-                a: `An HttpMessageConverter -- specifically MappingJackson2HttpMessageConverter, backed by the Jackson library, auto-configured by Spring Boot.`
-              },
-              {
-                q: `Difference between @PathVariable and @RequestParam?`,
-                a: `@PathVariable binds a value from the URL path template (/products/{id}). @RequestParam binds a query-string or form value (?page=2). @RequestParam supports defaultValue and required=false.`
-              },
-              {
-                q: `What does @RequestBody do?`,
-                a: `Deserializes the incoming request body (e.g. JSON) into a Java object using an HttpMessageConverter (Jackson).`
-              },
-              {
-                q: `Name the five HTTP-verb mapping shortcut annotations.`,
-                a: `@GetMapping, @PostMapping, @PutMapping, @PatchMapping, @DeleteMapping -- each a specialization of @RequestMapping with the method preset.`
-              },
-              {
-                q: `What does @RequestMapping on the class (not a method) do?`,
-                a: `Sets a base path prefix shared by every handler method in the controller, e.g. @RequestMapping("/api/products").`
-              },
-              {
-                q: `What status code does a @RestController method return by default?`,
-                a: `200 OK, with the returned object serialized as the body. You override it with @ResponseStatus or by returning a ResponseEntity.`
-              },
-              {
-                q: `Why use constructor injection in a controller?`,
-                a: `Dependencies can be final (immutable), they are explicit, the object is never in a half-constructed state, and it is trivial to pass mocks in a plain unit test without Spring.`
-              }
-            ]
-          },
-          {
-            title: `Request & Response Modeling — DTOs, ResponseEntity & Status Codes`,
-            notes: `## Model your API on purpose
-
-Your JPA entities describe how data is *stored*. Your API describes what clients are *allowed to see and send*. These are two different concerns, and coupling them causes real problems.
-
-### Why DTOs instead of exposing entities
-
-A **DTO** (Data Transfer Object) is a small, purpose-built type for a request or response. Prefer Java **\`record\`s** -- they are immutable and concise. Reasons to use them instead of returning entities directly:
-
-- **Decoupling** -- you can refactor the DB schema (rename a column, split a table) without breaking the API contract, and vice versa.
-- **No lazy-loading traps** -- serializing an entity can trigger lazy associations *after* the transaction closed, throwing \`LazyInitializationException\`, or worse, silently pulling half the database into the response.
-- **Security / over-exposure** -- entities often carry fields clients must never see (\`passwordHash\`, internal flags, audit columns). A response DTO exposes exactly the fields you choose.
-- **Input safety** -- a request DTO prevents *mass assignment*: a client cannot set \`id\`, \`role\`, or \`createdAt\` just by putting them in the JSON, because those fields are not on the DTO.
-
-You map entity <-> DTO in the service or a small mapper. Keep it boring and explicit (or use MapStruct in bigger projects).
-
-### \`ResponseEntity\` -- explicit status, headers, body
-
-Returning a plain object gives \`200 OK\`. When you need to control the **status code**, add **headers**, or return **no body**, return a \`ResponseEntity<T>\`.
-
-### Correct status codes for CRUD
-
-| Operation | Success | Notes |
-| --- | --- | --- |
-| Create (POST) | **201 Created** | Add a \`Location\` header pointing at the new resource |
-| Read (GET) found | **200 OK** | body = resource |
-| Read not found | **404 Not Found** | |
-| Update (PUT/PATCH) | **200 OK** (body) or **204 No Content** | 204 when you return nothing |
-| Delete (DELETE) | **204 No Content** | empty body |
-| Bad input | **400 Bad Request** | validation / malformed JSON |
-| Conflict | **409 Conflict** | e.g. duplicate unique key, version conflict |
-
-The **\`Location\`** header on a 201 tells the client the URL of the thing it just created -- build it with \`ServletUriComponentsBuilder\` or \`URI.create\`.
-
-### Content negotiation (the short version)
-
-Clients send an **\`Accept\`** header saying what they can read (\`Accept: application/json\`); Spring picks a matching \`HttpMessageConverter\`. Requests carry a **\`Content-Type\`** saying what the body *is*.
-
-You can constrain a handler with:
-
-- **\`produces\`** -- the media type(s) this method can return (matched against \`Accept\`).
-- **\`consumes\`** -- the media type(s) this method accepts as a body (matched against \`Content-Type\`).
-
-Example: \`@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)\`. If nothing matches, Spring returns \`406 Not Acceptable\` (produces) or \`415 Unsupported Media Type\` (consumes).`,
-            code: [
-              {
-                lang: `java`,
-                title: `Request and response DTOs as records`,
-                code: `package com.example.catalog.web.dto;
-
-import java.time.Instant;
-
-// Request DTO: exactly the fields a client is allowed to SEND.
-// Note there is no id / createdAt here -> the client cannot spoof them.
-public record CreateProductRequest(
-        String name,
-        long priceCents,
-        String sku) {
+\`\`\`java
+// DEFAULT: rollback on RuntimeException and Error, commit on checked exceptions
+@Transactional
+public void createUser(String email) throws EmailAlreadyExists {
+    // Throws EmailAlreadyExists (checked) -> COMMITS (no data changes)
+    if (repo.existsByEmail(email)) throw new EmailAlreadyExists(email);
+    repo.save(new User(email));
 }
 
-// Response DTO: exactly the fields a client is allowed to SEE.
-// The entity's internal columns (audit user, soft-delete flag, ...) stay hidden.
-public record ProductResponse(
-        Long id,
-        String name,
-        long priceCents,
-        String sku,
-        Instant createdAt) {
-}`
-              },
-              {
-                lang: `java`,
-                title: `Mapping entity <-> DTO (explicit, in one place)`,
-                code: `package com.example.catalog.web.dto;
+// Override rollback behaviour
+@Transactional(rollbackFor = Exception.class)  // rollback on checked too
+public void riskyOperation() throws IOException { ... }
 
-import com.example.catalog.domain.Product;
+@Transactional(noRollbackFor = OptimisticLockException.class)  // don't rollback on this
+public void retryableUpdate(Entity e) { ... }
 
-// A tiny mapper keeps conversion in one place. In larger codebases a
-// library like MapStruct generates this for you.
-public final class ProductMapper {
+// Best practice: use unchecked exceptions for domain errors
+// Spring's @Transactional rollback on RuntimeException is intentional
+public class BusinessException extends RuntimeException { ... }  // auto-rollback
 
-    private ProductMapper() { }
-
-    // entity -> response DTO
-    public static ProductResponse toResponse(Product p) {
-        return new ProductResponse(
-                p.getId(),
-                p.getName(),
-                p.getPriceCents(),
-                p.getSku(),
-                p.getCreatedAt());
+// WRONG: catching and swallowing exception inside @Transactional method
+@Transactional
+public void dangerousMethod() {
+    try {
+        repo.save(entity);
+        externalService.call();  // throws RuntimeException
+    } catch (Exception e) {
+        log.warn("Ignoring error: " + e.getMessage());
+        // Transaction will COMMIT even though something went wrong!
     }
-
-    // request DTO -> new entity (id/createdAt are set by JPA, not the client)
-    public static Product toEntity(CreateProductRequest req) {
-        Product p = new Product();
-        p.setName(req.name());
-        p.setPriceCents(req.priceCents());
-        p.setSku(req.sku());
-        return p;
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `ResponseEntity with correct status codes and a Location header`,
-                code: `package com.example.catalog.web;
-
-import java.net.URI;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-
-import com.example.catalog.domain.Product;
-import com.example.catalog.web.dto.CreateProductRequest;
-import com.example.catalog.web.dto.ProductMapper;
-import com.example.catalog.web.dto.ProductResponse;
-
-@RestController
-@RequestMapping("/api/products")
-public class ProductApi {
-
-    private final ProductService service;
-
-    public ProductApi(ProductService service) {
-        this.service = service;
-    }
-
-    // 200 OK with a body when found. (404 is handled globally -- see section 4.)
-    @GetMapping("/{id}")
-    public ResponseEntity<ProductResponse> getOne(@PathVariable Long id) {
-        Product p = service.findById(id);
-        return ResponseEntity.ok(ProductMapper.toResponse(p));
-    }
-
-    // 201 Created + Location header pointing at the new resource.
-    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE,
-                 produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ProductResponse> create(@RequestBody CreateProductRequest req) {
-        Product saved = service.create(ProductMapper.toEntity(req));
-
-        URI location = ServletUriComponentsBuilder
-                .fromCurrentRequest()          // /api/products
-                .path("/{id}")                 // /api/products/{id}
-                .buildAndExpand(saved.getId())
-                .toUri();
-
-        return ResponseEntity
-                .created(location)             // status 201 + Location header
-                .body(ProductMapper.toResponse(saved));
-    }
-
-    // 204 No Content: successful delete, empty body.
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        service.delete(id);
-        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
-    }
-}`
-              },
-              {
-                lang: `json`,
-                title: `The 201 Created response (headers + body)`,
-                code: `HTTP/1.1 201 Created
-Location: http://localhost:8080/api/products/42
-Content-Type: application/json
-
-{
-  "id": 42,
-  "name": "Keyboard",
-  "priceCents": 4999,
-  "sku": "KB-001",
-  "createdAt": "2026-07-14T10:15:30Z"
-}`
-              }
-            ],
-            flashcards: [
-              {
-                q: `What is a DTO?`,
-                a: `A Data Transfer Object -- a small, purpose-built type for a specific request or response, separate from your persistence entities. In modern Java, typically a record.`
-              },
-              {
-                q: `Give three reasons not to return JPA entities directly from controllers.`,
-                a: `(1) Decoupling: the DB schema can change without breaking the API. (2) Avoids LazyInitializationException and accidental over-fetching during serialization. (3) Security: entities carry fields (passwordHash, internal flags) that must not be exposed, and request DTOs prevent mass assignment of fields like id/role.`
-              },
-              {
-                q: `What is 'mass assignment' and how do request DTOs prevent it?`,
-                a: `When a client sets fields it shouldn't (id, role, createdAt) just by including them in the JSON. A request DTO only exposes settable fields, so those attributes have nowhere to bind.`
-              },
-              {
-                q: `Why prefer records for DTOs?`,
-                a: `They are immutable, concise (no boilerplate getters/constructors), give value-based equals/hashCode, and clearly signal 'plain data carrier'.`
-              },
-              {
-                q: `When do you return ResponseEntity instead of a plain object?`,
-                a: `When you need explicit control over the status code, want to set response headers (e.g. Location), or need to return no body (204).`
-              },
-              {
-                q: `What status code and header should a successful POST/create return?`,
-                a: `201 Created, plus a Location header holding the URL of the newly created resource.`
-              },
-              {
-                q: `200 vs 204 for an update or delete?`,
-                a: `200 OK when you return a body; 204 No Content when the response body is empty (common for DELETE and body-less updates).`
-              },
-              {
-                q: `Which status code signals a duplicate/unique-key or version conflict?`,
-                a: `409 Conflict.`
-              },
-              {
-                q: `Which status codes cover bad input vs a missing resource?`,
-                a: `400 Bad Request for malformed or invalid input; 404 Not Found for a resource that does not exist.`
-              },
-              {
-                q: `produces vs consumes on a mapping?`,
-                a: `produces declares the media type(s) the method can return (matched against the client's Accept header). consumes declares the media type(s) it accepts as a request body (matched against Content-Type).`
-              },
-              {
-                q: `What status codes result from failed content negotiation?`,
-                a: `406 Not Acceptable when no producible type matches Accept; 415 Unsupported Media Type when the request Content-Type is not among consumes.`
-              },
-              {
-                q: `How do you build the Location URI for a newly created resource?`,
-                a: `With ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(id).toUri(), then ResponseEntity.created(uri).`
-              }
-            ]
-          },
-          {
-            title: `Validation — @Valid, Bean Validation & Binding Errors`,
-            notes: `## Validate at the edge
-
-Never trust incoming data. **Jakarta Bean Validation** lets you declare constraints as annotations on your DTO fields, and Spring enforces them automatically when you mark the parameter \`@Valid\`. Spring Boot pulls in an implementation (Hibernate Validator) via the \`spring-boot-starter-validation\` starter.
-
-> Namespace note (Spring Boot 3.x / Jakarta EE): the annotations live in **\`jakarta.validation.constraints.*\`**, not \`javax.*\`.
-
-### The common constraints
-
-| Annotation | Meaning |
-| --- | --- |
-| \`@NotNull\` | value must not be null |
-| \`@NotBlank\` | string must not be null and must contain non-whitespace |
-| \`@NotEmpty\` | collection/string not null and size >= 1 |
-| \`@Size(min=, max=)\` | string length / collection size in range |
-| \`@Email\` | must look like an email address |
-| \`@Min\` / \`@Max\` | numeric bounds |
-| \`@Positive\` / \`@PositiveOrZero\` | sign constraints |
-| \`@Pattern(regexp=)\` | must match a regex |
-
-### \`@Valid\` on \`@RequestBody\`
-
-Put \`@Valid\` before the \`@RequestBody\` parameter. Before your method body runs, Spring validates the deserialized object. If any constraint fails, it throws **\`MethodArgumentNotValidException\`** -- and by default that becomes a \`400 Bad Request\`. (Section 4 shows how to turn it into a clean field-by-field error response.)
-
-### Validating path and query params
-
-Constraints directly on method parameters (not inside a DTO) are only enforced if the **class** is annotated **\`@Validated\`** (from \`org.springframework.validation.annotation\`). Then \`@Min\`, \`@Size\`, etc. on \`@PathVariable\` / \`@RequestParam\` are checked, and a failure throws \`ConstraintViolationException\` (a \`HandlerMethodValidationException\` in newer Spring 6.1+ handling).
-
-### Nested and cascaded validation
-
-Constraints do **not** automatically recurse into nested objects. To validate a field that is itself a DTO (or a collection of DTOs), annotate that field with **\`@Valid\`**. That cascades validation into it.
-
-### Custom constraints
-
-When the built-ins do not fit (e.g. "SKU must be uppercase letters + digits with a dash"), write your own: a constraint **annotation** plus a **\`ConstraintValidator\`** implementation. You then use it like any other constraint.`,
-            code: [
-              {
-                lang: `java`,
-                title: `Constraints on a request DTO (with a nested, cascaded object)`,
-                code: `package com.example.catalog.web.dto;
-
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
-
-public record CreateOrderRequest(
-
-        @NotBlank(message = "customer name is required")
-        @Size(max = 100)
-        String customerName,
-
-        @NotBlank
-        @Email(message = "must be a valid email address")
-        String email,
-
-        @NotNull
-        @Min(value = 1, message = "quantity must be at least 1")
-        Integer quantity,
-
-        @NotBlank
-        @Pattern(regexp = "[A-Z0-9]+-[A-Z0-9]+", message = "bad SKU format")
-        String sku,
-
-        // @Valid CASCADES validation into the nested object; without it,
-        // ShippingAddress's own constraints would be ignored.
-        @NotNull
-        @Valid
-        ShippingAddress shippingAddress) {
-}`
-              },
-              {
-                lang: `java`,
-                title: `Nested DTO with its own constraints`,
-                code: `package com.example.catalog.web.dto;
-
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-
-public record ShippingAddress(
-
-        @NotBlank String street,
-
-        @NotBlank String city,
-
-        @NotBlank
-        @Pattern(regexp = "\\\\d{5}", message = "zip must be 5 digits")
-        String zip) {
-}`
-              },
-              {
-                lang: `java`,
-                title: `@Valid on the body, plus @Validated for path/query constraints`,
-                code: `package com.example.catalog.web;
-
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.Positive;
-import org.springframework.http.ResponseEntity;
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-
-import com.example.catalog.web.dto.CreateOrderRequest;
-
-// @Validated on the CLASS is required for constraints placed directly on
-// method parameters (@PathVariable / @RequestParam) to be enforced.
-@RestController
-@RequestMapping("/api/orders")
-@Validated
-public class OrderController {
-
-    private final OrderService service;
-
-    public OrderController(OrderService service) {
-        this.service = service;
-    }
-
-    // @Valid triggers Bean Validation on the deserialized body. A failure
-    // throws MethodArgumentNotValidException -> 400 Bad Request.
-    @PostMapping
-    public ResponseEntity<Void> create(@Valid @RequestBody CreateOrderRequest req) {
-        service.create(req);
-        return ResponseEntity.status(201).build();
-    }
-
-    // Constraints on params -- enforced because the class is @Validated.
-    @GetMapping("/{id}")
-    public OrderView getOne(@PathVariable @Positive Long id) {
-        return service.view(id);
-    }
-
-    @GetMapping
-    public java.util.List<OrderView> list(
-            @RequestParam(defaultValue = "1") @Min(1) int page) {
-        return service.page(page);
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Custom constraint: annotation + ConstraintValidator`,
-                code: `// 1) The constraint annotation.
-package com.example.catalog.web.validation;
-
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-import jakarta.validation.Constraint;
-import jakarta.validation.Payload;
-
-@Target({ElementType.FIELD, ElementType.PARAMETER})
-@Retention(RetentionPolicy.RUNTIME)
-@Constraint(validatedBy = UppercaseSkuValidator.class)
-public @interface ValidSku {
-    String message() default "SKU must be uppercase letters/digits with a dash";
-    Class<?>[] groups() default {};
-    Class<? extends Payload>[] payload() default {};
 }
+\`\`\`
 
-// 2) The validator that backs it.
-package com.example.catalog.web.validation;
+### Transaction on Private/Protected Methods
 
-import jakarta.validation.ConstraintValidator;
-import jakarta.validation.ConstraintValidatorContext;
+\`\`\`java
+@Service
+public class MyService {
+    @Transactional
+    private void doWork() { ... }   // IGNORED — Spring can only proxy public methods
+                                     // (CGlib proxies can't override private methods)
 
-public class UppercaseSkuValidator implements ConstraintValidator<ValidSku, String> {
+    @Transactional
+    protected void helper() { ... } // Works with JDK proxies only if interface declared
+                                     // CGlib proxies handle protected, but still self-invoke issue
 
-    @Override
-    public boolean isValid(String value, ConstraintValidatorContext ctx) {
-        // Let @NotBlank handle null/blank; treat null as valid here.
-        if (value == null) {
-            return true;
+    @Transactional
+    public void publicMethod() { ... }  // CORRECT — always public
+}
+\`\`\``,
+            code: [
+              `import java.lang.reflect.*;
+import java.lang.annotation.*;
+import java.util.*;
+
+// ✅ RUNNABLE on a bare JDK — no Spring needed. This recreates exactly what
+// Spring's @Transactional proxy does, so you can WATCH the self-invocation bug.
+public class TxProxyDemo {
+    // a tiny "transaction manager" — just prints begin/commit/rollback
+    static int depth = 0;
+    static void begin(String m)    { System.out.println("  ".repeat(depth++) + "BEGIN tx  -> " + m + "()"); }
+    static void commit(String m)   { System.out.println("  ".repeat(--depth) + "COMMIT    <- " + m + "()"); }
+    static void rollback(String m) { System.out.println("  ".repeat(--depth) + "ROLLBACK  <- " + m + "() (unchecked exception)"); }
+
+    @Retention(RetentionPolicy.RUNTIME) @interface Tx {}
+
+    interface AccountService {
+        void transfer(String from, String to, int amt);
+        void audited(String from, String to, int amt);
+    }
+
+    // your real bean — plain business logic, zero framework code
+    static class Impl implements AccountService {
+        @Tx public void transfer(String from, String to, int amt) {
+            System.out.println("    transferring " + amt + " from " + from + " to " + to);
+            if (amt < 0) throw new IllegalArgumentException("negative amount");
         }
-        return value.matches("[A-Z0-9]+-[A-Z0-9]+");
-    }
-}
-
-// 3) Usage -- exactly like any built-in constraint:
-//    public record CreateProductRequest(@ValidSku String sku) { }`
-              }
-            ],
-            flashcards: [
-              {
-                q: `In Spring Boot 3.x, which package do Bean Validation constraints live in?`,
-                a: `jakarta.validation.constraints.* (Jakarta EE), NOT javax.validation.*. Add the spring-boot-starter-validation starter (Hibernate Validator).`
-              },
-              {
-                q: `What does @Valid on a @RequestBody parameter do?`,
-                a: `Triggers Bean Validation on the deserialized object before the method body runs. If a constraint fails, Spring throws MethodArgumentNotValidException, which maps to 400 Bad Request by default.`
-              },
-              {
-                q: `@NotNull vs @NotEmpty vs @NotBlank?`,
-                a: `@NotNull: not null (any type). @NotEmpty: not null and size/length >= 1 (strings/collections). @NotBlank: string not null and contains at least one non-whitespace character.`
-              },
-              {
-                q: `Which exception is thrown when @Valid on a request body fails?`,
-                a: `MethodArgumentNotValidException. It carries a BindingResult with all field errors.`
-              },
-              {
-                q: `How do you validate constraints placed directly on @PathVariable / @RequestParam?`,
-                a: `Annotate the controller class with @Validated (org.springframework.validation.annotation). Then param-level constraints like @Min/@Positive are enforced; a failure throws ConstraintViolationException / HandlerMethodValidationException.`
-              },
-              {
-                q: `Do constraints automatically apply to nested objects?`,
-                a: `No. Validation does not recurse by default. You must put @Valid on the nested field (or collection) to cascade validation into it.`
-              },
-              {
-                q: `What two pieces make a custom constraint?`,
-                a: `(1) A constraint annotation meta-annotated with @Constraint(validatedBy=...), declaring message()/groups()/payload(). (2) A class implementing ConstraintValidator<A, T> with the isValid logic.`
-              },
-              {
-                q: `In a ConstraintValidator, how should you treat a null value?`,
-                a: `Usually return true for null and let a separate @NotNull/@NotBlank handle presence -- so constraints compose cleanly instead of duplicating null checks.`
-              },
-              {
-                q: `What does @Size(min=, max=) apply to?`,
-                a: `String length and collection/array/map size -- checks that it falls within the given bounds.`
-              },
-              {
-                q: `Which annotation constrains a numeric field to a lower/upper bound?`,
-                a: `@Min and @Max (also @Positive, @PositiveOrZero, @Negative for sign).`
-              },
-              {
-                q: `Where should validation live -- edge or deep in the code?`,
-                a: `Validate at the edge: on request DTOs with @Valid at the controller boundary, so bad data is rejected with a 400 before it reaches business logic or the database.`
-              }
-            ]
-          },
-          {
-            title: `Global Error Handling — @ExceptionHandler, @ControllerAdvice & ProblemDetail (RFC 7807)`,
-            notes: `## Turn exceptions into clean, consistent responses
-
-By default an unhandled exception becomes a generic \`500\` (or Spring's default error JSON). A good API returns a **consistent, machine-readable** error body for every failure. There are three layers of control.
-
-### 1. Local \`@ExceptionHandler\`
-
-A method inside a controller annotated \`@ExceptionHandler(SomeException.class)\` handles that exception for *that controller only*. Fine for one-off cases, but it does not scale across many controllers.
-
-### 2. Centralized \`@RestControllerAdvice\`
-
-\`@RestControllerAdvice\` = \`@ControllerAdvice\` + \`@ResponseBody\`. It is a single class whose \`@ExceptionHandler\` methods apply to **every** controller in the app. This is where you put your global exception-to-response translation, so error handling lives in one place and stays uniform.
-
-### 3. \`ProblemDetail\` -- RFC 7807
-
-Spring Framework 6 ships **\`ProblemDetail\`**, the standard representation of an error defined by **RFC 7807** (updated as RFC 9457). It serializes as media type **\`application/problem+json\`** with a well-known shape:
-
-\`\`\`json
-{
-  "type": "https://example.com/problems/not-found",
-  "title": "Resource not found",
-  "status": 404,
-  "detail": "Product 42 does not exist",
-  "instance": "/api/products/42"
-}
-\`\`\`
-
-You can also attach custom properties (e.g. a list of field errors) via \`setProperty\`. Returning \`ProblemDetail\` (or \`ResponseEntity<ProblemDetail>\`) gives clients a predictable, spec-compliant error format.
-
-### Handling validation failures nicely
-
-Catch **\`MethodArgumentNotValidException\`** and walk its \`BindingResult\` to produce a field-by-field error map, attached to a \`ProblemDetail\`. That turns a raw 400 into something a frontend can render next to each input.
-
-### Mapping domain exceptions
-
-Throw meaningful domain exceptions (\`NotFoundException\`, \`DuplicateSkuException\`) from your service layer, and let the advice map each to the right status (404, 409, ...). The service stays free of HTTP concerns; the advice owns the translation.
-
-### Extending Spring's base handler (optional)
-
-For Spring MVC's own exceptions (malformed JSON, missing params, 404 on no handler), you can extend **\`ResponseEntityExceptionHandler\`**, which already produces \`ProblemDetail\` responses in Spring 6 and gives you override hooks.
-
-### Testing controllers
-
-\`@WebMvcTest\` boots just the web layer (one controller, the advice, converters) -- not the whole app or the database -- and injects a **\`MockMvc\`** to fire simulated requests and assert on status/body. Fast and focused.`,
-            code: [
-              {
-                lang: `java`,
-                title: `Domain exceptions (no HTTP concerns)`,
-                code: `package com.example.catalog.domain;
-
-// Thrown by the service layer when a lookup fails. It knows nothing
-// about HTTP -- the @RestControllerAdvice maps it to 404.
-public class NotFoundException extends RuntimeException {
-    public NotFoundException(String message) {
-        super(message);
-    }
-}
-
-// Thrown when a unique constraint (e.g. SKU) would be violated -> 409.
-package com.example.catalog.domain;
-
-public class DuplicateSkuException extends RuntimeException {
-    public DuplicateSkuException(String sku) {
-        super("SKU already exists: " + sku);
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `A clean centralized ApiExceptionHandler with ProblemDetail`,
-                code: `package com.example.catalog.web;
-
-import java.net.URI;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ProblemDetail;
-import org.springframework.validation.FieldError;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-
-import com.example.catalog.domain.DuplicateSkuException;
-import com.example.catalog.domain.NotFoundException;
-
-// One class, applies to EVERY controller. @RestControllerAdvice =
-// @ControllerAdvice + @ResponseBody.
-@RestControllerAdvice
-public class ApiExceptionHandler {
-
-    // Domain 404. ProblemDetail serializes as application/problem+json.
-    @ExceptionHandler(NotFoundException.class)
-    public ProblemDetail handleNotFound(NotFoundException ex) {
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(
-                HttpStatus.NOT_FOUND, ex.getMessage());
-        pd.setTitle("Resource not found");
-        pd.setType(URI.create("https://example.com/problems/not-found"));
-        return pd;
-    }
-
-    // Domain 409.
-    @ExceptionHandler(DuplicateSkuException.class)
-    public ProblemDetail handleDuplicate(DuplicateSkuException ex) {
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(
-                HttpStatus.CONFLICT, ex.getMessage());
-        pd.setTitle("Conflict");
-        return pd;
-    }
-
-    // Validation 400: collect every field error into a map and attach it
-    // as a custom property on the ProblemDetail.
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
-        Map<String, String> errors = new LinkedHashMap<>();
-        for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
-            errors.put(fe.getField(), fe.getDefaultMessage());
+        @Tx public void audited(String from, String to, int amt) {
+            System.out.println("    audited(): doing extra work, then calling this.transfer()...");
+            this.transfer(from, to, amt);   // ⚠️ self-call through 'this' bypasses the proxy
         }
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(
-                HttpStatus.BAD_REQUEST, "One or more fields are invalid");
-        pd.setTitle("Validation failed");
-        pd.setProperty("errors", errors);   // extra member in the JSON
-        return pd;
     }
-}`
-              },
-              {
-                lang: `json`,
-                title: `The validation error response (application/problem+json)`,
-                code: `HTTP/1.1 400 Bad Request
-Content-Type: application/problem+json
 
-{
-  "type": "about:blank",
-  "title": "Validation failed",
-  "status": 400,
-  "detail": "One or more fields are invalid",
-  "errors": {
-    "email": "must be a valid email address",
-    "quantity": "quantity must be at least 1"
-  }
-}`
-              },
-              {
-                lang: `java`,
-                title: `A single local @ExceptionHandler (scoped to one controller)`,
-                code: `// Inside a controller -- handles ONLY exceptions from this controller.
-// Prefer @RestControllerAdvice for anything shared.
-@ExceptionHandler(IllegalArgumentException.class)
-public ProblemDetail handleBadArg(IllegalArgumentException ex) {
-    return ProblemDetail.forStatusAndDetail(
-            HttpStatus.BAD_REQUEST, ex.getMessage());
-}`
-              },
-              {
-                lang: `java`,
-                title: `@WebMvcTest + MockMvc — testing just the web layer`,
-                code: `package com.example.catalog.web;
-
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
-
-import com.example.catalog.domain.NotFoundException;
-
-// Boots only ProductApi + the advice + converters (no DB, no full context).
-@WebMvcTest(ProductApi.class)
-class ProductApiTest {
-
-    @Autowired
-    MockMvc mockMvc;
-
-    @MockitoBean   // Spring Boot 3.4+ replacement for @MockBean
-    ProductService service;
-
-    @Test
-    void missingProductReturns404ProblemDetail() throws Exception {
-        when(service.findById(99L))
-                .thenThrow(new NotFoundException("Product 99 does not exist"));
-
-        mockMvc.perform(get("/api/products/99"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.detail").value("Product 99 does not exist"));
+    // the proxy — opens a tx around any @Tx method, just like Spring AOP
+    static AccountService proxy(AccountService target) {
+        return (AccountService) Proxy.newProxyInstance(
+            AccountService.class.getClassLoader(), new Class<?>[]{AccountService.class},
+            (px, method, args) -> {
+                Method real = target.getClass().getMethod(method.getName(), method.getParameterTypes());
+                if (!real.isAnnotationPresent(Tx.class)) return real.invoke(target, args);
+                begin(method.getName());
+                try {
+                    Object r = real.invoke(target, args);
+                    commit(method.getName());
+                    return r;
+                } catch (InvocationTargetException e) {
+                    if (e.getCause() instanceof RuntimeException) rollback(method.getName());
+                    else commit(method.getName());     // checked exception -> Spring COMMITS by default
+                    throw e.getCause();
+                }
+            });
     }
+
+    public static void main(String[] args) {
+        AccountService svc = proxy(new Impl());
+
+        System.out.println("1) Normal call THROUGH the proxy:");
+        svc.transfer("alice", "bob", 100);
+
+        System.out.println("\\n2) Self-invocation — audited() calls this.transfer():");
+        svc.audited("alice", "bob", 50);
+        System.out.println("   ^ transfer() got NO BEGIN/COMMIT of its own — the classic @Transactional bug.");
+        System.out.println("     Fix: call an injected reference to the proxy (self.transfer), or split into 2 beans.");
+
+        System.out.println("\\n3) Unchecked exception rolls the tx back:");
+        try { svc.transfer("alice", "bob", -5); }
+        catch (Exception e) { System.out.println("   caught: " + e.getMessage()); }
+    }
+}`,
+              `import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.*;
+import org.springframework.beans.factory.annotation.*;
+
+// Demonstrating @Transactional proxy mechanism and pitfalls
+@Service
+public class AccountService {
+    private final AccountRepository accountRepo;
+    private final AuditRepository auditRepo;
+    private final AccountService self; // self-injection workaround (code smell, for demo only)
+
+    public AccountService(AccountRepository accountRepo, AuditRepository auditRepo,
+                          @Lazy AccountService self) {
+        this.accountRepo = accountRepo;
+        this.auditRepo = auditRepo;
+        this.self = self;
+    }
+
+    // PUBLIC — @Transactional works here
+    @Transactional
+    public void transfer(String fromId, String toId, double amount) {
+        Account from = accountRepo.findById(fromId).orElseThrow();
+        Account to   = accountRepo.findById(toId).orElseThrow();
+
+        if (from.balance() < amount) throw new InsufficientFundsException(from.id());
+
+        accountRepo.save(from.debit(amount));
+        accountRepo.save(to.credit(amount));
+        auditRepo.save(new TransferAudit(fromId, toId, amount));
+        // If auditRepo.save() throws -> ENTIRE transaction rolls back
+        // Both account updates are reverted — atomic by definition
+    }
+
+    // BAD: calling internal @Transactional via 'this' — proxy bypassed
+    public void processPaymentBad(Payment payment) {
+        validatePayment(payment);
+        this.recordPayment(payment); // BUG: 'this' bypasses proxy, no transaction!
+    }
+
+    // GOOD: delegate to self-injected proxy
+    public void processPaymentGood(Payment payment) {
+        validatePayment(payment);
+        self.recordPayment(payment); // goes through proxy — transaction active
+    }
+
+    @Transactional
+    public void recordPayment(Payment payment) {
+        accountRepo.debit(payment.accountId(), payment.amount());
+        auditRepo.record(payment);
+    }
+
+    private void validatePayment(Payment payment) {
+        if (payment.amount() <= 0) throw new IllegalArgumentException("Invalid amount");
+    }
+}`,
+              `// Rollback scenarios
+@Service
+public class OrderService {
+    private final OrderRepository orderRepo;
+    private final InventoryService inventoryService;
+    private final EmailService emailService;
+
+    @Transactional // rolls back on any RuntimeException
+    public Order createOrder(OrderRequest req) {
+        Order order = orderRepo.save(new Order(req));                 // 1. persist order
+        inventoryService.reserve(req.productId(), req.quantity());    // 2. reserve stock
+        // If inventoryService.reserve throws OutOfStockException (RuntimeException)
+        // -> order.save() is ROLLED BACK automatically
+
+        // emailService.send is NOT critical — we don't want email failure to rollback order
+        // Pattern: do non-critical side-effects in a try-catch or separate async call
+        try { emailService.sendConfirmation(order); }
+        catch (EmailException e) { log.warn("Email failed: {}", e.getMessage()); }
+
+        return order;
+    }
+
+    // Checked exception — NO rollback by default
+    @Transactional
+    public void importOrders(List<OrderRequest> reqs) throws ImportException {
+        for (var req : reqs) orderRepo.save(new Order(req));
+        // If ImportException (checked) is thrown, transaction COMMITS the partial work
+        // FIX: add rollbackFor = ImportException.class
+    }
+
+    // CORRECT checked exception rollback
+    @Transactional(rollbackFor = ImportException.class)
+    public void importOrdersSafe(List<OrderRequest> reqs) throws ImportException {
+        for (var req : reqs) orderRepo.save(new Order(req));
+        // Now ImportException triggers rollback too
+    }
+
+    // Timeout: rollback after 30 seconds
+    @Transactional(timeout = 30)
+    public void longRunningOperation() { /* ... */ }
 }`
-              }
             ],
             flashcards: [
               {
-                q: `What is the scope of a @ExceptionHandler method declared inside a controller?`,
-                a: `It only handles exceptions thrown by that single controller. For app-wide handling use @RestControllerAdvice.`
+                q: `How does Spring's @Transactional work under the hood?`,
+                a: `Spring creates a JDK proxy (if interface exists) or CGLib proxy around your bean. The proxy intercepts method calls: before calling the actual method, it gets a transaction from the TransactionManager (begins if needed per propagation rules). After the method returns normally, it commits. If a RuntimeException (or Error) escapes, it rolls back. The @Transactional annotation is read at proxy creation time — it is only effective on proxied method calls from OUTSIDE the bean.`
               },
               {
-                q: `What is @RestControllerAdvice?`,
-                a: `@ControllerAdvice + @ResponseBody: a single class whose @ExceptionHandler methods apply to every controller, centralizing exception-to-response translation and serializing the result as the response body.`
+                q: `What is the self-invocation problem and how do you fix it?`,
+                a: `When a method inside a @Service calls another @Transactional method on "this", it bypasses the proxy — the transaction on the inner method is ignored. Example: method A (non-transactional) calls this.methodB() where methodB is @Transactional — methodB runs WITHOUT a transaction. Fix (preferred): extract methodB into a separate @Service bean, so the call goes through a proxy. Fix (code smell): self-inject the bean via @Autowired @Lazy MyService self and call self.methodB().`
               },
               {
-                q: `What is ProblemDetail?`,
-                a: `Spring Framework 6's implementation of RFC 7807 (RFC 9457) -- a standardized error body (type, title, status, detail, instance, plus custom properties) served as media type application/problem+json.`
+                q: `What exceptions trigger a rollback in @Transactional by default?`,
+                a: `By default, @Transactional rolls back on RuntimeException and Error (unchecked exceptions). Checked exceptions (Exception subclasses that are not RuntimeException) do NOT trigger rollback by default — the transaction commits even if a checked exception is thrown. Override with: rollbackFor = Exception.class (rollback on all exceptions) or rollbackFor = MyCheckedException.class (specific). Best practice: use RuntimeException for domain errors to get automatic rollback.`
               },
               {
-                q: `What media type does an RFC 7807 error use?`,
-                a: `application/problem+json.`
+                q: `Why does @Transactional on private methods not work?`,
+                a: `Spring AOP proxies (both JDK and CGLib) can only intercept public method calls from outside the bean. Private methods can't be overridden by proxies. Even with CGLib (which can technically intercept protected), the self-invocation issue means the proxy is never in the call path for internal calls. Rule: always put @Transactional on public methods. If you need a private method to be transactional, make it public and move it to a separate service.`
               },
               {
-                q: `Which fields make up a standard ProblemDetail body?`,
-                a: `type (URI), title, status, detail, and instance (URI). You can attach extra members via setProperty(name, value).`
-              },
-              {
-                q: `How do you turn a MethodArgumentNotValidException into a field-by-field error response?`,
-                a: `In an @ExceptionHandler, iterate ex.getBindingResult().getFieldErrors(), build a field->message map, and attach it to a ProblemDetail via setProperty("errors", map) with status 400.`
-              },
-              {
-                q: `Why throw domain exceptions (NotFoundException) instead of setting status in the service?`,
-                a: `Keeps the service free of HTTP concerns. The @RestControllerAdvice owns the mapping (NotFoundException->404, DuplicateSkuException->409), so translation is centralized and the domain stays transport-agnostic.`
-              },
-              {
-                q: `What does extending ResponseEntityExceptionHandler give you?`,
-                a: `Built-in handling (as ProblemDetail in Spring 6) for Spring MVC's own exceptions -- malformed JSON, missing params, unsupported media types, no-handler 404 -- with override hooks to customize each.`
-              },
-              {
-                q: `What does @WebMvcTest do?`,
-                a: `Boots only the web slice -- the specified controller(s), advice, and message converters -- without the full application context or database. Fast, focused controller tests.`
-              },
-              {
-                q: `What is MockMvc used for?`,
-                a: `To perform simulated HTTP requests against controllers in a test and assert on the response status, headers, and JSON body -- without a running server.`
-              },
-              {
-                q: `In Spring Boot 3.4+, what replaces @MockBean in slice tests?`,
-                a: `@MockitoBean (org.springframework.test.context.bean.override.mockito). @MockBean is deprecated.`
+                q: `What happens if you swallow an exception inside a @Transactional method?`,
+                a: `The transaction commits as if nothing went wrong. If method code catches a RuntimeException and logs it without rethrowing: the transaction sees a clean return, commits all database changes made before the exception. This is a dangerous pattern — partial writes can be committed even though the operation logically failed. Either rethrow the exception (ensuring rollback), or manually call TransactionAspectSupport.currentTransactionStatus().setRollbackOnly() to mark for rollback without rethrowing.`
               }
             ]
           },
           {
-            title: `Securing the API — Spring Security Orientation`,
-            notes: `## Securing the API — an orientation
+            title: `Transaction Propagation & Isolation Levels`,
+            notes: `## Transaction Propagation & Isolation Levels
 
-Before shipping, an API needs to know **who is calling** and **what they are allowed to do**. That is what Spring Security provides. This section is a plain primer; the deep dive comes later (pointer at the end).
+### Propagation Modes
 
-### Two words that sound alike but are not
+Propagation defines what happens when one @Transactional method calls another.
 
-- **Authentication (authn)** -- *who are you?* Verifying identity: a username/password, an API key, a JWT, an OAuth2 token.
-- **Authorization (authz)** -- *what may you do?* Deciding, once identity is known, whether this caller may perform this action (roles, permissions, ownership).
+\`\`\`java
+// REQUIRED (default): join existing tx if one exists, else create new
+@Transactional(propagation = Propagation.REQUIRED)
+public void orderSave(Order o) { repo.save(o); }
+// Called from within a tx -> joins it. Called standalone -> new tx.
 
-Authenticate first, then authorize.
+// REQUIRES_NEW: always suspend current tx and create a brand new one
+@Transactional(propagation = Propagation.REQUIRES_NEW)
+public void auditLog(String action) {
+    auditRepo.save(new AuditEntry(action));
+    // Even if the outer tx rolls back, this COMMITS independently
+}
 
-### The Spring Security filter chain
+// MANDATORY: must be called within an existing tx, else throws exception
+@Transactional(propagation = Propagation.MANDATORY)
+public void mustBeInTransaction() {
+    // IllegalTransactionStateException if no active tx when called
+}
 
-Spring Security is a chain of **servlet filters** that sits **in front of the \`DispatcherServlet\`**. Every request passes through this chain *before* it reaches any controller:
+// NEVER: must NOT be called within an existing tx, else throws exception
+@Transactional(propagation = Propagation.NEVER)
+public void neverRunInTransaction() { /* read-only utility */ }
 
-\`\`\`mermaid
-flowchart LR
-    A[Request] --> B[Security Filter Chain]
-    B -->|authenticate + authorize| C{allowed?}
-    C -->|yes| D[DispatcherServlet -> Controller]
-    C -->|no| E[401 Unauthorized / 403 Forbidden]
+// NOT_SUPPORTED: suspend current tx, run without tx
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+public void runOutsideTransaction() { /* ... */ }
+
+// SUPPORTS: run in tx if one exists, without tx if none
+@Transactional(propagation = Propagation.SUPPORTS)
+public List<User> listUsers() { return repo.findAll(); }
+
+// NESTED: savepoint in outer tx — partial rollback possible
+@Transactional(propagation = Propagation.NESTED)
+public void nestedOperation() { /* rollback to savepoint on failure */ }
 \`\`\`
 
-Filters in the chain extract credentials, establish the current identity (an \`Authentication\` in the \`SecurityContext\`), and enforce access rules. If authentication is missing/invalid you get **401 Unauthorized**; if the identity lacks permission you get **403 Forbidden**.
+### REQUIRES_NEW Use Case — Audit Logging
 
-### A minimal, stateless config
+\`\`\`java
+@Service
+public class PaymentService {
+    private final AuditService audit;
 
-For a REST API you typically want a **stateless** setup (no server-side session; each request carries its own token), some public routes, and everything else authenticated. You express this with a single **\`SecurityFilterChain\`** bean.
+    @Transactional
+    public void processPayment(Payment payment) {
+        audit.log("PAYMENT_STARTED", payment.id());  // REQUIRES_NEW tx commits immediately
+        try {
+            performPayment(payment);                  // may throw
+        } catch (PaymentException e) {
+            audit.log("PAYMENT_FAILED", payment.id()); // ALSO commits even though outer tx will rollback
+            throw e;
+        }
+    }
+}
 
-### Where JWT and OAuth2 fit (high level)
+@Service
+public class AuditService {
+    private final AuditRepository auditRepo;
 
-- **JWT (JSON Web Token)** -- a signed token the client sends on each request (usually \`Authorization: Bearer <token>\`). The server validates the signature and reads the claims; no session needed. Great fit for stateless APIs.
-- **OAuth2 / OIDC** -- a delegation protocol: an external **authorization server** (Keycloak, Auth0, Google, ...) issues tokens; your API is a **resource server** that just validates them. You avoid handling passwords yourself.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void log(String event, String entityId) {
+        auditRepo.save(new AuditEntry(event, entityId, Instant.now()));
+        // Commits in its own transaction — unaffected by outer tx rollback
+    }
+}
+// Result: audit entries persist even when payment fails — exactly what you want
+\`\`\`
 
-At this level, the mental model is: *something issues a token, your API validates it and turns it into an authenticated identity with authorities.*
+### Isolation Levels
 
-### Method security
+Isolation controls what data a transaction can see from other concurrent transactions.
 
-Beyond URL rules, you can guard individual methods with **\`@PreAuthorize\`** (enable it with \`@EnableMethodSecurity\`). It evaluates a SpEL expression before the method runs -- ideal for role or ownership checks close to the business logic.
+| Level | Dirty Read | Non-Repeatable Read | Phantom Read |
+|---|---|---|---|
+| READ_UNCOMMITTED | ✓ possible | ✓ possible | ✓ possible |
+| READ_COMMITTED (default in most DBs) | ✗ prevented | ✓ possible | ✓ possible |
+| REPEATABLE_READ | ✗ prevented | ✗ prevented | ✓ possible |
+| SERIALIZABLE | ✗ prevented | ✗ prevented | ✗ prevented |
+
+\`\`\`java
+// Dirty read: reading uncommitted data from another tx
+@Transactional(isolation = Isolation.READ_UNCOMMITTED)
+// Can see changes from other transactions that haven't committed yet
+// DANGEROUS — never use this
+
+// Non-repeatable read: same row returns different values in two reads within same tx
+@Transactional(isolation = Isolation.READ_COMMITTED)
+public double getBalanceTwice(String accountId) {
+    double first  = repo.findBalance(accountId);  // reads 100
+    // Another tx commits a withdrawal here
+    double second = repo.findBalance(accountId);  // reads 70 — non-repeatable read
+    return second; // inconsistency within same tx
+}
+
+// Phantom read: a range query returns different rows in two reads
+@Transactional(isolation = Isolation.REPEATABLE_READ)
+public List<Order> getNewOrders() {
+    List<Order> first  = repo.findByStatus("NEW");  // returns 5 orders
+    // Another tx inserts a new order here
+    List<Order> second = repo.findByStatus("NEW");  // returns 6 orders — phantom read
+    return second;
+}
+
+// Serializable: no anomalies, but worst performance
+@Transactional(isolation = Isolation.SERIALIZABLE)
+public void criticalFinancialOperation() { ... }
+\`\`\`
+
+### @Transactional(readOnly = true)
+
+\`\`\`java
+// Hint to Spring and the DB driver that this tx won't write
+@Transactional(readOnly = true)
+public List<Product> getAllProducts() {
+    return productRepo.findAll();
+}
+
+// Benefits:
+// 1. JPA/Hibernate disables dirty checking (no need to snapshot entities)
+// 2. Some databases/drivers optimise for read-only (e.g. MySQL routes to replica)
+// 3. Clearer code intent
+// 4. Throws exception if you accidentally try to write
+
+// Tip: add @Transactional(readOnly = true) at CLASS level, override specific methods
+@Service
+@Transactional(readOnly = true)   // default: all reads
+public class ProductService {
+    public List<Product> list() { return repo.findAll(); }
+    public Product findById(Long id) { return repo.findById(id).orElseThrow(); }
+
+    @Transactional  // overrides class-level readOnly=false for writes
+    public Product create(ProductRequest req) { return repo.save(new Product(req)); }
+}
+\`\`\`
 
 ---
 
-**Where to go next:** this was orientation only. The full deep dive -- filter chain internals, JWT issue/validate/refresh/revoke, OAuth2/OIDC, RBAC/ABAC, multi-tenant isolation -- is in **Module 11.3 (Spring Security, OAuth2 & Authn/Authz)**.`,
+**Further reading**
+
+- [Transaction Propagation and Isolation — Baeldung](https://www.baeldung.com/spring-transactional-propagation-isolation)
+`,
             code: [
-              {
-                lang: `java`,
-                title: `A minimal stateless SecurityFilterChain`,
-                code: `package com.example.catalog.security;
+              `import org.springframework.transaction.annotation.*;
+import org.springframework.stereotype.*;
 
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.web.SecurityFilterChain;
+// Propagation in action: outer rollback doesn't affect REQUIRES_NEW
+@Service
+public class TransferService {
+    private final AccountRepository accounts;
+    private final AuditService audit;
+    private final NotificationService notifications;
 
-@Configuration
-public class SecurityConfig {
+    @Transactional  // outer transaction
+    public TransferResult transfer(String from, String to, double amount) {
+        audit.recordEvent("TRANSFER_INITIATED", from, amount); // REQUIRES_NEW — always commits
 
-    // One bean defines the whole filter chain. It runs in front of the
-    // DispatcherServlet for every request.
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            // REST APIs are stateless: no HTTP session, each request self-carries
-            // its credentials (e.g. a bearer token), so CSRF protection is not needed.
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                // public routes anyone can hit
-                .requestMatchers("/api/health", "/api/products/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/orders").authenticated()
-                // everything else requires an authenticated caller
-                .anyRequest().authenticated()
-            )
-            // Validate incoming JWTs as a resource server (issuer configured
-            // in properties). This is the high-level OAuth2 fit.
-            .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}));
+        try {
+            Account sender   = accounts.findById(from).orElseThrow();
+            Account receiver = accounts.findById(to).orElseThrow();
 
-        return http.build();
+            if (sender.balance() < amount)
+                throw new InsufficientFundsException("Balance: " + sender.balance());
+
+            accounts.save(sender.debit(amount));
+            accounts.save(receiver.credit(amount));
+
+            audit.recordEvent("TRANSFER_COMPLETE", from, amount); // REQUIRES_NEW
+            notifications.sendAsync(from, "Transfer of " + amount + " successful");
+            return TransferResult.success();
+
+        } catch (InsufficientFundsException e) {
+            audit.recordEvent("TRANSFER_FAILED", from, amount); // REQUIRES_NEW — commits despite outer rollback
+            throw e; // outer tx rolls back account changes, but audit records survive
+        }
+    }
+}
+
+@Service
+class AuditService {
+    private final AuditRepository auditRepo;
+    AuditService(AuditRepository r) { this.auditRepo = r; }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordEvent(String event, String accountId, double amount) {
+        auditRepo.save(new AuditEntry(event, accountId, amount, java.time.Instant.now()));
+    }
+}`,
+              `import org.springframework.transaction.annotation.*;
+import org.springframework.stereotype.*;
+import java.util.*;
+
+// readOnly optimisation + isolation demonstration
+@Service
+@Transactional(readOnly = true)  // default for all methods
+public class ReportService {
+    private final OrderRepository orderRepo;
+    private final ProductRepository productRepo;
+
+    ReportService(OrderRepository o, ProductRepository p) {
+        this.orderRepo = o; this.productRepo = p;
+    }
+
+    // Inherits readOnly=true — no dirty checking, faster
+    public List<Order> getRecentOrders() { return orderRepo.findTop100ByOrderByCreatedAtDesc(); }
+
+    // Higher isolation for financial reports — prevent phantom reads during report generation
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public FinancialReport generateMonthlyReport(int year, int month) {
+        // Both queries see a consistent snapshot — no phantom rows between the two calls
+        List<Order> orders = orderRepo.findByYearAndMonth(year, month);
+        Map<String,Double> byProduct = productRepo.sumRevenueByProduct(year, month);
+        return new FinancialReport(orders, byProduct);
+    }
+
+    // Serializable for audit — must see exactly what was there at start of tx
+    @Transactional(readOnly = true, isolation = Isolation.SERIALIZABLE)
+    public AuditSnapshot auditSnapshot() {
+        return new AuditSnapshot(orderRepo.count(), productRepo.count());
+    }
+
+    // Write operation overrides class-level readOnly
+    @Transactional  // readOnly defaults back to false
+    public void archiveOldOrders() {
+        List<Order> old = orderRepo.findOlderThan(java.time.Instant.now().minusSeconds(60*60*24*365));
+        old.forEach(o -> o.setStatus("ARCHIVED"));
+        orderRepo.saveAll(old);
     }
 }`
-              },
-              {
-                lang: `java`,
-                title: `Method security with @PreAuthorize`,
-                code: `package com.example.catalog.web;
-
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-@RestController
-@RequestMapping("/api/products")
-public class AdminProductController {
-
-    private final ProductService service;
-
-    public AdminProductController(ProductService service) {
-        this.service = service;
-    }
-
-    // The SpEL expression is checked BEFORE the method runs. A caller
-    // without ROLE_ADMIN gets 403 Forbidden and the body never executes.
-    @PreAuthorize("hasRole('ADMIN')")
-    @DeleteMapping("/{id}")
-    public void delete(@PathVariable Long id) {
-        service.delete(id);
-    }
-}`
-              },
-              {
-                lang: `java`,
-                title: `Enabling method security`,
-                code: `package com.example.catalog.security;
-
-import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
-
-// Required for @PreAuthorize / @PostAuthorize to be honored.
-@Configuration
-@EnableMethodSecurity
-public class MethodSecurityConfig {
-}`
-              }
             ],
             flashcards: [
               {
-                q: `Authentication vs authorization?`,
-                a: `Authentication (authn) answers 'who are you?' -- verifying identity. Authorization (authz) answers 'what may you do?' -- deciding whether the known identity is allowed to perform an action. Authenticate first, then authorize.`
+                q: `What is transaction propagation and what does REQUIRED vs REQUIRES_NEW mean?`,
+                a: `Propagation defines how a @Transactional method behaves when called within an existing transaction. REQUIRED (default): if a transaction already exists, join it; if not, create one. The inner method shares the outer transaction — if the inner throws, the outer also rolls back. REQUIRES_NEW: always suspend the current transaction and start a fresh one. The inner transaction commits or rolls back independently. Use REQUIRES_NEW for audit logging, where you want the audit record to persist even if the outer operation fails.`
               },
               {
-                q: `Where does the Spring Security filter chain sit relative to the DispatcherServlet?`,
-                a: `In front of it. Requests pass through the chain of servlet filters -- establishing and checking identity/permissions -- before reaching the DispatcherServlet and any controller.`
+                q: `What are dirty reads, non-repeatable reads, and phantom reads?`,
+                a: `Dirty read: tx A reads data written by tx B before B commits — if B rolls back, A read data that never existed. Non-repeatable read: tx A reads a row twice; between the reads tx B commits an UPDATE — A sees different values for the same row. Phantom read: tx A executes a range query twice; between the reads tx B commits an INSERT — A sees a new "phantom" row. Default isolation (READ_COMMITTED) prevents dirty reads. REPEATABLE_READ also prevents non-repeatable reads. SERIALIZABLE prevents all three.`
               },
               {
-                q: `What does the security filter chain actually do to a request?`,
-                a: `Extracts credentials, authenticates the caller (populating an Authentication in the SecurityContext), and enforces access rules -- letting the request through or rejecting it.`
+                q: `What does @Transactional(readOnly = true) do and why use it?`,
+                a: `Marks a transaction as read-only. Hibernate/JPA disables dirty checking (no entity snapshots needed — significant performance gain when loading many entities). Some DB drivers/routers use this hint to route queries to a read replica. The method will throw if it tries to flush writes. Best practice: annotate the @Service class with @Transactional(readOnly = true) as the default, then override individual write methods with @Transactional (which defaults readOnly to false).`
               },
               {
-                q: `401 vs 403?`,
-                a: `401 Unauthorized: authentication is missing or invalid (we do not know who you are). 403 Forbidden: authenticated, but the identity lacks permission for this action.`
+                q: `When would you use Propagation.MANDATORY vs NEVER?`,
+                a: `MANDATORY: the method REQUIRES an active transaction — throws IllegalTransactionStateException if called outside one. Use when the method is a helper that must be part of the caller's unit of work (e.g. an internal repository helper that should never run standalone). NEVER: the method must NOT be called inside a transaction — throws if one is active. Use for operations that explicitly must not participate in a transaction (e.g. a utility that starts its own JDBC connection and would conflict with JPA transaction management).`
               },
               {
-                q: `How do you configure Spring Security in a modern (component-based) app?`,
-                a: `Define a SecurityFilterChain bean using the HttpSecurity DSL -- authorizeHttpRequests, sessionManagement, oauth2ResourceServer, etc. (the successor to the old WebSecurityConfigurerAdapter).`
+                q: `What is NESTED propagation and how does it differ from REQUIRES_NEW?`,
+                a: `NESTED creates a savepoint within the outer transaction (using JDBC savepoints). If the nested method fails, it rolls back to the savepoint — the outer transaction continues with the changes made before the savepoint. If the outer tx fails, the entire tx including the nested work rolls back. REQUIRES_NEW is completely independent — it commits or rolls back separately. NESTED is supported by Spring with JdbcTransactionManager or when the underlying DB supports savepoints. Use NESTED when you want partial rollback within one overall transaction.`
+              }
+            ]
+          },
+          {
+            title: `AOP Concepts & Spring AOP`,
+            notes: `## AOP Concepts & Spring AOP
+
+Aspect-Oriented Programming (AOP) separates cross-cutting concerns (logging, security, transactions, caching) from business logic.
+
+### Core Vocabulary
+
+\`\`\`
+Aspect      — the module encapsulating a cross-cutting concern (e.g. LoggingAspect)
+Join Point  — a point in execution where advice CAN be applied (Spring: always a method call)
+Pointcut    — an expression that matches join points (WHERE advice runs)
+Advice      — the code that runs at a matched join point (WHAT to do)
+Weaving     — linking aspects to the target (Spring: done at runtime via proxy)
+\`\`\`
+
+### Advice Types
+
+\`\`\`java
+@Aspect
+@Component
+public class LoggingAspect {
+
+    // @Before — runs before the method
+    @Before("execution(* com.example.service.*.*(..))")
+    public void logBefore(JoinPoint jp) {
+        log.info("Calling {}", jp.getSignature().getName());
+    }
+
+    // @AfterReturning — runs after method returns normally
+    @AfterReturning(pointcut = "execution(* com.example.service.*.*(..))", returning = "result")
+    public void logReturn(JoinPoint jp, Object result) {
+        log.info("{} returned: {}", jp.getSignature().getName(), result);
+    }
+
+    // @AfterThrowing — runs when method throws
+    @AfterThrowing(pointcut = "execution(* com.example.service.*.*(..))", throwing = "ex")
+    public void logException(JoinPoint jp, Exception ex) {
+        log.error("{} threw: {}", jp.getSignature().getName(), ex.getMessage());
+    }
+
+    // @After — runs after method, regardless of outcome (like finally)
+    @After("execution(* com.example.service.*.*(..))")
+    public void logFinally(JoinPoint jp) {
+        log.info("Method {} completed", jp.getSignature().getName());
+    }
+
+    // @Around — most powerful: surrounds the method call entirely
+    @Around("execution(* com.example.service.*.*(..))")
+    public Object logAround(ProceedingJoinPoint pjp) throws Throwable {
+        long start = System.currentTimeMillis();
+        try {
+            Object result = pjp.proceed();  // MUST call proceed() to invoke the actual method
+            log.info("{} took {}ms", pjp.getSignature().getName(), System.currentTimeMillis() - start);
+            return result;
+        } catch (Exception e) {
+            log.error("{} failed: {}", pjp.getSignature().getName(), e.getMessage());
+            throw e;  // MUST rethrow unless you want to swallow the exception
+        }
+    }
+}
+\`\`\`
+
+### Pointcut Expressions
+
+\`\`\`java
+// execution: matches method execution
+execution(modifiers? return-type declaring-type? method-name(params) throws?)
+
+execution(* com.example.service.*.*(..))   // any method in any class in service package
+execution(public * *(..))                  // any public method
+execution(* save*(..))                     // any method starting with 'save'
+execution(* OrderService.createOrder(..))  // specific method
+execution(* *(.., String))                 // methods whose last param is String
+
+// within: matches classes within a package
+within(com.example.service..*)  // any class in service package or subpackages
+
+// @annotation: matches methods annotated with a specific annotation
+@annotation(org.springframework.transaction.annotation.Transactional)
+@annotation(com.example.Audited)  // your custom annotation
+
+// @within: matches classes annotated with a specific annotation
+@within(org.springframework.stereotype.Service)
+
+// bean: matches by bean name
+bean(*Service)       // all beans ending with "Service"
+bean(orderService)   // specific bean name
+
+// Combining with && || !
+execution(* com.example.service.*.*(..)) && !execution(* get*(..))  // service methods, not getters
+\`\`\`
+
+### Custom Annotation-Based AOP
+
+\`\`\`java
+// Define the annotation
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Audited {
+    String action() default "";
+}
+
+// Apply it in business code
+@Service
+public class AccountService {
+    @Audited(action = "ACCOUNT_CREATED")
+    public Account createAccount(String owner) { ... }
+}
+
+// Intercept it in the aspect
+@Aspect @Component
+public class AuditAspect {
+    @Around("@annotation(audited)")
+    public Object audit(ProceedingJoinPoint pjp, Audited audited) throws Throwable {
+        String action = audited.action();
+        String user = SecurityContextHolder.getContext().getAuthentication().getName();
+        try {
+            Object result = pjp.proceed();
+            auditRepo.save(new AuditEntry(action, user, "SUCCESS"));
+            return result;
+        } catch (Exception e) {
+            auditRepo.save(new AuditEntry(action, user, "FAILURE: " + e.getMessage()));
+            throw e;
+        }
+    }
+}
+\`\`\``,
+            code: [
+              `import org.aspectj.lang.annotation.*;
+import org.aspectj.lang.*;
+import org.springframework.stereotype.*;
+import java.lang.annotation.*;
+import java.util.concurrent.atomic.*;
+
+// Complete AOP example: @Timed custom annotation + performance aspect
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+@interface Timed { String value() default ""; }
+
+@Aspect
+@Component
+class PerformanceAspect {
+    private final AtomicLong totalCalls = new AtomicLong();
+    private final AtomicLong totalMs    = new AtomicLong();
+
+    @Around("@annotation(timed)")
+    public Object time(ProceedingJoinPoint pjp, Timed timed) throws Throwable {
+        long start = System.nanoTime();
+        String label = timed.value().isEmpty() ? pjp.getSignature().toShortString() : timed.value();
+        try {
+            Object result = pjp.proceed();   // invoke the actual method
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            totalCalls.incrementAndGet();
+            totalMs.addAndGet(ms);
+            System.out.printf("[PERF] %s: %dms (avg %.1fms over %d calls)%n",
+                label, ms, (double)totalMs.get()/totalCalls.get(), totalCalls.get());
+            return result;
+        } catch (Throwable t) {
+            System.err.printf("[PERF] %s: FAILED after %dms%n",
+                label, (System.nanoTime() - start) / 1_000_000);
+            throw t;
+        }
+    }
+
+    @Before("execution(* com.example.controller..*(..))")
+    public void logControllerCalls(JoinPoint jp) {
+        System.out.println("[AOP] -> " + jp.getSignature().toShortString());
+    }
+
+    @AfterThrowing(pointcut = "within(com.example.service..*)", throwing = "ex")
+    public void alertOnServiceException(JoinPoint jp, Exception ex) {
+        System.err.printf("[ALERT] Service exception in %s: %s%n",
+            jp.getSignature().getName(), ex.getMessage());
+    }
+}
+
+// Usage
+@Service
+class ProductService {
+    @Timed("product.search")
+    public java.util.List<String> search(String query) {
+        try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        return java.util.List.of("Product A", "Product B");
+    }
+
+    @Timed
+    public void refresh() {
+        try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+}`,
+              `import org.aspectj.lang.annotation.*;
+import org.aspectj.lang.*;
+import java.lang.annotation.*;
+
+// Caching aspect — manual cache with AOP (before Spring Cache existed)
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+@interface Cacheable { String key(); long ttlSeconds() default 60; }
+
+@Aspect
+@org.springframework.stereotype.Component
+class CachingAspect {
+    private final java.util.concurrent.ConcurrentHashMap<String, CacheEntry> cache
+        = new java.util.concurrent.ConcurrentHashMap<>();
+
+    record CacheEntry(Object value, long expiresAt) {}
+
+    @Around("@annotation(cacheable)")
+    public Object cache(ProceedingJoinPoint pjp, Cacheable cacheable) throws Throwable {
+        // Build cache key: annotation key + method args
+        String key = cacheable.key() + ":" + java.util.Arrays.toString(pjp.getArgs());
+
+        CacheEntry entry = cache.get(key);
+        if (entry != null && System.currentTimeMillis() < entry.expiresAt()) {
+            System.out.println("[CACHE] HIT: " + key);
+            return entry.value();
+        }
+
+        System.out.println("[CACHE] MISS: " + key + " — invoking method");
+        Object result = pjp.proceed();  // call actual method
+        long expiresAt = System.currentTimeMillis() + cacheable.ttlSeconds() * 1000;
+        cache.put(key, new CacheEntry(result, expiresAt));
+        return result;
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 60_000)
+    public void evictExpired() {
+        long now = System.currentTimeMillis();
+        cache.entrySet().removeIf(e -> e.getValue().expiresAt() < now);
+        System.out.println("[CACHE] Eviction ran, size=" + cache.size());
+    }
+}
+
+// Usage
+@org.springframework.stereotype.Service
+class UserService {
+    @Cacheable(key = "user", ttlSeconds = 300)
+    public String findUser(Long id) {
+        // Simulate DB call
+        return "User#" + id;
+    }
+}`
+            ],
+            flashcards: [
+              {
+                q: `What are the five core AOP concepts: Aspect, Joinpoint, Pointcut, Advice, Weaving?`,
+                a: `Aspect: the module holding cross-cutting logic (e.g. LoggingAspect). Joinpoint: a specific moment during execution where advice can be applied — in Spring AOP this is always a method call. Pointcut: an expression that selects which joinpoints to intercept (e.g. execution(* com.example.service.*.*(..))). Advice: the actual code that runs at a matched joinpoint (@Before, @After, @Around). Weaving: the process of linking aspects to target objects — Spring does this at runtime via dynamic proxies (JDK or CGLib).`
               },
               {
-                q: `Why make a REST API stateless, and how?`,
-                a: `So each request carries its own credentials (e.g. a bearer token) with no server-side session to store or scale. Set SessionCreationPolicy.STATELESS; CSRF protection then becomes unnecessary.`
+                q: `What is the difference between @Before, @After, @Around, @AfterReturning, @AfterThrowing?`,
+                a: `@Before: runs before the method. @AfterReturning: runs after the method returns normally; can access the return value. @AfterThrowing: runs when the method throws an exception; can access the exception. @After: runs after the method regardless of outcome (like finally). @Around: surrounds the method call — must call pjp.proceed() to invoke the actual method; most powerful, can modify inputs/outputs, suppress exceptions. @Around can replace all others but is also most risky (forgetting proceed() silently skips the method).`
               },
               {
-                q: `What is a JWT and how is it used on a request?`,
-                a: `A JSON Web Token -- a signed token carrying claims about the caller. The client sends it as 'Authorization: Bearer <token>'; the server validates the signature and reads the claims, no session required.`
+                q: `How does the execution() pointcut expression work?`,
+                a: `execution(modifiers? return-type declaring-type? method-name(params) throws?) where * is a wildcard and .. means zero or more. Examples: execution(* com.example.service.*.*(..)) — any method in any class in service package; execution(public * save*(..)) — any public method starting with "save"; execution(* OrderService.*(..)) — any method on OrderService. Combine with &&, ||, !: execution(* service.*.*(..)) && !execution(* get*(..)) — service methods excluding getters.`
               },
               {
-                q: `In OAuth2 terms, what role does your API play?`,
-                a: `A resource server: it does not issue tokens or handle passwords; it validates tokens issued by an external authorization server (Keycloak, Auth0, Google) and derives the caller's identity and authorities from them.`
+                q: `What is @annotation pointcut and how does it enable custom cross-cutting behaviour?`,
+                a: `@annotation(myAnnotation) matches methods annotated with that annotation. This pattern lets you define custom annotations (@Audited, @Timed, @RateLimited) that carry configuration data, then write aspects that intercept those annotations: @Around("@annotation(audited)") public Object audit(ProceedingJoinPoint pjp, Audited audited). Business code declares what it wants (@Audited(action="SAVE")) and the aspect provides the behaviour — clean separation.`
               },
               {
-                q: `What is @PreAuthorize and what enables it?`,
-                a: `Method-level security: a SpEL expression (e.g. hasRole('ADMIN')) evaluated before the method runs; failure yields 403. It requires @EnableMethodSecurity on a config class.`
-              },
-              {
-                q: `URL-based rules vs method security -- when each?`,
-                a: `authorizeHttpRequests guards by path/verb at the edge. Method security (@PreAuthorize) guards individual methods close to business logic, handy for role or ownership checks that URL rules cannot express.`
-              },
-              {
-                q: `Where is the full security deep dive covered?`,
-                a: `Module 11.3 (Spring Security, OAuth2 & Authn/Authz) -- filter chain internals, JWT issue/validate/refresh/revoke, OAuth2/OIDC, RBAC/ABAC, and multi-tenant isolation.`
+                q: `What are the limitations of Spring AOP vs AspectJ?`,
+                a: `Spring AOP is proxy-based and has key limitations: (1) Only intercepts public method calls; (2) Self-invocation bypasses the proxy — this.method() inside the same class is not intercepted; (3) Only works on Spring-managed beans; (4) Only method-level join points (no field access, constructor interception). AspectJ does compile-time or load-time weaving with bytecode modification — intercepts any join point including field access, constructors, private methods. AspectJ is more powerful but adds build complexity. Spring AOP covers 90% of production needs.`
               }
             ]
           }

@@ -515,32 +515,6 @@ const INTERVIEW_QUESTIONS = {
   ],
   "2.2": [
     {
-      "q": "Compare synchronized and ReentrantLock: what does the explicit lock give you, and what's the cost?",
-      "a": "synchronized is simpler and auto-releases on scope exit even during exceptions, but it only supports one implicit condition, blocks uninterruptibly, and offers no try-or-timeout. ReentrantLock adds tryLock with timeout, interruptible acquisition, optional fairness, and multiple Condition objects, which you need for things like bounded buffers with separate not-full and not-empty waits. The cost is that you must release it in a finally block yourself, and forgetting that finally is a classic source of permanently stuck threads."
-    },
-    {
-      "q": "Why is double-checked locking subtly broken without volatile, and how does the JMM fix it?",
-      "a": "The lazy-init idiom checks the field, locks only if null, then checks again, but without volatile a second thread can see a non-null reference whose constructor writes haven't been published, due to reordering of the allocation and field stores. Marking the field volatile establishes the happens-before edge so any thread that reads the non-null reference also sees the fully constructed object. In practice people sidestep the whole issue with a static holder class, which uses the JVM's guaranteed-once class-initialization lock for free."
-    },
-    {
-      "q": "Explain CAS and the ABA problem, and how LongAdder differs from AtomicLong under contention.",
-      "a": "Compare-and-swap atomically updates a value only if it still equals an expected snapshot, enabling lock-free retry loops; the ABA problem is when a value changes from A to B and back to A, so CAS succeeds even though state was disturbed, addressed with a versioned AtomicStampedReference. AtomicLong is fine at low contention but a single hot CAS location causes cache-line ping-pong under heavy multi-thread updates. LongAdder spreads writes across multiple cells to reduce contention and sums them on read, so it's faster for high-write counters where you read totals infrequently."
-    },
-    {
-      "q": "Why must you restore the interrupt flag after catching InterruptedException, and what is interruption actually?",
-      "a": "Interruption is cooperative: it sets a flag and, for blocking calls, throws InterruptedException which clears the flag, so swallowing the exception silently destroys the only signal that someone asked the thread to stop. Restoring it with Thread.currentThread().interrupt() lets higher-level code, like a thread pool's shutdown logic, observe the request and terminate cleanly. The anti-pattern of catching and ignoring it produces tasks that can't be cancelled and pools that won't shut down."
-    },
-    {
-      "q": "Why is sizing a ThreadPoolExecutor non-trivial, and how do the queue and rejection policy interact?",
-      "a": "ThreadPoolExecutor only grows beyond the core size after the queue is full, so an unbounded queue means the pool never adds threads and tasks pile up in memory, while a tiny core with a bounded queue rejects work under bursts. You size core threads for CPU-bound work near the core count and higher for I/O-bound work, choose a bounded queue to apply backpressure, and pick a rejection policy such as CallerRuns to throttle producers. Getting this wrong causes either OOM from queue buildup or dropped work from premature rejection."
-    },
-    {
-      "q": "When is CompletableFuture's default executor a trap, and how do thenApply and thenApplyAsync differ?",
-      "a": "Async stages without an explicit executor run on the ForkJoinPool.commonPool, which is sized for CPU-bound work and shared JVM-wide, so blocking I/O there starves unrelated parallel streams and other tasks. thenApply may run in the thread that completed the previous stage, including the caller, whereas thenApplyAsync hands the work to an executor; the non-async form can surprise you by running on a thread you didn't expect. The fix for blocking work is always to pass a dedicated executor to the Async variants."
-    }
-  ],
-  "2.3": [
-    {
       "q": "Explain stream laziness and short-circuiting, and why it changes how much work actually runs.",
       "a": "Intermediate operations like map and filter build a pipeline but do nothing until a terminal operation pulls elements through, and elements are processed one at a time rather than stage-by-stage over the whole collection. This enables short-circuiting: findFirst, anyMatch, or limit can stop early, so a filter-then-findFirst over a huge source may touch only a few elements. The practical upshot is that ordering operations for early termination, and avoiding side effects, matters because stages only execute on demand."
     },
@@ -587,6 +561,32 @@ const INTERVIEW_QUESTIONS = {
     {
       "q": "How do Function.andThen/compose and Predicate.and/or/negate let you build behavior from small pieces?",
       "a": "These default methods return a new composed instance without mutating the originals. f.andThen(g) applies f then g (g(f(x))), while f.compose(g) applies g first (f(g(x))). Predicate exposes p.and(q), p.or(q) and p.negate() with short-circuit semantics, so you can assemble a filter like isActive.and(isSenior.or(isManager)) from named, testable predicates. Consumer.andThen(c2) chains side effects in order. This is function composition in Java: it keeps each piece small and reusable and reads declaratively at the call site."
+    }
+  ],
+  "2.3": [
+    {
+      "q": "Compare synchronized and ReentrantLock: what does the explicit lock give you, and what's the cost?",
+      "a": "synchronized is simpler and auto-releases on scope exit even during exceptions, but it only supports one implicit condition, blocks uninterruptibly, and offers no try-or-timeout. ReentrantLock adds tryLock with timeout, interruptible acquisition, optional fairness, and multiple Condition objects, which you need for things like bounded buffers with separate not-full and not-empty waits. The cost is that you must release it in a finally block yourself, and forgetting that finally is a classic source of permanently stuck threads."
+    },
+    {
+      "q": "Why is double-checked locking subtly broken without volatile, and how does the JMM fix it?",
+      "a": "The lazy-init idiom checks the field, locks only if null, then checks again, but without volatile a second thread can see a non-null reference whose constructor writes haven't been published, due to reordering of the allocation and field stores. Marking the field volatile establishes the happens-before edge so any thread that reads the non-null reference also sees the fully constructed object. In practice people sidestep the whole issue with a static holder class, which uses the JVM's guaranteed-once class-initialization lock for free."
+    },
+    {
+      "q": "Explain CAS and the ABA problem, and how LongAdder differs from AtomicLong under contention.",
+      "a": "Compare-and-swap atomically updates a value only if it still equals an expected snapshot, enabling lock-free retry loops; the ABA problem is when a value changes from A to B and back to A, so CAS succeeds even though state was disturbed, addressed with a versioned AtomicStampedReference. AtomicLong is fine at low contention but a single hot CAS location causes cache-line ping-pong under heavy multi-thread updates. LongAdder spreads writes across multiple cells to reduce contention and sums them on read, so it's faster for high-write counters where you read totals infrequently."
+    },
+    {
+      "q": "Why must you restore the interrupt flag after catching InterruptedException, and what is interruption actually?",
+      "a": "Interruption is cooperative: it sets a flag and, for blocking calls, throws InterruptedException which clears the flag, so swallowing the exception silently destroys the only signal that someone asked the thread to stop. Restoring it with Thread.currentThread().interrupt() lets higher-level code, like a thread pool's shutdown logic, observe the request and terminate cleanly. The anti-pattern of catching and ignoring it produces tasks that can't be cancelled and pools that won't shut down."
+    },
+    {
+      "q": "Why is sizing a ThreadPoolExecutor non-trivial, and how do the queue and rejection policy interact?",
+      "a": "ThreadPoolExecutor only grows beyond the core size after the queue is full, so an unbounded queue means the pool never adds threads and tasks pile up in memory, while a tiny core with a bounded queue rejects work under bursts. You size core threads for CPU-bound work near the core count and higher for I/O-bound work, choose a bounded queue to apply backpressure, and pick a rejection policy such as CallerRuns to throttle producers. Getting this wrong causes either OOM from queue buildup or dropped work from premature rejection."
+    },
+    {
+      "q": "When is CompletableFuture's default executor a trap, and how do thenApply and thenApplyAsync differ?",
+      "a": "Async stages without an explicit executor run on the ForkJoinPool.commonPool, which is sized for CPU-bound work and shared JVM-wide, so blocking I/O there starves unrelated parallel streams and other tasks. thenApply may run in the thread that completed the previous stage, including the caller, whereas thenApplyAsync hands the work to an executor; the non-async form can surprise you by running on a thread you didn't expect. The fix for blocking work is always to pass a dedicated executor to the Async variants."
     }
   ],
   "2.4": [
@@ -797,32 +797,36 @@ const INTERVIEW_QUESTIONS = {
   ],
   "3.3": [
     {
-      "q": "Explain exactly how @Transactional works under the hood and why a self-invocation silently does nothing.",
-      "a": "By default Spring implements @Transactional with a proxy (CGLIB or JDK dynamic) that wraps the bean; the proxy opens/commits/rolls back the transaction around the call before delegating to your code. When one method in the bean calls another @Transactional method via this.otherMethod(), the call goes directly to the target instance and never passes through the proxy, so the second method's transaction settings are ignored entirely. Fixes: move the inner method to a separate bean, self-inject the proxy, use AopContext.currentProxy(), or switch to AspectJ load-time weaving which doesn't rely on proxies."
+      "q": "What is the DispatcherServlet and what role does it play in Spring MVC?",
+      "a": "The DispatcherServlet is Spring MVC's front controller: a single servlet that receives every incoming HTTP request and orchestrates handling. It consults handler mappings to find the controller method for the URL, invokes it (resolving arguments like @PathVariable, @RequestParam, @RequestBody), then uses an HttpMessageConverter (Jackson for JSON) to serialize the return value into the response. Centralizing routing in one servlet is the front-controller pattern and is why cross-cutting concerns (security filters, exception handling, content negotiation) can be applied in one place."
     },
     {
-      "q": "By default @Transactional rolls back on which exceptions, and what's the production trap?",
-      "a": "Spring only rolls back automatically on unchecked exceptions (RuntimeException and Error); a checked exception thrown out of a @Transactional method commits the transaction by default. This bites teams who throw checked domain or IOException-style exceptions expecting a rollback and end up persisting partial work. Control it explicitly with rollbackFor = SomeChecked.class or noRollbackFor; many shops standardize on unchecked exceptions for this reason. Also note: catching an exception inside the method swallows the rollback signal entirely."
+      "q": "What is the difference between @Controller and @RestController?",
+      "a": "@Controller is the classic MVC stereotype whose methods usually return a view name to be rendered (with @ResponseBody needed on methods that return data directly). @RestController is a convenience annotation that combines @Controller and @ResponseBody, so every handler method's return value is written straight to the response body (serialized to JSON by default) rather than resolved as a view. You use @RestController for REST APIs and @Controller when serving server-rendered HTML."
     },
     {
-      "q": "Compare propagation REQUIRED and REQUIRES_NEW, and give a concrete case where REQUIRES_NEW is the right call.",
-      "a": "REQUIRED (the default) joins an existing transaction if one is active, otherwise starts a new one, so the whole call graph commits or rolls back together. REQUIRES_NEW suspends any current transaction and runs in a brand-new independent one that commits or rolls back on its own. The classic use is audit logging or recording a failed-attempt record that must persist even if the surrounding business transaction rolls back. Beware: REQUIRES_NEW grabs a second physical connection from the pool, so misuse under load can exhaust the pool and even deadlock against the suspended transaction's locks."
+      "q": "Why expose DTOs from controllers instead of returning JPA entities directly?",
+      "a": "Returning entities couples your API contract to your database schema, leaks internal fields, and invites serialization problems -- serializing a lazily-loaded association can trigger extra queries or a LazyInitializationException outside the persistence context, and bidirectional relationships can cause infinite recursion. A DTO (often a record) is a deliberate, stable representation shaped for the client: you choose exactly which fields to expose, you decouple API evolution from schema changes, and you avoid accidentally exposing sensitive columns."
     },
     {
-      "q": "What is the 'rollback-only' marker and the UnexpectedRollbackException, and how does an inner transaction cause it?",
-      "a": "When a transaction must roll back, Spring marks the transaction 'rollback-only' rather than rolling back immediately. If an inner REQUIRED method throws and is caught by an outer method that then tries to commit, the shared transaction was already marked rollback-only, so the commit attempt fails with UnexpectedRollbackException. The lesson is that with REQUIRED propagation a caught exception in a participating method still doomed the whole transaction; if you truly need the inner work to fail independently you must use REQUIRES_NEW (or NESTED with savepoints) so the rollback is isolated."
+      "q": "Which HTTP status codes should a well-behaved CRUD endpoint return?",
+      "a": "201 Created (with a Location header pointing to the new resource) for a successful POST that creates; 200 OK for a successful GET or an update returning a body; 204 No Content for a successful update/delete with no body; 400 Bad Request for validation/parse failures; 404 Not Found when the resource does not exist; 409 Conflict for a state conflict such as a duplicate key or optimistic-lock failure; 401/403 for authentication/authorization failures. ResponseEntity lets you set the status, headers, and body explicitly."
     },
     {
-      "q": "How do isolation levels and timeout/readOnly attributes of @Transactional translate to the database, and what do they actually buy you?",
-      "a": "isolation maps to the underlying JDBC connection's isolation level (READ_COMMITTED, REPEATABLE_READ, etc.) for that transaction, and DEFAULT just uses the database's default. timeout bounds how long the transaction may run before being rolled back, protecting against runaway locks. readOnly = true is a hint: it lets Hibernate skip dirty-checking/flush and lets some drivers/replicas optimize, but it does not guarantee the DB rejects writes, so don't treat it as a security control. These are powerful for tuning long-running reports versus hot write paths."
+      "q": "How does @Valid work, and what happens when validation fails on a @RequestBody?",
+      "a": "Putting @Valid on a @RequestBody parameter tells Spring to run Jakarta Bean Validation (constraints like @NotBlank, @Size, @Email) on the deserialized object before the controller body runs. If any constraint fails, Spring throws MethodArgumentNotValidException before your method executes; by default that yields a 400. You typically handle it in a @RestControllerAdvice to return a clean list of field errors. For validating @PathVariable/@RequestParam constraints you add @Validated to the controller class."
     },
     {
-      "q": "What's the difference between Spring AOP proxies and full AspectJ weaving, and what are the practical limits of proxy-based AOP?",
-      "a": "Spring AOP is proxy-based and only intercepts external calls to public (for CGLIB, non-final/non-static) methods on Spring-managed beans; it can't advise private methods, final classes, or self-invocations. Full AspectJ weaves advice into the bytecode at compile or load time, so it can advise any method including private and self-calls and works on non-Spring objects. Most applications stay with Spring AOP because it's simpler and dependency-free, accepting the self-invocation and visibility limitations, and reach for AspectJ only when those limits genuinely block a requirement like domain-object instrumentation."
+      "q": "What is @ControllerAdvice / @RestControllerAdvice used for?",
+      "a": "It defines global, cross-controller behavior -- most commonly centralized exception handling. A class annotated @RestControllerAdvice with @ExceptionHandler methods catches exceptions thrown by any controller and maps them to consistent HTTP responses (e.g. a domain NotFoundException -> 404, MethodArgumentNotValidException -> 400 with field errors). This keeps error handling out of individual controllers and gives the whole API one uniform error format instead of ad-hoc try/catch everywhere."
     },
     {
-      "q": "Why is mixing @Transactional with calls to external systems (sending email, publishing to a queue) dangerous, and how do you do it correctly?",
-      "a": "Holding a database transaction open while making a remote call lengthens lock duration and pins a connection, and worse, the external side effect can't be rolled back if the transaction later fails, producing dual-write inconsistency (email sent for an order that didn't commit). The clean pattern is to defer the side effect until after commit using @TransactionalEventListener(phase = AFTER_COMMIT) or the outbox pattern, where you write an event row in the same transaction and a separate process publishes it. This keeps transactions short and makes external effects consistent with the committed state."
+      "q": "What is ProblemDetail / RFC 7807 and why use it?",
+      "a": "RFC 7807 defines a standard JSON shape for HTTP error responses -- media type application/problem+json with fields like type, title, status, detail, and instance. Spring 6 provides the ProblemDetail class to build these. Using it means every error your API returns has a predictable, machine-readable structure instead of a bespoke format per endpoint, which makes clients easier to write and errors easier to document and monitor."
+    },
+    {
+      "q": "In one line each, what is the difference between authentication and authorization, and where does Spring Security sit?",
+      "a": "Authentication answers 'who are you?' (verifying identity -- credentials, a JWT, an OAuth2 token); authorization answers 'what are you allowed to do?' (checking permissions/roles on a request). Spring Security is a chain of servlet filters that runs BEFORE the DispatcherServlet, so it can authenticate and authorize (or reject) a request before it ever reaches your controller. The full treatment -- filter chain internals, JWT lifecycle, OAuth2/OIDC, RBAC/ABAC -- is in Module 11.3."
     }
   ],
   "3.4": [
@@ -857,36 +861,32 @@ const INTERVIEW_QUESTIONS = {
   ],
   "3.5": [
     {
-      "q": "What is the DispatcherServlet and what role does it play in Spring MVC?",
-      "a": "The DispatcherServlet is Spring MVC's front controller: a single servlet that receives every incoming HTTP request and orchestrates handling. It consults handler mappings to find the controller method for the URL, invokes it (resolving arguments like @PathVariable, @RequestParam, @RequestBody), then uses an HttpMessageConverter (Jackson for JSON) to serialize the return value into the response. Centralizing routing in one servlet is the front-controller pattern and is why cross-cutting concerns (security filters, exception handling, content negotiation) can be applied in one place."
+      "q": "Explain exactly how @Transactional works under the hood and why a self-invocation silently does nothing.",
+      "a": "By default Spring implements @Transactional with a proxy (CGLIB or JDK dynamic) that wraps the bean; the proxy opens/commits/rolls back the transaction around the call before delegating to your code. When one method in the bean calls another @Transactional method via this.otherMethod(), the call goes directly to the target instance and never passes through the proxy, so the second method's transaction settings are ignored entirely. Fixes: move the inner method to a separate bean, self-inject the proxy, use AopContext.currentProxy(), or switch to AspectJ load-time weaving which doesn't rely on proxies."
     },
     {
-      "q": "What is the difference between @Controller and @RestController?",
-      "a": "@Controller is the classic MVC stereotype whose methods usually return a view name to be rendered (with @ResponseBody needed on methods that return data directly). @RestController is a convenience annotation that combines @Controller and @ResponseBody, so every handler method's return value is written straight to the response body (serialized to JSON by default) rather than resolved as a view. You use @RestController for REST APIs and @Controller when serving server-rendered HTML."
+      "q": "By default @Transactional rolls back on which exceptions, and what's the production trap?",
+      "a": "Spring only rolls back automatically on unchecked exceptions (RuntimeException and Error); a checked exception thrown out of a @Transactional method commits the transaction by default. This bites teams who throw checked domain or IOException-style exceptions expecting a rollback and end up persisting partial work. Control it explicitly with rollbackFor = SomeChecked.class or noRollbackFor; many shops standardize on unchecked exceptions for this reason. Also note: catching an exception inside the method swallows the rollback signal entirely."
     },
     {
-      "q": "Why expose DTOs from controllers instead of returning JPA entities directly?",
-      "a": "Returning entities couples your API contract to your database schema, leaks internal fields, and invites serialization problems -- serializing a lazily-loaded association can trigger extra queries or a LazyInitializationException outside the persistence context, and bidirectional relationships can cause infinite recursion. A DTO (often a record) is a deliberate, stable representation shaped for the client: you choose exactly which fields to expose, you decouple API evolution from schema changes, and you avoid accidentally exposing sensitive columns."
+      "q": "Compare propagation REQUIRED and REQUIRES_NEW, and give a concrete case where REQUIRES_NEW is the right call.",
+      "a": "REQUIRED (the default) joins an existing transaction if one is active, otherwise starts a new one, so the whole call graph commits or rolls back together. REQUIRES_NEW suspends any current transaction and runs in a brand-new independent one that commits or rolls back on its own. The classic use is audit logging or recording a failed-attempt record that must persist even if the surrounding business transaction rolls back. Beware: REQUIRES_NEW grabs a second physical connection from the pool, so misuse under load can exhaust the pool and even deadlock against the suspended transaction's locks."
     },
     {
-      "q": "Which HTTP status codes should a well-behaved CRUD endpoint return?",
-      "a": "201 Created (with a Location header pointing to the new resource) for a successful POST that creates; 200 OK for a successful GET or an update returning a body; 204 No Content for a successful update/delete with no body; 400 Bad Request for validation/parse failures; 404 Not Found when the resource does not exist; 409 Conflict for a state conflict such as a duplicate key or optimistic-lock failure; 401/403 for authentication/authorization failures. ResponseEntity lets you set the status, headers, and body explicitly."
+      "q": "What is the 'rollback-only' marker and the UnexpectedRollbackException, and how does an inner transaction cause it?",
+      "a": "When a transaction must roll back, Spring marks the transaction 'rollback-only' rather than rolling back immediately. If an inner REQUIRED method throws and is caught by an outer method that then tries to commit, the shared transaction was already marked rollback-only, so the commit attempt fails with UnexpectedRollbackException. The lesson is that with REQUIRED propagation a caught exception in a participating method still doomed the whole transaction; if you truly need the inner work to fail independently you must use REQUIRES_NEW (or NESTED with savepoints) so the rollback is isolated."
     },
     {
-      "q": "How does @Valid work, and what happens when validation fails on a @RequestBody?",
-      "a": "Putting @Valid on a @RequestBody parameter tells Spring to run Jakarta Bean Validation (constraints like @NotBlank, @Size, @Email) on the deserialized object before the controller body runs. If any constraint fails, Spring throws MethodArgumentNotValidException before your method executes; by default that yields a 400. You typically handle it in a @RestControllerAdvice to return a clean list of field errors. For validating @PathVariable/@RequestParam constraints you add @Validated to the controller class."
+      "q": "How do isolation levels and timeout/readOnly attributes of @Transactional translate to the database, and what do they actually buy you?",
+      "a": "isolation maps to the underlying JDBC connection's isolation level (READ_COMMITTED, REPEATABLE_READ, etc.) for that transaction, and DEFAULT just uses the database's default. timeout bounds how long the transaction may run before being rolled back, protecting against runaway locks. readOnly = true is a hint: it lets Hibernate skip dirty-checking/flush and lets some drivers/replicas optimize, but it does not guarantee the DB rejects writes, so don't treat it as a security control. These are powerful for tuning long-running reports versus hot write paths."
     },
     {
-      "q": "What is @ControllerAdvice / @RestControllerAdvice used for?",
-      "a": "It defines global, cross-controller behavior -- most commonly centralized exception handling. A class annotated @RestControllerAdvice with @ExceptionHandler methods catches exceptions thrown by any controller and maps them to consistent HTTP responses (e.g. a domain NotFoundException -> 404, MethodArgumentNotValidException -> 400 with field errors). This keeps error handling out of individual controllers and gives the whole API one uniform error format instead of ad-hoc try/catch everywhere."
+      "q": "What's the difference between Spring AOP proxies and full AspectJ weaving, and what are the practical limits of proxy-based AOP?",
+      "a": "Spring AOP is proxy-based and only intercepts external calls to public (for CGLIB, non-final/non-static) methods on Spring-managed beans; it can't advise private methods, final classes, or self-invocations. Full AspectJ weaves advice into the bytecode at compile or load time, so it can advise any method including private and self-calls and works on non-Spring objects. Most applications stay with Spring AOP because it's simpler and dependency-free, accepting the self-invocation and visibility limitations, and reach for AspectJ only when those limits genuinely block a requirement like domain-object instrumentation."
     },
     {
-      "q": "What is ProblemDetail / RFC 7807 and why use it?",
-      "a": "RFC 7807 defines a standard JSON shape for HTTP error responses -- media type application/problem+json with fields like type, title, status, detail, and instance. Spring 6 provides the ProblemDetail class to build these. Using it means every error your API returns has a predictable, machine-readable structure instead of a bespoke format per endpoint, which makes clients easier to write and errors easier to document and monitor."
-    },
-    {
-      "q": "In one line each, what is the difference between authentication and authorization, and where does Spring Security sit?",
-      "a": "Authentication answers 'who are you?' (verifying identity -- credentials, a JWT, an OAuth2 token); authorization answers 'what are you allowed to do?' (checking permissions/roles on a request). Spring Security is a chain of servlet filters that runs BEFORE the DispatcherServlet, so it can authenticate and authorize (or reject) a request before it ever reaches your controller. The full treatment -- filter chain internals, JWT lifecycle, OAuth2/OIDC, RBAC/ABAC -- is in Module 11.3."
+      "q": "Why is mixing @Transactional with calls to external systems (sending email, publishing to a queue) dangerous, and how do you do it correctly?",
+      "a": "Holding a database transaction open while making a remote call lengthens lock duration and pins a connection, and worse, the external side effect can't be rolled back if the transaction later fails, producing dual-write inconsistency (email sent for an order that didn't commit). The clean pattern is to defer the side effect until after commit using @TransactionalEventListener(phase = AFTER_COMMIT) or the outbox pattern, where you write an event row in the same transaction and a separate process publishes it. This keeps transactions short and makes external effects consistent with the committed state."
     }
   ],
   "4.1": [
