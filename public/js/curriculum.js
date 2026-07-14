@@ -40539,6 +40539,508 @@ Multi-DC: prefer LOCAL_QUORUM to avoid cross-region latency while staying consis
         hours: 6,
         sections: [
           {
+            title: `JDBC — The Raw Java-to-Database API (What Every ORM Wraps)`,
+            notes: `# JDBC — The Raw Java-to-Database API (What Every ORM Wraps)
+
+Before Hibernate, before JPA, before Spring Data, there is **JDBC**. Every ORM in the Java
+world ultimately sends SQL to the database through JDBC. If you understand JDBC, the rest of
+this module stops being magic — you will be able to see exactly what Hibernate does for you,
+and what it costs.
+
+## What JDBC is
+
+**JDBC (Java Database Connectivity)** is the standard Java API — the \`java.sql\` package — for
+talking to *any* relational database. It is just a set of **interfaces**: \`Connection\`,
+\`Statement\`, \`PreparedStatement\`, \`ResultSet\`, \`DataSource\`, and so on. Java itself ships the
+interfaces; it does **not** know how to speak to Postgres or MySQL.
+
+The concrete implementation lives in a **JDBC driver** — a database-specific JAR that
+implements those interfaces and knows the wire protocol of one database:
+
+- \`org.postgresql:postgresql\` for PostgreSQL
+- \`com.mysql:mysql-connector-j\` for MySQL
+- \`com.h2database:h2\` for H2 (an in-memory DB, great for tests)
+
+Your code is written against the \`java.sql\` interfaces; the driver is swapped in at runtime.
+That is the whole point: **write once against JDBC, run against any database** by changing the
+driver and the connection URL (e.g. \`jdbc:postgresql://host:5432/mydb\`).
+
+## Getting a Connection: DriverManager vs DataSource
+
+There are two ways to obtain a \`Connection\`:
+
+| | \`DriverManager\` | \`DataSource\` |
+|---|---|---|
+| How | \`DriverManager.getConnection(url, user, pw)\` | \`dataSource.getConnection()\` |
+| Opens | a brand-new physical connection every call | hands out a connection from a **pool** |
+| Cost | expensive (TCP + auth handshake each time) | cheap (connections are reused) |
+| Use in | tiny scripts, demos, learning | **every real application** |
+
+Opening a database connection is genuinely expensive. In production you never use
+\`DriverManager\` directly — you use a **pooled \`DataSource\`** such as **HikariCP** (the default
+in Spring Boot). The pool keeps a set of live connections open and lends them out; calling
+\`close()\` on a pooled connection returns it to the pool instead of tearing it down.
+
+## The core flow
+
+Every piece of JDBC code follows the same shape:
+
+1. Get a \`Connection\` (from a \`DataSource\` in real life).
+2. Create a \`Statement\` or \`PreparedStatement\`.
+3. **Execute** it.
+4. If it was a query, walk the \`ResultSet\`.
+5. **Close** everything — \`ResultSet\`, then \`Statement\`, then \`Connection\`.
+
+Step 5 is where bugs live. Every one of these objects holds a real resource (a cursor, a
+server-side handle, a socket). Leak them and you exhaust the connection pool, and the app
+grinds to a halt. The correct tool is **try-with-resources**: anything that implements
+\`AutoCloseable\` (which \`Connection\`, \`Statement\`, and \`ResultSet\` all do) is closed
+automatically in reverse order, even if an exception is thrown.
+
+\`\`\`mermaid
+flowchart LR
+    A[Application code] -->|getConnection| B[DriverManager / DataSource pool]
+    B -->|Connection| C[prepareStatement + bind ? params]
+    C -->|executeQuery| D[ResultSet cursor]
+    D -->|while rs.next| E[map rows to objects]
+    E -->|close in reverse: rs, stmt, conn| A
+\`\`\`
+
+## Statement vs PreparedStatement (and SQL injection)
+
+\`Statement\` sends a raw SQL string. If you build that string by **concatenating user input**,
+you have created a **SQL injection** vulnerability. The classic attack: a login form where the
+user types \`' OR '1'='1\` as the "password" turns
+
+\`\`\`
+SELECT * FROM users WHERE name = 'alice' AND password = '' OR '1'='1'
+\`\`\`
+
+into a query that is always true — the attacker is now logged in. Worse inputs can drop tables.
+
+\`PreparedStatement\` fixes this. The SQL is sent to the database **first**, with \`?\`
+placeholders, and *compiled* (its plan prepared). The parameter values are sent **separately**
+and are never parsed as SQL — a \`'\` in a parameter is just a character in a string, never a
+statement boundary. So \`PreparedStatement\`:
+
+- **Prevents SQL injection** — the single most important reason to use it.
+- Is **faster for repeated execution** — the database compiles the statement once and reuses
+  the plan for each set of parameters.
+- Handles type conversion and escaping for you (dates, nulls, binary).
+
+**Rule: never build SQL by string concatenation with user input. Always parameterize.**
+
+## Executing: query vs update
+
+- \`executeQuery(...)\` -> returns a **\`ResultSet\`**. Use for \`SELECT\`.
+- \`executeUpdate(...)\` -> returns an **\`int\`** row count. Use for \`INSERT\` / \`UPDATE\` / \`DELETE\`
+  (and DDL, which returns 0).
+- \`execute(...)\` -> returns a \`boolean\` (true if the first result is a \`ResultSet\`). Use when
+  you do not know the statement type up front; rarely needed.
+
+A \`ResultSet\` is a **forward cursor** over the rows. You advance it with \`while (rs.next())\`,
+and read each column by **name** (\`rs.getString("email")\`) or by **1-based index**
+(\`rs.getString(2)\`). Names are clearer and survive column reordering; indexes are marginally
+faster. Beware \`getInt\` on a NULL column returns 0 — use \`rs.wasNull()\` or \`getObject\` if NULL
+must be distinguished.
+
+## Transactions
+
+By default a JDBC connection is in **auto-commit** mode: every statement commits immediately.
+That is wrong whenever two changes must succeed or fail together (the canonical example: debit
+one account, credit another). You group them into one **transaction**:
+
+\`\`\`
+conn.setAutoCommit(false);   // begin: nothing commits automatically now
+// ... several executeUpdate calls ...
+conn.commit();               // all-or-nothing: make them permanent
+// on error:
+conn.rollback();             // undo everything since the last commit
+\`\`\`
+
+A transaction gives you **atomicity** — all the statements land, or none do. Always restore
+\`setAutoCommit(true)\` (or just close the pooled connection, which resets it) when done.
+
+## Batch processing
+
+Running N single-row \`INSERT\`s means N network round-trips. Each round-trip has latency; do it
+10,000 times and you feel it. **Batching** collects many statements and ships them in one (or a
+few) round-trips:
+
+\`\`\`
+ps.addBatch();      // queue this set of params
+...
+ps.executeBatch();  // send them all at once -> int[] of per-row counts
+\`\`\`
+
+For bulk loads this is often **10x-100x faster** than row-at-a-time inserts. Combine it with a
+transaction (auto-commit off) for best throughput, and flush in chunks (e.g. every 1,000 rows)
+so the batch does not grow unbounded.
+
+## Common concerns
+
+- **Connection leaks** — the number one JDBC production bug. A connection not returned to the
+  pool is gone forever; enough leaks and the pool is empty and the app hangs. try-with-resources
+  makes leaks nearly impossible.
+- **The N+1 round-trip problem** — fetch a list of 100 orders, then loop and run one query per
+  order to get its customer = 101 queries. Same latency tax batching solves for writes bites you
+  on reads. ORMs re-introduce this (lazy loading) and give you joins/\`@BatchSize\` to fix it.
+- **Manual row mapping** — every \`SELECT\` means hand-writing "read column 1 into this field,
+  column 2 into that field" for every entity. It is correct but tedious and repetitive. This
+  boilerplate is *exactly* what an ORM removes.
+- **\`SQLException\` is checked** — nearly every JDBC method throws it, so it propagates through
+  your code and must be caught or declared. Spring's \`JdbcTemplate\` wraps it in an *unchecked*
+  \`DataAccessException\` so you are not forced to catch it everywhere.
+
+## Spring's thin helper: JdbcTemplate + RowMapper
+
+You rarely write raw JDBC in a Spring app. **\`JdbcTemplate\`** handles the connection,
+statement, exception translation, and closing for you; you supply the SQL, the parameters, and
+a **\`RowMapper<T>\`** — a tiny function that maps *one* \`ResultSet\` row to *one* object. It is
+still JDBC underneath — just with the ceremony removed and no ORM in the way.
+
+## The bridge to Hibernate / JPA
+
+Look back at what raw JDBC makes you do by hand: manage connections and transactions, close
+resources, translate \`SQLException\`, and — every single time — map rows to objects and objects
+back to SQL parameters. **That mapping and resource handling is precisely what JPA/Hibernate
+automates**, which is the subject of the rest of this module. Hibernate generates the SQL,
+runs it through JDBC, and turns the \`ResultSet\` into entity objects for you.
+
+But JDBC never goes away — it runs *underneath* every ORM. And when you need maximum control or
+maximum performance (bulk loads, hand-tuned queries, reporting), reaching **past** the ORM
+straight to JDBC is still the right call. Understand JDBC and you understand the floor the whole
+Java persistence stack stands on.
+`,
+            code: [
+              {
+                lang: `java`,
+                title: `UNSAFE: Statement with string concatenation (SQL injection)`,
+                code: `import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+// DO NOT DO THIS. Shown only to illustrate the vulnerability.
+class UnsafeLoginDao {
+
+    // If password is:  ' OR '1'='1
+    // the WHERE clause becomes always-true and the attacker logs in.
+    // Worse inputs can drop tables (Bobby Tables).
+    boolean login(Connection conn, String name, String password) throws SQLException {
+        String sql = "SELECT id FROM users WHERE name = '" + name
+                   + "' AND password = '" + password + "'";  // <-- injection hole
+
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            return rs.next();  // any row means "authenticated" -- easily bypassed
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `SAFE: PreparedStatement with ? placeholders`,
+                code: `import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+// The correct version: parameters are bound, never concatenated.
+class SafeLoginDao {
+
+    boolean login(Connection conn, String name, String password) throws SQLException {
+        // The ? placeholders are compiled by the DB before values are supplied,
+        // so a quote inside a value is just data -- injection is impossible.
+        String sql = "SELECT id FROM users WHERE name = ? AND password = ?";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, name);      // parameters are 1-based
+            ps.setString(2, password);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `SELECT + iterating a ResultSet into objects`,
+                code: `import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+record User(long id, String name, String email, boolean active) {}
+
+class UserQueryDao {
+
+    // executeQuery returns a ResultSet: a forward cursor over the matching rows.
+    List<User> findActiveUsersByName(Connection conn, String namePattern) throws SQLException {
+        String sql = "SELECT id, name, email, active "
+                   + "FROM users WHERE name LIKE ? AND active = true "
+                   + "ORDER BY name";
+
+        List<User> results = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, namePattern);   // e.g. "A%"
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {                       // advance the cursor row by row
+                    long id       = rs.getLong("id");     // read by column name...
+                    String name   = rs.getString("name");
+                    String email  = rs.getString(3);      // ...or by 1-based index
+                    boolean active = rs.getBoolean("active");
+                    results.add(new User(id, name, email, active));
+                }
+            }
+        }
+        return results;
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `INSERT with executeUpdate + generated keys`,
+                code: `import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+class UserInsertDao {
+
+    // executeUpdate returns the number of affected rows (an int), not a ResultSet.
+    long insertUser(Connection conn, String name, String email) throws SQLException {
+        String sql = "INSERT INTO users (name, email, active) VALUES (?, ?, true)";
+
+        // Ask the driver to return the auto-generated primary key.
+        try (PreparedStatement ps =
+                 conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, name);
+            ps.setString(2, email);
+
+            int rowsAffected = ps.executeUpdate();   // == 1 on success
+            if (rowsAffected != 1) {
+                throw new SQLException("Expected 1 row inserted, got " + rowsAffected);
+            }
+
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return keys.getLong(1);          // the new id
+                }
+                throw new SQLException("Insert succeeded but no key returned");
+            }
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Transaction: commit / rollback (all-or-nothing transfer)`,
+                code: `import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+class TransferDao {
+
+    // Move money between two accounts. Both updates must succeed, or neither.
+    void transfer(Connection conn, long fromId, long toId, long cents) throws SQLException {
+        String debit  = "UPDATE accounts SET balance = balance - ? WHERE id = ?";
+        String credit = "UPDATE accounts SET balance = balance + ? WHERE id = ?";
+
+        boolean previousAutoCommit = conn.getAutoCommit();
+        conn.setAutoCommit(false);   // begin transaction: nothing commits on its own now
+        try {
+            try (PreparedStatement ps = conn.prepareStatement(debit)) {
+                ps.setLong(1, cents);
+                ps.setLong(2, fromId);
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = conn.prepareStatement(credit)) {
+                ps.setLong(1, cents);
+                ps.setLong(2, toId);
+                ps.executeUpdate();
+            }
+            conn.commit();           // make BOTH updates permanent together
+        } catch (SQLException e) {
+            conn.rollback();         // undo everything since setAutoCommit(false)
+            throw e;
+        } finally {
+            conn.setAutoCommit(previousAutoCommit);  // restore for the next borrower
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Batch insert: addBatch / executeBatch for bulk loads`,
+                code: `import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.util.List;
+
+record NewUser(String name, String email) {}
+
+class BatchInsertDao {
+
+    // N single-row inserts == N round-trips. Batching ships them together.
+    int[] insertAll(Connection conn, List<NewUser> users) throws SQLException {
+        String sql = "INSERT INTO users (name, email, active) VALUES (?, ?, true)";
+
+        conn.setAutoCommit(false);   // batch + one commit = best throughput
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            int inBatch = 0;
+            for (NewUser u : users) {
+                ps.setString(1, u.name());
+                ps.setString(2, u.email());
+                ps.addBatch();                       // queue this row
+                if (++inBatch % 1000 == 0) {
+                    ps.executeBatch();               // flush every 1000 rows
+                }
+            }
+            int[] counts = ps.executeBatch();        // flush the remainder
+            conn.commit();
+            return counts;                           // per-statement update counts
+        } catch (SQLException e) {
+            conn.rollback();
+            throw e;
+        } finally {
+            conn.setAutoCommit(true);
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Pooled DataSource (HikariCP) -- how real apps get connections`,
+                code: `import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import javax.sql.DataSource;
+
+class ConnectionPoolExample {
+
+    // Build ONE pool for the whole application (a DataSource), not per-request.
+    static DataSource createPool() {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl("jdbc:postgresql://localhost:5432/appdb");
+        config.setUsername("app");
+        config.setPassword("secret");
+        config.setMaximumPoolSize(10);
+        return new HikariDataSource(config);
+    }
+
+    long countUsers(DataSource ds) throws SQLException {
+        // getConnection() borrows from the pool; close() RETURNS it (does not tear it down).
+        try (Connection conn = ds.getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT count(*) FROM users");
+             ResultSet rs = ps.executeQuery()) {
+            return rs.next() ? rs.getLong(1) : 0L;
+        }
+    }
+}`
+              },
+              {
+                lang: `java`,
+                title: `Manual RowMapper -- the boilerplate an ORM removes`,
+                code: `import java.sql.ResultSet;
+import java.sql.SQLException;
+
+record User(long id, String name, String email, boolean active) {}
+
+// A RowMapper turns ONE ResultSet row into ONE object.
+// Spring's JdbcTemplate takes exactly this shape:
+//   jdbc.query("SELECT ... FROM users WHERE active = ?", new UserRowMapper(), true);
+@FunctionalInterface
+interface RowMapper<T> {
+    T mapRow(ResultSet rs, int rowNum) throws SQLException;
+}
+
+class UserRowMapper implements RowMapper<User> {
+    @Override
+    public User mapRow(ResultSet rs, int rowNum) throws SQLException {
+        // This hand-written column-to-field mapping is what Hibernate/JPA generates
+        // automatically from your @Entity annotations.
+        return new User(
+            rs.getLong("id"),
+            rs.getString("name"),
+            rs.getString("email"),
+            rs.getBoolean("active")
+        );
+    }
+}`
+              }
+            ],
+            flashcards: [
+              {
+                q: `What is JDBC?`,
+                a: `The standard Java API (the java.sql package) for connecting to and querying any relational database. It defines interfaces such as Connection, Statement, PreparedStatement, and ResultSet; a database-specific driver provides the implementation.`
+              },
+              {
+                q: `What is a JDBC driver and why is it database-specific?`,
+                a: `A JAR that implements the java.sql interfaces and knows one database's wire protocol (e.g. the Postgres, MySQL, or H2 driver). Your code targets the JDBC interfaces; you swap the driver and the jdbc: URL to switch databases without changing your code.`
+              },
+              {
+                q: `DriverManager vs DataSource -- which do real apps use?`,
+                a: `DriverManager.getConnection opens a brand-new physical connection every call (expensive) -- fine for demos. Real apps use a pooled DataSource (e.g. HikariCP) that lends out reusable connections from a pool; close() returns the connection to the pool instead of tearing it down.`
+              },
+              {
+                q: `What is the core JDBC flow?`,
+                a: `Get a Connection -> create a Statement/PreparedStatement -> execute -> process the ResultSet (for a query) -> close ResultSet, Statement, and Connection. Use try-with-resources so everything closes automatically in reverse order.`
+              },
+              {
+                q: `Statement vs PreparedStatement?`,
+                a: `Statement sends a raw SQL string. PreparedStatement is precompiled and parameterized with ? placeholders: it prevents SQL injection and is faster for repeated execution because the DB compiles the statement once. Always prefer PreparedStatement.`
+              },
+              {
+                q: `How does PreparedStatement prevent SQL injection?`,
+                a: `The SQL with ? placeholders is sent and compiled first; parameter values are sent separately and are never parsed as SQL. A quote or clause like ' OR '1'='1 inside a parameter is treated as literal data, not as part of the statement, so it cannot change the query.`
+              },
+              {
+                q: `executeQuery vs executeUpdate vs execute?`,
+                a: `executeQuery returns a ResultSet (for SELECT). executeUpdate returns an int row count (for INSERT/UPDATE/DELETE and DDL, which returns 0). execute returns a boolean and is used when you do not know the statement type up front.`
+              },
+              {
+                q: `What is a ResultSet and how do you read it?`,
+                a: `A forward cursor over the rows returned by a query. Iterate with while (rs.next()) and read each column by name (rs.getString("email")) or by 1-based index (rs.getString(2)). Note getInt on a NULL returns 0; use wasNull() or getObject to detect NULL.`
+              },
+              {
+                q: `How do you run a transaction in JDBC?`,
+                a: `Call conn.setAutoCommit(false) to begin, run several statements, then conn.commit() to make them all permanent or conn.rollback() to undo them all on error. This gives atomicity -- all statements land or none do. Restore autoCommit (or close the pooled connection) afterward.`
+              },
+              {
+                q: `What is JDBC batch processing and why is it faster?`,
+                a: `addBatch() queues multiple parameter sets and executeBatch() sends them in one (or few) round-trips instead of one per row. It avoids per-statement network latency, making bulk inserts/updates far faster (often 10x-100x). Pair it with a transaction and flush in chunks.`
+              },
+              {
+                q: `What is a connection leak and how do you prevent it?`,
+                a: `Failing to close a Connection (or Statement/ResultSet) so it is never returned to the pool. Enough leaks exhaust the pool and the app hangs. Prevent it with try-with-resources, which always closes AutoCloseable resources even on exception.`
+              },
+              {
+                q: `What is the N+1 round-trip problem?`,
+                a: `Running one query to fetch a list, then one additional query per element (e.g. 100 orders -> 100 more queries for each order's customer = 101 round-trips). The per-round-trip latency dominates. Fixed with joins or batch fetching; ORMs re-introduce it via lazy loading.`
+              },
+              {
+                q: `Why is SQLException notable, and how does Spring handle it?`,
+                a: `SQLException is a CHECKED exception thrown by nearly every JDBC method, so it must be caught or declared throughout your code. Spring's JdbcTemplate wraps it in an unchecked DataAccessException so you are not forced to handle it everywhere.`
+              },
+              {
+                q: `What do JdbcTemplate and RowMapper do?`,
+                a: `JdbcTemplate is Spring's thin helper that manages the connection, statement, resource closing, and exception translation for you. You provide the SQL, parameters, and a RowMapper<T> -- a small function mapping one ResultSet row to one object. It is still JDBC underneath, without the ceremony.`
+              },
+              {
+                q: `Why do ORMs like Hibernate/JPA exist if JDBC already works?`,
+                a: `Raw JDBC makes you hand-write row-to-object mapping, manage connections/transactions, close resources, and handle checked SQLException every time. ORMs automate that mapping and resource handling. JDBC still runs underneath every ORM and remains the right tool for high-control, high-performance access.`
+              }
+            ]
+          },
+          {
             title: `The Persistence Context (1st-Level Cache)`,
             notes: `## The Persistence Context is the heart of JPA
 

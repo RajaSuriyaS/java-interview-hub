@@ -1011,6 +1011,30 @@ const INTERVIEW_QUESTIONS = {
   ],
   "4.5": [
     {
+      "q": "What is the difference between a Statement and a PreparedStatement, and why does it matter?",
+      "a": "A Statement sends raw SQL as a string, so building queries by concatenating user input opens you to SQL injection (e.g. an input of ' OR '1'='1 rewrites the query). A PreparedStatement is precompiled with ? placeholders that you bind via setString/setInt etc.; the driver sends the parameters separately from the SQL, so injected text is treated as data, never as SQL -- it is the primary defense against SQL injection. PreparedStatement is also faster when the same query runs many times because the database can reuse the parsed/planned statement. Always prefer PreparedStatement for any query involving variables."
+    },
+    {
+      "q": "Walk through the core JDBC flow for running a query.",
+      "a": "Obtain a Connection (from a DataSource/pool in real apps, or DriverManager in demos); create a PreparedStatement with your SQL; bind parameters; call executeQuery() for a SELECT (returns a ResultSet) or executeUpdate() for INSERT/UPDATE/DELETE (returns the affected-row count); iterate the ResultSet with while(rs.next()) reading columns by name or index; and close everything. Using try-with-resources on the Connection, Statement and ResultSet guarantees they are closed even on exception, which prevents connection leaks."
+    },
+    {
+      "q": "How do you run several statements as one atomic transaction in JDBC?",
+      "a": "Turn off autocommit with connection.setAutoCommit(false), execute the statements, then call connection.commit() on success or connection.rollback() in a catch block on failure (and restore autocommit / close in finally or via try-with-resources). By default JDBC is in autocommit mode, committing after every statement; disabling it lets you group multiple changes so they all succeed or all roll back together -- essential for correctness when, say, debiting one account and crediting another."
+    },
+    {
+      "q": "What is JDBC batch processing and when do you use it?",
+      "a": "Batching groups many statements and sends them to the database in one (or few) round-trips using addBatch() then executeBatch(), instead of executing each individually. It is far faster for bulk inserts/updates because it amortizes network latency and lets the driver/DB optimize the writes; the win grows with row count. You typically also run a batch inside a single transaction (autocommit off) and flush in chunks (e.g. every 1000 rows) to bound memory."
+    },
+    {
+      "q": "Why do ORMs like Hibernate exist if JDBC already works?",
+      "a": "Raw JDBC forces you to write boilerplate for every query: open/close resources, bind parameters, and hand-map each ResultSet row into objects, all while handling checked SQLExceptions -- tedious and error-prone at scale, and it leaks SQL throughout the code. ORMs automate the object-to-table mapping, generate SQL, manage the connection/transaction and a first-level cache, and provide lazy loading and dirty checking, so you work with objects instead of ResultSets. JDBC still runs underneath every ORM, and remains the right choice when you need maximum control or performance (Spring's JdbcTemplate is a thin, convenient wrapper over it)."
+    },
+    {
+      "q": "In production, why use a DataSource/connection pool instead of DriverManager.getConnection?",
+      "a": "Opening a physical database connection is expensive (TCP + auth + session setup), so doing it per request via DriverManager kills throughput and can exhaust the database's connection limit. A pooled DataSource (e.g. HikariCP) keeps a set of live connections and hands them out and returns them on close(), so 'getting a connection' is cheap and the total count is bounded and tunable. DriverManager is fine for demos and one-off scripts; real services always use a pooled DataSource."
+    },
+    {
       "q": "Explain the persistence context and dirty checking. How does Hibernate issue an UPDATE without you calling save()?",
       "a": "The persistence context (the EntityManager's first-level cache, transaction-scoped in Spring) tracks every managed entity and a snapshot of its loaded state. On flush — typically at transaction commit or before a query — Hibernate compares each managed entity to its snapshot and auto-generates UPDATEs for any that changed; that's dirty checking, and it's why mutating a managed entity inside a transaction persists with no explicit save call. The pitfalls are that a large persistence context makes flush slow (it snapshots and diffs everything) and that detached entities aren't tracked, so changes to them are silently lost until you merge."
     },
