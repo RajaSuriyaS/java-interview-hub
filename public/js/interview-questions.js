@@ -855,6 +855,40 @@ const INTERVIEW_QUESTIONS = {
       "a": "Optimistic locking adds a @Version column; on update Hibernate checks the version and throws OptimisticLockException if another transaction changed the row, so it assumes conflicts are rare and avoids holding locks, making it ideal for low-contention, high-read workloads and stateless web apps. Pessimistic locking takes an actual DB row lock (SELECT ... FOR UPDATE via @Lock(PESSIMISTIC_WRITE)), serializing access and preventing concurrent writes, which suits short, high-contention critical sections like decrementing inventory. The trade-off is throughput and deadlock risk versus retry handling: optimistic needs a retry strategy on conflict, pessimistic needs careful lock ordering and timeouts."
     }
   ],
+  "3.5": [
+    {
+      "q": "What is the DispatcherServlet and what role does it play in Spring MVC?",
+      "a": "The DispatcherServlet is Spring MVC's front controller: a single servlet that receives every incoming HTTP request and orchestrates handling. It consults handler mappings to find the controller method for the URL, invokes it (resolving arguments like @PathVariable, @RequestParam, @RequestBody), then uses an HttpMessageConverter (Jackson for JSON) to serialize the return value into the response. Centralizing routing in one servlet is the front-controller pattern and is why cross-cutting concerns (security filters, exception handling, content negotiation) can be applied in one place."
+    },
+    {
+      "q": "What is the difference between @Controller and @RestController?",
+      "a": "@Controller is the classic MVC stereotype whose methods usually return a view name to be rendered (with @ResponseBody needed on methods that return data directly). @RestController is a convenience annotation that combines @Controller and @ResponseBody, so every handler method's return value is written straight to the response body (serialized to JSON by default) rather than resolved as a view. You use @RestController for REST APIs and @Controller when serving server-rendered HTML."
+    },
+    {
+      "q": "Why expose DTOs from controllers instead of returning JPA entities directly?",
+      "a": "Returning entities couples your API contract to your database schema, leaks internal fields, and invites serialization problems -- serializing a lazily-loaded association can trigger extra queries or a LazyInitializationException outside the persistence context, and bidirectional relationships can cause infinite recursion. A DTO (often a record) is a deliberate, stable representation shaped for the client: you choose exactly which fields to expose, you decouple API evolution from schema changes, and you avoid accidentally exposing sensitive columns."
+    },
+    {
+      "q": "Which HTTP status codes should a well-behaved CRUD endpoint return?",
+      "a": "201 Created (with a Location header pointing to the new resource) for a successful POST that creates; 200 OK for a successful GET or an update returning a body; 204 No Content for a successful update/delete with no body; 400 Bad Request for validation/parse failures; 404 Not Found when the resource does not exist; 409 Conflict for a state conflict such as a duplicate key or optimistic-lock failure; 401/403 for authentication/authorization failures. ResponseEntity lets you set the status, headers, and body explicitly."
+    },
+    {
+      "q": "How does @Valid work, and what happens when validation fails on a @RequestBody?",
+      "a": "Putting @Valid on a @RequestBody parameter tells Spring to run Jakarta Bean Validation (constraints like @NotBlank, @Size, @Email) on the deserialized object before the controller body runs. If any constraint fails, Spring throws MethodArgumentNotValidException before your method executes; by default that yields a 400. You typically handle it in a @RestControllerAdvice to return a clean list of field errors. For validating @PathVariable/@RequestParam constraints you add @Validated to the controller class."
+    },
+    {
+      "q": "What is @ControllerAdvice / @RestControllerAdvice used for?",
+      "a": "It defines global, cross-controller behavior -- most commonly centralized exception handling. A class annotated @RestControllerAdvice with @ExceptionHandler methods catches exceptions thrown by any controller and maps them to consistent HTTP responses (e.g. a domain NotFoundException -> 404, MethodArgumentNotValidException -> 400 with field errors). This keeps error handling out of individual controllers and gives the whole API one uniform error format instead of ad-hoc try/catch everywhere."
+    },
+    {
+      "q": "What is ProblemDetail / RFC 7807 and why use it?",
+      "a": "RFC 7807 defines a standard JSON shape for HTTP error responses -- media type application/problem+json with fields like type, title, status, detail, and instance. Spring 6 provides the ProblemDetail class to build these. Using it means every error your API returns has a predictable, machine-readable structure instead of a bespoke format per endpoint, which makes clients easier to write and errors easier to document and monitor."
+    },
+    {
+      "q": "In one line each, what is the difference between authentication and authorization, and where does Spring Security sit?",
+      "a": "Authentication answers 'who are you?' (verifying identity -- credentials, a JWT, an OAuth2 token); authorization answers 'what are you allowed to do?' (checking permissions/roles on a request). Spring Security is a chain of servlet filters that runs BEFORE the DispatcherServlet, so it can authenticate and authorize (or reject) a request before it ever reaches your controller. The full treatment -- filter chain internals, JWT lifecycle, OAuth2/OIDC, RBAC/ABAC -- is in Module 11.3."
+    }
+  ],
   "4.1": [
     {
       "q": "Explain the difference between INNER, LEFT, RIGHT, and FULL OUTER JOIN, and when an unmatched-row requirement forces an outer join.",
