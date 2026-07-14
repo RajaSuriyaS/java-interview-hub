@@ -42,8 +42,8 @@ pre, code, kbd, samp, textarea, .font-mono, .monaco-wrap, .output-pre {
 
 /* ─── Light theme ────────────────────────────────────────────────────── */
 [data-theme="light"] body             { background-color: #f1f5f9 !important; color: #1e293b !important; }
-[data-theme="light"] aside            { background-color: #ffffff !important; border-color: #e2e8f0 !important; }
-[data-theme="light"] header           { background-color: rgba(255,255,255,0.95) !important; border-color: #e2e8f0 !important; }
+[data-theme="light"] aside            { background-color: #eaeef4 !important; border-color: #d6deea !important; }
+[data-theme="light"] header           { background-color: rgba(234,238,244,0.95) !important; border-color: #d6deea !important; }
 [data-theme="light"] #content         { background-color: #f1f5f9 !important; }
 [data-theme="light"] .prose-notes     { color: #334155; }
 [data-theme="light"] .prose-notes h1,
@@ -69,18 +69,23 @@ pre, code, kbd, samp, textarea, .font-mono, .monaco-wrap, .output-pre {
 
 /* Light theme — sidebar & nav text */
 [data-theme="light"] aside            { color: #1e293b !important; }
-[data-theme="light"] #nav .text-slate-300,
-[data-theme="light"] #nav .text-slate-400,
-[data-theme="light"] #nav .text-slate-500 { color: #475569 !important; }
+[data-theme="light"] #nav .text-slate-200 { color: #1e293b !important; }  /* phase headers */
+[data-theme="light"] #nav .text-slate-300 { color: #334155 !important; }
+[data-theme="light"] #nav .text-slate-400 { color: #475569 !important; }
+[data-theme="light"] #nav .text-slate-500 { color: #64748b !important; }
+[data-theme="light"] #nav .text-slate-600 { color: #94a3b8 !important; }
 [data-theme="light"] #nav .text-white { color: #0f172a !important; }
 [data-theme="light"] #nav .text-brand { color: #7c3aed !important; }
 [data-theme="light"] #nav .bg-slate-800,
-[data-theme="light"] #nav .bg-slate-800\/70,
-[data-theme="light"] #nav .hover\:bg-slate-800\/70:hover { background-color: #f1f5f9 !important; }
-[data-theme="light"] #nav .border-slate-700 { border-color: #e2e8f0 !important; }
-[data-theme="light"] #nav .hover\:bg-slate-700:hover { background-color: #e2e8f0 !important; }
+[data-theme="light"] #nav .bg-slate-800\/70 { background-color: #dbe3ee !important; }
+[data-theme="light"] #nav .hover\:bg-slate-800\/70:hover,
+[data-theme="light"] #nav .hover\:bg-slate-800\/60:hover { background-color: #dde5ef !important; }
+[data-theme="light"] #nav .border-slate-700 { border-color: #cdd7e4 !important; }
+[data-theme="light"] #nav .hover\:bg-slate-700:hover { background-color: #d2dbe8 !important; }
 /* Active module row in light */
 [data-theme="light"] #nav .bg-brand\/10  { background-color: rgba(124,58,237,.12) !important; }
+[data-theme="light"] #nav .bg-brand\/20  { background-color: rgba(124,58,237,.15) !important; }
+[data-theme="light"] #nav .decoration-slate-600 { text-decoration-color: #94a3b8 !important; }
 [data-theme="light"] #nav .border-brand  { border-color: #7c3aed !important; }
 /* Sidebar header + search in light */
 [data-theme="light"] #search            { background: #f8fafc !important; border-color: #e2e8f0 !important; color: #1e293b !important; }
@@ -178,6 +183,43 @@ pre, code, kbd, samp, textarea, .font-mono, .monaco-wrap, .output-pre {
 [data-theme="dim"] #content .text-slate-300 { color: #adbac7 !important; }
 [data-theme="dim"] #content .text-slate-400 { color: #909dab !important; }
 [data-theme="dim"] #content .text-slate-500 { color: #768390 !important; }
+
+/* ─── Light theme — Mermaid diagrams (recolor the dark-themed SVG) ──────── */
+[data-theme="light"] .prose-notes .mermaid { background: #ffffff !important; border-color: #e2e8f0 !important; }
+/* node shapes (rect / diamond polygon / circle / rounded paths) */
+[data-theme="light"] .mermaid .node rect,
+[data-theme="light"] .mermaid .node polygon,
+[data-theme="light"] .mermaid .node circle,
+[data-theme="light"] .mermaid .node ellipse,
+[data-theme="light"] .mermaid .node path {
+  fill: #ede9fe !important; stroke: #7c3aed !important;
+}
+/* cluster / subgraph boxes */
+[data-theme="light"] .mermaid .cluster rect { fill: #f1f5f9 !important; stroke: #cbd5e1 !important; }
+/* node label text (flowcharts render it as HTML in a foreignObject, and as <text> elsewhere) */
+[data-theme="light"] .mermaid .nodeLabel,
+[data-theme="light"] .mermaid .nodeLabel *,
+[data-theme="light"] .mermaid .label,
+[data-theme="light"] .mermaid .label div,
+[data-theme="light"] .mermaid span.nodeLabel,
+[data-theme="light"] .mermaid text.nodeLabel { fill: #1e293b !important; color: #1e293b !important; }
+/* edges + arrowheads */
+[data-theme="light"] .mermaid .edgePath path,
+[data-theme="light"] .mermaid .flowchart-link,
+[data-theme="light"] .mermaid path.path { stroke: #7c3aed !important; }
+[data-theme="light"] .mermaid marker path,
+[data-theme="light"] .mermaid .arrowheadPath,
+[data-theme="light"] .mermaid .arrowMarkerPath { fill: #7c3aed !important; stroke: #7c3aed !important; }
+/* edge labels (the little words on the arrows) */
+[data-theme="light"] .mermaid .edgeLabel,
+[data-theme="light"] .mermaid .edgeLabel *,
+[data-theme="light"] .mermaid .edgeLabel span { color: #334155 !important; fill: #334155 !important; background-color: transparent !important; }
+[data-theme="light"] .mermaid .edgeLabel rect,
+[data-theme="light"] .mermaid .edgeLabel .label rect,
+[data-theme="light"] .mermaid .labelBkg { fill: #eef2f8 !important; background-color: #eef2f8 !important; opacity: 1 !important; }
+/* section/gantt titles */
+[data-theme="light"] .mermaid .titleText,
+[data-theme="light"] .mermaid text.title { fill: #6d28d9 !important; }
 
 /* Scrollbars */
 .custom-scroll::-webkit-scrollbar { width: 8px; height: 8px; }

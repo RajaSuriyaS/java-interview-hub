@@ -124,6 +124,17 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   /* ===================== SIDEBAR NAV ===================== */
+  const anyPhaseOpen = () => CURRICULUM.some(p => state.openPhases[p.id]);
+  function refreshCollapseAllBtn() {
+    const label = document.getElementById('collapse-all-label');
+    const btn = document.getElementById('collapse-all');
+    if (!label || !btn) return;
+    const open = anyPhaseOpen();
+    label.textContent = open ? 'Collapse all' : 'Expand all';
+    const ico = btn.querySelector('[data-lucide]');
+    if (ico) { ico.setAttribute('data-lucide', open ? 'chevrons-down-up' : 'chevrons-up-down'); icons(); }
+  }
+
   function renderNav(filter = '') {
     const nav = $('#nav');
     nav.innerHTML = '';
@@ -150,7 +161,8 @@
       if (q && visibleMods.length === 0) return;
 
       const pp = phaseProgress(phase);
-      const isOpen = q ? true : (state.openPhases[phase.id] ?? (idx === 0));
+      // Default: all phases collapsed — show the main topics only until expanded.
+      const isOpen = q ? true : (state.openPhases[phase.id] ?? false);
 
       const phaseEl = el('div', { class: 'nav-phase' + (isOpen ? ' open' : '') });
 
@@ -165,6 +177,7 @@
       header.addEventListener('click', () => {
         if (!q) { state.openPhases[phase.id] = !isOpen; save(); }
         phaseEl.classList.toggle('open');
+        refreshCollapseAllBtn();
       });
 
       const body = el('div', { class: 'nav-phase-body' });
@@ -203,6 +216,7 @@
       nav.appendChild(phaseEl);
     });
     icons();
+    refreshCollapseAllBtn();
     // keep the active module visible in a 57-module sidebar (skip while searching)
     if (!q) {
       const activeEl = nav.querySelector('.ring-brand\\/40');
@@ -1694,6 +1708,18 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
 
     $('#search').addEventListener('input', (e) => renderNav(e.target.value));
     $('#dashboard-btn').addEventListener('click', renderDashboard);
+
+    // ---- Collapse / expand all phases ----
+    const collapseAllBtn = document.getElementById('collapse-all');
+    if (collapseAllBtn) {
+      collapseAllBtn.addEventListener('click', () => {
+        const collapse = anyPhaseOpen();               // something open -> collapse; all closed -> expand
+        CURRICULUM.forEach(p => { state.openPhases[p.id] = !collapse; });
+        save();
+        renderNav($('#search') ? $('#search').value : '');
+      });
+    }
+    refreshCollapseAllBtn();
 
     // reading progress bar + back-to-top — driven by the content pane's scroll
     const contentEl = $('#content'), readBar = document.getElementById('read-progress');
