@@ -211,6 +211,13 @@ Java releases a new version every six months, but a few are **LTS**
 standardize on them. The ones you will hear about most are **Java 8, 11, 17,
 and 21**. This module targets **Java 21**. Newer LTS versions add features but
 the fundamentals in this module stay the same.
+
+
+---
+
+**Further reading**
+
+- [JDK vs JRE vs JVM — Baeldung](https://www.baeldung.com/jvm-vs-jre-vs-jdk)
 `,
             code: [
               {
@@ -3391,7 +3398,7 @@ The compiler picks the correct overload at **compile time** based on the argumen
 
 ## Access Modifiers Preview
 
-Fields and methods can have visibility modifiers. Full details in 0.5, but you need the basics now:
+Fields and methods can have visibility modifiers. Full details in 0.6, but you need the basics now:
 
 | Modifier | Visible from |
 |---|---|
@@ -4088,7 +4095,7 @@ AppConfig cfg2 = AppConfig.getInstance();
 System.out.println(cfg1 == cfg2); // true — same object
 \`\`\`
 
-Note: the above is not thread-safe. For thread-safe singleton, use an enum or holder-class pattern (covered in 0.13 Design Patterns).
+Note: the above is not thread-safe. For thread-safe singleton, use an enum or holder-class pattern (covered in the Design Patterns phase (Phase 12)).
 
 ## \`main\` Method — The Static Entry Point
 
@@ -6446,7 +6453,14 @@ String output = switch (result) {
 | Simple tagged data, no methods | Sealed interface + records |
 | Complex shared logic with state | Sealed abstract class |
 
-> **Interview insight:** Sealed classes + pattern switch replaces the Visitor pattern. Visitor was needed because you could not do exhaustive dispatch without it. Now you can.`,
+> **Interview insight:** Sealed classes + pattern switch replaces the Visitor pattern. Visitor was needed because you could not do exhaustive dispatch without it. Now you can.
+
+---
+
+**Further reading**
+
+- [JEP 409: Sealed Classes](https://openjdk.org/jeps/409)
+`,
             code: [
               `// Sealed class hierarchy — compiler-enforced exhaustiveness
 public sealed class Shape permits Circle, Rectangle, Triangle {}
@@ -6633,7 +6647,14 @@ String result = sb.toString();
 
 \`intern()\` is rarely called manually in modern code. The JVM automatically interns all string literals. Use cases:
 - Reducing memory when you have millions of repeated strings (e.g. city names from a CSV)
-- Enabling \`==\` comparison for performance-critical code (almost never worth it)`,
+- Enabling \`==\` comparison for performance-critical code (almost never worth it)
+
+---
+
+**Further reading**
+
+- [The Java String Pool — Baeldung](https://www.baeldung.com/java-string-pool)
+`,
             code: [
               `public class StringPoolDemo {
     public static void main(String[] args) {
@@ -7334,6 +7355,19 @@ public class StringPatterns {
           {
             title: `The Exception Hierarchy & JVM Mechanics`,
             notes: `## The Exception Hierarchy & JVM Mechanics
+
+> [!NOTE]
+> **New to exceptions?** An *exception* is Java's way of signalling that something went wrong while the program runs -- a missing file, a divide-by-zero, a bad array index. Instead of crashing silently, Java "throws" an object describing the problem, and your code can "catch" and handle it:
+>
+> \`\`\`java
+> try {
+>     int x = 10 / 0;                 // throws ArithmeticException
+> } catch (ArithmeticException e) {
+>     System.out.println("caught: " + e.getMessage());
+> }
+> \`\`\`
+>
+> That is the whole mechanic. The rest of this section explains how exceptions are organised and what the JVM does under the hood.
 
 Everything throwable in Java descends from \`java.lang.Throwable\`. Only instances of \`Throwable\` (or its subclasses) may appear in a \`throw\` statement or be caught by a \`catch\` clause.
 
@@ -9581,7 +9615,14 @@ cost
  +------------------------------------------------------------------> n
 \`\`\`
 
-As \`n\` grows to the right, \`O(1)\` and \`O(log n)\` stay almost flat, \`O(n)\` rises steadily, and \`O(n^2)\` and \`O(2^n)\` shoot up off the chart. Remember: **Big-O is about how cost GROWS, not exact speed.** An \`O(n)\` algorithm with a big constant can lose to an \`O(n^2)\` one on small inputs -- but give \`n\` room to grow and the better class always wins.`,
+As \`n\` grows to the right, \`O(1)\` and \`O(log n)\` stay almost flat, \`O(n)\` rises steadily, and \`O(n^2)\` and \`O(2^n)\` shoot up off the chart. Remember: **Big-O is about how cost GROWS, not exact speed.** An \`O(n)\` algorithm with a big constant can lose to an \`O(n^2)\` one on small inputs -- but give \`n\` room to grow and the better class always wins.
+
+---
+
+**Further reading**
+
+- [Big-O Notation — Baeldung](https://www.baeldung.com/cs/big-o-notation)
+`,
             code: [
               {
                 lang: `java`,
@@ -10730,6 +10771,13 @@ So O(1) is the *expected* cost with a decent hash function and sensible load, no
 3. Collisions chain inside a bucket (and treeify if a chain gets long).
 4. Crossing \`capacity * 0.75\` doubles capacity and rehashes.
 5. \`equals\` + \`hashCode\` must agree, or entries get lost.
+
+
+---
+
+**Further reading**
+
+- [Java HashMap under the hood — Baeldung](https://www.baeldung.com/java-hashmap)
 `,
             code: [
               {
@@ -12798,7 +12846,14 @@ System.out.println(present); // [a, b]
 
 // isEmpty() — negation of isPresent() (Java 11)
 boolean missing = opt.isEmpty(); // opt.isPresent() == false
-\`\`\``,
+\`\`\`
+
+---
+
+**Further reading**
+
+- [Guide to java.util.Optional — Baeldung](https://www.baeldung.com/java-optional)
+`,
             code: [
               `import java.util.*;
 
@@ -15846,7 +15901,10 @@ public class OldToYoungReferenceDemo {
           },
           {
             title: `Modern GC Algorithms: G1, ZGC, Shenandoah`,
-            notes: `
+            notes: `> [!NOTE]
+> **Before the details:** every garbage collector trades three things off against one another -- *pause time* (how long it freezes your app), *throughput* (how much CPU is left for real work) and *memory footprint*. This section walks the menu from the simplest collector (Serial) to the newest low-pause ones (G1, ZGC, Shenandoah); as you read each, ask "what does this one optimise for?"
+
+
 ### Serial and Parallel GC
 
 Serial GC is simple: one GC thread performs collection work, and application threads stop during collection. It is still relevant for tiny heaps, command-line tools, small containers with one CPU, and teaching.
@@ -15921,6 +15979,14 @@ Why use it?
 
 > [!EU]
 > If asked "Which collector should we use?", start with requirements: pause SLO, heap size, allocation rate, CPU budget, Java version, and observability. Collector choice is an engineering trade, not a badge.
+
+
+---
+
+**Further reading**
+
+- [HotSpot GC Tuning Guide — Oracle](https://docs.oracle.com/en/java/javase/21/gctuning/)
+- [JEP 439: Generational ZGC](https://openjdk.org/jeps/439)
 `,
             code: [
               {
@@ -18815,7 +18881,14 @@ System.out.println(map.get(key)); // null — key is now in wrong bucket
 System.out.println(map.size());   // 1 — the entry is still there, just unreachable
 \`\`\`
 
-**Rule:** never use a mutable object as a Map key or Set element. Use immutable types (String, Integer, records, custom immutable class).`,
+**Rule:** never use a mutable object as a Map key or Set element. Use immutable types (String, Integer, records, custom immutable class).
+
+---
+
+**Further reading**
+
+- [equals()/hashCode() contract — Baeldung](https://www.baeldung.com/java-equals-hashcode-contracts)
+`,
             code: [
               `import java.util.*;
 
@@ -18994,8 +19067,8 @@ TreeSet<Employee> sorted = new TreeSet<>(staff); // TreeSet uses Comparable
 \`\`\`java
 // Multiple orderings via Comparator — no changes to Employee class
 Comparator<Employee> byName       = Comparator.comparing(e -> e.name);
-Comparator<Employee> bySalaryDesc = Comparator.comparingInt(Employee::getSalary).reversed();
-Comparator<Employee> byTenure     = Comparator.comparing(Employee::getStartDate);
+Comparator<Employee> bySalaryDesc = Comparator.comparingInt(e -> e.salary).reversed();
+Comparator<Employee> byTenure     = Comparator.comparing(e -> e.startDate);
 
 // Chained: sort by salary desc, then by name asc for ties
 Comparator<Employee> primary = bySalaryDesc.thenComparing(byName);
@@ -22313,7 +22386,14 @@ flowchart LR
 \`\`\`
 
 > [!TIP]
-> Interview sound bite: "\`thenApply\` is map, \`thenCompose\` is flatMap, \`thenCombine\` is zip; non-Async stages run on the completing thread, Async stages on the supplied executor; \`allOf\` + \`join\` is fan-in; \`orTimeout\` guards every external call — and none of the timeouts interrupt the underlying work."`,
+> Interview sound bite: "\`thenApply\` is map, \`thenCompose\` is flatMap, \`thenCombine\` is zip; non-Async stages run on the completing thread, Async stages on the supplied executor; \`allOf\` + \`join\` is fan-in; \`orTimeout\` guards every external call — and none of the timeouts interrupt the underlying work."
+
+---
+
+**Further reading**
+
+- [Guide to CompletableFuture — Baeldung](https://www.baeldung.com/java-completablefuture)
+`,
             code: [
               {
                 lang: `java`,
@@ -23073,6 +23153,9 @@ public class PrimitiveStreamDemo {
           {
             title: `Collectors Deep Dive — groupingBy, toMap, partitioningBy, teeing, custom`,
             notes: `## Collectors Deep Dive
+
+> [!NOTE]
+> **What is a collector?** A \`Collector\` is simply the *recipe* for gathering the elements flowing out of a stream into a final result -- a \`List\`, a \`Set\`, a \`Map\`, a count or a joined \`String\`. You hand one to the terminal \`collect(...)\` operation. The formal "supplier + accumulator + combiner + finisher" machinery below is just how that recipe is built; most of the time you use the ready-made recipes in the \`Collectors\` class.
 
 \`collect\` is the most powerful terminal op: it performs a **mutable reduction** using a \`Collector\` (supplier + accumulator + combiner + finisher). The \`Collectors\` factory covers almost everything; the real depth is **downstream collectors** that post-process each group.
 
@@ -25166,7 +25249,14 @@ try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
     futures.forEach(f -> f.get());
 }
 // Takes ~100ms (all 1000 virtual threads run "simultaneously")
-\`\`\``,
+\`\`\`
+
+---
+
+**Further reading**
+
+- [JEP 444: Virtual Threads](https://openjdk.org/jeps/444)
+`,
             code: [
               `import java.time.Duration;
 import java.util.concurrent.*;
@@ -25300,7 +25390,7 @@ public class VirtualThreadState {
             title: `Structured Concurrency — StructuredTaskScope`,
             notes: `## Structured Concurrency — StructuredTaskScope
 
-Structured concurrency (Java 21 preview, finalised in Java 25) treats a group of related concurrent tasks as a single unit of work. The scope owns its tasks — when the scope exits, all tasks are guaranteed to be done or cancelled. No task outlives its scope.
+Structured concurrency (a preview feature introduced in Java 21 and still evolving in later releases -- the API shown here is the Java 21 preview form) treats a group of related concurrent tasks as a single unit of work. The scope owns its tasks — when the scope exits, all tasks are guaranteed to be done or cancelled. No task outlives its scope.
 
 ### The Problem with Unstructured Concurrency
 
@@ -29458,7 +29548,14 @@ flowchart LR
 
 ### Why modern systems prefer JSON / protobuf
 
-Java serialization is JVM-only, tightly coupled to class internals (fragile versioning), opaque, and insecure by default. JSON, Protocol Buffers, and Avro are language-neutral, have explicit schemas and evolution rules, are human-inspectable or compact, and do **not** execute arbitrary code on parse — so they are the default for persistence and RPC today.`,
+Java serialization is JVM-only, tightly coupled to class internals (fragile versioning), opaque, and insecure by default. JSON, Protocol Buffers, and Avro are language-neutral, have explicit schemas and evolution rules, are human-inspectable or compact, and do **not** execute arbitrary code on parse — so they are the default for persistence and RPC today.
+
+---
+
+**Further reading**
+
+- [JEP 290: Filter Incoming Serialization Data](https://openjdk.org/jeps/290)
+`,
             code: [
               {
                 lang: `java`,
@@ -31856,7 +31953,14 @@ public class BuildInfoContributor implements InfoContributor {
         ));
     }
 }
-\`\`\``,
+\`\`\`
+
+---
+
+**Further reading**
+
+- [Spring Boot Actuator — Baeldung](https://www.baeldung.com/spring-boot-actuators)
+`,
             code: [
               `import org.springframework.boot.actuate.health.*;
 import org.springframework.boot.actuate.info.*;
@@ -32947,7 +33051,14 @@ public class ProductService {
     @Transactional  // overrides class-level readOnly=false for writes
     public Product create(ProductRequest req) { return repo.save(new Product(req)); }
 }
-\`\`\``,
+\`\`\`
+
+---
+
+**Further reading**
+
+- [Transaction Propagation and Isolation — Baeldung](https://www.baeldung.com/spring-transactional-propagation-isolation)
+`,
             code: [
               `import org.springframework.transaction.annotation.*;
 import org.springframework.stereotype.*;
@@ -33603,7 +33714,14 @@ graph TB
 | \`Window<T>\` / \`ScrollPosition\` | Keyset scrolling (Spring Data 3.1+) |
 
 > [!EU]
-> When returning PII columns to UIs (GDPR data-minimisation), **closed DTO/interface projections are an architectural control**: the SQL physically does not select unneeded sensitive columns, so they never enter the JVM heap, logs, or serialized responses.`,
+> When returning PII columns to UIs (GDPR data-minimisation), **closed DTO/interface projections are an architectural control**: the SQL physically does not select unneeded sensitive columns, so they never enter the JVM heap, logs, or serialized responses.
+
+---
+
+**Further reading**
+
+- [Spring Data Derived Queries — Baeldung](https://www.baeldung.com/spring-data-derived-queries)
+`,
             code: [
               {
                 lang: `java`,
@@ -34301,6 +34419,15 @@ class OrderRepositoryTest {
           {
             title: `Relational Model & Logical Query Processing Order`,
             notes: `## Relational Model & SQL Logical Query Processing Order
+
+> [!NOTE]
+> **SQL from zero:** a relational database stores data in *tables* -- a table is a grid of *rows* (records) and *columns* (fields), like a spreadsheet. Each row is usually identified by a *primary key* (a unique id). You read data with a \`SELECT\`:
+>
+> \`\`\`sql
+> SELECT name, salary FROM employees WHERE salary > 50000;
+> \`\`\`
+>
+> -- "give me the name and salary columns, from the employees table, for rows where salary is above 50000". Once that clicks, the rest of this section explains the *order* in which the database logically evaluates those clauses.
 
 SQL is **declarative**: you describe *what* you want, not *how* to fetch it. But there is a fixed **logical processing order** the engine reasons about when resolving names and scope. The physical plan (what the optimizer actually executes) can differ wildly, but the *logical* order defines what is legal to reference where.
 
@@ -35439,6 +35566,9 @@ LIMIT 100;`,
             title: `B+Tree Indexes: Structure, Clustered vs Secondary, Heap vs IOT`,
             notes: `## B+Tree Indexes — the default for a reason
 
+> [!NOTE]
+> **What is an index?** Just as the index at the back of a book lets you jump to a topic without reading every page, a database *index* is a separate sorted structure that lets the engine find matching rows without scanning the whole table. It makes reads fast -- at the cost of extra storage and slightly slower writes (the index must be kept up to date). This section explains the B+Tree, the structure most indexes actually use.
+
 When you type \`CREATE INDEX\` with no type, you get a **B+Tree**. It is the workhorse of every relational engine (PostgreSQL, InnoDB, SQL Server, Oracle) because it serves the widest range of access patterns with one structure: equality (\`=\`), range (\`<\`, \`BETWEEN\`), prefix (\`LIKE 'abc%'\`), sorted retrieval (\`ORDER BY\`), and \`MIN\`/\`MAX\`.
 
 ### B-Tree vs B+Tree — know the difference
@@ -35924,7 +36054,14 @@ flowchart TD
 5. **Sort/hash spilling to disk** (\`work_mem\` too small; \`Batches > 1\`, "external merge Disk").
 6. **N+1** — not one slow query but thousands of fast ones (see §5).
 7. **Returning too much data** (\`SELECT *\` defeating a covering index; no \`LIMIT\`).
-8. **Parameter sniffing** (mostly SQL Server / prepared statements): a plan cached for one parameter value is reused for a skewed value it doesn't suit.`,
+8. **Parameter sniffing** (mostly SQL Server / prepared statements): a plan cached for one parameter value is reused for a skewed value it doesn't suit.
+
+---
+
+**Further reading**
+
+- [Using EXPLAIN — PostgreSQL docs](https://www.postgresql.org/docs/current/using-explain.html)
+`,
             code: [
               {
                 lang: `sql`,
@@ -38985,7 +39122,14 @@ Costs: dirty checking is **O(entities x properties)** on every flush. A PC holdi
 | \`MANUAL\` (Hibernate) | Never automatic — you must call \`flush()\`; great for read-mostly conversations |
 
 > [!SUCCESS]
-> AUTO flush exists to keep **queries consistent with pending in-memory writes**: if you \`persist()\` an Order then run a JPQL \`SELECT\` over Orders, Hibernate flushes first so the query sees your insert. (Note: native SQL queries do *not* get the same automatic synchronization unless you declare the affected query spaces.)`,
+> AUTO flush exists to keep **queries consistent with pending in-memory writes**: if you \`persist()\` an Order then run a JPQL \`SELECT\` over Orders, Hibernate flushes first so the query sees your insert. (Note: native SQL queries do *not* get the same automatic synchronization unless you declare the affected query spaces.)
+
+---
+
+**Further reading**
+
+- [Open Session in View — Baeldung](https://www.baeldung.com/spring-open-session-in-view)
+`,
             code: [
               {
                 lang: `java`,
@@ -40814,7 +40958,14 @@ Strategies, from strong to scalable:
 4. **Approximate (HyperLogLog):** for unique counts (uniques, reach) at billions scale with ~1.6 KB and ~2% error — the right call when "exact" is not worth the cost.
 
 > [!TIP]
-> The interview move: *"Do you need the count to be exact and immediate, or eventually-correct and cheap?"* For a like button: sharded counter or CRDT, eventual, cheap. For an account balance: single authoritative row, strongly consistent, idempotent writes. **Match the consistency model to the business cost of being wrong.**`,
+> The interview move: *"Do you need the count to be exact and immediate, or eventually-correct and cheap?"* For a like button: sharded counter or CRDT, eventual, cheap. For an account balance: single authoritative row, strongly consistent, idempotent writes. **Match the consistency model to the business cost of being wrong.**
+
+---
+
+**Further reading**
+
+- [Please stop calling databases CP or AP — Kleppmann](https://martin.kleppmann.com/2015/05/11/please-stop-calling-databases-cp-or-ap.html)
+`,
             code: [
               {
                 lang: `java`,
@@ -42065,7 +42216,14 @@ sequenceDiagram
 One key so popular it saturates a single shard/CPU (a celebrity user, a flash-sale SKU). Fixes: **client-side local cache** of that key (near-cache), **key replication/splitting** (\`hot:{0..9}\` round-robin and merge), read from replicas, or a tiny in-process L1 with very short TTL to absorb the burst.
 
 > [!SUCCESS]
-> Interview-ready stampede answer: "Add **TTL jitter** so keys don't expire together, **single-flight** so only one request recomputes a missing key, and **stale-while-revalidate / early recompute** so users never wait on a cold origin. For hot keys, put a short-TTL **local L1** in front of Redis to absorb the per-key burst."`,
+> Interview-ready stampede answer: "Add **TTL jitter** so keys don't expire together, **single-flight** so only one request recomputes a missing key, and **stale-while-revalidate / early recompute** so users never wait on a cold origin. For hot keys, put a short-TTL **local L1** in front of Redis to absorb the per-key burst."
+
+---
+
+**Further reading**
+
+- [How to do distributed locking — Kleppmann](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html)
+`,
             code: [
               {
                 lang: `java`,
@@ -42597,7 +42755,14 @@ ETag: "v1"
 { "id": 42, "status": "PENDING", "customerId": "c-99",
   "lines": [ { "sku": "BOOK-1", "qty": 2, "price": 19.99 } ],
   "total": 39.98, "createdAt": "2026-06-25T10:00:00Z" }
-\`\`\``,
+\`\`\`
+
+---
+
+**Further reading**
+
+- [Richardson Maturity Model — Martin Fowler](https://martinfowler.com/articles/richardsonMaturityModel.html)
+`,
             code: [
               {
                 lang: `java`,
@@ -43629,7 +43794,7 @@ Negotiate with \`Accept-Encoding: gzip, br\`; respond \`Content-Encoding: br\`. 
 
 ### Timeouts & circuit breaking
 
-Every outbound call needs a **timeout** (no infinite waits) and a **circuit breaker** so a failing dependency fails fast instead of exhausting your threads/connections. Add **bulkheads** (isolated pools per dependency) and **load shedding** (return 503 + Retry-After when overloaded). (Resilience patterns are deep in the resilience module — here they're an API-design obligation.)
+Every outbound call needs a **timeout** (no infinite waits) and a **circuit breaker** so a failing dependency fails fast instead of exhausting your threads/connections. Add **bulkheads** (isolated pools per dependency) and **load shedding** (return 503 + Retry-After when overloaded). (Resilience patterns are deep in the microservices resilience section (Module 6.1) — here they're an API-design obligation.)
 
 \`\`\`text
 - connect timeout + read timeout on EVERY client (DB, HTTP, gRPC).
@@ -45534,7 +45699,14 @@ You have a distributed monolith if **services must be deployed together, share a
 
 > "Organizations design systems that mirror their communication structure." — Melvin Conway, 1967
 
-Your service boundaries *will* end up matching your team boundaries whether you plan it or not. The **Inverse Conway Maneuver**: deliberately shape teams to get the architecture you want. Two-pizza teams, each owning a service end-to-end (you build it, you run it). If two teams must edit the same service to ship a feature, the boundary is wrong.`,
+Your service boundaries *will* end up matching your team boundaries whether you plan it or not. The **Inverse Conway Maneuver**: deliberately shape teams to get the architecture you want. Two-pizza teams, each owning a service end-to-end (you build it, you run it). If two teams must edit the same service to ship a feature, the boundary is wrong.
+
+---
+
+**Further reading**
+
+- [Strangler Fig Application — Martin Fowler](https://martinfowler.com/bliki/StranglerFigApplication.html)
+`,
             code: [
               {
                 lang: `text`,
@@ -46484,7 +46656,7 @@ The data lives in different databases (maybe different engines, different clouds
 
 ### Eventual consistency — embrace it
 
-Cross-service writes can't be atomic without distributed transactions (2PC), which are slow, lock resources, and don't survive coordinator failure well — avoid them. Instead, accept **eventual consistency**: the system converges to a correct state after a short delay. The mechanism is the **saga** (covered in depth in the next module): a sequence of local transactions, each publishing an event that triggers the next, with **compensating actions** to undo on failure (you can't roll back, so you semantically reverse — refund instead of un-charge).
+Cross-service writes can't be atomic without distributed transactions (2PC), which are slow, lock resources, and don't survive coordinator failure well — avoid them. Instead, accept **eventual consistency**: the system converges to a correct state after a short delay. The mechanism is the **saga** (covered in depth in Module 6.3): a sequence of local transactions, each publishing an event that triggers the next, with **compensating actions** to undo on failure (you can't roll back, so you semantically reverse — refund instead of un-charge).
 
 > [!EU] **Interviewers probe:** "How do you keep order, payment, and inventory consistent without a distributed transaction?" Strong answer: a saga — local ACID transaction per service + events to chain them + compensating transactions to unwind failures. Combined with idempotent consumers and an outbox to avoid the dual-write problem.
 
@@ -46991,7 +47163,14 @@ The **controller** is a special broker role that manages cluster metadata: parti
 - "RF=3 — how many brokers can you lose and still write?" -> depends on \`min.insync.replicas\`; with =2 you lose one.
 - "What is the high-water mark and why can't consumers read past it?" -> durability boundary.
 - "Why is Kafka fast?" -> sequential I/O, page cache, zero-copy, batching — and when zero-copy breaks (TLS).
-- "What did KRaft change?" -> metadata as a Raft log, no ZK, faster failover, more partitions.`,
+- "What did KRaft change?" -> metadata as a Raft log, no ZK, faster failover, more partitions.
+
+---
+
+**Further reading**
+
+- [Kafka Design — Apache Kafka docs](https://kafka.apache.org/documentation/#design)
+`,
             code: [
               {
                 lang: `java`,
@@ -47552,6 +47731,9 @@ kafka-consumer-groups.sh --bootstrap-server broker1:9092 --group fulfilment \\
           {
             title: `Delivery Semantics & Exactly-Once (Effectively-Once) + Outbox`,
             notes: `## Delivery Semantics & Exactly-Once (really *Effectively*-Once)
+
+> [!NOTE]
+> **In plain terms:** *delivery semantics* is the promise a messaging system makes about how many times a message can arrive: **at-most-once** (fast, but a message may be lost), **at-least-once** (never lost, but may arrive twice -- so consumers must be idempotent), or **exactly-once** (the illusion that each message is processed once and only once). The table below shows how Kafka achieves each.
 
 ### The three semantics
 
@@ -48290,7 +48472,10 @@ public class XaTransferService {
           },
           {
             title: `Saga Fundamentals: Compensation, Semantic Locks & Isolation Anomalies`,
-            notes: `
+            notes: `> [!NOTE]
+> **One-line intuition:** a *saga* performs each step of a multi-service transaction for real, one at a time, and if a later step fails it runs matching *compensating* ("undo") steps for the earlier ones -- because once each service has committed its own local transaction, you cannot roll them all back together. The formal T1..Tn / Cj notation below is just that idea written precisely.
+
+
 # Saga Fundamentals
 
 > **A saga is a sequence of local transactions T1, T2, ... Tn, where each Ti commits independently in its own service/DB. If some Tj fails, the saga executes compensating transactions Cj-1, ..., C1 to semantically undo the already-committed work.** (Garcia-Molina & Salem, 1987 — originally about long-running DB transactions, now the backbone of microservice consistency.)
@@ -48679,6 +48864,13 @@ At-least-once + retries can also **reorder** messages. Defenses:
 
 > [!EU]
 > For financial/PII event streams, the outbox row and inbox dedup row are your **audit + reconciliation backbone**: you can prove every state change emitted exactly one logical event and every consumer applied it exactly once — essential for SOX/PSD2 reconciliation.
+
+
+---
+
+**Further reading**
+
+- [Saga pattern — microservices.io](https://microservices.io/patterns/data/saga.html)
 `,
             code: [
               {
@@ -50116,6 +50308,9 @@ interface ProcessedStore { boolean markIfNew(String messageId); }`,
             title: `What a Container Really Is — Namespaces, cgroups & the OCI Spec`,
             notes: `## What a Container Really Is
 
+> [!NOTE]
+> **In one sentence:** a *container* packages your application together with everything it needs to run -- the JDK, libraries and config -- into one sealed, portable box that runs identically on your laptop, a teammate's machine and production. That is what kills "but it works on my machine". The deep dive below explains *how* Linux builds that box (namespaces, cgroups); keep this plain picture in mind as you read.
+
 A container is **not** a lightweight VM. There is no "container" object in the Linux kernel. A container is a **normal Linux process** that the kernel has been told to view through a restricted lens. Three kernel features create that illusion:
 
 - **Namespaces** -> what the process can *see* (isolation).
@@ -50429,7 +50624,14 @@ Smaller images mean faster pulls/cold-starts, less registry/egress cost, and a *
 > Deleting files in a *separate, later* \`RUN\` does **not** reduce image size — layers are additive; the earlier layer still ships the bytes, and the delete is just a whiteout on top. You must add and remove within the **same** \`RUN\` instruction.
 
 > [!WARNING]
-> **Alpine for Java is a trap unless you measure.** Alpine uses musl libc, not glibc. The standard HotSpot JDK targets glibc; musl variants exist but historically had subtle issues (DNS resolution, locale, native libs, some JIT/perf edge cases). For Spring Boot, a glibc-based slim/distroless image (\`gcr.io/distroless/java21-debian12\`) is usually the safer, well-supported choice.`,
+> **Alpine for Java is a trap unless you measure.** Alpine uses musl libc, not glibc. The standard HotSpot JDK targets glibc; musl variants exist but historically had subtle issues (DNS resolution, locale, native libs, some JIT/perf edge cases). For Spring Boot, a glibc-based slim/distroless image (\`gcr.io/distroless/java21-debian12\`) is usually the safer, well-supported choice.
+
+---
+
+**Further reading**
+
+- [Docker build cache — Docker docs](https://docs.docker.com/build/cache/)
+`,
             code: [
               {
                 lang: `bash`,
@@ -52503,7 +52705,14 @@ graph LR
 
 ## HorizontalPodAutoscaler (HPA)
 
-The HPA watches a metric (CPU/memory via metrics-server, or custom/external) and adjusts \`replicas\` to keep it near a target. Requires resource **requests** to compute CPU utilization. (Note: VPA tunes requests/limits; Cluster Autoscaler adds *nodes*. HPA scales *Pods*.)`,
+The HPA watches a metric (CPU/memory via metrics-server, or custom/external) and adjusts \`replicas\` to keep it near a target. Requires resource **requests** to compute CPU utilization. (Note: VPA tunes requests/limits; Cluster Autoscaler adds *nodes*. HPA scales *Pods*.)
+
+---
+
+**Further reading**
+
+- [Configure Liveness/Readiness/Startup Probes — Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
+`,
             code: [
               {
                 lang: `yaml`,
@@ -53768,7 +53977,14 @@ metadata:
 \`\`\`
 
 > [!DANGER]
-> Be careful: \`-}}\` eats the newline *after* the action, which can glue the next line onto the current one. The safe, idiomatic pattern is \`{{-\` on control-flow lines and a plain \`}}\` at the end. Always verify with \`helm template\` — invisible whitespace bugs are the hardest Helm issues to spot from source alone.`,
+> Be careful: \`-}}\` eats the newline *after* the action, which can glue the next line onto the current one. The safe, idiomatic pattern is \`{{-\` on control-flow lines and a plain \`}}\` at the end. Always verify with \`helm template\` — invisible whitespace bugs are the hardest Helm issues to spot from source alone.
+
+---
+
+**Further reading**
+
+- [Chart Template Guide — Helm docs](https://helm.sh/docs/chart_template_guide/)
+`,
             code: [
               {
                 lang: `text`,
@@ -57247,6 +57463,9 @@ kubectl exec deploy/order-service -n orders-prod -- \\
             id: `8.1.1`,
             title: `Why Process Orchestration`,
             notes: `## Orchestration vs Choreography
+
+> [!NOTE]
+> **Plain definition first:** *process orchestration* means coordinating a multi-step, often long-running business process -- loan approval, order fulfilment, employee onboarding -- where a central *engine* drives the steps in order, waits (sometimes for days) on people or other systems, remembers exactly where each case is, and retries or compensates when a step fails. A *token* is simply a marker the engine moves along the flow to track where a given case currently sits.
 
 In the **saga module** you saw two ways to coordinate a distributed business transaction:
 
@@ -61218,7 +61437,14 @@ flowchart TD
 
 ### Trace-log correlation
 > [!SUCCESS]
-> Inject the active \`trace_id\`/\`span_id\` into the logging MDC so every log line carries them. Then from a slow span you jump straight to its logs, and from an error log you jump straight to its trace. This is the payoff that makes the three pillars one connected story.`,
+> Inject the active \`trace_id\`/\`span_id\` into the logging MDC so every log line carries them. Then from a slow span you jump straight to its logs, and from an error log you jump straight to its trace. This is the payoff that makes the three pillars one connected story.
+
+---
+
+**Further reading**
+
+- [OpenTelemetry documentation](https://opentelemetry.io/docs/)
+`,
             code: [
               {
                 lang: `java`,
@@ -62921,7 +63147,14 @@ Spring Boot keeps 200+ libraries aligned.
 
 > [!SUCCESS]
 > Rule of thumb: **import BOMs, manage your own versions, declare without versions in
-> children.** A version string in a leaf module \`pom\` is usually a smell.`,
+> children.** A version string in a leaf module \`pom\` is usually a smell.
+
+---
+
+**Further reading**
+
+- [Maven Dependency Scopes — Baeldung](https://www.baeldung.com/maven-dependency-scopes)
+`,
             code: [
               {
                 lang: `text`,
@@ -64711,7 +64944,7 @@ flowchart LR
 ## Where each is enforced
 
 - **AuthN** is enforced once, early, by an authentication filter (form login, bearer token, etc.). Its output is an authenticated \`Authentication\` placed in the \`SecurityContext\`.
-- **AuthZ** is enforced in (at least) two layers:
+- **AuthZ** is enforced in (at least) three layers:
   1. **Web/URL layer** — \`authorizeHttpRequests\` (the \`AuthorizationFilter\`, formerly \`FilterSecurityInterceptor\`).
   2. **Method layer** — \`@PreAuthorize\`/\`@PostAuthorize\` around service/controller methods.
   3. **Domain/data layer** — ownership filtering inside queries (covered in the multi-tenant section).
@@ -64940,7 +65173,14 @@ flowchart LR
 > Never store plaintext passwords and never use fast hashes (MD5/SHA-256 raw) for passwords. BCrypt/Argon2/PBKDF2 are deliberately slow and salted. The default Spring \`PasswordEncoderFactories.createDelegatingPasswordEncoder()\` stores an \`{id}\` prefix so you can rotate algorithms over time.
 
 > [!SUCCESS]
-> Each \`http\` configuration produces one \`SecurityFilterChain\` bean. You can register **multiple** chains with \`@Order\` and \`securityMatcher(...)\` — e.g. one stateless chain for \`/api/**\` and one stateful form-login chain for \`/app/**\`. The first chain whose matcher matches wins.`,
+> Each \`http\` configuration produces one \`SecurityFilterChain\` bean. You can register **multiple** chains with \`@Order\` and \`securityMatcher(...)\` — e.g. one stateless chain for \`/api/**\` and one stateful form-login chain for \`/app/**\`. The first chain whose matcher matches wins.
+
+---
+
+**Further reading**
+
+- [Spring Security Architecture — official docs](https://docs.spring.io/spring-security/reference/servlet/architecture.html)
+`,
             code: [
               {
                 lang: `java`,
@@ -66377,7 +66617,14 @@ classDiagram
 
 - \`java.lang.Runtime.getRuntime()\` — classic eager JDK singleton.
 - \`java.awt.Desktop.getDesktop()\`, \`java.util.logging.LogManager\`.
-- Every Spring bean with default scope; \`@Configuration\` classes; \`ApplicationContext\` itself.`,
+- Every Spring bean with default scope; \`@Configuration\` classes; \`ApplicationContext\` itself.
+
+---
+
+**Further reading**
+
+- [Singletons in Java — Baeldung](https://www.baeldung.com/java-singleton)
+`,
             code: [
               {
                 lang: `java`,
@@ -68591,7 +68838,14 @@ The classic form needs one class per algorithm. With Java 8+, a strategy that is
 > **Avoid when** there is exactly one algorithm and no realistic second variant — you are adding an interface and an injection point to support flexibility nobody asked for (speculative generality). Also avoid if the "strategies" share most logic; that smells like **Template Method** instead.
 
 **Use when:** multiple interchangeable algorithms; you want to choose/replace behavior at runtime; you want to kill a growing \`switch\`; you want to inject behavior for testing.
-**Avoid when:** only one variant exists; variants differ only in a constant (use config/a map); the variants share a fixed skeleton (Template Method fits better).`,
+**Avoid when:** only one variant exists; variants differ only in a constant (use config/a map); the variants share a fixed skeleton (Template Method fits better).
+
+---
+
+**Further reading**
+
+- [Strategy pattern — Refactoring.Guru](https://refactoring.guru/design-patterns/strategy)
+`,
             code: [
               {
                 lang: `java`,
