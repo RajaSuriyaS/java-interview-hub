@@ -1884,5 +1884,397 @@ const INTERVIEW_QUESTIONS = {
       "q": "In Combination Sum, how do you avoid producing duplicate combinations?",
       "a": "Pass a start index into the recursion so each call only considers elements from the current position onward, never revisiting earlier elements -- this ensures combinations are generated in non-decreasing index order and duplicates like [2,3] and [3,2] are not both produced. When elements may be reused you recurse with the same index; when each may be used once you advance to index+1. Sorting first also lets you break early once the running sum exceeds the target."
     }
+  ],
+  "14.1": [
+    {
+      "q": "What is the difference between Heap and Stack memory?",
+      "a": "The heap is a single shared region where all objects and arrays live; it is managed by the garbage collector and is where GC pauses happen. The stack is per-thread: each thread has its own stack of frames holding local variables, operand values, and return addresses, freed automatically when a method returns (LIFO). Primitives and object references sit on the stack, but the objects they point to live on the heap. Stack overflow (deep recursion) throws StackOverflowError; exhausting the heap throws OutOfMemoryError: Java heap space."
+    },
+    {
+      "q": "How does the JVM memory model work?",
+      "a": "At runtime the JVM divides memory into the heap (shared: young + old generations), per-thread stacks, the Program Counter register, native method stacks, and native-memory areas like Metaspace and the code cache. Separately, the Java Memory Model (JMM, JLS Ch. 17) defines the concurrency rules: the happens-before relationship that governs when one thread's writes become visible to another. volatile, synchronized, final-field semantics, and Thread.start/join all establish happens-before edges; without them the JVM and CPU are free to reorder and cache reads/writes, causing visibility bugs."
+    },
+    {
+      "q": "Explain the Class Loading lifecycle.",
+      "a": "Three phases: Loading (a classloader reads the bytecode and creates the Class object), Linking, and Initialization. Linking splits into Verification (bytecode is type-safe and well-formed), Preparation (static fields allocated and set to default zero values), and Resolution (symbolic references resolved to direct references, may be lazy). Initialization runs static initializers and static-field assignments in <clinit>, triggered on first active use and guaranteed to run exactly once per class in a thread-safe way."
+    },
+    {
+      "q": "What are Bootstrap, Platform, and Application ClassLoaders?",
+      "a": "They form a delegation hierarchy: a loader first asks its parent before loading a class itself (parent-first / delegation model). The Bootstrap loader (written in native code, null in Java) loads core JDK classes like java.lang.*. The Platform loader (called Extension loader before Java 9) loads platform modules. The Application (System) loader loads classes from the application classpath. Delegation prevents core classes from being spoofed and ensures a single definition of each core type."
+    },
+    {
+      "q": "How does Garbage Collection work internally?",
+      "a": "GC reclaims objects that are no longer reachable from GC roots (thread stacks, static fields, JNI references). Modern collectors are generational, built on the weak generational hypothesis: most objects die young. New objects are allocated in the young generation's Eden; a minor GC copies survivors between survivor spaces and ages them, and objects that survive enough cycles are promoted (tenured) to the old generation. Collection uses mark-sweep(-compact) or copying algorithms, often with a Stop-The-World pause to walk the object graph, though concurrent collectors do most marking while the app runs."
+    },
+    {
+      "q": "G1 GC vs ZGC vs Serial GC?",
+      "a": "The core trade-off is pause time vs throughput vs footprint. Serial is simplest with the least overhead but is single-threaded STW and pauses scale with heap size — good for small heaps/containers. G1 (default since Java 9) divides the heap into regions and balances a configurable pause target (e.g. 200ms) against throughput on large heaps. ZGC (and Shenandoah) are concurrent, do compaction with load/colored-pointer barriers, and target sub-millisecond pauses roughly independent of heap size (multi-terabyte heaps) at some throughput/CPU cost."
+    },
+    {
+      "q": "What triggers a Full GC?",
+      "a": "A Full GC collects the entire heap (young + old + often Metaspace) and is usually the most expensive pause. Common triggers: the old generation filling up (promotion failure or an allocation that cannot be satisfied), Metaspace exhaustion, an explicit System.gc() call, and in G1 a concurrent-cycle failure that degrades to a full collection. Heap fragmentation and undersized heaps make them frequent. Frequent or long Full GCs are a red flag for leaks or misconfigured sizing."
+    },
+    {
+      "q": "How do you identify memory leaks in production?",
+      "a": "Watch the trend: after each Full GC the used old-gen baseline keeps climbing instead of returning to a steady level — that sawtooth-with-rising-floor pattern signals a leak. Enable GC logging and monitor heap-usage-after-GC via JMX/Micrometer/Prometheus. Capture a heap dump (jmap or -XX:+HeapDumpOnOutOfMemoryError) and analyze dominator trees in Eclipse MAT to find which objects retain the most memory and their GC-root reference chains. Classic culprits: unbounded caches/collections, ThreadLocals never removed, and unclosed resources or listeners."
+    },
+    {
+      "q": "What is a Heap Dump and when would you analyze it?",
+      "a": "A heap dump is a snapshot of every object on the heap at a point in time — classes, fields, references, and retained sizes — typically written as an .hprof file. You analyze it to diagnose memory leaks and OutOfMemoryErrors: what is consuming memory and, via the dominator tree and reference chains, what is keeping it alive. Capture it with jmap -dump, jcmd GC.heap_dump, or automatically with -XX:+HeapDumpOnOutOfMemoryError, then open it in Eclipse MAT or VisualVM. It is a heavyweight, stop-the-world operation, so take it deliberately."
+    },
+    {
+      "q": "How does the JIT Compiler improve performance?",
+      "a": "The JVM starts by interpreting bytecode, and the JIT compiles frequently executed (hot) methods and loops to native machine code at runtime. HotSpot uses tiered compilation: C1 (client) compiles quickly with light optimization, then C2 (server) recompiles the hottest code with aggressive optimizations. Because it profiles the actual running workload, the JIT applies speculative optimizations — inlining, loop unrolling, dead-code elimination, escape analysis — that a static compiler cannot, and it deoptimizes back to the interpreter if a speculative assumption (e.g. a monomorphic call site) is later violated."
+    },
+    {
+      "q": "What is Escape Analysis?",
+      "a": "Escape analysis is a JIT optimization that determines whether an object's lifetime escapes the method or thread that created it. If an object does not escape, the JIT can allocate it on the stack (or eliminate it entirely via scalar replacement, keeping its fields in registers) instead of the heap, and can remove synchronization on it (lock elision). This reduces heap allocation and GC pressure. It is enabled by default (-XX:+DoEscapeAnalysis); note it is not a guarantee — it depends on the JIT actually compiling and proving non-escape."
+    },
+    {
+      "q": "What is Metaspace and how is it different from PermGen?",
+      "a": "Metaspace stores class metadata — class structures, method bytecode, constant pool. PermGen (the permanent generation) served this role until it was removed in Java 8 and replaced by Metaspace. The key difference: PermGen lived inside the heap with a fixed max size (-XX:MaxPermSize), so class-heavy apps hit OutOfMemoryError: PermGen space; Metaspace lives in native (off-heap) memory and grows dynamically by default. You can still cap it with -XX:MaxMetaspaceSize, and leaks (e.g. classloader leaks) surface as OutOfMemoryError: Metaspace."
+    },
+    {
+      "q": "How do you troubleshoot OutOfMemoryError?",
+      "a": "First read the message — it names the cause: Java heap space (heap too small or a leak), Metaspace (classloader leak), GC overhead limit exceeded (GC running constantly for little gain), unable to create new native thread, or Direct buffer memory. Always run with -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=... so you get a dump at the moment of failure, then analyze it in Eclipse MAT (dominator tree, leak suspects). Confirm whether it is a genuine leak (rising post-GC baseline) versus undersized heap (raise -Xmx) or a load spike. Check GC logs for the pattern before OOM."
+    },
+    {
+      "q": "How do you troubleshoot high CPU usage in JVM applications?",
+      "a": "Identify the hot OS thread first: top -H -p <pid> (Linux) shows per-thread CPU; convert the offending thread ID to hex and match its nid=0x... in a jstack thread dump to find the exact Java stack. Take several thread dumps a few seconds apart to see what is consistently running. Distinguish application hot paths (tight loops, inefficient algorithms, regex, serialization) from GC: if GC threads dominate, it is a memory/GC problem, so check GC logs. For precise hotspots use a sampling profiler like async-profiler (flame graphs) or JFR."
+    },
+    {
+      "q": "What tools do you use for JVM performance analysis?",
+      "a": "Command-line JDK tools: jstack (thread dumps / deadlocks), jmap (heap dumps, histograms), jstat (live GC/heap stats), and jcmd (the modern Swiss-army entry point for dumps, JFR control, and diagnostics). For low-overhead production profiling, Java Flight Recorder (JFR) analyzed in JDK Mission Control, and async-profiler for CPU/allocation flame graphs. GUI/monitoring: VisualVM for live inspection, and Eclipse MAT for offline heap-dump analysis. In production these are backed by APMs (Datadog, New Relic) and Micrometer/Prometheus/Grafana dashboards over JMX metrics."
+    }
+  ],
+  "14.2": [
+    {
+      "q": "How does @Transactional work internally?",
+      "a": "Spring AOP creates a proxy around the bean. When an external caller invokes an annotated method, the proxy's TransactionInterceptor runs first: it asks a PlatformTransactionManager to start or join a transaction, binds the Connection/EntityManager to the current thread, then invokes the real method. On normal return it commits; on a rollback-triggering exception it rolls back. The boundary is entirely in the surrounding proxy, not the method body."
+    },
+    {
+      "q": "How does Spring use proxies for transaction management?",
+      "a": "At startup a BeanPostProcessor wraps each transactional bean in a proxy: a JDK dynamic proxy if the bean implements an interface, otherwise a CGLIB subclass proxy. Callers get the proxy, not the raw bean, so every external call passes through the TransactionInterceptor that opens/commits/rolls back around the target method. Only calls crossing the proxy boundary are advised."
+    },
+    {
+      "q": "What is the self-invocation problem?",
+      "a": "When a method calls another @Transactional method on this (the same instance), the call goes straight to the target object and never touches the proxy, so the transaction advice does not run. E.g. methodA() calling this.methodB() ignores methodB's @Transactional and any REQUIRES_NEW. Fixes: move the method to another bean, self-inject the proxy, or use AopContext.currentProxy()."
+    },
+    {
+      "q": "Why does @Transactional sometimes not work?",
+      "a": "Common causes: self-invocation (an internal this.method() call bypasses the proxy); the method is not public; the class is not a Spring bean; a checked exception was thrown but rollback defaults only cover unchecked exceptions; the exception was caught and swallowed; wrong propagation; or a data path that never binds to the managed connection."
+    },
+    {
+      "q": "What is transaction synchronization?",
+      "a": "Spring keeps per-thread state in TransactionSynchronizationManager, binding resources like the JDBC Connection or JPA EntityManager to the thread so repositories reuse the same connection within a transaction. You can register TransactionSynchronization callbacks (beforeCommit, afterCommit, afterCompletion) to run logic tied to the transaction lifecycle, e.g. publishing an event only after a successful commit."
+    },
+    {
+      "q": "How do you debug transaction issues?",
+      "a": "Enable DEBUG/TRACE logging for org.springframework.transaction and the ORM/JDBC transaction manager to see begins, joins, commits, and rollbacks. Verify the method is actually proxied (not self-invoked, public, non-final), that rollbackFor covers the exception, and the propagation. Check TransactionSynchronizationManager.isActualTransactionActive(), watch for pool exhaustion, and confirm autocommit is off."
+    },
+    {
+      "q": "What is the difference between REQUIRED and REQUIRES_NEW?",
+      "a": "REQUIRED (default) joins the caller's active transaction or starts one if none exists, so inner and outer share one physical transaction and commit/rollback together. REQUIRES_NEW always suspends the current transaction and starts a brand-new independent one on its own connection, committing or rolling back on its own without affecting the outer."
+    },
+    {
+      "q": "Explain all transaction propagation types.",
+      "a": "Seven: REQUIRED (join or start, default); REQUIRES_NEW (suspend current, always start a new independent tx); NESTED (nested tx via a JDBC savepoint, inner can roll back to savepoint); SUPPORTS (join if a tx exists, else non-transactional); NOT_SUPPORTED (suspend any tx, run non-transactionally); MANDATORY (must have an existing tx, else throw); NEVER (must have no tx, else throw)."
+    },
+    {
+      "q": "What happens during nested transactions?",
+      "a": "With Propagation.NESTED, Spring sets a JDBC savepoint at the start of the inner method rather than opening a separate physical transaction. If the inner fails it rolls back only to that savepoint, leaving the outer transaction intact to continue and commit as one unit. It requires a savepoint-capable JDBC driver and is not supported by plain JPA. This differs from REQUIRES_NEW, which uses a fully separate transaction and connection."
+    },
+    {
+      "q": "What is transaction isolation?",
+      "a": "Isolation defines how much one in-flight transaction is shielded from the effects of other concurrent transactions — the 'I' in ACID. Higher isolation prevents more read anomalies (dirty, non-repeatable, phantom reads) but takes stronger/longer locks or more MVCC overhead, reducing concurrency. It is a trade-off between consistency and throughput."
+    },
+    {
+      "q": "Explain all isolation levels.",
+      "a": "Four standard levels: READ_UNCOMMITTED (sees uncommitted changes; allows dirty, non-repeatable, phantom); READ_COMMITTED (only committed data; prevents dirty, allows non-repeatable and phantom); REPEATABLE_READ (same row reread returns same value; prevents dirty and non-repeatable, may allow phantoms); SERIALIZABLE (as if run one at a time; prevents all three, highest cost)."
+    },
+    {
+      "q": "What causes dirty reads?",
+      "a": "A dirty read happens when one transaction reads a row another transaction modified but has not yet committed. If that other transaction later rolls back, the first acted on data that never truly existed. Dirty reads are only possible at READ_UNCOMMITTED; READ_COMMITTED and above prevent them by exposing only committed data."
+    },
+    {
+      "q": "What causes phantom reads?",
+      "a": "A phantom read occurs when a transaction reruns a range query and gets a different set of rows because another transaction inserted or deleted matching rows and committed in between. It differs from a non-repeatable read, which is about an existing row's value changing rather than the row set. Phantoms are prevented by SERIALIZABLE via range/predicate locks, and by MySQL InnoDB's next-key locks at REPEATABLE_READ."
+    },
+    {
+      "q": "What exceptions trigger transaction rollback?",
+      "a": "By default Spring rolls back only on unchecked exceptions — RuntimeException and Error — and commits normally on checked exceptions. So a checked IOException will commit unless configured otherwise. Use @Transactional(rollbackFor = Exception.class) to roll back on checked exceptions, or noRollbackFor to exclude specific unchecked ones. Catching and swallowing the exception signals no rollback."
+    },
+    {
+      "q": "Why should API calls be avoided inside transactions?",
+      "a": "An external HTTP/RPC call inside a transaction holds the DB connection and any row locks for the entire call. A slow or hung endpoint keeps the connection checked out and locks held, which under load exhausts the connection pool and causes lock contention or deadlocks. Best practice: do the remote call outside the transaction boundary, keep transactions short, or use an afterCommit callback for post-commit side effects."
+    }
+  ],
+  "14.3": [
+    {
+      "q": "What problem does the Factory Pattern solve?",
+      "a": "It decouples object creation from the code that uses the object. Instead of calling `new ConcreteType()` directly, a client asks a factory method for an object of a common interface/supertype, so the concrete class can vary without changing callers. This centralizes construction logic, hides complex instantiation, and lets you swap implementations or add new subtypes with minimal ripple. It embodies the `program to an interface` principle and the Open/Closed Principle."
+    },
+    {
+      "q": "Factory Pattern vs Abstract Factory Pattern?",
+      "a": "A Factory Method produces one product via a single overridable method. An Abstract Factory is a factory of factories: it exposes multiple related creation methods and produces whole families of related objects meant to be used together (e.g. a `GUIFactory` making a matching `Button` and `Checkbox` for Windows vs Mac). Rule of thumb: Factory Method = one product, Abstract Factory = a family of products kept consistent, usually implemented with a set of Factory Methods."
+    },
+    {
+      "q": "When should you use the Builder Pattern?",
+      "a": "When an object has many constructor parameters (especially optional ones) and telescoping constructors become unreadable, or when construction happens in steps. The Builder gives a fluent, named-parameter-like API (`new Pizza.Builder().size(12).cheese(true).build()`), avoiding ambiguous long argument lists and letting you validate invariants in `build()`. It is also useful when the same construction process must yield different representations."
+    },
+    {
+      "q": "Why is Builder preferred for immutable objects?",
+      "a": "An immutable object cannot expose setters, so all state must be supplied before construction completes. The Builder collects the values incrementally and passes them to a private constructor in a single call, letting the final object have only `final` fields and no mutators. It also allows validation and defaulting in `build()` before the immutable instance exists, and avoids exposing a half-initialized object, which is safer than a no-arg constructor plus setters."
+    },
+    {
+      "q": "How do you implement a thread-safe Singleton?",
+      "a": "Several safe idioms: eager `static final` (classloader guarantees safety but created eagerly); double-checked locking with a `volatile` field and a null check inside and outside a `synchronized` block (`volatile` prevents seeing a partially constructed object); the lazy-holder / Bill Pugh idiom using a private static nested holder class the JVM initializes lazily and thread-safely; and the enum singleton, which per Effective Java is the best approach — concise, thread-safe, and serialization/reflection-attack safe."
+    },
+    {
+      "q": "What are the drawbacks of Singleton?",
+      "a": "It introduces global mutable state, which makes reasoning harder and causes hidden coupling between unrelated components. Dependencies become implicit (code calls `Singleton.getInstance()` internally instead of receiving collaborators), hiding the true dependency graph. That makes unit testing and mocking difficult because you cannot easily substitute the instance, and shared mutable state can create concurrency bugs. It is often considered an anti-pattern; DI-managed single instances are usually preferable."
+    },
+    {
+      "q": "Explain the Strategy Pattern with a real-world example.",
+      "a": "Strategy defines a family of interchangeable algorithms behind a common interface and lets the client pick one at runtime, replacing conditional branching with polymorphism. Real-world example: a payment service depends on a `PaymentStrategy` interface with `CreditCard`, `PayPal`, and `UPI` implementations; the checkout selects the concrete strategy at runtime. Another classic is a sort accepting different `Comparator` strategies, or a route planner switching between fastest/shortest/no-tolls algorithms."
+    },
+    {
+      "q": "When would you use the Observer Pattern?",
+      "a": "When one object (the subject) must notify many dependents automatically when its state changes, without being tightly coupled to who they are. Use it for publish/subscribe scenarios: UI listeners reacting to model changes, event notifications, or keeping multiple views consistent with one data source. It enables one-to-many broadcast and lets observers be added/removed dynamically, at the cost of non-obvious update ordering and potential memory leaks if listeners are not deregistered."
+    },
+    {
+      "q": "How is Observer used in event-driven systems?",
+      "a": "Event-driven systems generalize Observer: producers publish events and subscribers register interest, decoupling emitter from handlers. In Java this shows up as `PropertyChangeListener`, Spring's `ApplicationEvent`/`@EventListener`, GUI event listeners, and reactive streams (`Publisher`/`Subscriber` in Reactive Streams). At larger scale the same idea underlies message brokers and event buses (Kafka topics, pub/sub), where the broker delivers events to many independent consumers asynchronously."
+    },
+    {
+      "q": "How is the Template Method Pattern different from Strategy?",
+      "a": "Template Method uses inheritance: a base class defines the skeleton of an algorithm in a `final` method and defers specific steps to overridable (often `abstract`) hook methods in subclasses — the flow is fixed at compile time. Strategy uses composition: the whole algorithm is an object plugged in at runtime and swapped freely. Template Method varies steps of one algorithm via subclassing (`is-a`); Strategy swaps entire algorithms via delegation (`has-a`). `JdbcTemplate` is Template Method; a `Comparator` is Strategy."
+    },
+    {
+      "q": "Adapter Pattern vs Decorator Pattern?",
+      "a": "Both wrap an object, but with different intent. An Adapter converts one interface into another so incompatible types can work together — it changes the interface without adding behavior (e.g. wrapping a legacy API, or `InputStreamReader` bridging bytes to chars). A Decorator keeps the same interface but adds responsibilities dynamically by wrapping, and decorators can be stacked (e.g. `BufferedInputStream` wrapping a `FileInputStream`). Summary: Adapter changes the interface, Decorator enhances behavior while preserving the interface."
+    },
+    {
+      "q": "What problem does the Proxy Pattern solve?",
+      "a": "A Proxy provides a surrogate with the same interface as a real object to control access to it, inserting logic before/after delegating. Common variants: virtual proxy for lazy/expensive initialization, protection proxy for access control, remote proxy for a stub to a remote object, and smart proxy for cross-cutting concerns like caching, logging, or reference counting. It lets you add these concerns transparently without changing the real subject or its clients — the basis of Spring AOP and `@Transactional`."
+    },
+    {
+      "q": "What is Dependency Injection and which pattern does it use?",
+      "a": "Dependency Injection is a form of Inversion of Control (IoC): instead of an object constructing or looking up its collaborators, they are supplied from outside (via constructor, setter, or field). It implements the Dependency Inversion Principle — high-level code depends on abstractions and a container/assembler wires concrete implementations in. It relates to the Strategy idea (inject interchangeable implementations behind an interface) and is the inversion of the Service Locator pattern, where code pulls dependencies rather than having them pushed. The result is looser coupling and far easier testing/mocking."
+    },
+    {
+      "q": "Which design patterns are commonly used in Spring Framework?",
+      "a": "Many: Singleton (default bean scope), Factory (`BeanFactory`/`ApplicationContext` and `FactoryBean`), Proxy (AOP and `@Transactional`/`@Async` via JDK or CGLIB proxies), Template Method (`JdbcTemplate`, `RestTemplate`, `TransactionTemplate`), Observer (`ApplicationEvent` and `@EventListener`), Adapter (`HandlerAdapter` in Spring MVC), plus Decorator and Strategy."
+    },
+    {
+      "q": "Which design patterns are most commonly used in Microservices?",
+      "a": "Architectural patterns dominate: API Gateway (single entry point, routing, aggregation), Circuit Breaker and Bulkhead (fault isolation/resilience), Saga (distributed transactions via choreography or orchestration), CQRS (often with Event Sourcing), Service Registry/Discovery, Sidecar/Ambassador (offload cross-cutting concerns), and Strangler Fig (incrementally replace a monolith). Database-per-service and classic GoF patterns (Factory, Strategy, Proxy) still apply within each service."
+    }
+  ],
+  "14.4": [
+    {
+      "q": "What is the difference between == and equals()?",
+      "a": "`==` compares references for objects (same instance?) and raw values for primitives. `equals()` compares logical equality; the default `Object.equals()` just uses `==`, so it is only meaningful once a class overrides it (String, wrappers, collections do). Two distinct `new String(\"a\")` are `equals()` but not `==`."
+    },
+    {
+      "q": "Why must you override hashCode() when you override equals()?",
+      "a": "The contract requires equal objects to have equal hash codes. Hash collections pick a bucket by `hashCode()` then compare with `equals()` inside it; if you override only `equals()`, two logically-equal keys can hit different buckets, so `get`/`contains` fails to find a present entry. Unequal objects sharing a hash is legal (just a collision)."
+    },
+    {
+      "q": "What is the difference between an abstract class and an interface (Java 8+)?",
+      "a": "A class extends one abstract class but implements many interfaces. Abstract classes hold state, constructors, and any access modifier; interfaces hold constants plus `default`/`static`/`private` methods and no instance state. Use an abstract class for an is-a hierarchy with shared state, an interface for a capability contract; `default` methods let interfaces evolve without breaking implementers."
+    },
+    {
+      "q": "What are checked vs unchecked exceptions?",
+      "a": "Checked exceptions extend `Exception` (not `RuntimeException`) and must be declared or caught — compiler-enforced, for recoverable conditions like `IOException`. Unchecked extend `RuntimeException`, are not enforced, and model programming bugs like `NullPointerException`. `Error` is also unchecked and signals unrecoverable JVM problems you should not catch."
+    },
+    {
+      "q": "What do final, finally, and finalize each mean?",
+      "a": "Unrelated despite similar names. `final` is a modifier: a variable can't be reassigned, a method can't be overridden, a class can't be subclassed. `finally` is a block after try/catch that always runs for cleanup. `finalize()` was a GC callback on `Object`; it is deprecated and unreliable — use try-with-resources or `Cleaner`."
+    },
+    {
+      "q": "Why are Strings immutable in Java?",
+      "a": "Contents never change — any mutation returns a new object. This enables the String pool (safe literal sharing), makes strings safe/cacheable as `HashMap` keys, makes them inherently thread-safe, and improves security (validated filenames/URLs can't be altered afterward). The cost is object churn, which `StringBuilder` addresses."
+    },
+    {
+      "q": "What is the String pool and what does intern() do?",
+      "a": "The String pool (in the heap since Java 7) holds one canonical instance per distinct literal, so every `\"abc\"` shares one object and can be `==`-compared. Runtime-built strings (concatenation, `new String`) aren't pooled. `str.intern()` returns the canonical pooled instance, adding it if absent — useful for deduping runtime strings at the cost of pool lookups."
+    },
+    {
+      "q": "String vs StringBuilder vs StringBuffer?",
+      "a": "`String` is immutable, so repeated concatenation spawns many temporaries. `StringBuilder` is a mutable growable buffer — efficient but not thread-safe. `StringBuffer` is the older `synchronized`, thread-safe but slower equivalent. Default to `StringBuilder`; use `StringBuffer` only for a builder genuinely shared across threads."
+    },
+    {
+      "q": "HashMap vs Hashtable vs ConcurrentHashMap?",
+      "a": "`HashMap` is unsynchronized, allows one `null` key and `null` values — the single-threaded default. `Hashtable` is legacy, fully `synchronized` (whole-map lock), no nulls, effectively obsolete. `ConcurrentHashMap` is thread-safe with fine-grained locking/CAS for high concurrency, no nulls, and weakly-consistent iterators. Prefer it over `Hashtable` when you need thread safety."
+    },
+    {
+      "q": "How does HashMap work internally (buckets, collisions, treeify, load factor)?",
+      "a": "An array of buckets indexed by `(n-1) & hash`, where the key's `hashCode()` is spread to mix high bits. Colliding keys form a linked list; a bucket exceeding 8 entries (table >= 64) treeifies into a red-black tree (O(n) -> O(log n) worst case). Load factor 0.75 triggers a resize doubling capacity when `size > capacity*loadFactor`, keeping ops O(1) on average."
+    },
+    {
+      "q": "ArrayList vs LinkedList?",
+      "a": "`ArrayList` is a resizable array: O(1) indexed access, cache-friendly, but O(n) middle insert/remove due to shifting. `LinkedList` is a doubly-linked list: O(1) insert/remove at a known node/ends but O(n) indexed access, poor cache locality, per-node overhead. `ArrayList` wins for most workloads; `LinkedList` is mainly a `Deque`/queue."
+    },
+    {
+      "q": "HashSet vs TreeSet vs LinkedHashSet?",
+      "a": "All are `Set`s (no duplicates) differing in ordering. `HashSet` (backed by `HashMap`) is O(1) with no order. `LinkedHashSet` preserves insertion order via a linked list at slight memory cost. `TreeSet` (red-black tree / `NavigableSet`) keeps elements sorted by natural order or a `Comparator`, O(log n), with range queries like `ceiling`/`headSet`."
+    },
+    {
+      "q": "What is the difference between fail-fast and fail-safe iterators?",
+      "a": "Fail-fast iterators (`ArrayList`, `HashMap`) track `modCount` and throw `ConcurrentModificationException` on structural modification during iteration outside the iterator — a best-effort bug detector, not a guarantee. Fail-safe/weakly-consistent iterators (`ConcurrentHashMap`, `CopyOnWriteArrayList`) work over a snapshot or tolerate concurrent changes without throwing, but may miss the latest updates."
+    },
+    {
+      "q": "How does ConcurrentHashMap achieve thread safety without locking the whole map?",
+      "a": "In Java 8+ it locks the individual bucket (first node of a bin), not the whole map or old segments. Reads are lock-free via `volatile` semantics; empty-bucket inserts use CAS; only a non-empty bucket is `synchronized`-locked, so writes to different buckets don't contend. Resizing is cooperative — threads help transfer bins — so it scales far better than `Hashtable`."
+    },
+    {
+      "q": "What is type erasure?",
+      "a": "Generics are compile-time only: the compiler checks types then erases parameters, replacing `T` with its bound (or `Object`) and inserting casts. So `List<String>` and `List<Integer>` share one runtime class, and you can't do `new T()`, `instanceof List<String>`, or `new T[]`. It preserved backward compatibility at the cost of no reified generic type info at runtime."
+    },
+    {
+      "q": "Explain PECS (Producer Extends, Consumer Super).",
+      "a": "PECS guides wildcard choice. Use `? extends T` when a structure only produces/reads `T` (read as `T`, can't add) — a source `List<? extends Number>`. Use `? super T` when it only consumes `T` (add `T`, reads come back as `Object`) — a sink `List<? super Integer>`. `Collections.copy(dest, src)` is canonical: `dest` is `? super T`, `src` is `? extends T`."
+    },
+    {
+      "q": "What is Optional and how should it be used?",
+      "a": "`Optional<T>` explicitly models \"a value or nothing\", replacing `null` returns so absence is visible in the type and the caller must handle it (`map`, `orElse`, `orElseThrow`, `ifPresent`). Use it as a return type; avoid it for fields, parameters, or collection elements, and never `get()` without checking `isPresent()`. It cuts NPEs but adds a small allocation, so not for hot loops."
+    },
+    {
+      "q": "What are records and sealed classes?",
+      "a": "A `record` (Java 16) is a concise immutable data carrier — declaring components generates the canonical constructor, final fields, accessors, and `equals`/`hashCode`/`toString`. A `sealed` class/interface (Java 17) restricts implementers via a `permits` clause, closing the hierarchy. Together they enable exhaustive `switch` pattern matching over a fixed set of shapes — algebraic-data-type modeling in Java."
+    }
+  ],
+  "14.5": [
+    {
+      "q": "What is the difference between a process and a thread?",
+      "a": "A process is an independent program with its own isolated memory managed by the OS; threads live inside a process and share its heap and static data but have their own stack, program counter, and locals. Shared memory makes thread communication cheap but requires synchronization; processes are isolated and use IPC. Thread context switches are cheaper than process switches."
+    },
+    {
+      "q": "What is the Java Memory Model and what does happens-before mean?",
+      "a": "The JMM defines when a write by one thread becomes visible to a read by another and what reorderings are allowed. happens-before is its ordering relation: if A happens-before B, A's effects are visible and ordered before B. It is established by program order, monitor release/acquire (synchronized), volatile read/write, Thread.start()/join(), and constructs like Future and CountDownLatch. Without such an edge, writes may never be seen."
+    },
+    {
+      "q": "What does the volatile keyword guarantee (and not guarantee)?",
+      "a": "volatile guarantees visibility (writes are flushed and reads see the latest value) and ordering (no reordering across the access, establishing happens-before). It does NOT guarantee atomicity of compound operations: i++ is read-modify-write and stays a race even when volatile. Use it for a simple flag or single-writer status; use synchronized or an Atomic class for atomic updates."
+    },
+    {
+      "q": "What is a race condition and how do you prevent it?",
+      "a": "A race condition is when correctness depends on thread timing/interleaving over shared mutable state, typically a non-atomic check-then-act or read-modify-write. Prevent it by removing sharing (confinement, thread-locals), making state immutable, or guarding all access with the same lock or atomic/CAS operation. Every access, reads included, must use the same coordination mechanism."
+    },
+    {
+      "q": "Runnable vs Callable?",
+      "a": "Runnable.run() returns void and cannot throw checked exceptions; Callable.call() returns a value V and may throw checked exceptions. You submit a Callable to an ExecutorService and get a Future for the result or thrown exception; Runnable is for tasks with no result. Callable was added in Java 5 to support results and error propagation."
+    },
+    {
+      "q": "synchronized vs ReentrantLock?",
+      "a": "Both are reentrant mutual-exclusion locks with the same memory semantics, but ReentrantLock is more flexible: tryLock() with timeout, interruptible locking, optional fairness, and multiple Conditions per lock. synchronized is simpler and auto-releases on exit/exception with no finally needed. Prefer synchronized by default; use ReentrantLock for try/timeout/interruptible acquisition or fairness, always unlocking in a finally."
+    },
+    {
+      "q": "What is a deadlock and how do you avoid it?",
+      "a": "Deadlock is when two or more threads each hold a lock the other needs and none can proceed; it requires all four Coffman conditions: mutual exclusion, hold-and-wait, no preemption, and circular wait. The standard fix is a global lock-ordering so all threads acquire locks in the same order, breaking circular wait. Also use tryLock() with timeout and back off, minimize lock scope, and avoid calling foreign code while holding a lock."
+    },
+    {
+      "q": "What is the difference between wait()/notify() and a Condition?",
+      "a": "Both let a thread wait for a state change and be signalled with the same guard-in-a-loop discipline. wait()/notify()/notifyAll() are Object methods tied to that object's intrinsic monitor, so a synchronized block has one wait-set. A Condition comes from a ReentrantLock via newCondition(), and you can create several per lock (e.g. notFull and notEmpty) to signal only relevant waiters with await()/signal()/signalAll(). Conditions give finer-grained, more efficient signalling."
+    },
+    {
+      "q": "What are atomic classes and CAS (compare-and-swap)?",
+      "a": "Atomic classes (AtomicInteger, AtomicLong, AtomicReference, ...) provide lock-free, thread-safe single-variable updates built on CAS: a hardware instruction that atomically sets a location to a new value only if it holds the expected old value, otherwise it fails and retries in a loop. This gives non-blocking updates that scale better than locks under contention for simple state, though CAS can suffer the ABA problem (addressed by AtomicStampedReference)."
+    },
+    {
+      "q": "What is the difference between optimistic and pessimistic locking?",
+      "a": "Pessimistic locking assumes conflicts are likely, so it takes an exclusive lock up front (a mutex or SELECT ... FOR UPDATE) and blocks others for the whole operation. Optimistic locking assumes conflicts are rare, takes no lock, and validates at commit via a version/timestamp column (or CAS in memory), retrying or failing if the data changed. Optimistic scales better under low contention and avoids blocking; pessimistic is safer when contention or retry cost is high."
+    },
+    {
+      "q": "Why use an ExecutorService instead of creating threads directly?",
+      "a": "Threads are expensive OS resources; one-per-task doesn't scale and gives no back-pressure, so a burst can exhaust memory. An ExecutorService decouples submission from execution: it reuses a bounded pool, queues excess work, and lets you configure sizing, rejection policy, and lifecycle (shutdown()). You also get Futures, scheduling, and clean cancellation instead of managing raw Thread objects."
+    },
+    {
+      "q": "How do you size a thread pool?",
+      "a": "Size by workload type. For CPU-bound work use roughly the number of cores (often cores + 1), since more runnable threads than cores just add context-switching overhead. For I/O-bound work threads mostly block, so you need many more; Little's law / Goetz's formula gives threads = cores * targetUtilization * (1 + waitTime/computeTime). Always bound the pool and queue and measure under realistic load."
+    },
+    {
+      "q": "What is the difference between submit() and execute()?",
+      "a": "execute(Runnable) is from Executor, returns void, and an uncaught exception goes to the thread's UncaughtExceptionHandler. submit() is from ExecutorService, accepts a Runnable or Callable, and returns a Future; a task's exception is captured in the Future and only surfaces on Future.get() (wrapped in ExecutionException). The gotcha: exceptions from submit()ed tasks are silently swallowed unless you inspect the Future."
+    },
+    {
+      "q": "What is CompletableFuture and why is it better than Future?",
+      "a": "CompletableFuture (Java 8) is a Future you can complete manually and, crucially, compose. A plain Future only offers blocking get() and isDone() — no callbacks or chaining. CompletableFuture adds a fluent async API: thenApply/thenCompose to chain, thenCombine/allOf/anyOf to fan-in, exceptionally/handle for error recovery, and per-stage executor control. This enables non-blocking pipelines instead of tying up threads on get()."
+    },
+    {
+      "q": "What are virtual threads (Project Loom) and when do they help?",
+      "a": "Virtual threads (finalized in Java 21) are lightweight JVM-managed threads scheduled onto a small pool of OS carrier threads. When one blocks on I/O it unmounts from its carrier so the carrier runs other virtual threads, making blocking cheap — you can have millions. They shine for high-concurrency I/O-bound/blocking workloads (request-per-thread servers), letting simple blocking code scale. They do NOT speed up CPU-bound work, which is still bounded by cores."
+    },
+    {
+      "q": "What is thread pinning with virtual threads?",
+      "a": "Pinning is when a virtual thread cannot unmount from its carrier while blocked, so the carrier OS thread stays occupied and you lose scalability. In early releases it happened when blocking inside a synchronized block/method or during a native/foreign call. The fix is to replace synchronized around blocking operations with a ReentrantLock so the virtual thread can unmount. Java 24 / JEP 491 largely eliminated synchronized pinning, but avoiding long blocking under synchronized stays good practice on earlier versions."
+    }
+  ],
+  "14.6": [
+    {
+      "q": "When should you use microservices instead of a monolith (and when not)?",
+      "a": "Microservices pay off when you need independent deployability, independent scaling of hot components, and team autonomy across many teams — the org boundary usually justifies the split more than the tech does. They cost you distributed-systems complexity: network failures, eventual consistency, distributed tracing, and operational overhead. For a small team or unproven product, start with a well-modularized monolith and extract services only when a clear scaling or team-ownership pain appears. Splitting too early is the classic mistake — you pay all the cost before you have the problem microservices solve."
+    },
+    {
+      "q": "How do microservices communicate (sync vs async)?",
+      "a": "Synchronous is request/response over HTTP/REST or gRPC: simple and immediate but creates temporal coupling — the caller blocks and both services must be up, so failures cascade. Asynchronous is messaging/events over a broker like Kafka or RabbitMQ: loose coupling, buffering, and resilience, at the cost of eventual consistency and harder debugging. Use sync for queries needing an immediate answer, async for commands/notifications and work that can be processed later. Many designs mix both."
+    },
+    {
+      "q": "What is an API Gateway and what does it do?",
+      "a": "A single entry point between clients and services (Spring Cloud Gateway, Kong, AWS API Gateway) that handles cross-cutting concerns so services don't each reimplement them: routing, auth, rate limiting, TLS termination, request aggregation, and protocol translation. It decouples clients from the internal service topology so you can move services without breaking callers. Keep it thin — avoid making it a bottleneck or putting business logic in it."
+    },
+    {
+      "q": "What is service discovery?",
+      "a": "In a dynamic environment instances come and go with changing IPs, so service discovery lets a service find healthy instances of another by logical name. Client-side discovery has the caller query a registry (Eureka, Consul) and load-balance itself; server-side discovery puts a load balancer/router in front that resolves the name (Kubernetes Services work this way). Instances register on startup and send heartbeats; unhealthy ones are evicted so traffic only routes to live nodes."
+    },
+    {
+      "q": "What is a circuit breaker and why use it?",
+      "a": "It wraps a remote call and trips open when the failure rate crosses a threshold, so calls fail fast instead of piling up on a struggling dependency. Three states: CLOSED (calls flow, failures counted), OPEN (calls short-circuit, often returning a fallback), and HALF_OPEN (after a cooldown a few trial calls test recovery). This prevents cascading failures and gives the downstream service room to recover. Standard library on the JVM is Resilience4j (Hystrix is the legacy option)."
+    },
+    {
+      "q": "Timeouts, retries, and the retry-storm problem?",
+      "a": "Always set aggressive timeouts — an unbounded call ties up a thread and propagates a hang upstream. Retries help with transient blips but only for idempotent operations; naive fixed-interval retries cause a retry storm where many synced clients hammer a recovering service and knock it back down. Fixes: exponential backoff with jitter, a capped retry count, and a retry budget / circuit breaker to stop retrying when the dependency is clearly down. Never retry non-idempotent writes without an idempotency key."
+    },
+    {
+      "q": "What is the bulkhead pattern?",
+      "a": "Named after a ship's watertight compartments, it isolates resources so a failure in one area can't sink the whole service. You give each downstream dependency its own thread pool or connection-pool/semaphore limit, so if dependency A hangs it only exhausts A's pool — calls to B still succeed. Without it, one slow dependency can consume every thread in a shared pool and take the whole service down. It pairs naturally with circuit breakers and timeouts."
+    },
+    {
+      "q": "How do you handle distributed tracing and correlation IDs?",
+      "a": "A correlation/trace ID is generated at the edge (gateway) and propagated through every hop via HTTP headers — the W3C traceparent header is the standard (older stacks used X-B3-). Each service logs it and creates spans, so you can stitch one request's path across services in Jaeger, Zipkin, or Tempo. On the JVM, OpenTelemetry auto-instrumentation plus MDC log correlation is the common setup. The trace ID answers where a request spent time and where it failed."
+    },
+    {
+      "q": "What is the database-per-service pattern and why?",
+      "a": "Each service owns its own database and no other service touches it directly — access goes only through the owning service's API. This enforces loose coupling and lets each service pick the right store and evolve its schema independently. The tradeoff is losing cross-service joins and ACID transactions, so cross-service queries need API composition or CQRS and writes need Sagas. A shared database is the anti-pattern — it silently couples services at the schema level."
+    },
+    {
+      "q": "What is eventual consistency?",
+      "a": "Rather than every copy being consistent the instant a write commits (strong consistency), eventual consistency guarantees that if no new updates arrive, all copies converge to the same value after a propagation delay. It's the price of availability and partition tolerance, so a read right after a write may return stale data. You design around it with idempotent updates, versioning for conflict resolution, and UX that tolerates brief staleness. Most microservice systems are eventually consistent across service boundaries."
+    },
+    {
+      "q": "Explain the Saga pattern (orchestration vs choreography).",
+      "a": "A Saga replaces a distributed ACID transaction with a sequence of local transactions, one per service, each publishing an event that triggers the next; on failure you run compensating transactions to undo prior steps. Choreography has no coordinator — services react to each other's events (decoupled but hard to follow). Orchestration has a central orchestrator directing each service and tracking state (easier to reason about and monitor, but you must build and own it). Sagas give atomicity-like semantics without cross-service locking, at the cost of eventual consistency."
+    },
+    {
+      "q": "What is the transactional outbox pattern and what problem does it solve?",
+      "a": "It solves the dual-write problem: you can't atomically update your DB and publish to a broker, so a crash between the two leaves them inconsistent. In the same local transaction you write the business row and an event row into an outbox table — one atomic commit. A relay process (polling, or Change Data Capture via Debezium) then publishes those rows and marks them sent. This gives at-least-once event delivery consistent with the data change, which is why consumers must be idempotent."
+    },
+    {
+      "q": "What is idempotency and why does it matter in distributed systems?",
+      "a": "An operation is idempotent if doing it multiple times has the same effect as doing it once. It matters because networks give at-least-once delivery and retries: a client may resend after a timeout even though the first request succeeded, so without idempotency you get double charges or duplicate orders. Implement it with a client-supplied idempotency key the server dedupes on, or design naturally idempotent operations (set balance = X, not add). GET/PUT/DELETE are idempotent by HTTP semantics; POST is not, which is why payment APIs require an Idempotency-Key header."
+    },
+    {
+      "q": "Explain the CAP theorem (and PACELC).",
+      "a": "CAP says that when a network partition (P) occurs, a distributed system can guarantee at most one of Consistency and Availability — choose CP (block/reject to stay consistent) or AP (keep serving, risk stale data). It only forces the choice during a partition; \"pick 2 of 3\" is the common misreading. PACELC extends it: Else, with no partition, you still trade Latency vs Consistency (sync replication is more consistent but slower). So systems are described as PC/EL (Dynamo-style) or PC/EC (strongly consistent both ways)."
+    },
+    {
+      "q": "What caching strategies do you know (cache-aside, write-through, write-behind) and how do you handle invalidation?",
+      "a": "Cache-aside (lazy): app checks cache, on a miss reads the DB and populates it — simple default, but first request always misses and data can go stale. Write-through: writes go to cache and DB synchronously, always fresh but slower writes. Write-behind: writes hit the cache and flush to DB asynchronously — fast but risks data loss if the cache dies first. Invalidation: TTL as a safety net, evict/update the key on write, and mitigate cache-stampede (many simultaneous misses) with locking, request coalescing, or staggered TTLs."
+    },
+    {
+      "q": "How would you design a rate limiter / what algorithms exist (token bucket, leaky bucket, sliding window)?",
+      "a": "Token bucket: tokens refill at a fixed rate up to a capacity, each request consumes one, and a full bucket allows short bursts — the most common choice. Leaky bucket: requests queue and drain at a constant rate, smoothing bursts but adding latency. Fixed-window counter: cheap but allows a 2x burst at the boundary. Sliding-window log/counter fixes that boundary spike at higher memory cost. For a distributed limiter keep counters in Redis (atomic INCR with expiry or a Lua script) so all nodes share one limit, and return HTTP 429 with Retry-After when exceeded."
+    }
   ]
 };
