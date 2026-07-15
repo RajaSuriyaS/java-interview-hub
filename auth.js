@@ -30,6 +30,16 @@ const STATE_MAX_AGE   = 10 * 60 * 1000;           // 10 minutes
 
 export const authConfigured = () => !!(CLIENT_ID && CLIENT_SECRET);
 
+// ---- Admin identity ----
+// Admins are matched by email (case-insensitive). Configure via ADMIN_EMAILS
+// (comma-separated); defaults to the site owner. Admins are auto-approved and
+// can see the admin console to approve/reject other users.
+const ADMIN_EMAILS = new Set(
+  String(process.env.ADMIN_EMAILS || 'rajasuriyas@gmail.com')
+    .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+);
+export const isAdminEmail = (email) => ADMIN_EMAILS.has(String(email || '').trim().toLowerCase());
+
 // Login wall: when REQUIRE_AUTH=true AND Google is configured, the whole app
 // requires sign-in. Guarded by authConfigured() so a missing client id can
 // never lock everyone out.
@@ -90,7 +100,7 @@ function callbackUrl(req) {
 }
 
 /* ---------- routes ---------- */
-export function mountAuth(app, { onLogin } = {}) {
+export function mountAuth(app, { onLogin, approvalStatus } = {}) {
   // Begin login — redirect to Google's consent screen.
   app.get('/auth/google', (req, res) => {
     if (!authConfigured()) return res.status(503).send('Google login is not configured on this server (set GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).');
@@ -198,9 +208,16 @@ export function mountAuth(app, { onLogin } = {}) {
   // Who am I — drives the frontend UI.
   app.get('/auth/me', (req, res) => {
     const u = currentUser(req);
+    const admin = u ? isAdminEmail(u.email) : false;
+    // Approval status reflects the live DB (an admin may approve after login);
+    // admins are always effectively approved.
+    let approval = null;
+    if (u) approval = admin ? 'approved' : (approvalStatus ? approvalStatus(u.sub) : 'approved');
     res.json({
       configured: authConfigured(),
       requireLogin: loginWallEnabled(),
+      admin,
+      approvalStatus: approval,
       user: u ? { id: u.sub, email: u.email, name: u.name, picture: u.picture } : null,
     });
   });

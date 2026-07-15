@@ -21,12 +21,13 @@ export function initDb() {
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS users (
-      id         TEXT PRIMARY KEY,
-      email      TEXT,
-      name       TEXT,
-      picture    TEXT,
-      created_at INTEGER,
-      last_login INTEGER
+      id              TEXT PRIMARY KEY,
+      email           TEXT,
+      name            TEXT,
+      picture         TEXT,
+      approval_status TEXT DEFAULT 'pending',   -- 'pending' | 'approved' | 'rejected'
+      created_at      INTEGER,
+      last_login      INTEGER
     );
     CREATE TABLE IF NOT EXISTS module_status (
       user_id    TEXT NOT NULL,
@@ -50,7 +51,37 @@ export function initDb() {
       PRIMARY KEY (user_id, card_key)
     );
   `);
+
+  // ---- migration: add approval_status to pre-existing DBs, grandfathering
+  //      everyone who was already a user so nobody is locked out on upgrade.
+  const cols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+  if (!cols.includes('approval_status')) {
+    db.exec("ALTER TABLE users ADD COLUMN approval_status TEXT DEFAULT 'pending'");
+    db.exec("UPDATE users SET approval_status = 'approved'"); // one-time: grandfather existing users
+    console.log('[db] migrated users.approval_status (existing users grandfathered as approved)');
+  }
   return file;
+}
+
+const APPROVALS = new Set(['pending', 'approved', 'rejected']);
+
+// Admin console: list all users with their approval status, newest first.
+export function listUsers() {
+  return db.prepare(`
+    SELECT id, email, name, picture, approval_status AS status, created_at, last_login
+    FROM users ORDER BY created_at DESC
+  `).all();
+}
+
+export function getApproval(userId) {
+  const r = db.prepare('SELECT approval_status AS status FROM users WHERE id = ?').get(userId);
+  return r ? r.status : null;
+}
+
+export function setApproval(userId, status) {
+  if (!APPROVALS.has(status)) throw new Error('invalid approval status: ' + status);
+  const info = db.prepare('UPDATE users SET approval_status = ? WHERE id = ?').run(status, userId);
+  return info.changes > 0;
 }
 
 export function dbReady() { return !!db; }

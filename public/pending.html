@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pending approval · Java Interview Hub</title>
+  <meta name="robots" content="noindex" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(1200px 600px at 50% -10%, #1e1b4b 0%, #0f172a 55%, #020617 100%);
+      color: #e2e8f0; padding: 24px;
+    }
+    .card {
+      width: 100%; max-width: 440px; background: rgba(15, 23, 42, 0.7);
+      border: 1px solid #1e293b; border-radius: 18px; padding: 36px 30px;
+      box-shadow: 0 24px 60px -20px rgba(0,0,0,.6); backdrop-filter: blur(6px); text-align: center;
+    }
+    .logo {
+      width: 54px; height: 54px; margin: 0 auto 18px; border-radius: 14px;
+      display: grid; place-items: center; font-size: 26px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      box-shadow: 0 10px 30px -8px rgba(245,158,11,.55);
+    }
+    .logo.reject { background: linear-gradient(135deg, #ef4444, #b91c1c); box-shadow: 0 10px 30px -8px rgba(239,68,68,.55); }
+    h1 { font-size: 22px; font-weight: 800; margin: 0 0 8px; letter-spacing: -.01em; }
+    .sub { color: #94a3b8; font-size: 14px; margin: 0 0 20px; line-height: 1.6; }
+    .who {
+      display: inline-flex; align-items: center; gap: 10px; margin: 0 0 24px;
+      background: rgba(30,41,59,.6); border: 1px solid #1e293b; border-radius: 999px;
+      padding: 6px 14px 6px 6px; font-size: 13px; color: #cbd5e1;
+    }
+    .who img { width: 28px; height: 28px; border-radius: 50%; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 11px 16px; border-radius: 10px; border: 1px solid #334155;
+      background: #1e293b; color: #e2e8f0; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background .15s; text-decoration: none;
+    }
+    .btn:hover { background: #334155; }
+    .foot { margin-top: 22px; font-size: 12px; color: #64748b; line-height: 1.5; }
+    .foot a { color: #818cf8; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="logo" id="logo">⏳</div>
+    <h1 id="title">Waiting for approval</h1>
+    <p class="sub" id="msg">Your account has been created and is waiting for an administrator to approve your access. You will be able to sign in once approved.</p>
+    <div class="who" id="who" style="display:none">
+      <img id="pic" alt="" /><span id="email"></span>
+    </div>
+    <button class="btn" id="logout">Sign out</button>
+    <p class="foot">Java Interview Hub &middot; access is granted by the site administrator.</p>
+  </main>
+  <script>
+    fetch('/auth/me', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        const u = d.user;
+        if (u) {
+          document.getElementById('who').style.display = 'inline-flex';
+          document.getElementById('email').textContent = u.email || u.name || '';
+          const pic = document.getElementById('pic');
+          if (u.picture) pic.src = u.picture; else pic.style.display = 'none';
+        }
+        if (d.approvalStatus === 'rejected') {
+          document.getElementById('logo').classList.add('reject');
+          document.getElementById('logo').textContent = '🚫';
+          document.getElementById('title').textContent = 'Access not granted';
+          document.getElementById('msg').textContent = 'The administrator has not granted your account access to this site. If you think this is a mistake, contact the site owner.';
+        } else if (d.approvalStatus === 'approved') {
+          // Approved in the meantime — bounce into the app.
+          location.href = '/';
+        }
+      })
+      .catch(() => {});
+    document.getElementById('logout').addEventListener('click', () => {
+      fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' })
+        .finally(() => { location.href = '/'; });
+    });
+  </script>
+</body>
+</html>

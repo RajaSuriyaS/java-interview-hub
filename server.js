@@ -4,8 +4,8 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, statSync } from 'fs';
 import { execSync } from 'child_process';
-import { initDb, dbReady, upsertUser, getState, replaceState } from './db.js';
-import { mountAuth, requireAuth, authConfigured, currentUser, loginWallEnabled } from './auth.js';
+import { initDb, dbReady, upsertUser, getState, replaceState, listUsers, getApproval, setApproval } from './db.js';
+import { mountAuth, requireAuth, authConfigured, currentUser, loginWallEnabled, isAdminEmail } from './auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -26,6 +26,22 @@ console.log(`[auth] Login wall ${loginWallEnabled() ? 'ON — sign-in required t
 
 // Login page shown to signed-out visitors when the wall is on.
 const loginPath = join(__dirname, 'public', 'login.html');
+// Page shown to signed-in visitors whose account is not yet approved by an admin.
+const pendingPath = join(__dirname, 'public', 'pending.html');
+
+// Approval helpers (DB-backed). Admins are always effectively approved.
+function approvalOf(user) {
+  if (!user) return null;
+  if (isAdminEmail(user.email)) return 'approved';
+  if (!DB_OK) return 'approved';               // no DB -> can't gate; fail open
+  return getApproval(user.sub) || 'pending';
+}
+function requireAdmin(req, res, next) {
+  const u = currentUser(req);
+  if (!u || !isAdminEmail(u.email)) return res.status(403).json({ error: 'admin only' });
+  req.user = u;
+  next();
+}
 
 // Cache-busting version: git short hash of THIS repo, else mtime of curriculum.js
 // cwd must be __dirname so git reads the right repo (not the shell's CWD)
@@ -49,7 +65,16 @@ app.use(express.json({ limit: '256kb' }));
 
 // ---- Auth (Google OAuth2) ----
 mountAuth(app, {
-  onLogin: (user) => { if (DB_OK) { try { upsertUser(user); } catch (e) { console.error('[db] upsertUser:', e.message); } } },
+  onLogin: (user) => {
+    if (!DB_OK) return;
+    try {
+      upsertUser(user);
+      // Admins are auto-approved on login; everyone else stays 'pending' until
+      // an admin approves them from the console.
+      if (isAdminEmail(user.email)) setApproval(user.id, 'approved');
+    } catch (e) { console.error('[db] onLogin:', e.message); }
+  },
+  approvalStatus: (userId) => (DB_OK ? getApproval(userId) : null),
 });
 
 // ---- Login wall ----------------------------------------------------------
@@ -60,11 +85,47 @@ mountAuth(app, {
 app.use((req, res, next) => {
   if (!loginWallEnabled()) return next();
   if (req.path === '/health' || req.path.startsWith('/auth/')) return next();
-  if (currentUser(req)) return next();
-  if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'login required' });
-  res.set('Cache-Control', 'no-store');
-  return res.type('html').sendFile(loginPath);
+  const user = currentUser(req);
+  // Not signed in -> login page (or 401 for APIs).
+  if (!user) {
+    if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'login required' });
+    res.set('Cache-Control', 'no-store');
+    return res.type('html').sendFile(loginPath);
+  }
+  // Signed in but not yet approved by an admin -> blocked from all content.
+  if (approvalOf(user) !== 'approved') {
+    if (req.path.startsWith('/api/')) return res.status(403).json({ error: 'account pending approval' });
+    res.set('Cache-Control', 'no-store');
+    return res.type('html').sendFile(pendingPath);
+  }
+  return next();
 });
+
+// ---- Admin API (approve/reject users) — admin-only ----
+app.get('/api/admin/users', requireAdmin, (_req, res) => {
+  if (!DB_OK) return res.status(503).json({ error: 'persistence unavailable' });
+  try { res.json({ users: listUsers() }); }
+  catch (e) { console.error('[db] listUsers:', e.message); res.status(500).json({ error: 'load failed' }); }
+});
+
+app.post('/api/admin/users/approve', requireAdmin, (req, res) => setUserApproval(req, res, 'approved'));
+app.post('/api/admin/users/reject',  requireAdmin, (req, res) => setUserApproval(req, res, 'rejected'));
+
+function setUserApproval(req, res, status) {
+  if (!DB_OK) return res.status(503).json({ error: 'persistence unavailable' });
+  const id = (req.body && req.body.id) || '';
+  if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'user id required' });
+  // Guard: an admin cannot lock themselves (or another admin) out.
+  const target = listUsers().find(u => u.id === id);
+  if (target && isAdminEmail(target.email) && status !== 'approved') {
+    return res.status(400).json({ error: 'cannot change an admin account' });
+  }
+  try {
+    const ok = setApproval(id, status);
+    if (!ok) return res.status(404).json({ error: 'user not found' });
+    res.json({ ok: true, id, status });
+  } catch (e) { console.error('[db] setApproval:', e.message); res.status(500).json({ error: 'update failed' }); }
+}
 
 // ---- Progress sync API (requires a logged-in session) ----
 const VALID_STATUS = new Set(['not_started', 'in_progress', 'completed']);
