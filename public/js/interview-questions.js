@@ -2276,5 +2276,53 @@ const INTERVIEW_QUESTIONS = {
       "q": "How would you design a rate limiter / what algorithms exist (token bucket, leaky bucket, sliding window)?",
       "a": "Token bucket: tokens refill at a fixed rate up to a capacity, each request consumes one, and a full bucket allows short bursts — the most common choice. Leaky bucket: requests queue and drain at a constant rate, smoothing bursts but adding latency. Fixed-window counter: cheap but allows a 2x burst at the boundary. Sliding-window log/counter fixes that boundary spike at higher memory cost. For a distributed limiter keep counters in Redis (atomic INCR with expiry or a Lua script) so all nodes share one limit, and return HTTP 429 with Retry-After when exceeded."
     }
+  ],
+  "4.6": [
+    {
+      "q": "What problem does Elasticsearch solve that a relational database does not?",
+      "a": "Full-text search at scale. A B-tree index and SQL LIKE '%term%' cannot use the index for infix matches, do relevance ranking, handle typos/stemming/synonyms, or search across huge text corpora quickly. Elasticsearch builds an INVERTED INDEX (term -> list of documents containing it) so a query jumps straight to matching docs and ranks them by relevance (BM25). It is a distributed search & analytics engine (built on Lucene), used for full-text search, log/observability analytics, and autocomplete -- not as a system of record."
+    },
+    {
+      "q": "Explain the inverted index and how a search returns ranked results.",
+      "a": "At index time each document's text is analyzed (tokenized, lowercased, stemmed) into terms, and for each term ES stores a postings list of the doc ids containing it. A query is analyzed the same way; ES intersects/unions the postings lists of the query terms to find candidates, then scores each by relevance using BM25 (term frequency, inverse document frequency, field length). This is why lookups are fast regardless of corpus size and why results come back ranked."
+    },
+    {
+      "q": "How are documents distributed across a cluster, and why can't you change the primary shard count later?",
+      "a": "An index is split into a fixed number of PRIMARY shards; a document is routed to a shard by hash(_routing, default _id) % number_of_primary_shards. Because that modulo depends on the shard count, changing it would send existing documents to different shards, so ES fixes primaries at index creation (you must reindex to change it). REPLICA shards are copies of primaries for high availability and extra read throughput, and those you CAN change on the fly."
+    },
+    {
+      "q": "What is Elasticsearch's consistency model?",
+      "a": "Near-real-time. A newly indexed document is not searchable until a 'refresh' makes it visible (default every 1 second), and durability comes from the translog plus periodic 'flush' to Lucene segments. Within a shard, primaries replicate to replicas synchronously before acking a write. So ES favors availability and search throughput over strict read-your-writes immediacy -- fine for search/logs, not for use cases needing transactional consistency."
+    },
+    {
+      "q": "How do you size shards, and what goes wrong with too many small shards?",
+      "a": "Rule of thumb: keep each shard in the tens of GB (often 10-50 GB) and aim for a manageable total shard count per node, because every shard carries JVM heap and cluster-state overhead. Oversharding (thousands of tiny shards) bloats the cluster state, wastes heap, and slows searches and recovery; undersized shard counts limit parallelism and make rebalancing expensive. For time-series/logs, use time-based indices + Index Lifecycle Management (hot-warm-cold-delete) to roll over by size/age."
+    },
+    {
+      "q": "Query vs filter context, and match vs term -- what is the difference?",
+      "a": "Query context computes a relevance _score (use for full-text 'how well does this match'); filter context is a yes/no match that is cacheable and does not score (use for exact constraints like status = active or a date range) and is faster. `match` is a full-text query that analyzes the input (so 'Running Shoes' matches 'run shoe'); `term` is an exact, non-analyzed match against a keyword field. A common mistake is using `term` on an analyzed text field and getting no hits."
+    }
+  ],
+  "7.6": [
+    {
+      "q": "What is Infrastructure as Code and why use Terraform over clicking in a console?",
+      "a": "IaC means defining your infrastructure in version-controlled declarative files instead of manual console clicks, so it is reproducible, reviewable (pull requests), and auditable. Terraform is a cloud-agnostic IaC tool: you declare the desired end state in HCL and Terraform figures out the API calls to reach it, across many providers (AWS/Azure/GCP/k8s/etc.) via one workflow. Benefits over ClickOps: no drift, no snowflake environments, peer review, easy teardown/recreate, and self-documenting infrastructure."
+    },
+    {
+      "q": "What is the Terraform state file, why does it matter, and how do you manage it for a team?",
+      "a": "State maps your configuration to the real-world resources Terraform created (ids, metadata), so it knows what exists and what to change on the next apply. It is critical and sensitive (can contain secrets), so local state is dangerous for teams: concurrent applies corrupt it and it is not shared. Use a REMOTE BACKEND with locking -- e.g. S3 for storage plus a DynamoDB lock table, or Terraform Cloud -- so state is shared, versioned, and locked during apply to prevent concurrent modification. Never commit state to git."
+    },
+    {
+      "q": "Explain the plan/apply workflow and what 'drift' is.",
+      "a": "`terraform init` sets up providers/backend; `terraform plan` is a dry run that diffs desired config against state (and refreshes real infra) and shows what will be added/changed/destroyed; `terraform apply` executes that plan; `terraform destroy` tears it down. Drift is when the real infrastructure diverges from state because someone changed it out-of-band (a console click); the next plan detects it and proposes to reconcile back to the declared config. In CI you run plan on a PR and apply on merge, with approval."
+    },
+    {
+      "q": "How do you structure Terraform for a multi-team, multi-environment organization?",
+      "a": "Split state to limit blast radius: separate state per environment (dev/stage/prod) and per component/team (networking, data, app), so one apply can only affect a small surface. Encapsulate reusable infra in versioned MODULES (pinned by version) consumed from a registry. Use remote state with locking, a CI/CD pipeline (plan on PR with policy checks, apply on merge with approval, OIDC instead of long-lived creds), and policy-as-code (OPA/Sentinel) to enforce guardrails. Keep secrets out of state -- pull from Vault/SSM and mark variables sensitive."
+    },
+    {
+      "q": "count vs for_each, and implicit vs explicit dependencies?",
+      "a": "`count` creates N copies indexed by number -- simple but removing a middle element renumbers and can destroy/recreate later ones; `for_each` creates instances keyed by a stable map/set key, so additions/removals only touch that key (preferred for sets of distinct resources). Dependencies are usually IMPLICIT: referencing one resource's attribute in another (aws_subnet.x.id) makes Terraform order them automatically. Use explicit `depends_on` only when there is a hidden dependency Terraform cannot infer from references."
+    }
   ]
 };
