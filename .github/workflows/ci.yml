@@ -35,7 +35,7 @@ jobs:
           node --check auth.js
           node --check billing.js
           node --check public/js/curriculum.js
-          node --check public/js/app.js
+          for f in public/js/app/*.js; do node --check "$f"; done
 
       - name: Validate curriculum data shape
         run: |
