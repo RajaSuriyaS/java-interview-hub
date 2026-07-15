@@ -8,7 +8,7 @@ A self-hosted, interactive **Senior Java Backend Engineer interview study hub** 
 
 ## ✨ Features
 
-- **16 phases · 80 modules · ~351 study hours** of structured, senior-level content (1,000+ runnable code samples, 3,900+ flashcards, 540+ interview Q&A).
+- **16 phases · 80 modules · ~351 study hours** of structured, senior-level content (1,000+ runnable code samples, 3,900+ flashcards, 590+ interview Q&A).
 - **Live code sandbox** — edit and **Run** Java on a real JDK compiler (via the [Wandbox](https://wandbox.org) execution API, proxied by the backend; self-hosted [Piston](https://github.com/engineer-man/piston) also supported). Powered by the **Monaco editor** (the VS Code engine).
 - **Deep-dive study guides** — markdown-typeset notes with **callout blocks** for European-interview tips, warnings, and "strong answer" cues.
 - **300+ active-recall flashcards** — click to flip; "flip all" for rapid drills.
