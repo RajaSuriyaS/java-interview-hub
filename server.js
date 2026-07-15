@@ -220,7 +220,7 @@ app.post('/api/admin/users/subscription', requireAdmin, (req, res) => {
       setSubscription(id, { status: 'none', plan: null, until: null, provider: 'admin' });
       return res.json({ ok: true, id, status: 'none' });
     }
-    return res.status(400).json({ error: 'action must be grant or reject' });
+    return res.status(400).json({ error: 'action must be grant or revoke' });
   } catch (e) { console.error('[db] subscription:', e.message); res.status(500).json({ error: 'update failed' }); }
 });
 
@@ -271,7 +271,7 @@ function serveIndex(res) {
   const html = readFileSync(indexPath, 'utf8')
     .replace('/js/curriculum.js"',          `/js/curriculum.js?v=${VERSION}"`)
     .replace('/js/interview-questions.js"', `/js/interview-questions.js?v=${VERSION}"`)
-    .replace('/js/app.js"',                 `/js/app.js?v=${VERSION}"`);
+    .replace('/js/app/main.js"',            `/js/app/main.js?v=${VERSION}"`);
   // HTML must never be cached — browser must always re-fetch so the ?v= hash stays fresh
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.set('Pragma', 'no-cache');
