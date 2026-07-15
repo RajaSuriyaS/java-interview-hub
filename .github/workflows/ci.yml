@@ -21,6 +21,13 @@ jobs:
       - name: Install deps
         run: npm ci || npm install
 
+      - name: Build Tailwind CSS (purged, minified)
+        run: |
+          npm run build:css
+          test -s public/css/tailwind.css || { echo "tailwind.css was not produced"; exit 1; }
+          grep -q "bg-slate-950" public/css/tailwind.css || { echo "expected utilities missing — purge too aggressive?"; exit 1; }
+          echo "tailwind.css OK ($(wc -c < public/css/tailwind.css) bytes)"
+
       - name: Syntax-check all JS
         run: |
           node --check server.js
