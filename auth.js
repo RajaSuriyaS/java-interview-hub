@@ -38,6 +38,9 @@ const ADMIN_EMAILS = new Set(
   String(process.env.ADMIN_EMAILS || 'rajasuriyas@gmail.com')
     .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 );
+if (!process.env.ADMIN_EMAILS && String(process.env.NODE_ENV).toLowerCase() === 'production') {
+  console.warn('[auth] ADMIN_EMAILS not set — falling back to the built-in owner default. Set ADMIN_EMAILS explicitly in production.');
+}
 export const isAdminEmail = (email) => ADMIN_EMAILS.has(String(email || '').trim().toLowerCase());
 
 // Login wall: when REQUIRE_AUTH=true AND Google is configured, the whole app
@@ -238,7 +241,15 @@ export function mountAuth(app, { onLogin, approvalStatus, entitlement } = {}) {
   // Safe diagnostics (no secrets) — open this in a browser to debug sign-in.
   // The #1 thing to verify: `derivedCallbackUrl` must EXACTLY match an
   // "Authorised redirect URI" on your Google OAuth client.
+  // Restricted in production: an admin session, or ?key=AUTH_DEBUG_KEY, is
+  // required so config diagnostics are not exposed publicly. Open in dev.
   app.get('/auth/debug', (req, res) => {
+    const isProd = String(process.env.NODE_ENV).toLowerCase() === 'production';
+    const u = currentUser(req);
+    const keyOk = process.env.AUTH_DEBUG_KEY && req.query.key === process.env.AUTH_DEBUG_KEY;
+    if (isProd && !keyOk && !(u && isAdminEmail(u.email))) {
+      return res.status(403).json({ error: 'restricted — sign in as an admin or pass ?key=AUTH_DEBUG_KEY' });
+    }
     const cookies = parseCookies(req);
     // A human-readable verdict so anyone opening this URL knows the next move.
     let nextStep;

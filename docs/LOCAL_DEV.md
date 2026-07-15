@@ -6,7 +6,7 @@ A 2-minute setup. No database, no API keys, no build step.
 
 ## Prerequisites
 
-- **Node.js 18 or newer** (20+ recommended) — check with `node --version`.
+- **Node.js 22 or newer** (required for the built-in `node:sqlite` module) — check with `node --version`.
 - That's it. (Docker is optional — see the bottom.)
 
 ---

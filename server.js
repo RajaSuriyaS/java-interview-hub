@@ -9,6 +9,7 @@ import { initDb, dbReady, upsertUser, getState, replaceState, listUsers, getAppr
 import { mountAuth, requireAuth, authConfigured, currentUser, loginWallEnabled, isAdminEmail } from './auth.js';
 import { billingConfig, stripeReady, razorpayReady, createStripeCheckout, createRazorpaySubscription,
          mountBillingWebhooks } from './billing.js';
+import { computeStats } from './scripts/stats.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -375,10 +376,39 @@ async function runPiston(language, code, stdin) {
   return { output: run.stdout || '', error: run.stderr || '', exitCode: run.code };
 }
 
-app.post('/api/execute', async (req, res) => {
+// Simple in-memory sliding-window rate limiter (per client IP).
+function makeRateLimiter({ windowMs, max }) {
+  const hits = new Map(); // ip -> [timestamps]
+  return (req, res, next) => {
+    const now = Date.now();
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+    const arr = (hits.get(ip) || []).filter(t => now - t < windowMs);
+    if (arr.length >= max) {
+      res.set('Retry-After', String(Math.ceil(windowMs / 1000)));
+      return res.status(429).json({ output: '', error: 'Rate limit exceeded — please wait a moment before running more code.' });
+    }
+    arr.push(now); hits.set(ip, arr);
+    if (hits.size > 5000) for (const [k, v] of hits) if (!v.some(t => now - t < windowMs)) hits.delete(k); // cleanup
+    next();
+  };
+}
+const executeLimiter = makeRateLimiter({ windowMs: 60_000, max: 30 }); // 30 runs/min/IP
+const MAX_CODE_BYTES = 60_000, MAX_STDIN_BYTES = 10_000;
+
+app.post('/api/execute', executeLimiter, async (req, res) => {
   const { language, code, stdin = '' } = req.body || {};
   if (!language || typeof code !== 'string') {
     return res.status(400).json({ output: '', error: 'language and code are required' });
+  }
+  // When the site is monetized, don't offer free anonymous compute.
+  if (monetizationOn() && !currentUser(req)) {
+    return res.status(401).json({ output: '', error: 'Please sign in to run code.' });
+  }
+  if (Buffer.byteLength(code, 'utf8') > MAX_CODE_BYTES) {
+    return res.status(413).json({ output: '', error: 'Code is too large to run here.' });
+  }
+  if (typeof stdin === 'string' && Buffer.byteLength(stdin, 'utf8') > MAX_STDIN_BYTES) {
+    return res.status(413).json({ output: '', error: 'stdin is too large.' });
   }
   // SQL / bash are illustrative in the default (wandbox) provider.
   if (PROVIDER === 'wandbox' && !WANDBOX_COMPILER[language]) {
@@ -397,6 +427,16 @@ app.post('/api/execute', async (req, res) => {
 app.get('/health', (_req, res) => res.json({
   status: 'ok', provider: PROVIDER, db: dbReady(), googleAuth: authConfigured(),
 }));
+
+// Public product-stats summary — single source of truth (computed from the
+// curriculum) so the login page, README and dashboard never disagree.
+let STATS_CACHE = null;
+try { STATS_CACHE = computeStats(); console.log('[stats]', JSON.stringify(STATS_CACHE)); }
+catch (e) { console.error('[stats] compute failed:', e.message); }
+app.get('/api/summary', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json(STATS_CACHE || {});
+});
 
 // Debug: shows exactly what curriculum is loaded on this server instance
 app.get('/api/stats', (_req, res) => {

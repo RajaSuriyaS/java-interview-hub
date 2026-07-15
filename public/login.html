@@ -58,12 +58,22 @@
     </a>
 
     <ul class="feat">
-      <li><span class="ck">✓</span> 13 phases · 55 modules · 2,500+ flashcards</li>
+      <li><span class="ck">✓</span> <span id="stat-line">15 phases · 74 modules · 3,500+ flashcards</span></li>
       <li><span class="ck">✓</span> Runnable code sandbox on a real JDK</li>
       <li><span class="ck">✓</span> Progress &amp; notes saved to your account, synced across devices</li>
     </ul>
 
     <p class="foot">We only use your Google account to identify you and save your progress.</p>
   </main>
+  <script>
+    // Keep the headline stats accurate (single source: /api/summary from the curriculum).
+    fetch('/api/summary').then(r => r.json()).then(s => {
+      if (s && s.phases) {
+        const fc = Math.floor((s.flashcards || 0) / 100) * 100;
+        document.getElementById('stat-line').textContent =
+          `${s.phases} phases · ${s.modules} modules · ${fc.toLocaleString()}+ flashcards`;
+      }
+    }).catch(() => {});
+  </script>
 </body>
 </html>
