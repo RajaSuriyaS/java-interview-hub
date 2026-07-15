@@ -100,7 +100,7 @@ function callbackUrl(req) {
 }
 
 /* ---------- routes ---------- */
-export function mountAuth(app, { onLogin, approvalStatus } = {}) {
+export function mountAuth(app, { onLogin, approvalStatus, entitlement } = {}) {
   // Begin login — redirect to Google's consent screen.
   app.get('/auth/google', (req, res) => {
     if (!authConfigured()) return res.status(503).send('Google login is not configured on this server (set GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).');
@@ -213,11 +213,18 @@ export function mountAuth(app, { onLogin, approvalStatus } = {}) {
     // admins are always effectively approved.
     let approval = null;
     if (u) approval = admin ? 'approved' : (approvalStatus ? approvalStatus(u.sub) : 'approved');
+    // Entitlement: admins are always premium; otherwise ask the injected provider.
+    const ent = u ? (admin ? { premium: true, plan: 'admin', status: 'active' }
+                           : (entitlement ? entitlement(u.sub) : { premium: false }))
+                  : { premium: false };
     res.json({
       configured: authConfigured(),
       requireLogin: loginWallEnabled(),
       admin,
       approvalStatus: approval,
+      premium: !!ent.premium,
+      plan: ent.plan || null,
+      subStatus: ent.status || 'none',
       user: u ? { id: u.sub, email: u.email, name: u.name, picture: u.picture } : null,
     });
   });

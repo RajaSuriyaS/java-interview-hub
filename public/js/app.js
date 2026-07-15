@@ -204,7 +204,9 @@
           <span class="status-dot status-${st}"></span>
           <span class="text-[11px] font-mono text-slate-500 shrink-0">${esc(m.id)}</span>
           <span class="flex-1 text-[13px] ${st === 'completed' ? 'text-slate-400 line-through decoration-slate-600' : 'text-slate-300'} truncate">${esc(m.title)}</span>
-          <span class="text-[10px] text-slate-600 shrink-0">${m.hours}h</span>
+          ${m.locked
+            ? `<i data-lucide="lock" class="w-3 h-3 text-brand/70 shrink-0" title="Premium"></i>`
+            : `<span class="text-[10px] text-slate-600 shrink-0">${m.hours}h</span>`}
           ${secHint ? `<span class="basis-full pl-6 text-[11px] text-brand truncate">↳ ${esc(secHint)}</span>` : ''}`;
         item.addEventListener('click', () => openModule(m.id, mi >= 0 ? mi : undefined));
         list.appendChild(item);
@@ -882,10 +884,71 @@
   /* ===================== MODULE NOTEBOOK ===================== */
   let editors = []; // active monaco editors on the page
 
+  // ---- Paywall / upgrade page (shown for premium-locked modules) ----
+  function renderUpgrade(module, phase) {
+    const content = $('#content');
+    content.scrollTop = 0;
+    const lockedCount = allModules().filter(x => x.module.locked).length;
+    content.innerHTML = `
+      <div class="w-full px-4 sm:px-8 lg:px-12 xl:px-16 py-7 fade-up">
+        <div class="flex items-center gap-2 text-xs text-slate-500 mb-6">
+          <button id="up-bc-dash" class="hover:text-brand transition">Dashboard</button>
+          <i data-lucide="chevron-right" class="w-3 h-3"></i><span class="text-brand">Premium</span>
+        </div>
+        <div class="max-w-2xl mx-auto text-center">
+          <div class="grid place-items-center w-16 h-16 mx-auto mb-5 rounded-2xl bg-brand/15 text-brand">
+            <i data-lucide="lock" class="w-8 h-8"></i>
+          </div>
+          <h1 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-2">${module ? esc(module.title) : 'Premium content'}</h1>
+          <p class="text-slate-400 mb-8">This module is part of <b class="text-brand">Premium</b>. Unlock ${lockedCount}+ advanced modules — full study guides, runnable code, flashcards and interview Q&amp;A.</p>
+          <div class="grid sm:grid-cols-2 gap-4 text-left mb-8">
+            <div class="rounded-2xl border border-brand/40 bg-brand/[0.06] p-6">
+              <div class="text-xs font-bold uppercase tracking-wider text-brand mb-1">Monthly</div>
+              <div class="text-3xl font-extrabold text-white mb-1">$9<span class="text-base font-medium text-slate-400">/mo</span></div>
+              <div class="text-[12px] text-slate-500 mb-4">Cancel anytime</div>
+              <button data-plan="monthly" class="up-buy w-full py-2.5 rounded-lg bg-brand hover:bg-brand-dark text-white font-bold text-sm transition">Get Premium</button>
+            </div>
+            <div class="rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
+              <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Yearly <span class="text-emerald-400">save 30%</span></div>
+              <div class="text-3xl font-extrabold text-white mb-1">$75<span class="text-base font-medium text-slate-400">/yr</span></div>
+              <div class="text-[12px] text-slate-500 mb-4">Best value</div>
+              <button data-plan="yearly" class="up-buy w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition">Get Premium</button>
+            </div>
+          </div>
+          <ul class="text-left text-sm text-slate-300 space-y-2 max-w-md mx-auto mb-6">
+            ${['All ' + lockedCount + '+ premium modules across JVM, Spring, System Design, Kafka, Elasticsearch, Terraform & more',
+               'Runnable code sandbox, flashcards with spaced repetition, mock interviews',
+               'Curated rapid-fire interview Q&A with answers'].map(f =>
+              `<li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400 mt-0.5 shrink-0"></i> ${esc(f)}</li>`).join('')}
+          </ul>
+          <p id="up-msg" class="text-[13px] text-slate-500"></p>
+        </div>
+      </div>`;
+    icons();
+    document.getElementById('up-bc-dash').addEventListener('click', renderDashboard);
+    content.querySelectorAll('.up-buy').forEach(btn => btn.addEventListener('click', async () => {
+      const plan = btn.getAttribute('data-plan');
+      const msg = document.getElementById('up-msg');
+      if (!auth.user) { location.href = '/auth/google'; return; }
+      msg.textContent = 'Starting checkout…';
+      try {
+        const r = await fetch('/api/billing/checkout', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }),
+        });
+        if (r.ok) { const d = await r.json(); if (d.url) { location.href = d.url; return; } }
+        if (r.status === 501) { msg.innerHTML = 'Online payments are being set up. For early access, contact the site owner and you\'ll be upgraded manually.'; return; }
+        msg.textContent = 'Could not start checkout. Please try again later.';
+      } catch { msg.textContent = 'Could not start checkout. Please try again later.'; }
+    }));
+  }
+
   function openModule(id, startSec) {
     const found = findModule(id);
     if (!found) return;
     const { phase, module } = found;
+    // Premium-locked module (server stripped its body for free users) -> paywall.
+    if (module.locked) { state.lastModule = id; save(); closeSidebarMobile(); return renderUpgrade(module, phase); }
     state.lastModule = id;
     state.resumeModule = id;
     markActivity();
@@ -1714,13 +1777,23 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
                     </div>
                   </div>
                 </td>
-                <td class="px-4 py-3">${badge(u.status)}</td>
+                <td class="px-4 py-3">
+                  <div class="flex flex-col gap-1">
+                    ${badge(u.status)}
+                    ${u.sub_status === 'active'
+                      ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-400/15 text-amber-300 w-fit"><i data-lucide="crown" class="w-2.5 h-2.5"></i>${esc(u.sub_plan || 'premium')}</span>`
+                      : `<span class="text-[10px] text-slate-600">free</span>`}
+                  </div>
+                </td>
                 <td class="px-4 py-3 text-slate-400 hidden sm:table-cell">${when(u.created_at)}</td>
                 <td class="px-4 py-3 text-slate-400 hidden md:table-cell">${when(u.last_login)}</td>
                 <td class="px-4 py-3">
-                  <div class="flex items-center gap-2 justify-end">
+                  <div class="flex items-center gap-2 justify-end flex-wrap">
                     <button data-act="approve" class="admin-act px-2.5 py-1 rounded-lg text-[12px] font-semibold bg-success/15 hover:bg-success/25 text-emerald-300 transition ${u.status === 'approved' ? 'opacity-40 pointer-events-none' : ''}">Approve</button>
                     <button data-act="reject" class="admin-act px-2.5 py-1 rounded-lg text-[12px] font-semibold bg-red-500/15 hover:bg-red-500/25 text-red-300 transition ${u.status === 'rejected' ? 'opacity-40 pointer-events-none' : ''}">Reject</button>
+                    ${u.sub_status === 'active'
+                      ? `<button data-sub="revoke" class="admin-sub px-2.5 py-1 rounded-lg text-[12px] font-semibold bg-slate-700/60 hover:bg-slate-700 text-slate-300 transition">Revoke PRO</button>`
+                      : `<button data-sub="grant" class="admin-sub px-2.5 py-1 rounded-lg text-[12px] font-semibold bg-amber-400/15 hover:bg-amber-400/25 text-amber-300 transition">Grant PRO</button>`}
                   </div>
                 </td>
               </tr>`).join('') : `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">No users have signed in yet.</td></tr>`}
@@ -1738,6 +1811,22 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id }),
+          });
+          if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || 'Action failed'); btn.disabled = false; return; }
+          loadAdminUsers();
+        } catch { alert('Action failed'); btn.disabled = false; }
+      });
+    });
+    host.querySelectorAll('.admin-sub').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const tr = btn.closest('tr'); const id = tr.getAttribute('data-uid');
+        const action = btn.getAttribute('data-sub'); // grant | revoke
+        btn.disabled = true;
+        try {
+          const r = await fetch('/api/admin/users/subscription', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, action }),
           });
           if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || 'Action failed'); btn.disabled = false; return; }
           loadAdminUsers();
@@ -1765,6 +1854,11 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
               <span id="sync-label">Progress synced</span>
             </div>
           </div>
+          ${auth.premium
+            ? `<span title="Premium member" class="shrink-0 inline-flex items-center gap-1 px-2 h-7 rounded-lg bg-amber-400/15 text-amber-300 text-[10px] font-bold"><i data-lucide="crown" class="w-3 h-3"></i>PRO</span>`
+            : (allModules().some(x => x.module.locked)
+              ? `<button id="upgrade-btn" title="Unlock all premium modules" class="shrink-0 inline-flex items-center gap-1 px-2 h-7 rounded-lg bg-brand hover:bg-brand-dark text-white text-[10px] font-bold transition"><i data-lucide="sparkles" class="w-3 h-3"></i>Premium</button>`
+              : '')}
           ${auth.admin ? `<button id="admin-btn" title="Admin — manage user access" class="shrink-0 grid place-items-center w-7 h-7 rounded-lg bg-brand/15 hover:bg-brand/25 text-brand transition">
             <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
           </button>` : ''}
@@ -1776,6 +1870,8 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
       if (lo) lo.addEventListener('click', logout);
       const adminBtn = document.getElementById('admin-btn');
       if (adminBtn) adminBtn.addEventListener('click', renderAdminConsole);
+      const upBtn = document.getElementById('upgrade-btn');
+      if (upBtn) upBtn.addEventListener('click', () => renderUpgrade(null, null));
     } else if (auth.configured) {
       host.innerHTML = `
         <a href="/auth/google" title="Sign in to save your progress across devices"

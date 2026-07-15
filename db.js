@@ -60,17 +60,50 @@ export function initDb() {
     db.exec("UPDATE users SET approval_status = 'approved'"); // one-time: grandfather existing users
     console.log('[db] migrated users.approval_status (existing users grandfathered as approved)');
   }
+  // ---- migration: subscription/entitlement columns (Wave 1 monetization) ----
+  const addCol = (name, ddl) => { if (!cols.includes(name)) db.exec(`ALTER TABLE users ADD COLUMN ${ddl}`); };
+  if (!cols.includes('sub_status')) {
+    addCol('sub_status',   "sub_status   TEXT DEFAULT 'none'");   // 'none' | 'active' | 'canceled' | 'past_due'
+    addCol('sub_plan',     "sub_plan     TEXT");                  // e.g. 'monthly' | 'yearly' | 'comp'
+    addCol('sub_until',    "sub_until    INTEGER");               // epoch ms; null = no expiry (comped)
+    addCol('sub_provider', "sub_provider TEXT");                  // 'stripe' | 'razorpay' | 'admin'
+    console.log('[db] migrated users subscription columns');
+  }
   return file;
 }
 
 const APPROVALS = new Set(['pending', 'approved', 'rejected']);
 
-// Admin console: list all users with their approval status, newest first.
+// Admin console: list all users with their approval + subscription status.
 export function listUsers() {
   return db.prepare(`
-    SELECT id, email, name, picture, approval_status AS status, created_at, last_login
+    SELECT id, email, name, picture, approval_status AS status,
+           sub_status, sub_plan, sub_until, sub_provider, created_at, last_login
     FROM users ORDER BY created_at DESC
   `).all();
+}
+
+// ---- Subscription / entitlement ----
+const SUB_STATUSES = new Set(['none', 'active', 'canceled', 'past_due']);
+
+export function getEntitlement(userId) {
+  const r = db.prepare('SELECT sub_status AS status, sub_plan AS plan, sub_until AS until, sub_provider AS provider FROM users WHERE id = ?').get(userId);
+  return r || { status: 'none', plan: null, until: null, provider: null };
+}
+
+// A user is premium when their subscription is active and not expired.
+export function isPremium(userId) {
+  const e = getEntitlement(userId);
+  if (e.status !== 'active') return false;
+  return e.until == null || e.until > Date.now();
+}
+
+export function setSubscription(userId, { status, plan = null, until = null, provider = null } = {}) {
+  if (!SUB_STATUSES.has(status)) throw new Error('invalid subscription status: ' + status);
+  const info = db.prepare(
+    'UPDATE users SET sub_status = ?, sub_plan = ?, sub_until = ?, sub_provider = ? WHERE id = ?'
+  ).run(status, plan, until, provider, userId);
+  return info.changes > 0;
 }
 
 export function getApproval(userId) {

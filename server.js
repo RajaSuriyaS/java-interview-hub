@@ -4,7 +4,8 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, statSync } from 'fs';
 import { execSync } from 'child_process';
-import { initDb, dbReady, upsertUser, getState, replaceState, listUsers, getApproval, setApproval } from './db.js';
+import { initDb, dbReady, upsertUser, getState, replaceState, listUsers, getApproval, setApproval,
+         getEntitlement, isPremium, setSubscription } from './db.js';
 import { mountAuth, requireAuth, authConfigured, currentUser, loginWallEnabled, isAdminEmail } from './auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +56,67 @@ function buildVersion() {
 }
 const VERSION = buildVersion();
 
+/* ===================== MONETIZATION / CONTENT GATING =====================
+   When MONETIZATION is on, the server sends FREE users only the free-tier
+   modules; premium modules arrive as a locked stub (title kept, body stripped)
+   so the real content never reaches a non-subscriber's browser. Premium users
+   (active subscription) and admins get the full content. Kept OFF by default so
+   nothing changes for current users until you flip the switch. */
+const monetizationOn = () => ['on', 'true', '1'].includes(String(process.env.MONETIZATION || '').toLowerCase());
+
+const CURRICULUM_FILE = join(__dirname, 'public/js/curriculum.js');
+const IQ_FILE = join(__dirname, 'public/js/interview-questions.js');
+const RAW_CURRICULUM = readFileSync(CURRICULUM_FILE, 'utf8');
+const RAW_IQ = readFileSync(IQ_FILE, 'utf8');
+const CURRICULUM_OBJ = new Function(RAW_CURRICULUM.replace('const CURRICULUM', 'var __C') + '\n;return __C;')();
+const IQ_OBJ = new Function(RAW_IQ.replace('const INTERVIEW_QUESTIONS', 'var __I') + '\n;return __I;')();
+
+// Free-tier module ids: FREE_MODULE_IDS env (comma-list) overrides the default
+// policy of "all of Phase 0 + the first module of every other phase (preview)".
+const FREE_IDS = (() => {
+  const env = String(process.env.FREE_MODULE_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (env.length) return new Set(env);
+  const ids = new Set();
+  for (const p of CURRICULUM_OBJ) {
+    if (p.id === 'p0') p.modules.forEach(m => ids.add(m.id));
+    else if (p.modules[0]) ids.add(p.modules[0].id);
+  }
+  return ids;
+})();
+
+// Pre-render the free-tier JS bundles once (same for every free user).
+const FREE_CURRICULUM_JS = 'const CURRICULUM = ' + JSON.stringify(CURRICULUM_OBJ.map(p => ({
+  ...p,
+  modules: p.modules.map(m => FREE_IDS.has(m.id) ? m : {
+    id: m.id, title: m.title, hours: m.hours, locked: true,
+    sections: [{
+      title: 'Premium — unlock this module',
+      notes: '## ' + m.title + '\n\n> [!NOTE]\n> This module is part of **Premium**. Upgrade to unlock the full study guide, runnable code, flashcards and interview questions.',
+      code: [], flashcards: [],
+    }],
+  }),
+}))) + ';\n';
+const FREE_IQ_JS = 'const INTERVIEW_QUESTIONS = ' + JSON.stringify(
+  Object.fromEntries(Object.entries(IQ_OBJ).filter(([k]) => FREE_IDS.has(k)))
+) + ';\n';
+
+function requesterIsPremium(req) {
+  const u = currentUser(req);
+  if (!u) return false;
+  if (isAdminEmail(u.email)) return true;
+  return DB_OK ? isPremium(u.sub) : true;
+}
+// Full content for premium/admin (or when monetization is off); free stub otherwise.
+function gatedJs(req, res, rawFull, freeJs) {
+  res.type('application/javascript');
+  if (!monetizationOn() || requesterIsPremium(req)) {
+    res.set('Cache-Control', 'private, max-age=300');
+    return res.send(rawFull);
+  }
+  res.set('Cache-Control', 'private, no-store');
+  return res.send(freeJs);
+}
+
 // Execution provider: 'wandbox' (public, zero-infra, default) or 'piston' (self-hosted).
 const PROVIDER = (process.env.EXEC_PROVIDER || 'wandbox').toLowerCase();
 const PISTON_URL = process.env.PISTON_URL || 'http://localhost:2000';
@@ -75,6 +137,11 @@ mountAuth(app, {
     } catch (e) { console.error('[db] onLogin:', e.message); }
   },
   approvalStatus: (userId) => (DB_OK ? getApproval(userId) : null),
+  entitlement: (userId) => {
+    if (!DB_OK) return { premium: false, status: 'none' };
+    const e = getEntitlement(userId);
+    return { premium: isPremium(userId), plan: e.plan, status: e.status, until: e.until };
+  },
 });
 
 // ---- Login wall ----------------------------------------------------------
@@ -126,6 +193,25 @@ function setUserApproval(req, res, status) {
     res.json({ ok: true, id, status });
   } catch (e) { console.error('[db] setApproval:', e.message); res.status(500).json({ error: 'update failed' }); }
 }
+
+// Admin: grant or revoke premium (comp) access. `days` optional (default: no expiry).
+app.post('/api/admin/users/subscription', requireAdmin, (req, res) => {
+  if (!DB_OK) return res.status(503).json({ error: 'persistence unavailable' });
+  const { id, action, days } = req.body || {};
+  if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'user id required' });
+  try {
+    if (action === 'grant') {
+      const until = Number(days) > 0 ? Date.now() + Number(days) * 86400000 : null;
+      setSubscription(id, { status: 'active', plan: 'comp', until, provider: 'admin' });
+      return res.json({ ok: true, id, status: 'active', until });
+    }
+    if (action === 'revoke') {
+      setSubscription(id, { status: 'none', plan: null, until: null, provider: 'admin' });
+      return res.json({ ok: true, id, status: 'none' });
+    }
+    return res.status(400).json({ error: 'action must be grant or reject' });
+  } catch (e) { console.error('[db] subscription:', e.message); res.status(500).json({ error: 'update failed' }); }
+});
 
 // ---- Progress sync API (requires a logged-in session) ----
 const VALID_STATUS = new Set(['not_started', 'in_progress', 'completed']);
@@ -183,6 +269,25 @@ function serveIndex(res) {
 }
 
 app.get('/', (_req, res) => serveIndex(res));
+
+// ---- Entitlement-gated content bundles (must precede express.static) ----
+app.get('/js/curriculum.js', (req, res) => gatedJs(req, res, RAW_CURRICULUM, FREE_CURRICULUM_JS));
+app.get('/js/interview-questions.js', (req, res) => gatedJs(req, res, RAW_IQ, FREE_IQ_JS));
+
+// ---- Billing: provider config + checkout (Wave 2 wires the actual gateways) ----
+app.get('/api/billing/config', (req, res) => {
+  res.json({
+    monetization: monetizationOn(),
+    stripe: !!process.env.STRIPE_SECRET_KEY,
+    razorpay: !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+    premium: requesterIsPremium(req),
+  });
+});
+app.post('/api/billing/checkout', requireAuth, (_req, res) => {
+  // Payment gateways are wired in Wave 2. Until then, access is granted by the
+  // admin from the console. Return 501 so the UI can show the right message.
+  res.status(501).json({ error: 'payments-not-configured' });
+});
 
 app.use(express.static(join(__dirname, 'public'), { extensions: ['html'] }));
 
