@@ -5,8 +5,10 @@ import { dirname, join } from 'path';
 import { readFileSync, statSync } from 'fs';
 import { execSync } from 'child_process';
 import { initDb, dbReady, upsertUser, getState, replaceState, listUsers, getApproval, setApproval,
-         getEntitlement, isPremium, setSubscription } from './db.js';
+         getEntitlement, isPremium, setSubscription, findUserBySubRef } from './db.js';
 import { mountAuth, requireAuth, authConfigured, currentUser, loginWallEnabled, isAdminEmail } from './auth.js';
+import { billingConfig, stripeReady, razorpayReady, createStripeCheckout, createRazorpaySubscription,
+         mountBillingWebhooks } from './billing.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -123,7 +125,15 @@ const PISTON_URL = process.env.PISTON_URL || 'http://localhost:2000';
 
 app.set('trust proxy', true); // honour X-Forwarded-* behind Caddy/nginx (correct cookie Secure flag)
 app.use(cors());
-app.use(express.json({ limit: '256kb' }));
+
+// Payment webhooks need the RAW request body for signature verification, so they
+// are mounted (with express.raw) before the JSON parser, and the JSON parser skips
+// their paths.
+mountBillingWebhooks(app, express, {
+  setSub: (userId, ent) => { if (DB_OK) { try { setSubscription(userId, ent); } catch (e) { console.error('[billing] setSub:', e.message); } } },
+  findUserByRef: (ref) => (DB_OK ? findUserBySubRef(ref) : null),
+});
+app.use((req, res, next) => (req.path.startsWith('/api/billing/webhook') ? next() : express.json({ limit: '256kb' })(req, res, next)));
 
 // ---- Auth (Google OAuth2) ----
 mountAuth(app, {
@@ -274,19 +284,36 @@ app.get('/', (_req, res) => serveIndex(res));
 app.get('/js/curriculum.js', (req, res) => gatedJs(req, res, RAW_CURRICULUM, FREE_CURRICULUM_JS));
 app.get('/js/interview-questions.js', (req, res) => gatedJs(req, res, RAW_IQ, FREE_IQ_JS));
 
-// ---- Billing: provider config + checkout (Wave 2 wires the actual gateways) ----
+// ---- Billing: provider config + checkout ----
 app.get('/api/billing/config', (req, res) => {
-  res.json({
-    monetization: monetizationOn(),
-    stripe: !!process.env.STRIPE_SECRET_KEY,
-    razorpay: !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
-    premium: requesterIsPremium(req),
-  });
+  res.json({ monetization: monetizationOn(), premium: requesterIsPremium(req), ...billingConfig() });
 });
-app.post('/api/billing/checkout', requireAuth, (_req, res) => {
-  // Payment gateways are wired in Wave 2. Until then, access is granted by the
-  // admin from the console. Return 501 so the UI can show the right message.
-  res.status(501).json({ error: 'payments-not-configured' });
+
+app.post('/api/billing/checkout', requireAuth, async (req, res) => {
+  const plan = (req.body && req.body.plan) === 'yearly' ? 'yearly' : 'monthly';
+  // Provider: honour an explicit choice, else prefer whichever is configured.
+  let provider = req.body && req.body.provider;
+  if (provider !== 'stripe' && provider !== 'razorpay') provider = stripeReady() ? 'stripe' : (razorpayReady() ? 'razorpay' : null);
+  if (!provider) return res.status(501).json({ error: 'payments-not-configured' });
+  const user = { id: req.user.sub, email: req.user.email };
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  const host  = req.headers['x-forwarded-host'] || req.headers.host;
+  const origin = `${proto}://${host}`;
+  try {
+    if (provider === 'stripe') {
+      if (!stripeReady()) return res.status(501).json({ error: 'stripe-not-configured' });
+      const out = await createStripeCheckout({ plan, user, origin });
+      return res.json(out); // { url }
+    }
+    if (!razorpayReady()) return res.status(501).json({ error: 'razorpay-not-configured' });
+    const out = await createRazorpaySubscription({ plan, user });
+    // Store the subscription id up front so the webhook can map back to this user.
+    if (DB_OK && out.ref) { try { setSubscription(user.id, { status: 'none', plan: null, until: null, provider: 'razorpay', ref: out.ref }); } catch {} }
+    return res.json(out); // { razorpay: {...} }
+  } catch (e) {
+    console.error('[billing] checkout:', e.message);
+    return res.status(502).json({ error: 'checkout-failed', message: e.message });
+  }
 });
 
 app.use(express.static(join(__dirname, 'public'), { extensions: ['html'] }));

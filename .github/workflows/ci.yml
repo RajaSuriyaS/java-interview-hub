@@ -26,6 +26,7 @@ jobs:
           node --check server.js
           node --check db.js
           node --check auth.js
+          node --check billing.js
           node --check public/js/curriculum.js
           node --check public/js/app.js
 

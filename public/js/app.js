@@ -926,6 +926,32 @@
       </div>`;
     icons();
     document.getElementById('up-bc-dash').addEventListener('click', renderDashboard);
+
+    // Provider selection: if both are configured, let the user choose (Stripe = cards
+    // globally; Razorpay = UPI/cards, better for India). Otherwise the server picks.
+    let chosenProvider = null;
+    fetch('/api/billing/config', { credentials: 'same-origin' }).then(r => r.json()).then(cfg => {
+      // reflect real price labels if provided
+      if (cfg.prices) {
+        const m = content.querySelector('[data-plan="monthly"]'); const y = content.querySelector('[data-plan="yearly"]');
+      }
+      if (cfg.stripe && cfg.razorpay) {
+        chosenProvider = 'stripe';
+        const bar = document.createElement('div');
+        bar.className = 'inline-flex rounded-lg border border-slate-800 overflow-hidden text-[12px] font-semibold mb-6';
+        bar.innerHTML = `
+          <button data-pv="stripe" class="pv-btn px-4 py-1.5 bg-brand text-white">Card (Stripe)</button>
+          <button data-pv="razorpay" class="pv-btn px-4 py-1.5 text-slate-400 hover:text-white">UPI / Card (Razorpay)</button>`;
+        const anchor = content.querySelector('.grid.sm\\:grid-cols-2');
+        if (anchor) anchor.parentNode.insertBefore(bar, anchor);
+        bar.querySelectorAll('.pv-btn').forEach(b => b.addEventListener('click', () => {
+          chosenProvider = b.getAttribute('data-pv');
+          bar.querySelectorAll('.pv-btn').forEach(x => x.className = 'pv-btn px-4 py-1.5 text-slate-400 hover:text-white');
+          b.className = 'pv-btn px-4 py-1.5 bg-brand text-white';
+        }));
+      }
+    }).catch(() => {});
+
     content.querySelectorAll('.up-buy').forEach(btn => btn.addEventListener('click', async () => {
       const plan = btn.getAttribute('data-plan');
       const msg = document.getElementById('up-msg');
@@ -934,13 +960,39 @@
       try {
         const r = await fetch('/api/billing/checkout', {
           method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(chosenProvider ? { plan, provider: chosenProvider } : { plan }),
         });
-        if (r.ok) { const d = await r.json(); if (d.url) { location.href = d.url; return; } }
         if (r.status === 501) { msg.innerHTML = 'Online payments are being set up. For early access, contact the site owner and you\'ll be upgraded manually.'; return; }
+        if (!r.ok) { msg.textContent = 'Could not start checkout. Please try again later.'; return; }
+        const d = await r.json();
+        if (d.url) { location.href = d.url; return; }                 // Stripe hosted checkout
+        if (d.razorpay) { openRazorpayCheckout(d.razorpay, msg); return; } // Razorpay checkout.js
         msg.textContent = 'Could not start checkout. Please try again later.';
       } catch { msg.textContent = 'Could not start checkout. Please try again later.'; }
     }));
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      if ([...document.scripts].some(s => s.src === src)) return resolve();
+      const el = document.createElement('script');
+      el.src = src; el.onload = resolve; el.onerror = reject; document.head.appendChild(el);
+    });
+  }
+  async function openRazorpayCheckout(rp, msg) {
+    try {
+      await loadScript('https://checkout.razorpay.com/v1/checkout.js');
+      const options = {
+        key: rp.key, subscription_id: rp.subscription_id, name: rp.name || 'Premium',
+        description: 'Premium subscription',
+        handler: () => { location.href = '/?billing=success'; },
+        prefill: { email: rp.email || '' },
+        theme: { color: '#8b5cf6' },
+      };
+      // eslint-disable-next-line no-undef
+      new Razorpay(options).open();
+    } catch { if (msg) msg.textContent = 'Could not open the payment window. Please try again.'; }
   }
 
   function openModule(id, startSec) {
@@ -1638,6 +1690,36 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
     renderAccount();
   }
 
+  function toast(msg, ms = 3500) {
+    let el = document.getElementById('jh-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'jh-toast';
+      el.className = 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-slate-900 text-slate-100 text-sm font-medium border border-slate-700 shadow-xl';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg; el.style.opacity = '1';
+    clearTimeout(el._t); el._t = setTimeout(() => { el.style.opacity = '0'; }, ms);
+  }
+
+  // Handle return from a payment provider (?billing=success|cancel).
+  async function handleBillingReturn() {
+    const params = new URLSearchParams(location.search);
+    const b = params.get('billing');
+    if (!b) return;
+    history.replaceState({}, '', location.pathname);
+    if (b === 'cancel') { toast('Checkout canceled.'); return; }
+    if (b === 'success') {
+      toast('Payment received — activating your premium access…', 6000);
+      for (let i = 0; i < 6 && !auth.premium; i++) {
+        await new Promise(r => setTimeout(r, 1500));
+        try { auth = await (await fetch('/auth/me', { credentials: 'same-origin' })).json(); } catch {}
+      }
+      if (auth.premium) { toast('Premium unlocked! Reloading…'); setTimeout(() => location.reload(), 900); }
+      else { toast('Payment received. Premium activates shortly — please refresh in a minute.', 6000); }
+    }
+  }
+
   // On login, pull the server's saved progress and merge it with whatever is in
   // localStorage (server wins on conflicts; local-only entries are kept and then
   // uploaded so nothing is lost on first sign-in from a device).
@@ -2007,7 +2089,7 @@ This module belongs to **${phase.title}**. Estimated **${module.hours} hours** o
 
     // ---- account widget + cloud sync (no-op when sign-in isn't configured) ----
     renderAccount();
-    refreshAuth().then(syncFromServer);
+    refreshAuth().then(syncFromServer).then(handleBillingReturn);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

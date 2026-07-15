@@ -69,6 +69,9 @@ export function initDb() {
     addCol('sub_provider', "sub_provider TEXT");                  // 'stripe' | 'razorpay' | 'admin'
     console.log('[db] migrated users subscription columns');
   }
+  if (!cols.includes('sub_ref')) {
+    addCol('sub_ref', "sub_ref TEXT");   // provider subscription/customer id (maps webhooks back to the user)
+  }
   return file;
 }
 
@@ -98,12 +101,24 @@ export function isPremium(userId) {
   return e.until == null || e.until > Date.now();
 }
 
-export function setSubscription(userId, { status, plan = null, until = null, provider = null } = {}) {
+export function setSubscription(userId, { status, plan = null, until = null, provider = null, ref } = {}) {
   if (!SUB_STATUSES.has(status)) throw new Error('invalid subscription status: ' + status);
-  const info = db.prepare(
-    'UPDATE users SET sub_status = ?, sub_plan = ?, sub_until = ?, sub_provider = ? WHERE id = ?'
-  ).run(status, plan, until, provider, userId);
+  // Preserve the existing ref when the caller does not pass one (e.g. admin comp).
+  if (ref === undefined) {
+    const info = db.prepare('UPDATE users SET sub_status = ?, sub_plan = ?, sub_until = ?, sub_provider = ? WHERE id = ?')
+      .run(status, plan, until, provider, userId);
+    return info.changes > 0;
+  }
+  const info = db.prepare('UPDATE users SET sub_status = ?, sub_plan = ?, sub_until = ?, sub_provider = ?, sub_ref = ? WHERE id = ?')
+    .run(status, plan, until, provider, ref, userId);
   return info.changes > 0;
+}
+
+// Map a provider subscription/customer id back to our user (for webhook events).
+export function findUserBySubRef(ref) {
+  if (!ref) return null;
+  const r = db.prepare('SELECT id FROM users WHERE sub_ref = ?').get(String(ref));
+  return r ? r.id : null;
 }
 
 export function getApproval(userId) {
