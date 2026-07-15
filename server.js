@@ -63,9 +63,9 @@ const VERSION = buildVersion();
    When MONETIZATION is on, the server sends FREE users only the free-tier
    modules; premium modules arrive as a locked stub (title kept, body stripped)
    so the real content never reaches a non-subscriber's browser. Premium users
-   (active subscription) and admins get the full content. Kept OFF by default so
-   nothing changes for current users until you flip the switch. */
-const monetizationOn = () => ['on', 'true', '1'].includes(String(process.env.MONETIZATION || '').toLowerCase());
+   (active subscription) and admins get the full content. ON by default; set
+   MONETIZATION=off (or false/0) to open all content to every signed-in user. */
+const monetizationOn = () => !['off', 'false', '0', 'no'].includes(String(process.env.MONETIZATION ?? 'on').toLowerCase());
 
 const CURRICULUM_FILE = join(__dirname, 'public/js/curriculum.js');
 const IQ_FILE = join(__dirname, 'public/js/interview-questions.js');

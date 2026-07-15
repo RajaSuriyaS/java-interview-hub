@@ -39,7 +39,7 @@ services:
       - REQUIRE_AUTH=${REQUIRE_AUTH:-}
       # Admin console + monetization (all optional; see deploy/.env.example).
       - ADMIN_EMAILS=${ADMIN_EMAILS:-}
-      - MONETIZATION=${MONETIZATION:-}
+      - MONETIZATION=${MONETIZATION:-on}
       - FREE_MODULE_IDS=${FREE_MODULE_IDS:-}
       - PRICE_MONTHLY_LABEL=${PRICE_MONTHLY_LABEL:-}
       - PRICE_YEARLY_LABEL=${PRICE_YEARLY_LABEL:-}
