@@ -10,7 +10,7 @@ import { pushToServer } from './account.js';
   // ---- persistent state ----
   // activity: { 'YYYY-MM-DD': 1 } study-day log (drives the streak); resumeModule
   // survives dashboard visits (lastModule is nulled there for restore-on-reload).
-  const defaultState = () => ({ status: {}, notes: {}, openPhases: {}, lastModule: null, resumeModule: null, activity: {}, cards: {}, mockHistory: [] });
+  const defaultState = () => ({ status: {}, notes: {}, openPhases: {}, lastModule: null, resumeModule: null, activity: {}, cards: {}, mockHistory: [], solved: {} });
   let state = load();
 
   // Stable key for a flashcard: moduleId + short hash of the question text.

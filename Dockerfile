@@ -31,7 +31,7 @@ RUN addgroup -S app && adduser -S app -G app \
  && mkdir -p /data && chown app:app /data
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json server.js db.js auth.js billing.js ./
+COPY package.json server.js db.js auth.js billing.js challenges.mjs ./
 COPY scripts ./scripts
 COPY public ./public
 # Overwrite the tracked stylesheet with the freshly built one.

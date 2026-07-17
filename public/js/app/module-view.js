@@ -5,6 +5,7 @@ import { STORAGE_KEY, STATUSES, STATUS_LABEL, STATUS_NEXT, defaultState, state, 
 import { renderMarkdown, initJourneyWidgets, addCopyButtons, renderMermaidIn } from './markdown.js';
 import { renderSandbox, editors } from './sandbox.js';
 import { renderFlashcards } from './flashcards.js';
+import { renderChallenges, layoutChallengeEditors } from './challenges.js';
 import { renderUpgrade } from './billing.js';
 import { renderNav, renderGlobalProgress, renderDashboard } from './nav-dashboard.js';
   function openModule(id, startSec) {
@@ -70,6 +71,7 @@ import { renderNav, renderGlobalProgress, renderDashboard } from './nav-dashboar
         <div class="flex items-center gap-0.5 border-b border-slate-800 mb-6 text-sm overflow-x-auto custom-scroll pb-px">
           <button data-tab="notes"     class="tab-btn active shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">📘 <span class="hidden xs:inline">Study </span>Guide</button>
           <button data-tab="sandbox"   class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">⚡ Code</button>
+          <button data-tab="challenges" class="tab-btn hidden shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">🏆 Challenges</button>
           <button data-tab="cards"     class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">🃏 Flashcards</button>
           <button data-tab="interview" class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">🎯 Interview</button>
           <button data-tab="mynotes"   class="tab-btn shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 font-medium text-slate-400">✎ My Notes</button>
@@ -77,6 +79,7 @@ import { renderNav, renderGlobalProgress, renderDashboard } from './nav-dashboar
 
         <div id="tab-notes" class="tab-pane prose-notes"></div>
         <div id="tab-sandbox" class="tab-pane hidden"></div>
+        <div id="tab-challenges" class="tab-pane hidden"></div>
         <div id="tab-cards" class="tab-pane hidden"></div>
         <div id="tab-interview" class="tab-pane hidden"></div>
         <div id="tab-mynotes" class="tab-pane hidden"></div>
@@ -194,6 +197,7 @@ import { renderNav, renderGlobalProgress, renderDashboard } from './nav-dashboar
     }
 
     renderMyNotes(module);
+    renderChallenges(module); // reveals the Challenges tab only if this module has any
 
     // ---- status button ----
     const updateStatusBtn = () => {
@@ -228,6 +232,7 @@ import { renderNav, renderGlobalProgress, renderDashboard } from './nav-dashboar
         const pane = $('#tab-' + tb.getAttribute('data-tab'));
         pane.classList.remove('hidden');
         if (tb.getAttribute('data-tab') === 'sandbox') setTimeout(() => editors.forEach(e => e.ed && e.ed.layout()), 30);
+        if (tb.getAttribute('data-tab') === 'challenges') setTimeout(layoutChallengeEditors, 30);
       });
     });
 

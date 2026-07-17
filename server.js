@@ -10,6 +10,7 @@ import { mountAuth, requireAuth, authConfigured, currentUser, loginWallEnabled, 
 import { billingConfig, stripeReady, razorpayReady, createStripeCheckout, createRazorpaySubscription,
          mountBillingWebhooks } from './billing.js';
 import { computeStats } from './scripts/stats.mjs';
+import { CHALLENGES } from './challenges.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -355,6 +356,7 @@ async function runWandbox(language, code, stdin) {
   return {
     output: runOut,
     error: [compileErr, runErr].filter(Boolean).join('\n'),
+    compileError: compileErr,
     exitCode: d.status,
   };
 }
@@ -421,6 +423,99 @@ app.post('/api/execute', executeLimiter, async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(502).json({ output: '', error: `Execution failed: ${err.message}` });
+  }
+});
+
+/* ===================== GRADED CODING CHALLENGES =====================
+   Challenges + test cases live server-side (challenges.mjs). Clients get
+   the prompt, starter code and SAMPLE tests only; hidden test inputs and
+   all expected outputs stay on the server and grading runs here, so
+   answers can never be scraped from the browser. */
+const CHALLENGE_BY_ID = (() => {
+  const map = new Map();
+  for (const [mod, list] of Object.entries(CHALLENGES))
+    for (const c of list) map.set(c.id, { ...c, moduleId: mod });
+  return map;
+})();
+
+// Normalize stdout for comparison: unify newlines, strip trailing whitespace
+// per line, drop trailing blank lines.
+const normOut = (s) => String(s == null ? '' : s)
+  .replace(/\r\n/g, '\n').split('\n').map(l => l.replace(/\s+$/, '')).join('\n').replace(/\n+$/, '');
+
+// Viewing a challenge (prompt/starter/sample tests): free modules are open to
+// everyone; premium modules require an active subscription (or admin).
+function challengeViewAllowed(req, moduleId) {
+  if (!monetizationOn() || FREE_IDS.has(moduleId)) return true;
+  if (!currentUser(req)) return { code: 401, error: 'Please sign in.' };
+  if (requesterIsPremium(req)) return true;
+  return { code: 403, error: 'This module is part of Premium.' };
+}
+// Grading runs code on the JDK, so it always needs a signed-in user when
+// monetized (same policy as the sandbox), plus premium for premium modules.
+function challengeGradeAllowed(req, moduleId) {
+  if (!monetizationOn()) return true;
+  if (!currentUser(req)) return { code: 401, error: 'Please sign in to run tests.' };
+  if (FREE_IDS.has(moduleId) || requesterIsPremium(req)) return true;
+  return { code: 403, error: 'This module is part of Premium.' };
+}
+
+// List the module ids that have challenges (cheap; lets the client show the tab).
+app.get('/api/challenges', (_req, res) => {
+  res.set('Cache-Control', 'private, max-age=120');
+  res.json({ moduleIds: Object.keys(CHALLENGES) });
+});
+
+// Challenges for a module — solutions removed, hidden tests reduced to a count.
+app.get('/api/challenges/:moduleId', (req, res) => {
+  const moduleId = req.params.moduleId;
+  const gate = challengeViewAllowed(req, moduleId);
+  if (gate !== true) return res.status(gate.code).json({ error: gate.error, challenges: [] });
+  const list = (CHALLENGES[moduleId] || []).map(c => ({
+    id: c.id, title: c.title, difficulty: c.difficulty, lang: c.lang,
+    prompt: c.prompt, starter: c.starter,
+    sampleTests: c.tests.filter(t => t.sample).map(t => ({ name: t.name, stdin: t.stdin, expected: t.expected })),
+    hiddenCount: c.tests.filter(t => !t.sample).length,
+    total: c.tests.length,
+  }));
+  res.set('Cache-Control', 'private, max-age=120');
+  res.json({ moduleId, challenges: list });
+});
+
+// Grade a submission: run the code against every test server-side, compare.
+const gradeLimiter = makeRateLimiter({ windowMs: 60_000, max: 12 }); // each grade = several runs
+app.post('/api/grade', gradeLimiter, async (req, res) => {
+  const { challengeId, code } = req.body || {};
+  const ch = CHALLENGE_BY_ID.get(String(challengeId || ''));
+  if (!ch || typeof code !== 'string') return res.status(400).json({ error: 'challengeId and code are required' });
+  const gate = challengeGradeAllowed(req, ch.moduleId);
+  if (gate !== true) return res.status(gate.code).json({ error: gate.error });
+  if (Buffer.byteLength(code, 'utf8') > MAX_CODE_BYTES) return res.status(413).json({ error: 'Code is too large.' });
+  if (PROVIDER === 'wandbox' && !WANDBOX_COMPILER[ch.lang]) {
+    return res.status(400).json({ error: `${ch.lang} cannot be graded here.` });
+  }
+  try {
+    const run = (stdin) => (PROVIDER === 'piston' ? runPiston(ch.lang, code, stdin) : runWandbox(ch.lang, code, stdin));
+    // Probe compile once with the first test's input; a compile error fails all.
+    const first = await run(ch.tests[0].stdin);
+    if (first.compileError) {
+      return res.json({ passed: false, passedCount: 0, total: ch.tests.length, compileError: first.compileError,
+        results: ch.tests.map(t => ({ name: t.name, sample: !!t.sample, passed: false })) });
+    }
+    const results = [];
+    for (let i = 0; i < ch.tests.length; i++) {
+      const t = ch.tests[i];
+      const out = i === 0 ? first : await run(t.stdin);
+      const passed = normOut(out.output) === normOut(t.expected);
+      const row = { name: t.name, sample: !!t.sample, passed };
+      if (t.sample) { row.expected = t.expected; row.got = normOut(out.output).slice(0, 2000); }
+      else if (!passed && out.error) row.hint = 'runtime error';
+      results.push(row);
+    }
+    const passedCount = results.filter(r => r.passed).length;
+    res.json({ passed: passedCount === ch.tests.length, passedCount, total: ch.tests.length, results });
+  } catch (err) {
+    res.status(502).json({ error: `Grading failed: ${err.message}` });
   }
 });
 

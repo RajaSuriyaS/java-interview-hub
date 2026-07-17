@@ -35,8 +35,10 @@ import { handleBillingReturn } from './billing.js';
     renderNav();
     renderGlobalProgress();
 
-    // restore last module or show dashboard
-    if (state.lastModule && findModule(state.lastModule)) openModule(state.lastModule);
+    // Deep link (?m=<moduleId>) wins, then the last-open module, else the dashboard.
+    const urlModule = new URLSearchParams(location.search).get('m');
+    if (urlModule && findModule(urlModule)) openModule(urlModule);
+    else if (state.lastModule && findModule(state.lastModule)) openModule(state.lastModule);
     else renderDashboard();
 
     $('#search').addEventListener('input', (e) => renderNav(e.target.value));
