@@ -35,6 +35,7 @@ jobs:
           node --check auth.js
           node --check billing.js
           node --check challenges.mjs
+          node --check ai.mjs
           node --check public/js/curriculum.js
           for f in public/js/app/*.js; do node --check "$f"; done
 

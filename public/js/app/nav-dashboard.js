@@ -3,6 +3,21 @@
 'use strict';
 import { STORAGE_KEY, STATUSES, STATUS_LABEL, STATUS_NEXT, defaultState, state, setState, cardKey, reviewQueue, dayKey, markActivity, studyStreak, auth, setAuth, load, save, allModules, findModule, statusOf, phaseProgress, globalProgress, $, el, icons, esc, openSidebarMobile, closeSidebarMobile } from './core.js';
 import { openModule } from './module-view.js';
+import { renderAiInterview } from './ai-interview.js';
+
+  // Whether the AI Mock Interviewer is enabled server-side (an API key is set).
+  // Fetched once and cached; when disabled the dashboard keeps the #go-ai card hidden.
+  let _aiEnabledPromise = null;
+  function aiEnabled() {
+    if (!_aiEnabledPromise) {
+      _aiEnabledPromise = fetch('/api/ai/config', { credentials: 'same-origin' })
+        .then(r => r.ok ? r.json() : { enabled: false })
+        .then(cfg => !!(cfg && cfg.enabled))
+        .catch(() => false);
+    }
+    return _aiEnabledPromise;
+  }
+
   /* ===================== SIDEBAR NAV ===================== */
   const anyPhaseOpen = () => CURRICULUM.some(p => state.openPhases[p.id]);
   function refreshCollapseAllBtn() {
@@ -214,8 +229,8 @@ import { openModule } from './module-view.js';
           </div>
         </div>
 
-        <!-- study tools: review queue / mock interview / stats -->
-        <div class="grid sm:grid-cols-3 gap-4 mb-8">
+        <!-- study tools: review queue / mock interview / AI interview / stats -->
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <button id="go-review" class="text-left rounded-xl border ${rq.length ? 'border-amber-500/40 bg-amber-500/[0.06] hover:border-amber-400' : 'border-slate-800 bg-slate-900/40 hover:border-slate-600'} p-4 transition group">
             <div class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider ${rq.length ? 'text-amber-400' : 'text-slate-500'} mb-1.5">
               <i data-lucide="rotate-cw" class="w-4 h-4"></i> Review queue
@@ -227,6 +242,12 @@ import { openModule } from './module-view.js';
               <i data-lucide="mic" class="w-4 h-4"></i> Mock interview
             </div>
             <div class="text-sm text-slate-300">10 random questions, timed${lastMock ? ` · last: <strong class="text-white">${lastMock.pts}/${lastMock.max}</strong>` : ''}</div>
+          </button>
+          <button id="go-ai" hidden class="text-left rounded-xl border border-brand/40 bg-brand/[0.06] hover:border-brand p-4 transition group">
+            <div class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-brand mb-1.5">
+              <i data-lucide="bot" class="w-4 h-4"></i> AI mock interview
+            </div>
+            <div class="text-sm text-slate-300">🤖 A real interviewer that adapts to your answers</div>
           </button>
           <button id="go-stats" class="text-left rounded-xl border border-slate-800 bg-slate-900/40 hover:border-sky-500/60 p-4 transition group">
             <div class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-sky-400 mb-1.5">
@@ -287,7 +308,11 @@ import { openModule } from './module-view.js';
     const on = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); };
     on('go-review', renderReviewQueue);
     on('go-mock', renderMockInterview);
+    on('go-ai', renderAiInterview);
     on('go-stats', renderStatsPage);
+    // Reveal the AI interview card only when the server has an API key configured.
+    // The card starts hidden so the feature stays invisible until AI is enabled.
+    aiEnabled().then(enabled => { const b = document.getElementById('go-ai'); if (b && enabled) b.hidden = false; });
 
     content.querySelectorAll('.phase-card').forEach(card => {
       card.addEventListener('click', () => {

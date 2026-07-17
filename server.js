@@ -11,6 +11,7 @@ import { billingConfig, stripeReady, razorpayReady, createStripeCheckout, create
          mountBillingWebhooks } from './billing.js';
 import { computeStats } from './scripts/stats.mjs';
 import { CHALLENGES } from './challenges.mjs';
+import { aiConfig, aiReady, interviewTurn } from './ai.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -516,6 +517,56 @@ app.post('/api/grade', gradeLimiter, async (req, res) => {
     res.json({ passed: passedCount === ch.tests.length, passedCount, total: ch.tests.length, results });
   } catch (err) {
     res.status(502).json({ error: `Grading failed: ${err.message}` });
+  }
+});
+
+/* ===================== AI MOCK INTERVIEWER =====================
+   Premium-only, rate-limited, cost-capped Anthropic-powered interviewer.
+   DORMANT until ANTHROPIC_API_KEY is set (aiReady()): /api/ai/config reports
+   { enabled:false } and /api/ai/interview returns 503, so the whole feature
+   stays invisible/inert with no key. See ai.mjs. */
+
+// Public config so the client can reveal (or keep hidden) the AI card.
+app.get('/api/ai/config', (_req, res) => {
+  res.set('Cache-Control', 'private, max-age=60');
+  res.json(aiConfig());
+});
+
+const aiLimiter = makeRateLimiter({ windowMs: 60_000, max: 20 }); // 20 turns/min/IP
+const AI_MAX_MESSAGES = 24;      // cap conversation length
+const AI_MAX_CONTENT = 4000;     // cap each message's characters
+const AI_MAX_PAYLOAD = 60_000;   // cap total request body size
+const AI_TOPICS = new Set(['Core Java', 'Spring', 'System Design', 'Concurrency', 'Data Structures', 'Databases', 'Microservices']);
+
+app.post('/api/ai/interview', aiLimiter, async (req, res) => {
+  // Premium gate (same policy as challenge grading): signed-in + premium.
+  if (monetizationOn()) {
+    if (!currentUser(req)) return res.status(401).json({ error: 'Please sign in to start an AI interview.' });
+    if (!requesterIsPremium(req)) return res.status(403).json({ error: 'AI interviews are part of Premium.' });
+  }
+  // Dormant until an API key is configured.
+  if (!aiReady()) return res.status(503).json({ error: 'AI interviews are not configured yet.' });
+
+  const { history, topic } = req.body || {};
+  if (!Array.isArray(history)) return res.status(400).json({ error: 'history must be an array' });
+  if (history.length > AI_MAX_MESSAGES) return res.status(413).json({ error: 'conversation too long' });
+  for (const m of history) {
+    if (!m || (m.role !== 'user' && m.role !== 'assistant') || typeof m.content !== 'string') {
+      return res.status(400).json({ error: 'each message needs role user|assistant and string content' });
+    }
+    if (m.content.length > AI_MAX_CONTENT) return res.status(413).json({ error: 'message too long' });
+  }
+  const topicStr = typeof topic === 'string' ? topic.slice(0, 60) : '';
+  const safeTopic = AI_TOPICS.has(topicStr) ? topicStr : '';
+  if (Buffer.byteLength(JSON.stringify(history), 'utf8') > AI_MAX_PAYLOAD) {
+    return res.status(413).json({ error: 'payload too large' });
+  }
+  try {
+    const reply = await interviewTurn({ history, topic: safeTopic });
+    res.json({ reply });
+  } catch (err) {
+    console.error('[ai] interview:', err.message);
+    res.status(502).json({ error: 'The interviewer is unavailable right now. Please try again.' });
   }
 });
 
