@@ -23,13 +23,13 @@ import { renderDashboard } from './nav-dashboard.js';
           <div class="grid sm:grid-cols-2 gap-4 text-left mb-8">
             <div class="rounded-2xl border border-brand/40 bg-brand/[0.06] p-6">
               <div class="text-xs font-bold uppercase tracking-wider text-brand mb-1">Monthly</div>
-              <div class="text-3xl font-extrabold text-white mb-1">$9<span class="text-base font-medium text-slate-400">/mo</span></div>
+              <div class="text-3xl font-extrabold text-white mb-1"><span class="up-amt-monthly">₹499</span><span class="text-base font-medium text-slate-400">/mo</span></div>
               <div class="text-[12px] text-slate-500 mb-4">Cancel anytime</div>
               <button data-plan="monthly" class="up-buy w-full py-2.5 rounded-lg bg-brand hover:bg-brand-dark text-white font-bold text-sm transition">Get Premium</button>
             </div>
             <div class="rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
               <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Yearly <span class="text-emerald-400">save 30%</span></div>
-              <div class="text-3xl font-extrabold text-white mb-1">$75<span class="text-base font-medium text-slate-400">/yr</span></div>
+              <div class="text-3xl font-extrabold text-white mb-1"><span class="up-amt-yearly">₹3,999</span><span class="text-base font-medium text-slate-400">/yr</span></div>
               <div class="text-[12px] text-slate-500 mb-4">Best value</div>
               <button data-plan="yearly" class="up-buy w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition">Get Premium</button>
             </div>
@@ -50,9 +50,10 @@ import { renderDashboard } from './nav-dashboard.js';
     // globally; Razorpay = UPI/cards, better for India). Otherwise the server picks.
     let chosenProvider = null;
     fetch('/api/billing/config', { credentials: 'same-origin' }).then(r => r.json()).then(cfg => {
-      // reflect real price labels if provided
+      // reflect the configured price labels (PRICE_MONTHLY_LABEL / PRICE_YEARLY_LABEL)
       if (cfg.prices) {
-        const m = content.querySelector('[data-plan="monthly"]'); const y = content.querySelector('[data-plan="yearly"]');
+        const am = content.querySelector('.up-amt-monthly'); if (am && cfg.prices.monthly) am.textContent = cfg.prices.monthly;
+        const ay = content.querySelector('.up-amt-yearly');  if (ay && cfg.prices.yearly)  ay.textContent = cfg.prices.yearly;
       }
       if (cfg.stripe && cfg.razorpay) {
         chosenProvider = 'stripe';
