@@ -100,7 +100,7 @@ import { renderAiInterview } from './ai-interview.js';
           <span class="text-[11px] font-mono text-slate-500 shrink-0">${esc(m.id)}</span>
           <span class="flex-1 text-[13px] ${st === 'completed' ? 'text-slate-400 line-through decoration-slate-600' : 'text-slate-300'} truncate">${esc(m.title)}</span>
           ${m.locked
-            ? `<i data-lucide="lock" class="w-3 h-3 text-brand/70 shrink-0" title="Premium"></i>`
+            ? `<span class="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-400/15 text-amber-300 text-[9px] font-bold uppercase tracking-wide" title="Premium — unlock with PRO"><i data-lucide="lock" class="w-2.5 h-2.5"></i>PRO</span>`
             : `<span class="text-[10px] text-slate-600 shrink-0">${m.hours}h</span>`}
           ${secHint ? `<span class="basis-full pl-6 text-[11px] text-brand truncate">↳ ${esc(secHint)}</span>` : ''}`;
         item.addEventListener('click', () => openModule(m.id, mi >= 0 ? mi : undefined));
