@@ -296,6 +296,86 @@ public class Main {
         { name: "one", stdin: "solo\n", expected: "1" },
       ],
     },
+    {
+      id: "longest-unique-substring", title: "Longest Substring Without Repeating Characters", difficulty: "medium", lang: "java",
+      prompt: `Read one line of text and print the **length of the longest substring** that contains no repeating characters.
+
+Example: \`abcabcbb\` → \`3\` (the substring \`abc\`). A sliding window does this in one pass.`,
+      starter: `import java.util.*;
+import java.util.stream.*;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        String s = sc.hasNextLine() ? sc.nextLine() : "";
+        // TODO: print the length of the longest substring with no repeated characters
+    }
+}`,
+      solution: `import java.util.*;
+import java.util.stream.*;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        String s = sc.hasNextLine() ? sc.nextLine() : "";
+        Set<Character> win = new HashSet<>();
+        int l = 0, best = 0;
+        for (int r = 0; r < s.length(); r++) {
+            while (win.contains(s.charAt(r))) win.remove(s.charAt(l++));
+            win.add(s.charAt(r));
+            best = Math.max(best, r - l + 1);
+        }
+        System.out.println(best);
+    }
+}`,
+      tests: [
+        { name: "classic", stdin: "abcabcbb\n", expected: "3", sample: true },
+        { name: "all same", stdin: "bbbbb\n", expected: "1" },
+        { name: "pwwkew", stdin: "pwwkew\n", expected: "3" },
+        { name: "all unique", stdin: "abcdef\n", expected: "6" },
+        { name: "dvdf", stdin: "dvdf\n", expected: "3" },
+        { name: "empty", stdin: "\n", expected: "0" },
+      ],
+    },
+    {
+      id: "palindrome-permutation", title: "Palindrome Permutation", difficulty: "medium", lang: "java",
+      prompt: `Read one line and print \`true\` if its characters can be **rearranged into a palindrome**, else \`false\`.
+
+A string can form a palindrome exactly when **at most one** character has an odd count.
+
+Example: \`bdybayda\` → \`true\` (rearranges to \`abdyydba\`); \`hello\` → \`false\`.`,
+      starter: `import java.util.*;
+import java.util.stream.*;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        String s = sc.hasNextLine() ? sc.nextLine() : "";
+        // TODO: print true if s can be rearranged into a palindrome, else false
+    }
+}`,
+      solution: `import java.util.*;
+import java.util.stream.*;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        String s = sc.hasNextLine() ? sc.nextLine() : "";
+        Map<Character,Integer> c = new HashMap<>();
+        for (char ch : s.toCharArray()) c.merge(ch, 1, Integer::sum);
+        long odd = c.values().stream().filter(v -> v % 2 == 1).count();
+        System.out.println(odd <= 1);
+    }
+}`,
+      tests: [
+        { name: "even counts", stdin: "bdybayda\n", expected: "true", sample: true },
+        { name: "one odd", stdin: "bdybaydak\n", expected: "true" },
+        { name: "not", stdin: "hello\n", expected: "false" },
+        { name: "aab", stdin: "aab\n", expected: "true" },
+        { name: "code", stdin: "code\n", expected: "false" },
+        { name: "single", stdin: "x\n", expected: "true" },
+      ],
+    },
   ],
   "13.2": [
     {
