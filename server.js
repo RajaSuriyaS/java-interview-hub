@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, statSync } from 'fs';
 import { execSync } from 'child_process';
+import crypto from 'node:crypto';
 import { initDb, dbReady, upsertUser, getState, replaceState, listUsers, getApproval, setApproval,
          getEntitlement, isPremium, setSubscription, findUserBySubRef,
          getTrialUsed, markTrialUsed } from './db.js';
@@ -112,12 +113,39 @@ function requesterIsPremium(req) {
   if (isAdminEmail(u.email)) return true;
   return DB_OK ? isPremium(u.sub) : true;
 }
+/* ---------- Anti-clone watermarking ----------
+   The full content bundle is stamped per-user so any leaked/redistributed
+   copy is traceable to the exact account: a signed licence banner (visible)
+   plus an invisible zero-width fingerprint of the user id embedded in the
+   first phase blurb — which survives copy-pasting the RENDERED text, not
+   just the JS file. Combined with server-side gating (premium content is
+   never sent to free users) this is a real deterrent; see scripts/wm-decode.mjs
+   to recover the account id from a leaked snippet. */
+const WM_SECRET = process.env.SESSION_SECRET || 'jih-watermark-fallback';
+const ZW0 = '​', ZW1 = '‌', ZWD = '⁠'; // zero-width 0/1 + delimiter
+function zwEncode(s) {
+  let bits = '';
+  for (const b of Buffer.from(String(s), 'utf8')) bits += b.toString(2).padStart(8, '0');
+  return ZWD + [...bits].map(c => (c === '1' ? ZW1 : ZW0)).join('') + ZWD;
+}
+function watermarkBundle(req, js) {
+  const u = currentUser(req);
+  const id = u ? u.sub : 'anon';
+  const email = u ? (u.email || '') : '';
+  const day = new Date().toISOString().slice(0, 10);
+  const sig = crypto.createHmac('sha256', WM_SECRET).update(id + '|' + day).digest('hex').slice(0, 16);
+  const banner = `/* (c) Java Interview Hub — licensed to ${id}${email ? ' <' + email + '>' : ''} on ${day} [${sig}]. Personal use only; redistribution or resale is prohibited and traceable. */\n`;
+  // Invisible per-user fingerprint in the first blurb (survives rendered-text copy).
+  const marked = js.replace('blurb: `', 'blurb: `' + zwEncode(id));
+  return banner + marked;
+}
+
 // Full content for premium/admin (or when monetization is off); free stub otherwise.
 function gatedJs(req, res, rawFull, freeJs) {
   res.type('application/javascript');
   if (!monetizationOn() || requesterIsPremium(req)) {
     res.set('Cache-Control', 'private, max-age=300');
-    return res.send(rawFull);
+    return res.send(watermarkBundle(req, rawFull));
   }
   res.set('Cache-Control', 'private, no-store');
   return res.send(freeJs);
