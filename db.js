@@ -72,6 +72,10 @@ export function initDb() {
   if (!cols.includes('sub_ref')) {
     addCol('sub_ref', "sub_ref TEXT");   // provider subscription/customer id (maps webhooks back to the user)
   }
+  // ---- migration: one-time free-trial flag ----
+  if (!cols.includes('trial_used')) {
+    addCol('trial_used', "trial_used INTEGER DEFAULT 0"); // 1 once the user has consumed their 48h trial
+  }
   return file;
 }
 
@@ -112,6 +116,15 @@ export function setSubscription(userId, { status, plan = null, until = null, pro
   const info = db.prepare('UPDATE users SET sub_status = ?, sub_plan = ?, sub_until = ?, sub_provider = ?, sub_ref = ? WHERE id = ?')
     .run(status, plan, until, provider, ref, userId);
   return info.changes > 0;
+}
+
+// One-time free trial: has this user already consumed theirs?
+export function getTrialUsed(userId) {
+  const r = db.prepare('SELECT trial_used AS t FROM users WHERE id = ?').get(userId);
+  return !!(r && r.t);
+}
+export function markTrialUsed(userId) {
+  db.prepare('UPDATE users SET trial_used = 1 WHERE id = ?').run(userId);
 }
 
 // Map a provider subscription/customer id back to our user (for webhook events).

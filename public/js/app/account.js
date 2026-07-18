@@ -7,6 +7,14 @@ import { openModule } from './module-view.js';
 import { renderUpgrade } from './billing.js';
 let _syncTimer = null;
 
+// Compact "time left" label for a trial expiry (epoch ms): "47h" or "45m".
+function trialLeft(until) {
+  const ms = until - Date.now();
+  if (ms <= 0) return '0m';
+  const h = Math.floor(ms / 3600000);
+  return h >= 1 ? h + 'h' : Math.max(1, Math.floor(ms / 60000)) + 'm';
+}
+
   async function refreshAuth() {
     try {
       const r = await fetch('/auth/me', { credentials: 'same-origin' });
@@ -232,7 +240,9 @@ let _syncTimer = null;
             </div>
           </div>
           ${auth.premium
-            ? `<span title="Premium member" class="shrink-0 inline-flex items-center gap-1 px-2 h-7 rounded-lg bg-amber-400/15 text-amber-300 text-[10px] font-bold"><i data-lucide="crown" class="w-3 h-3"></i>PRO</span>`
+            ? (auth.plan === 'trial' && auth.until
+              ? `<span title="Free trial — ${trialLeft(auth.until)} left" class="shrink-0 inline-flex items-center gap-1 px-2 h-7 rounded-lg bg-emerald-500/15 text-emerald-300 text-[10px] font-bold"><i data-lucide="gift" class="w-3 h-3"></i>TRIAL ${trialLeft(auth.until)}</span>`
+              : `<span title="Premium member" class="shrink-0 inline-flex items-center gap-1 px-2 h-7 rounded-lg bg-amber-400/15 text-amber-300 text-[10px] font-bold"><i data-lucide="crown" class="w-3 h-3"></i>PRO</span>`)
             : (allModules().some(x => x.module.locked)
               ? `<button id="upgrade-btn" title="Unlock all premium modules" class="shrink-0 inline-flex items-center gap-1 px-2 h-7 rounded-lg bg-brand hover:bg-brand-dark text-white text-[10px] font-bold transition"><i data-lucide="sparkles" class="w-3 h-3"></i>Premium</button>`
               : '')}

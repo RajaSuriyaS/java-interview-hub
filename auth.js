@@ -228,6 +228,9 @@ export function mountAuth(app, { onLogin, approvalStatus, entitlement } = {}) {
       premium: !!ent.premium,
       plan: ent.plan || null,
       subStatus: ent.status || 'none',
+      until: ent.until ?? null,
+      trialUsed: !!ent.trialUsed,
+      trialEligible: !!u && !ent.premium && !ent.trialUsed,
       user: u ? { id: u.sub, email: u.email, name: u.name, picture: u.picture } : null,
     });
   });

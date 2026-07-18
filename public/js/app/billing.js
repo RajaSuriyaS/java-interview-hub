@@ -51,17 +51,25 @@ import { renderDashboard } from './nav-dashboard.js';
             <i data-lucide="lock" class="w-8 h-8"></i>
           </div>
           <h1 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-2">${module ? esc(module.title) : 'Premium content'}</h1>
-          <p class="text-slate-400 mb-8">This module is part of <b class="text-brand">Premium</b>. Unlock ${lockedCount}+ advanced modules — full study guides, runnable code, flashcards and interview Q&amp;A.</p>
+          <p class="text-slate-400 mb-6">This module is part of <b class="text-brand">Premium</b>. Unlock ${lockedCount}+ advanced modules — full study guides, runnable code, flashcards and interview Q&amp;A.</p>
+          ${auth.trialEligible ? `
+          <div class="rounded-2xl border border-emerald-500/40 bg-emerald-500/[0.06] p-5 mb-6 text-left flex flex-wrap items-center gap-4">
+            <div class="flex-1 min-w-[200px]">
+              <div class="text-sm font-bold text-emerald-300 flex items-center gap-1.5"><i data-lucide="gift" class="w-4 h-4"></i> Try everything free for 48 hours</div>
+              <div class="text-[12px] text-slate-400 mt-0.5">Full access to all modules, code, flashcards &amp; AI interviews. No card needed — reverts to free after 48h.</div>
+            </div>
+            <button id="up-trial" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition shrink-0">Start free trial</button>
+          </div>` : ''}
           <div id="up-plans" class="grid sm:grid-cols-2 gap-4 text-left mb-8">
             <div class="rounded-2xl border border-brand/40 bg-brand/[0.06] p-6">
               <div class="text-xs font-bold uppercase tracking-wider text-brand mb-1">Monthly</div>
-              <div class="text-3xl font-extrabold text-white mb-1"><span class="up-amt-monthly">₹499</span><span class="text-base font-medium text-slate-400">/mo</span></div>
+              <div class="text-3xl font-extrabold text-white mb-1"><span class="up-amt-monthly">₹199</span><span class="text-base font-medium text-slate-400">/mo</span></div>
               <div class="text-[12px] text-slate-500 mb-4">Cancel anytime</div>
               <button data-plan="monthly" class="up-buy w-full py-2.5 rounded-lg bg-brand hover:bg-brand-dark text-white font-bold text-sm transition">Get Premium</button>
             </div>
             <div class="rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
-              <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Yearly <span class="text-emerald-400">save 30%</span></div>
-              <div class="text-3xl font-extrabold text-white mb-1"><span class="up-amt-yearly">₹3,999</span><span class="text-base font-medium text-slate-400">/yr</span></div>
+              <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Yearly <span class="text-emerald-400">save 37%</span></div>
+              <div class="text-3xl font-extrabold text-white mb-1"><span class="up-amt-yearly">₹1,499</span><span class="text-base font-medium text-slate-400">/yr</span></div>
               <div class="text-[12px] text-slate-500 mb-4">Best value</div>
               <button data-plan="yearly" class="up-buy w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition">Get Premium</button>
             </div>
@@ -77,6 +85,18 @@ import { renderDashboard } from './nav-dashboard.js';
       </div>`;
     icons();
     document.getElementById('up-bc-dash').addEventListener('click', renderDashboard);
+    const trialBtn = document.getElementById('up-trial');
+    if (trialBtn) trialBtn.addEventListener('click', async () => {
+      if (!auth.user) { location.href = '/auth/google'; return; }
+      trialBtn.disabled = true; trialBtn.textContent = 'Starting…';
+      try {
+        const r = await fetch('/api/billing/trial', { method: 'POST', credentials: 'same-origin' });
+        if (r.ok) { toast('🎉 48-hour full access unlocked! Reloading…'); setTimeout(() => location.reload(), 900); return; }
+        if (r.status === 401) { location.href = '/auth/google'; return; }
+        const d = await r.json().catch(() => ({}));
+        toast(d.error || 'Could not start the trial.'); trialBtn.disabled = false; trialBtn.textContent = 'Start free trial';
+      } catch { toast('Could not start the trial.'); trialBtn.disabled = false; trialBtn.textContent = 'Start free trial'; }
+    });
     const unlockBtn = document.getElementById('up-unlock');
     if (unlockBtn) unlockBtn.addEventListener('click', () => {
       const plans = document.getElementById('up-plans');

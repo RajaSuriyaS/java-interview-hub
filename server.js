@@ -5,7 +5,8 @@ import { dirname, join } from 'path';
 import { readFileSync, statSync } from 'fs';
 import { execSync } from 'child_process';
 import { initDb, dbReady, upsertUser, getState, replaceState, listUsers, getApproval, setApproval,
-         getEntitlement, isPremium, setSubscription, findUserBySubRef } from './db.js';
+         getEntitlement, isPremium, setSubscription, findUserBySubRef,
+         getTrialUsed, markTrialUsed } from './db.js';
 import { mountAuth, requireAuth, authConfigured, currentUser, loginWallEnabled, isAdminEmail } from './auth.js';
 import { billingConfig, stripeReady, razorpayReady, createStripeCheckout, createRazorpaySubscription,
          mountBillingWebhooks } from './billing.js';
@@ -153,7 +154,7 @@ mountAuth(app, {
   entitlement: (userId) => {
     if (!DB_OK) return { premium: false, status: 'none' };
     const e = getEntitlement(userId);
-    return { premium: isPremium(userId), plan: e.plan, status: e.status, until: e.until };
+    return { premium: isPremium(userId), plan: e.plan, status: e.status, until: e.until, trialUsed: getTrialUsed(userId) };
   },
 });
 
@@ -317,6 +318,22 @@ app.post('/api/billing/checkout', requireAuth, async (req, res) => {
     console.error('[billing] checkout:', e.message);
     return res.status(502).json({ error: 'checkout-failed', message: e.message });
   }
+});
+
+// One-time 48-hour free trial: unlocks all premium content, then expires back
+// to free automatically (isPremium checks sub_until). Each user can trial once.
+const TRIAL_MS = 48 * 60 * 60 * 1000;
+app.post('/api/billing/trial', requireAuth, (req, res) => {
+  if (!DB_OK) return res.status(503).json({ error: 'persistence unavailable' });
+  const uid = req.user.sub;
+  if (requesterIsPremium(req)) return res.status(400).json({ error: 'You already have full access.' });
+  if (getTrialUsed(uid)) return res.status(409).json({ error: 'Your free trial has already been used.' });
+  const until = Date.now() + TRIAL_MS;
+  try {
+    markTrialUsed(uid);
+    setSubscription(uid, { status: 'active', plan: 'trial', until, provider: 'trial', ref: 'trial:' + uid });
+    res.json({ ok: true, until });
+  } catch (e) { console.error('[trial]', e.message); res.status(500).json({ error: 'could not start trial' }); }
 });
 
 app.use(express.static(join(__dirname, 'public'), { extensions: ['html'] }));

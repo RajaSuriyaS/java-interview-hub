@@ -37,8 +37,8 @@ export function billingConfig() {
     razorpay: razorpayReady(),
     razorpayKeyId: razorpayReady() ? R.keyId : null,
     prices: {
-      monthly: clean(process.env.PRICE_MONTHLY_LABEL) || '₹499',
-      yearly:  clean(process.env.PRICE_YEARLY_LABEL)  || '₹3,999',
+      monthly: clean(process.env.PRICE_MONTHLY_LABEL) || '₹199',
+      yearly:  clean(process.env.PRICE_YEARLY_LABEL)  || '₹1,499',
     },
   };
 }

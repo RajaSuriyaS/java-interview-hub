@@ -76,8 +76,8 @@ fi
 
 echo
 echo "--- Optional display labels (cosmetic) --------"
-read -rp "PRICE_MONTHLY_LABEL [₹499] (blank=keep): " L_M
-read -rp "PRICE_YEARLY_LABEL  [₹3,999] (blank=keep): " L_Y
+read -rp "PRICE_MONTHLY_LABEL [₹199] (blank=keep): " L_M
+read -rp "PRICE_YEARLY_LABEL  [₹1,499] (blank=keep): " L_Y
 upsert PRICE_MONTHLY_LABEL "$L_M"
 upsert PRICE_YEARLY_LABEL  "$L_Y"
 
